@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -24,14 +25,23 @@ UTC = timezone.utc
 
 DEFAULT_POLICY: dict[str, Any] = {
     "schema_version": "2026-03-02",
-    "primary_model": "glmcode/glm-5",
-    "fallback_models": ["kimicode/kimi-k2.5", "glmcode/glm-4.7"],
-    "allowed_models": ["glmcode/glm-5", "kimicode/kimi-k2.5", "glmcode/glm-4.7"],
+    "primary_model": "kimicode/Doubao-Seed-2.0-Code",
+    "fallback_models": ["glmcode/glm-5"],
+    "allowed_models": ["kimicode/Doubao-Seed-2.0-Code", "glmcode/glm-5", "glmcode/glm-4.7"],
     "allowed_entry_agents": ["coordinator"],
+    "dispatcher_agent": "coordinator",
     "blocked_direct_code_agents": ["coordinator", "project-agent"],
     "code_execution_stages": ["implement", "fix", "deploy"],
-    "required_task_fields": ["reason", "requirement", "result_output", "acceptance"],
+    "required_task_fields": [
+        "reason",
+        "requirement",
+        "result_output",
+        "acceptance",
+        "observable_outputs",
+        "acceptance_thresholds"
+    ],
     "high_risk_requires_human_confirm": True,
+    "require_token_usage_before_done": True,
     "max_failure_before_escalate": 3,
     "pass_line_raw": 75.0,
     "status_flow": {
@@ -40,8 +50,8 @@ DEFAULT_POLICY: dict[str, Any] = {
         "failed": ["running", "escalated", "cancelled"],
         "escalated": ["running", "cancelled", "passed"],
         "passed": [],
-        "cancelled": [],
-    },
+        "cancelled": []
+    }
 }
 
 DEFAULT_ROUTING_RULES: dict[str, Any] = {
@@ -60,29 +70,34 @@ DEFAULT_ROUTING_RULES: dict[str, Any] = {
         "配置",
         "测试失败",
         "cron异常",
+        "事故",
+        "中断",
+        "outage",
+        "security",
+        "payment",
+        "rollback"
     ],
-    "low_risk_keywords": ["文档", "索引", "注释", "整理", "汇总", "排版"],
+    "low_risk_keywords": ["文档", "索引", "注释", "整理", "汇总", "排版", "readme", "index"],
     "priority_keywords": {
-        "high": ["紧急", "立即", "故障", "异常", "失败", "告警", "中断", "不可用"],
-        "low": ["后续", "延后", "慢慢", "优化", "观察", "待办"],
+        "high": ["紧急", "立刻", "故障", "异常", "失败", "告警", "中断", "不可用", "urgent", "p0", "p1"],
+        "low": ["后续", "延后", "慢慢", "优化", "观察", "待办", "backlog"]
     },
     "assignee_rules": [
-        {"assignee": "ops-agent", "keywords": ["cron", "日志", "监控", "运维", "服务", "网关"]},
-        {"assignee": "backend-dev", "keywords": ["api", "后端", "数据库", "模型", "接口"]},
-        {"assignee": "frontend-dev", "keywords": ["前端", "页面", "ui", "交互", "样式"]},
-        {"assignee": "tester", "keywords": ["测试", "验收", "回归"]},
-        {"assignee": "project-agent", "keywords": ["项目索引", "readme", "文档同步", "模块说明"]},
+        {"assignee": "ops-agent", "keywords": ["cron", "日志", "监控", "运维", "服务", "网关", "infra"]},
+        {"assignee": "backend-dev", "keywords": ["api", "后端", "数据库", "模型", "接口", "backend"]},
+        {"assignee": "frontend-dev", "keywords": ["前端", "页面", "ui", "交互", "样式", "frontend"]},
+        {"assignee": "tester", "keywords": ["测试", "验收", "回归", "qa"]},
+        {"assignee": "project-agent", "keywords": ["项目索引", "readme", "文档同步", "模块说明"]}
     ],
-    "default_assignee": "backend-dev",
+    "default_assignee": "coordinator"
 }
-
 DEFAULT_TOKEN_PRICING: dict[str, Any] = {
     "version": "2026-03-02",
     "currency": "CNY",
     "unit": "per_1m_tokens",
     "models": {
         "glmcode/glm-5": {"input": 0, "output": 0},
-        "kimicode/kimi-k2.5": {"input": 0, "output": 0},
+        "kimicode/Doubao-Seed-2.0-Code": {"input": 0, "output": 0},
         "glmcode/glm-4.7": {"input": 0, "output": 0},
     },
 }
@@ -119,9 +134,45 @@ def emit_json(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
 
 
+def runtime_defaults() -> dict[str, str]:
+    script_policy_dir = Path(__file__).resolve().parent
+    openclaw_home = Path(
+        os.environ.get("OPENCLAW_HOME", str(Path.home() / ".openclaw"))
+    ).expanduser()
+
+    default_task_center_dir = Path(".workflow/task-center")
+    if "TASK_CENTER_DIR" in os.environ:
+        task_center_dir = Path(os.environ["TASK_CENTER_DIR"]).expanduser()
+    elif default_task_center_dir.exists():
+        task_center_dir = default_task_center_dir
+    else:
+        task_center_dir = Path(openclaw_home / "ops" / "task-center")
+
+    if "OPENCLAW_POLICY_ROOT" in os.environ:
+        policy_runtime_dir = Path(os.environ["OPENCLAW_POLICY_ROOT"]).expanduser()
+    elif (script_policy_dir / "policy-config.json").exists():
+        policy_runtime_dir = script_policy_dir
+    else:
+        policy_runtime_dir = Path(openclaw_home / "ops" / "policy")
+
+    pricing_file = (
+        os.environ.get("POLICY_PRICING_FILE")
+        or os.environ.get("TOKEN_PRICING_FILE")
+        or str(policy_runtime_dir / "token-pricing.json")
+    )
+    return {
+        "db": os.environ.get("POLICY_DB_FILE", str(task_center_dir / "task_center.db")),
+        "policy_file": os.environ.get("POLICY_FILE", str(policy_runtime_dir / "policy-config.json")),
+        "routing_file": os.environ.get("POLICY_ROUTING_FILE", str(policy_runtime_dir / "routing-rules.json")),
+        "pricing_file": pricing_file,
+        "openclaw_config": os.environ.get("OPENCLAW_CONFIG", str(openclaw_home / "openclaw.json")),
+        "project_registry": os.environ.get("PROJECT_REGISTRY", str(task_center_dir / "project-registry.json")),
+    }
+
+
 def read_json(path: Path, default: dict[str, Any] | None = None, write_if_missing: bool = False) -> dict[str, Any]:
     if path.exists():
-        with path.open("r", encoding="utf-8") as fh:
+        with path.open("r", encoding="utf-8-sig") as fh:
             data = json.load(fh)
         if not isinstance(data, dict):
             raise PolicyError(f"json object expected: {path}")
@@ -176,6 +227,21 @@ class PolicyEnforcer:
             raise PolicyError("policy.allowed_models must be a list")
         return {str(m) for m in models}
 
+    def allowed_entry_agents(self) -> set[str]:
+        agents = self.policy.get("allowed_entry_agents", [])
+        if not isinstance(agents, list):
+            raise PolicyError("policy.allowed_entry_agents must be a list")
+        return {str(a).strip() for a in agents if str(a).strip()}
+
+    def dispatcher_agent(self) -> str:
+        value = str(self.policy.get("dispatcher_agent", "coordinator")).strip()
+        if not value:
+            raise PolicyError("policy.dispatcher_agent must not be empty")
+        return value
+
+    def require_token_usage_before_done(self) -> bool:
+        return parse_bool(self.policy.get("require_token_usage_before_done", True), True)
+
     def max_failure_before_escalate(self) -> int:
         value = int(self.policy.get("max_failure_before_escalate", 3) or 3)
         if value < 1:
@@ -207,6 +273,18 @@ class PolicyEnforcer:
     def assert_model_allowed(self, model: str) -> None:
         if model not in self.allowed_models():
             raise PolicyError(f"model blocked by policy: {model}")
+
+    def assert_entry_agent_allowed(self, entry_agent: str) -> None:
+        allowed = self.allowed_entry_agents()
+        if not allowed:
+            raise PolicyError("policy.allowed_entry_agents is empty")
+        if entry_agent not in allowed:
+            raise PolicyError(f"entry agent blocked by policy: {entry_agent}")
+
+    def assert_dispatcher_actor(self, actor: str) -> None:
+        dispatcher = self.dispatcher_agent()
+        if actor != dispatcher:
+            raise PolicyError(f"only dispatcher can assign task: actor={actor}, required={dispatcher}")
 
     def assert_risk_confirmed(self, task: dict[str, Any]) -> None:
         if not parse_bool(self.policy.get("high_risk_requires_human_confirm", True), True):
@@ -251,6 +329,10 @@ class PolicyEnforcer:
         if risk_level not in {"low", "high"}:
             raise PolicyError("risk_level must be low|high")
 
+        entry_agent = str(args.entry_agent or "").strip()
+        if entry_agent:
+            self.assert_entry_agent_allowed(entry_agent)
+
         need_human_confirm = parse_bool(args.need_human_confirm, risk_level == "high")
 
         payload = {
@@ -261,21 +343,32 @@ class PolicyEnforcer:
             "source": args.source,
             "priority": priority,
             "risk_level": risk_level,
-            "assignee": args.assignee,
+            "assignee": args.assignee or self.dispatcher_agent(),
             "status": "pending",
             "need_human_confirm": need_human_confirm,
             "human_confirmed": parse_bool(args.human_confirmed, False),
             "requirement": args.requirement,
             "result_output": args.result_output,
             "acceptance": args.acceptance,
+            "observable_outputs": args.observable_outputs,
+            "acceptance_thresholds": args.acceptance_thresholds,
             "scheduled_at": args.scheduled_at,
         }
 
         created = self.db.create_task(payload, actor=args.actor)
         self.assert_required_fields(created)
+        if entry_agent:
+            self.db.add_event(
+                task_id=created["task_id"],
+                actor=args.actor,
+                event_type="entry_agent_checked",
+                stage="intake",
+                details={"entry_agent": entry_agent, "allowed": True},
+            )
         return created
 
     def assign_task(self, args: argparse.Namespace) -> dict[str, Any]:
+        self.assert_dispatcher_actor(args.actor)
         return self.db.assign_task(task_id=args.task_id, assignee=args.assignee, actor=args.actor)
 
     def confirm_risk(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -305,40 +398,106 @@ class PolicyEnforcer:
             details=details,
             allowed_from={from_status},
         )
+        stage_run = self.db.start_stage_run(
+            task_id=args.task_id,
+            stage=args.stage,
+            agent_id=args.agent_id,
+            model_id=args.model,
+            input_ref=str(args.input_ref or "").strip(),
+            details={"status_from": from_status},
+        )
+        self.db.add_event(
+            task_id=args.task_id,
+            actor=args.actor,
+            event_type="stage_started",
+            stage=args.stage,
+            details={
+                "stage_run_id": stage_run["id"],
+                "agent_id": args.agent_id,
+                "model": args.model,
+                "input_ref": str(args.input_ref or "").strip(),
+            },
+        )
         return updated
 
     def post_stage(self, args: argparse.Namespace) -> dict[str, Any]:
-        task = self.db.get_task(args.task_id)
         exit_code = int(args.exit_code)
+        output_ref = str(args.output_ref or "").strip()
+        reason = str(args.reason or "").strip()
 
         if exit_code == 0:
+            stage_run: dict[str, Any] | None = None
+            try:
+                stage_run = self.db.finish_stage_run(
+                    task_id=args.task_id,
+                    stage=args.stage,
+                    status="passed",
+                    exit_code=exit_code,
+                    output_ref=output_ref,
+                    details={"reason": reason},
+                )
+            except TaskCenterError as exc:
+                self.db.add_event(
+                    task_id=args.task_id,
+                    actor=args.actor,
+                    event_type="stage_run_finish_warning",
+                    stage=args.stage,
+                    details={"warning": str(exc)},
+                )
             self.db.add_event(
                 task_id=args.task_id,
                 actor=args.actor,
                 event_type="stage_passed",
                 stage=args.stage,
-                details={"exit_code": exit_code},
+                details={
+                    "exit_code": exit_code,
+                    "output_ref": output_ref,
+                    "stage_run_id": stage_run["id"] if stage_run else None,
+                    "duration_ms": stage_run["duration_ms"] if stage_run else None,
+                },
             )
             return self.db.get_task(args.task_id)
+
+        try:
+            self.db.finish_stage_run(
+                task_id=args.task_id,
+                stage=args.stage,
+                status="failed",
+                exit_code=exit_code,
+                error_reason=reason or f"stage {args.stage} failed with exit_code={exit_code}",
+                output_ref=output_ref,
+                details={"reason": reason},
+            )
+        except TaskCenterError as exc:
+            self.db.add_event(
+                task_id=args.task_id,
+                actor=args.actor,
+                event_type="stage_run_finish_warning",
+                stage=args.stage,
+                details={"warning": str(exc)},
+            )
 
         updated = self.db.increment_failure(
             task_id=args.task_id,
             actor=args.actor,
             stage=args.stage,
             max_failure_before_escalate=self.max_failure_before_escalate(),
-            reason=args.reason or f"stage {args.stage} failed with exit_code={exit_code}",
+            reason=reason or f"stage {args.stage} failed with exit_code={exit_code}",
         )
         return updated
 
     def complete_task(self, args: argparse.Namespace) -> dict[str, Any]:
         task = self.db.get_task(args.task_id)
 
+        if self.require_token_usage_before_done() and not self.db.has_token_usage(args.task_id):
+            raise PolicyError("token/cost usage missing: record-token required before complete-task")
+
         result_score = float(args.result_score)
         stability_score = float(args.stability_score)
         critical_pass = parse_bool(args.critical_pass, True)
 
-        raw_score = result_score * 0.70 + stability_score * 0.35
-        normalized_score = (raw_score / 105.0) * 100.0
+        raw_score = result_score * 0.70 + stability_score * 0.30
+        normalized_score = (raw_score / 100.0) * 100.0
 
         if critical_pass and raw_score >= self.pass_line_raw():
             action = "pass"
@@ -360,6 +519,16 @@ class PolicyEnforcer:
             raw_score=round(raw_score, 4),
             normalized_score=round(normalized_score, 4),
             action=action,
+            score_payload={
+                "result_score": result_score,
+                "stability_score": stability_score,
+                "result_weight": 0.70,
+                "stability_weight": 0.30,
+                "raw_score": round(raw_score, 4),
+                "normalized_score": round(normalized_score, 4),
+                "critical_pass": critical_pass,
+                "action": action,
+            },
         )
         updated = self.db.transition_status(
             task_id=args.task_id,
@@ -407,6 +576,21 @@ class PolicyEnforcer:
             out.write_text(format_daily_summary_markdown(summary), encoding="utf-8")
 
         return summary
+
+    def task_report(self, args: argparse.Namespace) -> dict[str, Any]:
+        report = self.db.task_report(task_id=args.task_id, event_limit=int(args.event_limit))
+        if args.output:
+            out = Path(args.output).expanduser()
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        return report
+
+    def assert_entry(self, args: argparse.Namespace) -> dict[str, Any]:
+        entry_agent = str(args.entry_agent or "").strip()
+        if not entry_agent:
+            raise PolicyError("entry_agent is required")
+        self.assert_entry_agent_allowed(entry_agent)
+        return {"ok": True, "entry_agent": entry_agent, "allowed_entry_agents": sorted(self.allowed_entry_agents())}
 
     def route_task(self, args: argparse.Namespace) -> dict[str, Any]:
         text = args.description.strip()
@@ -461,6 +645,8 @@ class PolicyEnforcer:
         return {
             "description": text,
             "source": args.source,
+            "entry_agent": sorted(self.allowed_entry_agents())[0] if self.allowed_entry_agents() else "",
+            "dispatcher_agent": self.dispatcher_agent(),
             "priority": priority,
             "risk_level": risk_level,
             "pool": pool,
@@ -544,6 +730,9 @@ class PolicyEnforcer:
         models = self.allowed_models()
         if self.policy.get("primary_model") not in models:
             raise PolicyError("primary_model must be in allowed_models")
+        if not self.allowed_entry_agents():
+            raise PolicyError("allowed_entry_agents must not be empty")
+        _ = self.dispatcher_agent()
 
         pricing = load_pricing(self.paths.pricing_file)
         pricing_models = pricing.get("models", {})
@@ -562,25 +751,155 @@ class PolicyEnforcer:
             "pricing_file": str(self.paths.pricing_file),
         }
 
+    def check_config(self, args: argparse.Namespace) -> dict[str, Any]:
+        checks: list[dict[str, Any]] = []
+
+        def add_check(name: str, ok: bool, detail: str) -> None:
+            checks.append({"name": name, "ok": bool(ok), "detail": detail})
+
+        add_check(
+            "allowed_entry_agents_contains_coordinator",
+            "coordinator" in self.allowed_entry_agents(),
+            f"allowed_entry_agents={sorted(self.allowed_entry_agents())}",
+        )
+        add_check(
+            "dispatcher_is_coordinator",
+            self.dispatcher_agent() == "coordinator",
+            f"dispatcher_agent={self.dispatcher_agent()}",
+        )
+
+        pricing = load_pricing(self.paths.pricing_file)
+        pricing_models = pricing.get("models", {})
+        add_check(
+            "pricing_parseable",
+            isinstance(pricing_models, dict),
+            f"pricing_file={self.paths.pricing_file}",
+        )
+        if isinstance(pricing_models, dict):
+            missing_models = sorted(model for model in self.allowed_models() if model not in pricing_models)
+            add_check(
+                "pricing_models_cover_allowed_models",
+                not missing_models,
+                "missing_models=" + ",".join(missing_models) if missing_models else "ok",
+            )
+
+        openclaw_path = Path(args.openclaw_config).expanduser()
+        if not openclaw_path.exists():
+            add_check("openclaw_config_exists", False, str(openclaw_path))
+            openclaw_obj: dict[str, Any] = {}
+        else:
+            add_check("openclaw_config_exists", True, str(openclaw_path))
+            try:
+                openclaw_obj = read_json(openclaw_path, default=None, write_if_missing=False)
+                add_check("openclaw_config_parseable", True, "ok")
+            except Exception as exc:
+                openclaw_obj = {}
+                add_check("openclaw_config_parseable", False, str(exc))
+
+        bindings = openclaw_obj.get("bindings", [])
+        binding_ok = False
+        if isinstance(bindings, list):
+            for item in bindings:
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("agentId", "")).strip() == "coordinator":
+                    binding_ok = True
+                    break
+        add_check("binding_coordinator", binding_ok, f"bindings_count={len(bindings) if isinstance(bindings, list) else 0}")
+
+        agents = openclaw_obj.get("agents", {}).get("list", [])
+        agent_ids = [str(item.get("id", "")).strip() for item in agents if isinstance(item, dict)]
+        add_check("project_agent_exists", "project-agent" in agent_ids, f"agent_count={len(agent_ids)}")
+        add_check("secretary_agent_removed", "secretary-agent" not in agent_ids, "secretary-agent must not exist")
+
+        a2a_allow = (
+            openclaw_obj.get("tools", {})
+            .get("agentToAgent", {})
+            .get("allow", [])
+        )
+        add_check(
+            "agent_to_agent_allow_project_agent",
+            isinstance(a2a_allow, list) and "project-agent" in {str(x).strip() for x in a2a_allow},
+            f"allow_count={len(a2a_allow) if isinstance(a2a_allow, list) else 0}",
+        )
+
+        registry_path = Path(args.project_registry).expanduser()
+        if not registry_path.exists():
+            add_check("project_registry_exists", False, str(registry_path))
+        else:
+            try:
+                with registry_path.open("r", encoding="utf-8-sig") as fh:
+                    registry_raw = json.load(fh)
+            except Exception as exc:
+                add_check("project_registry_exists", True, str(registry_path))
+                add_check("project_registry_parseable", False, str(exc))
+            else:
+                add_check("project_registry_exists", True, str(registry_path))
+                add_check("project_registry_parseable", True, "ok")
+                if isinstance(registry_raw, list):
+                    projects = registry_raw
+                elif isinstance(registry_raw, dict):
+                    projects = registry_raw.get("projects", [])
+                else:
+                    projects = []
+                if isinstance(projects, list) and projects:
+                    missing_paths: list[str] = []
+                    for item in projects:
+                        if not isinstance(item, dict):
+                            continue
+                        project_path = str(item.get("path", "")).strip()
+                        if not project_path:
+                            continue
+                        if not Path(project_path).expanduser().exists():
+                            missing_paths.append(project_path)
+                    add_check(
+                        "project_registry_paths_valid",
+                        len(missing_paths) == 0,
+                        "missing_paths=" + ",".join(missing_paths) if missing_paths else f"projects={len(projects)}",
+                    )
+                else:
+                    add_check("project_registry_paths_valid", False, "registry.projects empty or invalid")
+
+        ok = all(bool(item.get("ok")) for item in checks)
+        if args.strict and not ok:
+            failed = [item["name"] for item in checks if not item["ok"]]
+            raise PolicyError("check-config failed: " + ", ".join(failed))
+
+        return {
+            "ok": ok,
+            "checks": checks,
+            "openclaw_config": str(openclaw_path),
+            "project_registry": str(registry_path),
+        }
+
 
 def build_parser() -> argparse.ArgumentParser:
+    defaults = runtime_defaults()
     parser = argparse.ArgumentParser(description="Policy-Enforcer CLI")
     parser.add_argument(
         "--db",
-        default=".workflow/task-center/task_center.db",
+        default=defaults["db"],
         help="sqlite database path",
     )
     parser.add_argument(
         "--policy-file",
-        default="scripts/openclaw-ops/policy/policy-config.json",
+        default=defaults["policy_file"],
     )
     parser.add_argument(
         "--routing-file",
-        default="scripts/openclaw-ops/policy/routing-rules.json",
+        default=defaults["routing_file"],
     )
     parser.add_argument(
         "--pricing-file",
-        default="scripts/openclaw-ops/policy/token-pricing.json",
+        default=defaults["pricing_file"],
+    )
+    parser.add_argument(
+        "--openclaw-config",
+        default=defaults["openclaw_config"],
+    )
+    parser.add_argument(
+        "--project-registry",
+        default=defaults["project_registry"],
     )
 
     sub = parser.add_subparsers(dest="command", required=True)
@@ -597,11 +916,14 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--risk-level", default="low")
     create.add_argument("--pool", default="")
     create.add_argument("--assignee", default="")
+    create.add_argument("--entry-agent", default="")
     create.add_argument("--need-human-confirm", default="")
     create.add_argument("--human-confirmed", default="false")
     create.add_argument("--requirement", required=True)
     create.add_argument("--result-output", required=True)
     create.add_argument("--acceptance", required=True)
+    create.add_argument("--observable-outputs", required=True)
+    create.add_argument("--acceptance-thresholds", required=True)
     create.add_argument("--scheduled-at", default="")
     create.add_argument("--actor", default="policy-enforcer")
 
@@ -620,12 +942,14 @@ def build_parser() -> argparse.ArgumentParser:
     pre_stage.add_argument("--stage", required=True)
     pre_stage.add_argument("--agent-id", required=True)
     pre_stage.add_argument("--model", required=True)
+    pre_stage.add_argument("--input-ref", default="")
     pre_stage.add_argument("--actor", default="policy-enforcer")
 
     post_stage = sub.add_parser("post-stage", help="policy record after stage")
     post_stage.add_argument("--task-id", required=True)
     post_stage.add_argument("--stage", required=True)
     post_stage.add_argument("--exit-code", required=True)
+    post_stage.add_argument("--output-ref", default="")
     post_stage.add_argument("--reason", default="")
     post_stage.add_argument("--actor", default="policy-enforcer")
 
@@ -647,6 +971,14 @@ def build_parser() -> argparse.ArgumentParser:
     daily.add_argument("--date", default="")
     daily.add_argument("--output", default="")
 
+    task_report = sub.add_parser("task-report", help="task observability report")
+    task_report.add_argument("--task-id", required=True)
+    task_report.add_argument("--event-limit", default="200")
+    task_report.add_argument("--output", default="")
+
+    assert_entry = sub.add_parser("assert-entry", help="validate entry agent")
+    assert_entry.add_argument("--entry-agent", required=True)
+
     route = sub.add_parser("route-task", help="route task by routing rules")
     route.add_argument("--description", required=True)
     route.add_argument("--source", default="openclaw")
@@ -664,6 +996,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate = sub.add_parser("validate-runtime", help="validate policy runtime files")
     _ = validate
+
+    check_config = sub.add_parser("check-config", help="run hardflow config checklist")
+    check_config.add_argument("--openclaw-config", default=defaults["openclaw_config"])
+    check_config.add_argument("--project-registry", default=defaults["project_registry"])
+    check_config.add_argument("--strict", action="store_true", help="return non-zero when any check fails")
+    _ = check_config
 
     return parser
 
@@ -730,14 +1068,20 @@ def main() -> int:
                 emit_json({"ok": True, "usage": enforcer.record_token(args)})
             elif args.command == "daily-summary":
                 emit_json({"ok": True, "summary": enforcer.daily_summary(args)})
+            elif args.command == "task-report":
+                emit_json({"ok": True, "report": enforcer.task_report(args)})
             elif args.command == "route-task":
                 emit_json({"ok": True, "route": enforcer.route_task(args)})
             elif args.command == "update-routing":
                 emit_json({"ok": True, "result": enforcer.update_routing(args)})
+            elif args.command == "assert-entry":
+                emit_json(enforcer.assert_entry(args))
             elif args.command == "assert-stop-safe":
                 emit_json(enforcer.assert_stop_safe(args))
             elif args.command == "validate-runtime":
                 emit_json(enforcer.validate_runtime(args))
+            elif args.command == "check-config":
+                emit_json(enforcer.check_config(args))
             else:
                 raise PolicyError(f"unsupported command: {args.command}")
             return 0

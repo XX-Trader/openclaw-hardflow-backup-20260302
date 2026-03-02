@@ -25,6 +25,7 @@ TASK_STATUSES = {
 TASK_POOLS = {"todo", "jobs"}
 TASK_PRIORITIES = {"low", "medium", "high"}
 TASK_RISK_LEVELS = {"low", "high"}
+STAGE_RUN_STATUSES = {"running", "passed", "failed"}
 
 
 class TaskCenterError(RuntimeError):
@@ -39,6 +40,15 @@ class TimeRange:
 
 def utc_now_iso() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat()
+
+
+def parse_utc_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def iso_day_range(target_date: date) -> TimeRange:
@@ -74,7 +84,7 @@ def load_pricing(pricing_file: str | Path) -> dict[str, Any]:
     if not path.exists():
         return {"models": {}, "currency": "CNY", "unit": "per_1m_tokens"}
 
-    with path.open("r", encoding="utf-8") as fh:
+    with path.open("r", encoding="utf-8-sig") as fh:
         data = json.load(fh)
 
     if not isinstance(data, dict):
@@ -136,8 +146,13 @@ class TaskCenter:
                 requirement TEXT NOT NULL,
                 result_output TEXT NOT NULL,
                 acceptance TEXT NOT NULL,
+                observable_outputs TEXT NOT NULL DEFAULT '',
+                acceptance_thresholds TEXT NOT NULL DEFAULT '',
                 score_raw REAL,
                 score_normalized REAL,
+                score_payload TEXT NOT NULL DEFAULT '{}',
+                token_usage_summary TEXT NOT NULL DEFAULT '{}',
+                cost_estimate_total REAL NOT NULL DEFAULT 0,
                 action TEXT,
                 scheduled_at TEXT,
                 created_at TEXT NOT NULL,
@@ -169,14 +184,50 @@ class TaskCenter:
                 FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS stage_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                stage TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                model_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                finished_at TEXT,
+                duration_ms INTEGER,
+                exit_code INTEGER,
+                error_reason TEXT,
+                input_ref TEXT,
+                output_ref TEXT,
+                details_json TEXT NOT NULL,
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
             CREATE INDEX IF NOT EXISTS idx_task_events_task_id ON task_events(task_id);
             CREATE INDEX IF NOT EXISTS idx_token_usage_task_id ON token_usage(task_id);
             CREATE INDEX IF NOT EXISTS idx_token_usage_ts ON token_usage(ts);
+            CREATE INDEX IF NOT EXISTS idx_stage_runs_task_id ON stage_runs(task_id);
+            CREATE INDEX IF NOT EXISTS idx_stage_runs_started_at ON stage_runs(started_at);
             """
         )
+        self._ensure_task_columns()
         self.conn.commit()
+
+    def _ensure_task_columns(self) -> None:
+        required_columns = {
+            "observable_outputs": "TEXT NOT NULL DEFAULT ''",
+            "acceptance_thresholds": "TEXT NOT NULL DEFAULT ''",
+            "score_payload": "TEXT NOT NULL DEFAULT '{}'",
+            "token_usage_summary": "TEXT NOT NULL DEFAULT '{}'",
+            "cost_estimate_total": "REAL NOT NULL DEFAULT 0",
+        }
+        rows = self.conn.execute("PRAGMA table_info(tasks)").fetchall()
+        existing = {str(row["name"]) for row in rows}
+        for column, ddl in required_columns.items():
+            if column in existing:
+                continue
+            self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {ddl}")
 
     def _normalize_task(self, task: dict[str, Any]) -> dict[str, Any]:
         now = utc_now_iso()
@@ -198,8 +249,13 @@ class TaskCenter:
             "requirement": str(task.get("requirement", "")).strip(),
             "result_output": str(task.get("result_output", "")).strip(),
             "acceptance": str(task.get("acceptance", "")).strip(),
+            "observable_outputs": str(task.get("observable_outputs", "")).strip(),
+            "acceptance_thresholds": str(task.get("acceptance_thresholds", "")).strip(),
             "score_raw": task.get("score_raw"),
             "score_normalized": task.get("score_normalized"),
+            "score_payload": ensure_json(task.get("score_payload") or {}),
+            "token_usage_summary": ensure_json(task.get("token_usage_summary") or {}),
+            "cost_estimate_total": float(task.get("cost_estimate_total", 0) or 0),
             "action": str(task.get("action", "")).strip() or None,
             "scheduled_at": task.get("scheduled_at"),
             "created_at": task.get("created_at") or now,
@@ -215,7 +271,16 @@ class TaskCenter:
         if normalized["status"] not in TASK_STATUSES:
             raise TaskCenterError(f"invalid status: {normalized['status']}")
 
-        required_text_fields = ["task_type", "reason", "source", "requirement", "result_output", "acceptance"]
+        required_text_fields = [
+            "task_type",
+            "reason",
+            "source",
+            "requirement",
+            "result_output",
+            "acceptance",
+            "observable_outputs",
+            "acceptance_thresholds",
+        ]
         for field in required_text_fields:
             if not normalized[field]:
                 raise TaskCenterError(f"missing required field: {field}")
@@ -240,14 +305,18 @@ class TaskCenter:
                     assignee, status, retry_count, failure_count,
                     need_human_confirm, human_confirmed,
                     requirement, result_output, acceptance,
-                    score_raw, score_normalized, action,
+                    observable_outputs, acceptance_thresholds,
+                    score_raw, score_normalized, score_payload,
+                    token_usage_summary, cost_estimate_total, action,
                     scheduled_at, created_at, updated_at
                 ) VALUES (
                     :task_id, :pool, :task_type, :reason, :source, :priority, :risk_level,
                     :assignee, :status, :retry_count, :failure_count,
                     :need_human_confirm, :human_confirmed,
                     :requirement, :result_output, :acceptance,
-                    :score_raw, :score_normalized, :action,
+                    :observable_outputs, :acceptance_thresholds,
+                    :score_raw, :score_normalized, :score_payload,
+                    :token_usage_summary, :cost_estimate_total, :action,
                     :scheduled_at, :created_at, :updated_at
                 )
                 """,
@@ -271,6 +340,9 @@ class TaskCenter:
         data = dict(row)
         data["need_human_confirm"] = bool(data["need_human_confirm"])
         data["human_confirmed"] = bool(data["human_confirmed"])
+        data["score_payload"] = parse_json(str(data.get("score_payload") or ""))
+        data["token_usage_summary"] = parse_json(str(data.get("token_usage_summary") or ""))
+        data["cost_estimate_total"] = round(float(data.get("cost_estimate_total") or 0.0), 6)
         return data
 
     def add_event(
@@ -288,6 +360,152 @@ class TaskCenter:
             """,
             (task_id, utc_now_iso(), actor, event_type, stage, ensure_json(details)),
         )
+
+    def start_stage_run(
+        self,
+        task_id: str,
+        stage: str,
+        agent_id: str,
+        model_id: str,
+        input_ref: str = "",
+        details: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        stage = stage.strip()
+        agent_id = agent_id.strip()
+        model_id = model_id.strip()
+        if not stage:
+            raise TaskCenterError("stage cannot be empty")
+        if not agent_id:
+            raise TaskCenterError("agent_id cannot be empty")
+        if not model_id:
+            raise TaskCenterError("model_id cannot be empty")
+
+        started_at = utc_now_iso()
+        payload = {
+            "task_id": task_id,
+            "stage": stage,
+            "agent_id": agent_id,
+            "model_id": model_id,
+            "status": "running",
+            "started_at": started_at,
+            "finished_at": None,
+            "duration_ms": None,
+            "exit_code": None,
+            "error_reason": None,
+            "input_ref": input_ref.strip() or None,
+            "output_ref": None,
+            "details_json": ensure_json(details),
+        }
+
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO stage_runs (
+                    task_id, stage, agent_id, model_id, status, started_at,
+                    finished_at, duration_ms, exit_code, error_reason,
+                    input_ref, output_ref, details_json
+                ) VALUES (
+                    :task_id, :stage, :agent_id, :model_id, :status, :started_at,
+                    :finished_at, :duration_ms, :exit_code, :error_reason,
+                    :input_ref, :output_ref, :details_json
+                )
+                """,
+                payload,
+            )
+            stage_run_id = int(cursor.lastrowid)
+
+        return self.get_stage_run(stage_run_id)
+
+    def get_stage_run(self, stage_run_id: int) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM stage_runs WHERE id = ?", (int(stage_run_id),)).fetchone()
+        if not row:
+            raise TaskCenterError(f"stage_run not found: {stage_run_id}")
+        out = dict(row)
+        out["details"] = parse_json(out.pop("details_json", ""))
+        return out
+
+    def finish_stage_run(
+        self,
+        task_id: str,
+        stage: str,
+        status: str,
+        exit_code: int,
+        error_reason: str = "",
+        output_ref: str = "",
+        details: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_status = status.strip().lower()
+        if normalized_status not in STAGE_RUN_STATUSES:
+            raise TaskCenterError(f"invalid stage_run status: {status}")
+        if normalized_status == "running":
+            raise TaskCenterError("stage_run finish status cannot be running")
+
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM stage_runs
+            WHERE task_id = ? AND stage = ? AND status = 'running' AND finished_at IS NULL
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (task_id, stage),
+        ).fetchone()
+        if not row:
+            raise TaskCenterError(f"running stage_run not found for task={task_id}, stage={stage}")
+
+        started_at = parse_utc_iso(str(row["started_at"]))
+        finished_at = parse_utc_iso(utc_now_iso())
+        duration_ms: int | None = None
+        if started_at and finished_at:
+            duration_ms = max(0, int((finished_at - started_at).total_seconds() * 1000))
+
+        merged_details = parse_json(str(row["details_json"]))
+        if details:
+            merged_details.update(details)
+
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE stage_runs
+                SET status = ?,
+                    finished_at = ?,
+                    duration_ms = ?,
+                    exit_code = ?,
+                    error_reason = ?,
+                    output_ref = ?,
+                    details_json = ?
+                WHERE id = ?
+                """,
+                (
+                    normalized_status,
+                    finished_at.isoformat() if finished_at else utc_now_iso(),
+                    duration_ms,
+                    int(exit_code),
+                    error_reason.strip() or None,
+                    output_ref.strip() or None,
+                    ensure_json(merged_details),
+                    int(row["id"]),
+                ),
+            )
+
+        return self.get_stage_run(int(row["id"]))
+
+    def list_stage_runs(self, task_id: str) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM stage_runs
+            WHERE task_id = ?
+            ORDER BY id ASC
+            """,
+            (task_id,),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["details"] = parse_json(item.pop("details_json", ""))
+            out.append(item)
+        return out
 
     def assign_task(self, task_id: str, assignee: str, actor: str) -> dict[str, Any]:
         assignee = assignee.strip()
@@ -402,22 +620,36 @@ class TaskCenter:
         raw_score: float,
         normalized_score: float,
         action: str,
+        score_payload: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        payload = dict(score_payload or {})
+        if not payload:
+            payload = {
+                "raw_score": raw_score,
+                "normalized_score": normalized_score,
+                "action": action,
+            }
+        updated_at = utc_now_iso()
         with self.conn:
             self.conn.execute(
                 """
                 UPDATE tasks
-                SET score_raw = ?, score_normalized = ?, action = ?, updated_at = ?
+                SET score_raw = ?, score_normalized = ?, action = ?, score_payload = ?, updated_at = ?
                 WHERE task_id = ?
                 """,
-                (raw_score, normalized_score, action, utc_now_iso(), task_id),
+                (raw_score, normalized_score, action, ensure_json(payload), updated_at, task_id),
             )
             self.add_event(
                 task_id,
                 actor,
                 "score_updated",
                 stage="acceptance",
-                details={"score_raw": raw_score, "score_normalized": normalized_score, "action": action},
+                details={
+                    "score_raw": raw_score,
+                    "score_normalized": normalized_score,
+                    "action": action,
+                    "score_payload": payload,
+                },
             )
 
         return self.get_task(task_id)
@@ -467,6 +699,20 @@ class TaskCenter:
                     "cost_estimate": float(cost_estimate),
                 },
             )
+            summary = self.task_token_summary(task_id)
+            self.conn.execute(
+                """
+                UPDATE tasks
+                SET token_usage_summary = ?, cost_estimate_total = ?, updated_at = ?
+                WHERE task_id = ?
+                """,
+                (
+                    ensure_json(summary),
+                    float(summary.get("cost_estimate", 0.0)),
+                    utc_now_iso(),
+                    task_id,
+                ),
+            )
 
         return {
             "task_id": task_id,
@@ -474,6 +720,72 @@ class TaskCenter:
             "model_id": model_id,
             "total_tokens": total_tokens,
             "cost_estimate": float(cost_estimate),
+            "task_token_usage_summary": summary,
+        }
+
+    def has_token_usage(self, task_id: str) -> bool:
+        row = self.conn.execute(
+            "SELECT COUNT(1) AS cnt FROM token_usage WHERE task_id = ?",
+            (task_id,),
+        ).fetchone()
+        return int(row["cnt"] or 0) > 0 if row else False
+
+    def task_token_summary(self, task_id: str) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT
+              COALESCE(SUM(input_tokens), 0) AS input_tokens,
+              COALESCE(SUM(output_tokens), 0) AS output_tokens,
+              COALESCE(SUM(total_tokens), 0) AS total_tokens,
+              COALESCE(SUM(cost_estimate), 0.0) AS cost_estimate
+            FROM token_usage
+            WHERE task_id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+        if not row:
+            return {
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_tokens": 0,
+                "total_tokens_m": 0.0,
+                "cost_estimate": 0.0,
+            }
+        total_tokens = int(row["total_tokens"] or 0)
+        return {
+            "input_tokens": int(row["input_tokens"] or 0),
+            "output_tokens": int(row["output_tokens"] or 0),
+            "total_tokens": total_tokens,
+            "total_tokens_m": round(total_tokens / 1_000_000.0, 6),
+            "cost_estimate": round(float(row["cost_estimate"] or 0.0), 6),
+        }
+
+    def list_task_events(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit or 200), 1000))
+        rows = self.conn.execute(
+            """
+            SELECT id, task_id, ts, actor, event_type, stage, details_json
+            FROM task_events
+            WHERE task_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (task_id, limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["details"] = parse_json(item.pop("details_json", ""))
+            out.append(item)
+        out.reverse()
+        return out
+
+    def task_report(self, task_id: str, event_limit: int = 200) -> dict[str, Any]:
+        return {
+            "task": self.get_task(task_id),
+            "token_usage": self.task_token_summary(task_id),
+            "stage_runs": self.list_stage_runs(task_id),
+            "events": self.list_task_events(task_id, limit=event_limit),
         }
 
     def unresolved_tasks(self) -> list[dict[str, Any]]:
@@ -495,6 +807,31 @@ class TaskCenter:
             (tr.start, tr.end),
         ).fetchall()
         by_status = {str(row["status"]): int(row["cnt"]) for row in by_status_rows}
+
+        by_pool_rows = self.conn.execute(
+            """
+            SELECT pool, COUNT(*) AS cnt
+            FROM tasks
+            WHERE created_at >= ? AND created_at < ?
+            GROUP BY pool
+            """,
+            (tr.start, tr.end),
+        ).fetchall()
+        by_pool = {str(row["pool"]): int(row["cnt"]) for row in by_pool_rows}
+
+        risk_row = self.conn.execute(
+            """
+            SELECT
+              COUNT(*) AS total_count,
+              SUM(CASE WHEN risk_level = 'high' THEN 1 ELSE 0 END) AS high_risk_count
+            FROM tasks
+            WHERE created_at >= ? AND created_at < ?
+            """,
+            (tr.start, tr.end),
+        ).fetchone()
+        total_count = int(risk_row["total_count"] or 0) if risk_row else 0
+        high_risk_count = int(risk_row["high_risk_count"] or 0) if risk_row else 0
+        high_risk_ratio_pct = round((high_risk_count / total_count) * 100.0, 2) if total_count > 0 else 0.0
 
         token_rows = self.conn.execute(
             """
@@ -545,10 +882,54 @@ class TaskCenter:
         ).fetchall()
 
         escalated = [dict(row) for row in escalated_rows]
+        escalated_count = len(escalated)
+
+        failure_over_limit_rows = self.conn.execute(
+            """
+            SELECT task_id, reason, assignee, status, failure_count, updated_at
+            FROM tasks
+            WHERE failure_count >= 3 AND updated_at >= ? AND updated_at < ?
+            ORDER BY failure_count DESC, updated_at DESC
+            """,
+            (tr.start, tr.end),
+        ).fetchall()
+        failure_over_limit = [dict(row) for row in failure_over_limit_rows]
+
+        stage_rows = self.conn.execute(
+            """
+            SELECT
+              stage,
+              status,
+              COUNT(*) AS cnt,
+              AVG(duration_ms) AS avg_duration_ms
+            FROM stage_runs
+            WHERE started_at >= ? AND started_at < ?
+            GROUP BY stage, status
+            ORDER BY stage, status
+            """,
+            (tr.start, tr.end),
+        ).fetchall()
+
+        stage_metrics: list[dict[str, Any]] = []
+        for row in stage_rows:
+            stage_metrics.append(
+                {
+                    "stage": str(row["stage"]),
+                    "status": str(row["status"]),
+                    "count": int(row["cnt"] or 0),
+                    "avg_duration_ms": int(float(row["avg_duration_ms"] or 0.0)),
+                }
+            )
 
         return {
             "date": target_date.isoformat(),
             "task_counts": by_status,
+            "task_pools": by_pool,
+            "risk_overview": {
+                "total_count": total_count,
+                "high_risk_count": high_risk_count,
+                "high_risk_ratio_pct": high_risk_ratio_pct,
+            },
             "token_usage": {
                 "totals": {
                     "input_tokens": totals["input_tokens"],
@@ -559,7 +940,10 @@ class TaskCenter:
                 },
                 "by_agent": by_agent,
             },
+            "stage_metrics": stage_metrics,
             "escalated": escalated,
+            "escalated_count": escalated_count,
+            "failure_over_limit": failure_over_limit,
             "unresolved_count": len(self.unresolved_tasks()),
         }
 
@@ -570,12 +954,23 @@ def format_daily_summary_markdown(summary: dict[str, Any]) -> str:
     lines.append("")
 
     task_counts = summary.get("task_counts", {})
+    task_pools = summary.get("task_pools", {})
     lines.append("## Tasks")
     if task_counts:
         for key in sorted(task_counts.keys()):
             lines.append(f"- {key}: {task_counts[key]}")
     else:
         lines.append("- no tasks")
+    if task_pools:
+        for key in sorted(task_pools.keys()):
+            lines.append(f"- pool_{key}: {task_pools[key]}")
+    lines.append("")
+
+    risk_overview = summary.get("risk_overview", {})
+    lines.append("## Risk")
+    lines.append(f"- high_risk_count: {risk_overview.get('high_risk_count', 0)}")
+    lines.append(f"- total_count: {risk_overview.get('total_count', 0)}")
+    lines.append(f"- high_risk_ratio_pct: {risk_overview.get('high_risk_ratio_pct', 0)}")
     lines.append("")
 
     usage = summary.get("token_usage", {})
@@ -599,8 +994,35 @@ def format_daily_summary_markdown(summary: dict[str, Any]) -> str:
         lines.append("- no usage records")
     lines.append("")
 
+    stage_metrics = summary.get("stage_metrics", [])
+    lines.append("## Stage Metrics")
+    if stage_metrics:
+        for item in stage_metrics:
+            lines.append(
+                "- "
+                + f"{item['stage']}/{item['status']}: count={item['count']}, "
+                + f"avg_duration_ms={item['avg_duration_ms']}"
+            )
+    else:
+        lines.append("- no stage runs")
+    lines.append("")
+
+    failure_over_limit = summary.get("failure_over_limit", [])
+    lines.append("## Failure >= 3")
+    if failure_over_limit:
+        for item in failure_over_limit:
+            lines.append(
+                "- "
+                + f"{item['task_id']}: failure_count={item['failure_count']}, "
+                + f"status={item.get('status', '')}, assignee={item.get('assignee') or 'unassigned'}"
+            )
+    else:
+        lines.append("- none")
+    lines.append("")
+
     escalated = summary.get("escalated", [])
     lines.append("## Escalated Tasks")
+    lines.append(f"- escalated_count: {summary.get('escalated_count', len(escalated))}")
     if escalated:
         for item in escalated:
             lines.append(

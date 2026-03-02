@@ -2,7 +2,7 @@
 
 ## main
 - name: 大总管
-- default: True
+- default: False
 - workspace: /home/ubuntu/.openclaw/workspace
 - agentDir: None
 - model: glmcode/glm-5
@@ -10,7 +10,7 @@
 
 ## coordinator
 - name: coordinator
-- default: False
+- default: True
 - workspace: /home/ubuntu/.openclaw/workspace-coordinator
 - agentDir: None
 - model: glmcode/glm-5
@@ -95,4 +95,5 @@
 - agentDir: /home/ubuntu/.openclaw/agents/project-agent/agent
 - model: glmcode/glm-5
 - allowAgentsCount: 0
+
 

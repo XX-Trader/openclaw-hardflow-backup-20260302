@@ -9,25 +9,20 @@
     "glmcode/glm-5",
     "glmcode/glm-4.7"
   ],
-  "allowed_entry_agents": [
-    "coordinator"
-  ],
-  "blocked_direct_code_agents": [
-    "coordinator",
-    "project-agent"
-  ],
-  "code_execution_stages": [
-    "implement",
-    "fix",
-    "deploy"
-  ],
+  "allowed_entry_agents": ["coordinator"],
+  "dispatcher_agent": "coordinator",
+  "blocked_direct_code_agents": ["coordinator", "project-agent"],
+  "code_execution_stages": ["implement", "fix", "deploy"],
   "required_task_fields": [
     "reason",
     "requirement",
     "result_output",
-    "acceptance"
+    "acceptance",
+    "observable_outputs",
+    "acceptance_thresholds"
   ],
   "high_risk_requires_human_confirm": true,
+  "require_token_usage_before_done": true,
   "max_failure_before_escalate": 3,
   "pass_line_raw": 75.0,
   "status_flow": {

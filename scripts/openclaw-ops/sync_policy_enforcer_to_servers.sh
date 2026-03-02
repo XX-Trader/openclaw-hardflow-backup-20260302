@@ -26,7 +26,10 @@ SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-12}"
 SSH_CMD_TIMEOUT="${SSH_CMD_TIMEOUT:-180}"
 
 LOCAL_POLICY_DIR="${REPO_ROOT}/scripts/openclaw-ops/policy"
-LOCAL_HOOKS_DIR="${REPO_ROOT}/.claude/hardflow/hooks"
+LOCAL_HOOKS_DIR="${REPO_ROOT}/hooks"
+if [[ ! -d "${LOCAL_HOOKS_DIR}" && -d "${REPO_ROOT}/.claude/hardflow/hooks" ]]; then
+  LOCAL_HOOKS_DIR="${REPO_ROOT}/.claude/hardflow/hooks"
+fi
 
 if [[ ! -d "${LOCAL_POLICY_DIR}" ]]; then
   echo "[sync-policy] local policy dir missing: ${LOCAL_POLICY_DIR}" >&2
@@ -75,12 +78,16 @@ for server in "${SERVERS[@]}"; do
   remote_policy_dir="${remote_home}/.openclaw/workspace-ops-agent/ops/policy"
   remote_hooks_dir="${remote_home}/.claude/hooks"
   remote_db="${remote_home}/.openclaw/ops/task-center/task_center.db"
+  remote_ops_dir="${remote_home}/.openclaw/ops"
 
-  ssh_run "${server}" "mkdir -p '${remote_policy_dir}' '${remote_hooks_dir}' '${remote_home}/.openclaw/ops/task-center'"
+  ssh_run "${server}" "mkdir -p '${remote_policy_dir}' '${remote_hooks_dir}' '${remote_home}/.openclaw/ops/task-center' '${remote_ops_dir}'"
 
   scp_run "${LOCAL_POLICY_DIR}/"*.py "${server}:${remote_policy_dir}/" >/dev/null
   scp_run "${LOCAL_POLICY_DIR}/"*.json "${server}:${remote_policy_dir}/" >/dev/null
   scp_run "${LOCAL_POLICY_DIR}/README.md" "${server}:${remote_policy_dir}/README.md" >/dev/null
+  scp_run "${LOCAL_POLICY_DIR}/runtime.env.example" "${server}:${remote_policy_dir}/runtime.env.example" >/dev/null
+  scp_run "${LOCAL_POLICY_DIR}/project_index_maintainer.py" "${server}:${remote_ops_dir}/project_index_maintainer.py" >/dev/null
+  scp_run "${LOCAL_POLICY_DIR}/project-registry.example.json" "${server}:${remote_home}/.openclaw/ops/task-center/project-registry.example.json" >/dev/null
 
   for hook_name in hardflow-policy-enforcer hardflow-command-guard; do
     ssh_run "${server}" "mkdir -p '${remote_hooks_dir}/${hook_name}'"

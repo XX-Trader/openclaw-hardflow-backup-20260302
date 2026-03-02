@@ -104,8 +104,8 @@ async function main() {
     path.join(testWorkspace, "scripts", "openclaw-ops", "policy", "policy-config.json"),
     JSON.stringify(
       {
-        primary_model: "glmcode/glm-5",
-        allowed_models: ["glmcode/glm-5", "kimicode/kimi-k2.5", "glmcode/glm-4.7"],
+        primary_model: "kimicode/Doubao-Seed-2.0-Code",
+        allowed_models: ["kimicode/Doubao-Seed-2.0-Code", "glmcode/glm-5", "glmcode/glm-4.7"],
         status_flow: {
           pending: ["running", "cancelled", "escalated"],
           running: ["running", "passed", "failed", "escalated", "cancelled"],
@@ -131,7 +131,7 @@ async function main() {
       {
         models: {
           "glmcode/glm-5": { input: 0, output: 0 },
-          "kimicode/kimi-k2.5": { input: 0, output: 0 },
+          "kimicode/Doubao-Seed-2.0-Code": { input: 0, output: 0 },
           "glmcode/glm-4.7": { input: 0, output: 0 },
         },
       },

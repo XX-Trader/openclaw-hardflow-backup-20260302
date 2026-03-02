@@ -12,7 +12,13 @@ if (!(Test-Path $SshConfig)) {
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $localPolicyDir = Join-Path $repoRoot "scripts\openclaw-ops\policy"
-$localHooksDir = Join-Path $repoRoot ".claude\hardflow\hooks"
+$localHooksDir = Join-Path $repoRoot "hooks"
+if (!(Test-Path $localHooksDir)) {
+    $fallbackHooksDir = Join-Path $repoRoot ".claude\hardflow\hooks"
+    if (Test-Path $fallbackHooksDir) {
+        $localHooksDir = $fallbackHooksDir
+    }
+}
 
 if (!(Test-Path $localPolicyDir)) { throw "missing policy dir: $localPolicyDir" }
 if (!(Test-Path $localHooksDir)) { throw "missing hooks dir: $localHooksDir" }
@@ -40,12 +46,15 @@ foreach ($server in $Servers) {
         $remotePolicyDir = "$remoteHome/.openclaw/workspace-ops-agent/ops/policy"
         $remoteHooksDir = "$remoteHome/.claude/hooks"
         $remoteDb = "$remoteHome/.openclaw/ops/task-center/task_center.db"
+        $remoteOpsDir = "$remoteHome/.openclaw/ops"
 
-        Invoke-Remote -Server $server -Command "mkdir -p '$remotePolicyDir' '$remoteHooksDir' '$remoteHome/.openclaw/ops/task-center'"
+        Invoke-Remote -Server $server -Command "mkdir -p '$remotePolicyDir' '$remoteHooksDir' '$remoteHome/.openclaw/ops/task-center' '$remoteOpsDir'"
 
         Get-ChildItem -Path $localPolicyDir -File | ForEach-Object {
             Upload-File -Server $server -LocalPath $_.FullName -RemotePath "$remotePolicyDir/$($_.Name)"
         }
+        Upload-File -Server $server -LocalPath (Join-Path $localPolicyDir "project_index_maintainer.py") -RemotePath "$remoteOpsDir/project_index_maintainer.py"
+        Upload-File -Server $server -LocalPath (Join-Path $localPolicyDir "project-registry.example.json") -RemotePath "$remoteHome/.openclaw/ops/task-center/project-registry.example.json"
 
         foreach ($hookName in @("hardflow-policy-enforcer", "hardflow-command-guard")) {
             Invoke-Remote -Server $server -Command "mkdir -p '$remoteHooksDir/$hookName'"

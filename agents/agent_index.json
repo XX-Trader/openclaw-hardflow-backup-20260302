@@ -2,7 +2,7 @@
   {
     "id": "main",
     "name": "大总管",
-    "default": true,
+    "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace",
     "agentDir": null,
     "model": "glmcode/glm-5",
@@ -24,7 +24,7 @@
   {
     "id": "coordinator",
     "name": "coordinator",
-    "default": false,
+    "default": true,
     "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
     "agentDir": null,
     "model": "glmcode/glm-5",
@@ -142,3 +142,4 @@
     "allowAgents": []
   }
 ]
+

@@ -43,8 +43,21 @@ fi
 POLICY_ENFORCER_STRICT="${POLICY_ENFORCER_STRICT:-1}"
 POLICY_TASK_ID="${POLICY_TASK_ID:-}"
 POLICY_ACTOR="${POLICY_ACTOR:-hardflow-run}"
-POLICY_AGENT_ID="${POLICY_AGENT_ID:-coordinator}"
-POLICY_MODEL="${POLICY_MODEL:-glmcode/glm-5}"
+POLICY_AGENT_ID="${POLICY_AGENT_ID:-backend-dev}"
+POLICY_MODEL="${POLICY_MODEL:-kimicode/Doubao-Seed-2.0-Code}"
+POLICY_ENTRY_AGENT="${POLICY_ENTRY_AGENT:-coordinator}"
+POLICY_DISPATCHER_AGENT="${POLICY_DISPATCHER_AGENT:-coordinator}"
+POLICY_AGENT_CLASSIFY="${POLICY_AGENT_CLASSIFY:-${POLICY_ENTRY_AGENT}}"
+POLICY_AGENT_DISPATCH="${POLICY_AGENT_DISPATCH:-${POLICY_DISPATCHER_AGENT}}"
+POLICY_AGENT_IMPLEMENT="${POLICY_AGENT_IMPLEMENT:-backend-dev}"
+POLICY_AGENT_TEST_LOOP="${POLICY_AGENT_TEST_LOOP:-tester}"
+POLICY_AGENT_REVIEW="${POLICY_AGENT_REVIEW:-reviewer}"
+POLICY_AGENT_SCORE="${POLICY_AGENT_SCORE:-${POLICY_DISPATCHER_AGENT}}"
+POLICY_AGENT_DEPLOY="${POLICY_AGENT_DEPLOY:-deployer}"
+POLICY_AGENT_POST_TEST="${POLICY_AGENT_POST_TEST:-tester}"
+POLICY_AGENT_GIT_PUSH="${POLICY_AGENT_GIT_PUSH:-deployer}"
+POLICY_USAGE_INPUT_TOKENS="${POLICY_USAGE_INPUT_TOKENS:-0}"
+POLICY_USAGE_OUTPUT_TOKENS="${POLICY_USAGE_OUTPUT_TOKENS:-0}"
 
 timestamp() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
@@ -103,6 +116,19 @@ Env (optional):
   POLICY_TASK_ID
   POLICY_AGENT_ID
   POLICY_MODEL
+  POLICY_ENTRY_AGENT
+  POLICY_DISPATCHER_AGENT
+  POLICY_AGENT_CLASSIFY
+  POLICY_AGENT_DISPATCH
+  POLICY_AGENT_IMPLEMENT
+  POLICY_AGENT_TEST_LOOP
+  POLICY_AGENT_REVIEW
+  POLICY_AGENT_SCORE
+  POLICY_AGENT_DEPLOY
+  POLICY_AGENT_POST_TEST
+  POLICY_AGENT_GIT_PUSH
+  POLICY_USAGE_INPUT_TOKENS
+  POLICY_USAGE_OUTPUT_TOKENS
 EOF
 }
 
@@ -167,6 +193,22 @@ policy_log_file() {
   printf '%s/policy-%s.log\n' "${RUN_DIR}" "${label//[^a-zA-Z0-9._-]/_}"
 }
 
+policy_agent_for_stage() {
+  local stage="$1"
+  case "${stage}" in
+    classify) printf '%s\n' "${POLICY_AGENT_CLASSIFY}" ;;
+    dispatch) printf '%s\n' "${POLICY_AGENT_DISPATCH}" ;;
+    implement) printf '%s\n' "${POLICY_AGENT_IMPLEMENT}" ;;
+    test-loop) printf '%s\n' "${POLICY_AGENT_TEST_LOOP}" ;;
+    review) printf '%s\n' "${POLICY_AGENT_REVIEW}" ;;
+    score-*) printf '%s\n' "${POLICY_AGENT_SCORE}" ;;
+    deploy) printf '%s\n' "${POLICY_AGENT_DEPLOY}" ;;
+    post-test) printf '%s\n' "${POLICY_AGENT_POST_TEST}" ;;
+    git-push) printf '%s\n' "${POLICY_AGENT_GIT_PUSH}" ;;
+    *) printf '%s\n' "${POLICY_AGENT_ID}" ;;
+  esac
+}
+
 policy_run() {
   local label="$1"
   shift
@@ -220,6 +262,8 @@ policy_ensure_task() {
   local requirement="$2"
   local result_output="$3"
   local acceptance="$4"
+  local observable_outputs="${POLICY_OBSERVABLE_OUTPUTS:-${result_output}}"
+  local acceptance_thresholds="${POLICY_ACCEPTANCE_THRESHOLDS:-${acceptance}}"
 
   if ! policy_enabled; then
     return 0
@@ -240,19 +284,25 @@ policy_ensure_task() {
     --priority "high" \
     --risk-level "low" \
     --pool "jobs" \
-    --assignee "${POLICY_AGENT_ID}" \
+    --entry-agent "${POLICY_ENTRY_AGENT}" \
+    --assignee "${POLICY_DISPATCHER_AGENT}" \
     --requirement "${requirement}" \
     --result-output "${result_output}" \
     --acceptance "${acceptance}" \
+    --observable-outputs "${observable_outputs}" \
+    --acceptance-thresholds "${acceptance_thresholds}" \
     --actor "${POLICY_ACTOR}"
   policy_save_task_id
 }
 
 policy_pre_stage() {
   local stage="$1"
+  local input_ref="${2:-}"
+  local stage_agent=""
   if ! policy_enabled; then
     return 0
   fi
+  stage_agent="$(policy_agent_for_stage "${stage}")"
   policy_ensure_task \
     "hardflow stage ${stage}" \
     "execute hardflow stage ${stage}" \
@@ -261,8 +311,9 @@ policy_pre_stage() {
   policy_run "pre-${stage}" pre-stage \
     --task-id "${POLICY_TASK_ID}" \
     --stage "${stage}" \
-    --agent-id "${POLICY_AGENT_ID}" \
+    --agent-id "${stage_agent}" \
     --model "${POLICY_MODEL}" \
+    --input-ref "${input_ref}" \
     --actor "${POLICY_ACTOR}"
 }
 
@@ -270,6 +321,7 @@ policy_post_stage() {
   local stage="$1"
   local exit_code="$2"
   local reason="${3:-}"
+  local output_ref="${4:-}"
   if ! policy_enabled; then
     return 0
   fi
@@ -278,13 +330,29 @@ policy_post_stage() {
     --stage "${stage}" \
     --exit-code "${exit_code}" \
     --reason "${reason}" \
+    --output-ref "${output_ref}" \
     --actor "${POLICY_ACTOR}"
+}
+
+policy_record_token_minimal() {
+  local usage_agent=""
+  if ! policy_enabled; then
+    return 0
+  fi
+  usage_agent="$(policy_agent_for_stage "git-push")"
+  policy_run "record-token-${POLICY_TASK_ID}" record-token \
+    --task-id "${POLICY_TASK_ID}" \
+    --agent-id "${usage_agent}" \
+    --model "${POLICY_MODEL}" \
+    --input-tokens "${POLICY_USAGE_INPUT_TOKENS}" \
+    --output-tokens "${POLICY_USAGE_OUTPUT_TOKENS}" || true
 }
 
 policy_complete() {
   if ! policy_enabled; then
     return 0
   fi
+  policy_record_token_minimal
   policy_run "complete-${POLICY_TASK_ID}" complete-task \
     --task-id "${POLICY_TASK_ID}" \
     --result-score "${POLICY_RESULT_SCORE:-100}" \
@@ -411,7 +479,7 @@ cmd_classify() {
     "${task}" \
     "classification.json, gates, timeline logs" \
     "review/test/score gates passed"
-  policy_pre_stage "classify"
+  policy_pre_stage "classify" "${RUN_DIR}/classification.json"
 
   cat > "${RUN_DIR}/classification.json" <<EOF
 {
@@ -429,17 +497,17 @@ EOF
     } | sed '/^[[:space:]]*$/d' | sort -u > "${RUN_DIR}/baseline_dirty_files.txt"
   fi
 
-  policy_post_stage "classify" "${stage_rc}" "classification stage failed" || return $?
+  policy_post_stage "classify" "${stage_rc}" "classification stage failed" "${RUN_DIR}/classification.json" || return $?
   log "INFO" "classification done, task='${task}'"
 }
 
 cmd_dispatch() {
   local stage_rc=0
-  policy_pre_stage "dispatch"
+  policy_pre_stage "dispatch" "${RUN_DIR}/dispatch.log"
   if ! run_cmd_capture "DISPATCH_CMD" "${DISPATCH_CMD:-}" "${RUN_DIR}/dispatch.log" 0; then
     stage_rc=$?
   fi
-  policy_post_stage "dispatch" "${stage_rc}" "dispatch stage failed" || return $?
+  policy_post_stage "dispatch" "${stage_rc}" "dispatch stage failed" "${RUN_DIR}/dispatch.log" || return $?
   if [[ ${stage_rc} -ne 0 ]]; then
     return ${stage_rc}
   fi
@@ -451,11 +519,11 @@ EOF
 
 cmd_implement() {
   local stage_rc=0
-  policy_pre_stage "implement"
+  policy_pre_stage "implement" "${RUN_DIR}/implement.log"
   if ! run_cmd_capture "IMPLEMENT_CMD" "${IMPLEMENT_CMD:-}" "${RUN_DIR}/implement.log" 0; then
     stage_rc=$?
   fi
-  policy_post_stage "implement" "${stage_rc}" "implement stage failed" || return $?
+  policy_post_stage "implement" "${stage_rc}" "implement stage failed" "${RUN_DIR}/implement.log" || return $?
   if [[ ${stage_rc} -ne 0 ]]; then
     return ${stage_rc}
   fi
@@ -482,7 +550,7 @@ cmd_test_loop() {
     return 2
   fi
 
-  policy_pre_stage "test-loop"
+  policy_pre_stage "test-loop" "${RUN_DIR}/attempts"
 
   local attempt
   local passed=0
@@ -496,7 +564,7 @@ cmd_test_loop() {
     log "INFO" "test loop attempt ${attempt}/${max_retries}"
     if run_cmd_capture "TEST_CMD" "${TEST_CMD:-}" "${test_log}" 1; then
       passed=1
-      policy_post_stage "test-loop" 0 "test loop passed" || return $?
+      policy_post_stage "test-loop" 0 "test loop passed" "${test_log}" || return $?
       log "INFO" "tests passed at attempt ${attempt}"
       break
     fi
@@ -516,7 +584,7 @@ cmd_test_loop() {
       regression_result="retry-exhausted"
     fi
 
-    policy_post_stage "test-loop" 1 "test command failed at attempt ${attempt}" || return $?
+    policy_post_stage "test-loop" 1 "test command failed at attempt ${attempt}" "${test_log}" || return $?
 
     record_issue \
       "test-loop" \
@@ -538,7 +606,7 @@ cmd_test_loop() {
     return 0
   fi
 
-  policy_post_stage "test-loop" 1 "test loop failed after retries" || return $?
+  policy_post_stage "test-loop" 1 "test loop failed after retries" "${test_log:-}" || return $?
   write_gate "tester" "false" "test loop failed after retries"
   log "ERROR" "test loop finished with failure"
   return 1
@@ -581,7 +649,7 @@ cmd_score_gate() {
   fi
 
   stage_name="score-${gate}"
-  policy_pre_stage "${stage_name}"
+  policy_pre_stage "${stage_name}" "${RUN_DIR}/score-gates/${gate}"
 
   local score_var
   local improve_var
@@ -644,7 +712,7 @@ cmd_score_gate() {
     else
       log "ERROR" "score gate '${gate}' has no ${score_var} and no --scorecard input"
       write_gate "score_${gate}" "false" "missing score command and scorecard input"
-      policy_post_stage "${stage_name}" 1 "missing score command and scorecard input" || return $?
+      policy_post_stage "${stage_name}" 1 "missing score command and scorecard input" "${RUN_DIR}/score-gates/${gate}" || return $?
       return 2
     fi
 
@@ -673,7 +741,7 @@ cmd_score_gate() {
     if [[ ${gate_rc} -eq 0 ]]; then
       cp "${scorecard_file}" "${RUN_DIR}/scorecards/${gate}.json"
       passed=1
-      policy_post_stage "${stage_name}" 0 "score gate passed" || return $?
+      policy_post_stage "${stage_name}" 0 "score gate passed" "${validation_log}" || return $?
       log "INFO" "score gate '${gate}' passed"
       cmd_score_report --gate "${gate}" --format text || true
       break
@@ -721,7 +789,7 @@ cmd_score_gate() {
 EOF
   fi
   log "ERROR" "score gate '${gate}' failed after retries"
-  policy_post_stage "${stage_name}" 1 "score gate failed after retries" || return $?
+  policy_post_stage "${stage_name}" 1 "score gate failed after retries" "${RUN_DIR}/score-gates/${gate}" || return $?
   cmd_score_report --gate "${gate}" --format text || true
   return 1
 }
@@ -777,16 +845,16 @@ cmd_score_report() {
 
 cmd_review() {
   local stage_rc=0
-  policy_pre_stage "review"
+  policy_pre_stage "review" "${RUN_DIR}/review.log"
   if run_cmd_capture "REVIEW_CMD" "${REVIEW_CMD:-}" "${RUN_DIR}/review.log" 1; then
-    policy_post_stage "review" 0 "review passed" || return $?
+    policy_post_stage "review" 0 "review passed" "${RUN_DIR}/review.log" || return $?
     write_gate "reviewer" "true" "review passed"
     log "INFO" "review passed"
     return 0
   fi
 
   stage_rc=$?
-  policy_post_stage "review" "${stage_rc}" "review failed" || return $?
+  policy_post_stage "review" "${stage_rc}" "review failed" "${RUN_DIR}/review.log" || return $?
   write_gate "reviewer" "false" "review failed"
   log "ERROR" "review failed"
   return 1
@@ -794,11 +862,11 @@ cmd_review() {
 
 cmd_deploy() {
   local stage_rc=0
-  policy_pre_stage "deploy"
+  policy_pre_stage "deploy" "${RUN_DIR}/deploy.log"
   if ! run_cmd_capture "DEPLOY_CMD" "${DEPLOY_CMD:-}" "${RUN_DIR}/deploy.log" 1; then
     stage_rc=$?
   fi
-  policy_post_stage "deploy" "${stage_rc}" "deploy stage failed" || return $?
+  policy_post_stage "deploy" "${stage_rc}" "deploy stage failed" "${RUN_DIR}/deploy.log" || return $?
   if [[ ${stage_rc} -ne 0 ]]; then
     return ${stage_rc}
   fi
@@ -823,16 +891,16 @@ cmd_post_test() {
   local cmd="${POST_TEST_CMD:-${TEST_CMD:-}}"
   local post_log="${RUN_DIR}/post-test.log"
 
-  policy_pre_stage "post-test"
+  policy_pre_stage "post-test" "${post_log}"
   if run_cmd_capture "POST_TEST_CMD/TEST_CMD" "${cmd}" "${post_log}" 1; then
-    policy_post_stage "post-test" 0 "post deploy test passed" || return $?
+    policy_post_stage "post-test" 0 "post deploy test passed" "${post_log}" || return $?
     write_gate "post_tester" "true" "post deploy test passed"
     write_gate "rollback" "true" "rollback not required"
     log "INFO" "post deploy test passed"
     return 0
   fi
 
-  policy_post_stage "post-test" 1 "post deploy test failed" || return $?
+  policy_post_stage "post-test" 1 "post deploy test failed" "${post_log}" || return $?
   write_gate "post_tester" "false" "post deploy test failed"
 
   record_issue \
@@ -880,11 +948,11 @@ cmd_rollback() {
 
 cmd_git_push() {
   local stage_rc=0
-  policy_pre_stage "git-push"
+  policy_pre_stage "git-push" "${RUN_DIR}/git-push.log"
   if ! run_cmd_capture "GIT_PUSH_CMD" "${GIT_PUSH_CMD:-}" "${RUN_DIR}/git-push.log" 1; then
     stage_rc=$?
   fi
-  policy_post_stage "git-push" "${stage_rc}" "git push stage failed" || return $?
+  policy_post_stage "git-push" "${stage_rc}" "git push stage failed" "${RUN_DIR}/git-push.log" || return $?
   if [[ ${stage_rc} -ne 0 ]]; then
     return ${stage_rc}
   fi

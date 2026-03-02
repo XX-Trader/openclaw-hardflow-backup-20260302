@@ -10,5 +10,6 @@ Fail-close policy guard:
 
 1. Verify policy runtime files exist.
 2. Initialize task-center schema.
-3. On `command:stop`, block if unresolved tasks exist.
-4. Throw errors in strict mode to stop command flow.
+3. On `command:new/reset`, enforce entry agent allowlist.
+4. On `command:stop`, block if unresolved tasks exist.
+5. Throw errors in strict mode to stop command flow.

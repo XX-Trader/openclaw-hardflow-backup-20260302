@@ -19,6 +19,24 @@ type RuntimeFiles = {
   pricingFile: string;
 };
 
+function resolveEntryAgent(event: any): string {
+  const candidates = [
+    event?.context?.agentId,
+    event?.context?.targetAgentId,
+    event?.context?.receiverAgentId,
+    event?.context?.bindingAgentId,
+    event?.agentId,
+    process.env.POLICY_ENTRY_AGENT,
+  ];
+  for (const item of candidates) {
+    const value = String(item || "").trim();
+    if (value) {
+      return value;
+    }
+  }
+  return "coordinator";
+}
+
 function runPolicy(cwd: string, runtime: RuntimeFiles, commandArgs: string[]): string {
   const policyPy = runtime.policyPy;
   const dbPath = runtime.dbPath;
@@ -80,7 +98,9 @@ export default async function hardflowPolicyEnforcer(event: any): Promise<void> 
   const strict = (process.env.POLICY_HOOK_STRICT || "1") !== "0";
 
   const homeDir = process.env.HOME || "";
-  const sharedPolicyDir = process.env.OPENCLAW_POLICY_ROOT || path.join(homeDir, ".openclaw", "ops", "policy");
+  const openclawHome = process.env.OPENCLAW_HOME || path.join(homeDir, ".openclaw");
+  const taskCenterDir = process.env.TASK_CENTER_DIR || path.join(openclawHome, "ops", "task-center");
+  const sharedPolicyDir = process.env.OPENCLAW_POLICY_ROOT || path.join(openclawHome, "ops", "policy");
   const workspacePolicyDir = path.join(workspaceDir, "scripts", "openclaw-ops", "policy");
 
   const runtime: RuntimeFiles = {
@@ -89,7 +109,7 @@ export default async function hardflowPolicyEnforcer(event: any): Promise<void> 
       (existsSync(path.join(workspacePolicyDir, "policy_enforcer.py"))
         ? path.join(workspacePolicyDir, "policy_enforcer.py")
         : path.join(sharedPolicyDir, "policy_enforcer.py")),
-    dbPath: process.env.POLICY_DB_FILE || path.join(homeDir, ".openclaw", "ops", "task-center", "task_center.db"),
+    dbPath: process.env.POLICY_DB_FILE || path.join(taskCenterDir, "task_center.db"),
     policyFile:
       process.env.POLICY_FILE ||
       (existsSync(path.join(workspacePolicyDir, "policy-config.json"))
@@ -102,6 +122,7 @@ export default async function hardflowPolicyEnforcer(event: any): Promise<void> 
         : path.join(sharedPolicyDir, "routing-rules.json")),
     pricingFile:
       process.env.POLICY_PRICING_FILE ||
+      process.env.TOKEN_PRICING_FILE ||
       (existsSync(path.join(workspacePolicyDir, "token-pricing.json"))
         ? path.join(workspacePolicyDir, "token-pricing.json")
         : path.join(sharedPolicyDir, "token-pricing.json")),
@@ -115,6 +136,14 @@ export default async function hardflowPolicyEnforcer(event: any): Promise<void> 
 
     runPolicy(workspaceDir, runtime, ["init"]);
     runPolicy(workspaceDir, runtime, ["validate-runtime"]);
+
+    if (action === "new" || action === "reset") {
+      const entryAgent = resolveEntryAgent(event);
+      runPolicy(workspaceDir, runtime, ["assert-entry", "--entry-agent", entryAgent]);
+      if (Array.isArray(event.messages)) {
+        event.messages.push(`[Policy Enforcer] entry_agent=${entryAgent} passed`);
+      }
+    }
 
     if (action === "stop") {
       runPolicy(workspaceDir, runtime, ["assert-stop-safe"]);
