@@ -11,8 +11,15 @@
     "迁移",
     "删除",
     "回滚",
-    "配置",
-    "测试失败",
+    "api变更",
+    "接口变更",
+    "参数变更",
+    "固定参数变更",
+    "逻辑变更",
+    "代码执行流程变更",
+    "流程变更",
+    "结构变更",
+    "schema变更",
     "cron异常",
     "事故",
     "中断",
@@ -22,12 +29,20 @@
     "rollback"
   ],
   "low_risk_keywords": [
+    "代码bug",
+    "bug修复",
+    "配置错误",
+    "网络失败",
+    "网络抖动",
+    "cpu过高",
+    "资源使用率高",
+    "磁盘不足",
+    "内存不足",
+    "重复进程",
     "文档",
     "索引",
     "注释",
     "整理",
-    "汇总",
-    "排版",
     "readme",
     "index"
   ],
@@ -55,6 +70,16 @@
       "backlog"
     ]
   },
+  "direct_route_prefixes": [
+    {
+      "prefixes": ["产品经理", "项目经理", "pm", "PM"],
+      "entry_agent": "project-agent",
+      "assignee": "project-agent",
+      "bypass_dispatcher": true,
+      "pool": "todo",
+      "priority": "low"
+    }
+  ],
   "assignee_rules": [
     {
       "assignee": "ops-agent",
@@ -65,7 +90,11 @@
         "运维",
         "服务",
         "网关",
-        "infra"
+        "infra",
+        "资源",
+        "磁盘",
+        "内存",
+        "cpu"
       ]
     },
     {
@@ -76,7 +105,8 @@
         "数据库",
         "模型",
         "接口",
-        "backend"
+        "backend",
+        "参数"
       ]
     },
     {
@@ -96,7 +126,9 @@
         "测试",
         "验收",
         "回归",
-        "qa"
+        "qa",
+        "selenium",
+        "playwright"
       ]
     },
     {
@@ -105,7 +137,32 @@
         "项目索引",
         "readme",
         "文档同步",
-        "模块说明"
+        "模块说明",
+        "产品经理",
+        "项目规划",
+        "需求沟通"
+      ]
+    },
+    {
+      "assignee": "optimization-agent",
+      "keywords": [
+        "优化agent",
+        "agent优化",
+        "工作流优化",
+        "技能治理",
+        "skill治理",
+        "质量评分",
+        "成本优化"
+      ]
+    },
+    {
+      "assignee": "self-evolution-agent",
+      "keywords": [
+        "自我进化",
+        "经验沉淀",
+        "历史会话复盘",
+        "经验库",
+        "规律总结"
       ]
     }
   ],

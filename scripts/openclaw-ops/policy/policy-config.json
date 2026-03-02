@@ -10,7 +10,10 @@
     "glmcode/glm-4.7"
   ],
   "allowed_entry_agents": ["coordinator"],
+  "allow_project_agent_alias_entry": true,
+  "project_agent_alias_prefixes": ["产品经理", "项目经理", "pm", "PM"],
   "dispatcher_agent": "coordinator",
+  "dispatcher_fallback_self_execute": true,
   "blocked_direct_code_agents": ["coordinator", "project-agent"],
   "code_execution_stages": ["implement", "fix", "deploy"],
   "required_task_fields": [
@@ -25,6 +28,22 @@
   "require_token_usage_before_done": true,
   "max_failure_before_escalate": 3,
   "pass_line_raw": 75.0,
+  "todo_queue_policy": {
+    "require_scheduled_at": true,
+    "fifo": true,
+    "max_dispatch_per_run": 3
+  },
+  "self_evolution_policy": {
+    "enabled": true,
+    "weekly_full_review": true,
+    "min_review_interval_days": 7,
+    "default_pool": "todo",
+    "default_priority": "low",
+    "default_risk_level": "high",
+    "require_human_confirm": true,
+    "max_tasks_per_run": 3,
+    "schedule_gap_minutes": 120
+  },
   "status_flow": {
     "pending": [
       "running",

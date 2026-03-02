@@ -12,6 +12,7 @@
 - token/cost 门禁：未记录 token/cost 的任务不能 `complete-task`。
 - 可观测记录：任务、阶段、token、事件全部入库并可导出报告。
 - 日报模板：按 agent+全局统计 token/cost，附高风险占比、升级数、失败>=3明细。
+- 身份留痕：所有发送消息脚本与任务事件统一标注 `sender_identity/actor`。
 
 ## 2. 目录文件
 
@@ -97,9 +98,36 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py complete-task \
 
 ```bash
 python3 scripts/openclaw-ops/policy/policy_enforcer.py route-task \
-  --description "生产 cron 连续失败并触发告警，需要立即处理" \
+  --description "产品经理：梳理项目模块边界并给出迭代计划" \
   --source ops
 ```
+
+说明：
+- 当消息前缀命中 `产品经理/项目经理/PM` 时，路由会直达 `project-agent`（可绕过规划者分发，用于需求沟通与规划）。
+- 常规任务仍走规划者分发；若分发失败，可触发规划者兜底自执行并留痕。
+
+TODO 队列按时间 FIFO 拉取（限流）：
+
+```bash
+python3 scripts/openclaw-ops/policy/policy_enforcer.py next-todo --limit 3
+```
+
+动态更新风险规则（聊天驱动）：
+
+```bash
+python3 scripts/openclaw-ops/policy/risk_rule_sync.py \
+  --routing-file scripts/openclaw-ops/policy/routing-rules.json \
+  batch \
+  --apply-default-preset \
+  --add-high "api契约升级" \
+  --add-low "网络临时抖动"
+```
+
+周度自我进化（边界约束）：
+
+- 只输出建议与任务包，不自动改工作流/技能。
+- 默认写入 TODO，低优先级、高风险、需人工确认。
+- 周度全量复盘，按 FIFO 带时间入队，并限制每次产出数量。
 
 任务可观测报告：
 

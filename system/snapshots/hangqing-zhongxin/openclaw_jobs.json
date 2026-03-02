@@ -8,7 +8,7 @@
       "description": "隔离agent巡检日志；异常告警；简单问题自动修复",
       "enabled": true,
       "createdAtMs": 1772343772109,
-      "updatedAtMs": 1772441067936,
+      "updatedAtMs": 1772454560551,
       "schedule": {
         "kind": "every",
         "everyMs": 900000,
@@ -27,14 +27,14 @@
         "to": "-1003333097130"
       },
       "state": {
-        "lastRunAtMs": 1772440852884,
+        "lastRunAtMs": 1772454162465,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 215052,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
+        "lastDurationMs": 398086,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0,
-        "nextRunAtMs": 1772441752884
+        "nextRunAtMs": 1772455062465
       }
     },
     {
@@ -44,7 +44,7 @@
       "description": "扫描agent缺口并对P1/P2自动创建，P3保留手动",
       "enabled": true,
       "createdAtMs": 1772348726747,
-      "updatedAtMs": 1772440648563,
+      "updatedAtMs": 1772454697857,
       "schedule": {
         "kind": "every",
         "everyMs": 1800000,
@@ -62,14 +62,14 @@
         "to": "-1003333097130"
       },
       "state": {
-        "lastRunAtMs": 1772440575795,
+        "lastRunAtMs": 1772454560551,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 72768,
+        "lastDurationMs": 137306,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0,
-        "nextRunAtMs": 1772442375795
+        "nextRunAtMs": 1772456360551
       }
     },
     {
@@ -79,7 +79,7 @@
       "description": "运维统一汇总：异常才汇报；无异常NO_REPLY；本地留档",
       "enabled": true,
       "createdAtMs": 1772349866459,
-      "updatedAtMs": 1772440661749,
+      "updatedAtMs": 1772454973959,
       "schedule": {
         "kind": "every",
         "everyMs": 1800000,
@@ -97,14 +97,14 @@
         "to": "-1003333097130"
       },
       "state": {
-        "lastRunAtMs": 1772440648578,
+        "lastRunAtMs": 1772454697857,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 13171,
-        "lastDeliveryStatus": "not-delivered",
+        "lastDurationMs": 276102,
+        "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0,
-        "lastDelivered": false,
-        "nextRunAtMs": 1772442448578
+        "lastDelivered": true,
+        "nextRunAtMs": 1772456497857
       }
     },
     {
@@ -114,7 +114,7 @@
       "description": "定期优化 workflow/hooks/skills/agents；仅有建议或异常时汇报",
       "enabled": true,
       "createdAtMs": 1772349963088,
-      "updatedAtMs": 1772431917316,
+      "updatedAtMs": 1772455056253,
       "schedule": {
         "kind": "cron",
         "expr": "11 2,8,14,20 * * *",
@@ -132,11 +132,11 @@
         "to": "-1003333097130"
       },
       "state": {
-        "nextRunAtMs": 1772453460000,
-        "lastRunAtMs": 1772431874259,
+        "nextRunAtMs": 1772475060000,
+        "lastRunAtMs": 1772454973959,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 43057,
+        "lastDurationMs": 82294,
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
@@ -247,7 +247,7 @@
       "description": "15分钟周期巡检 TODO.md；去重播报；检测执行状态；仅对 UNASSIGNED 项请求 coordinator 分配；自动并入 tester 失败项",
       "enabled": true,
       "createdAtMs": 1772375243262,
-      "updatedAtMs": 1772440776080,
+      "updatedAtMs": 1772454161843,
       "schedule": {
         "kind": "every",
         "everyMs": 900000,
@@ -265,14 +265,15 @@
         "to": "-1003333097130"
       },
       "state": {
-        "nextRunAtMs": 1772441651961,
-        "lastRunAtMs": 1772440751961,
+        "nextRunAtMs": 1772454897250,
+        "lastRunAtMs": 1772453997250,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 24119,
-        "lastDelivered": true,
+        "lastDurationMs": 164593,
         "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
+        "consecutiveErrors": 0,
+        "lastDelivered": true,
+        "runningAtMs": 1772455057514
       }
     },
     {
@@ -292,7 +293,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 ops-agent 日报任务。仅用命令执行：python3 $HOME/.openclaw/workspace/scripts/daily_todo_digest.py。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
+        "message": "?? ops-agent ?????????????python3 $HOME/.openclaw/workspace/scripts/daily_todo_digest.py?????????? NO_REPLY??????? FAILED???300???????",
         "timeoutSeconds": 1200
       },
       "delivery": {
@@ -321,7 +322,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 optimize-agent 经验维护任务（日）。仅用命令执行：bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh daily。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
+        "message": "?? optimize-agent ?????????????bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh daily?????????? NO_REPLY??????? FAILED???300???????",
         "timeoutSeconds": 1200
       },
       "delivery": {
@@ -350,7 +351,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 optimize-agent 经验维护任务（周）。仅用命令执行：bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh weekly。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
+        "message": "?? optimize-agent ?????????????bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh weekly?????????? NO_REPLY??????? FAILED???300???????",
         "timeoutSeconds": 1200
       },
       "delivery": {
@@ -379,7 +380,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 optimize-agent 经验维护任务（月）。仅用命令执行：bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh monthly。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
+        "message": "?? optimize-agent ?????????????bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh monthly?????????? NO_REPLY??????? FAILED???300???????",
         "timeoutSeconds": 1200
       },
       "delivery": {
@@ -398,7 +399,7 @@
       "description": "Project index maintainer with git pull (every 30m)",
       "enabled": true,
       "createdAtMs": 1772438672175,
-      "updatedAtMs": 1772440220179,
+      "updatedAtMs": 1772453255228,
       "schedule": {
         "kind": "cron",
         "expr": "*/30 * * * *",
@@ -408,8 +409,8 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 project-agent 项目索引维护任务。仅用命令执行：python3 $HOME/.openclaw/ops/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --git-pull --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
-        "timeoutSeconds": 1800
+        "message": "?? project-agent ?????????????python3 $HOME/.openclaw/ops/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --git-pull --emit-json?????????? NO_REPLY??????? FAILED???300???????",
+        "timeoutSeconds": 600
       },
       "delivery": {
         "mode": "announce",
@@ -417,14 +418,15 @@
         "to": "-1003333097130"
       },
       "state": {
-        "nextRunAtMs": 1772442000000,
-        "lastRunAtMs": 1772440200562,
+        "nextRunAtMs": 1772454600000,
+        "lastRunAtMs": 1772452800006,
         "lastRunStatus": "ok",
         "lastStatus": "ok",
-        "lastDurationMs": 19617,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0
+        "lastDurationMs": 455222,
+        "lastDelivered": true,
+        "lastDeliveryStatus": "delivered",
+        "consecutiveErrors": 0,
+        "runningAtMs": 1772455057514
       }
     }
   ]

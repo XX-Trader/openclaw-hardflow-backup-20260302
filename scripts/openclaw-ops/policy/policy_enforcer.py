@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -29,7 +30,10 @@ DEFAULT_POLICY: dict[str, Any] = {
     "fallback_models": ["glmcode/glm-5"],
     "allowed_models": ["kimicode/Doubao-Seed-2.0-Code", "glmcode/glm-5", "glmcode/glm-4.7"],
     "allowed_entry_agents": ["coordinator"],
+    "allow_project_agent_alias_entry": True,
+    "project_agent_alias_prefixes": ["产品经理", "项目经理", "pm", "PM"],
     "dispatcher_agent": "coordinator",
+    "dispatcher_fallback_self_execute": True,
     "blocked_direct_code_agents": ["coordinator", "project-agent"],
     "code_execution_stages": ["implement", "fix", "deploy"],
     "required_task_fields": [
@@ -44,6 +48,22 @@ DEFAULT_POLICY: dict[str, Any] = {
     "require_token_usage_before_done": True,
     "max_failure_before_escalate": 3,
     "pass_line_raw": 75.0,
+    "todo_queue_policy": {
+        "require_scheduled_at": True,
+        "fifo": True,
+        "max_dispatch_per_run": 3,
+    },
+    "self_evolution_policy": {
+        "enabled": True,
+        "weekly_full_review": True,
+        "min_review_interval_days": 7,
+        "default_pool": "todo",
+        "default_priority": "low",
+        "default_risk_level": "high",
+        "require_human_confirm": True,
+        "max_tasks_per_run": 3,
+        "schedule_gap_minutes": 120,
+    },
     "status_flow": {
         "pending": ["running", "cancelled", "escalated"],
         "running": ["running", "passed", "failed", "escalated", "cancelled"],
@@ -82,12 +102,24 @@ DEFAULT_ROUTING_RULES: dict[str, Any] = {
         "high": ["紧急", "立刻", "故障", "异常", "失败", "告警", "中断", "不可用", "urgent", "p0", "p1"],
         "low": ["后续", "延后", "慢慢", "优化", "观察", "待办", "backlog"]
     },
+    "direct_route_prefixes": [
+        {
+            "prefixes": ["产品经理", "项目经理", "pm", "PM"],
+            "entry_agent": "project-agent",
+            "assignee": "project-agent",
+            "bypass_dispatcher": True,
+            "pool": "todo",
+            "priority": "low",
+        }
+    ],
     "assignee_rules": [
         {"assignee": "ops-agent", "keywords": ["cron", "日志", "监控", "运维", "服务", "网关", "infra"]},
         {"assignee": "backend-dev", "keywords": ["api", "后端", "数据库", "模型", "接口", "backend"]},
         {"assignee": "frontend-dev", "keywords": ["前端", "页面", "ui", "交互", "样式", "frontend"]},
         {"assignee": "tester", "keywords": ["测试", "验收", "回归", "qa"]},
-        {"assignee": "project-agent", "keywords": ["项目索引", "readme", "文档同步", "模块说明"]}
+        {"assignee": "project-agent", "keywords": ["项目索引", "readme", "文档同步", "模块说明", "产品经理", "项目规划", "需求沟通"]},
+        {"assignee": "optimization-agent", "keywords": ["优化agent", "agent优化", "工作流优化", "技能治理", "质量评分", "成本优化"]},
+        {"assignee": "self-evolution-agent", "keywords": ["自我进化", "经验沉淀", "历史会话复盘", "经验库", "规律总结"]},
     ],
     "default_assignee": "coordinator"
 }
@@ -239,6 +271,32 @@ class PolicyEnforcer:
             raise PolicyError("policy.dispatcher_agent must not be empty")
         return value
 
+    def allow_project_agent_alias_entry(self) -> bool:
+        return parse_bool(self.policy.get("allow_project_agent_alias_entry", True), True)
+
+    def project_agent_alias_prefixes(self) -> list[str]:
+        raw = self.policy.get("project_agent_alias_prefixes", [])
+        if not isinstance(raw, list):
+            return []
+        out = [str(x).strip() for x in raw if str(x).strip()]
+        return out or ["产品经理", "项目经理", "pm", "PM"]
+
+    def dispatcher_fallback_self_execute(self) -> bool:
+        return parse_bool(self.policy.get("dispatcher_fallback_self_execute", True), True)
+
+    def todo_queue_max_dispatch(self) -> int:
+        cfg = self.policy.get("todo_queue_policy", {})
+        if not isinstance(cfg, dict):
+            return 3
+        value = int(cfg.get("max_dispatch_per_run", 3) or 3)
+        return max(1, value)
+
+    def todo_require_scheduled_at(self) -> bool:
+        cfg = self.policy.get("todo_queue_policy", {})
+        if not isinstance(cfg, dict):
+            return True
+        return parse_bool(cfg.get("require_scheduled_at", True), True)
+
     def require_token_usage_before_done(self) -> bool:
         return parse_bool(self.policy.get("require_token_usage_before_done", True), True)
 
@@ -278,6 +336,8 @@ class PolicyEnforcer:
         allowed = self.allowed_entry_agents()
         if not allowed:
             raise PolicyError("policy.allowed_entry_agents is empty")
+        if entry_agent == "project-agent" and self.allow_project_agent_alias_entry():
+            return
         if entry_agent not in allowed:
             raise PolicyError(f"entry agent blocked by policy: {entry_agent}")
 
@@ -334,6 +394,9 @@ class PolicyEnforcer:
             self.assert_entry_agent_allowed(entry_agent)
 
         need_human_confirm = parse_bool(args.need_human_confirm, risk_level == "high")
+        scheduled_at = str(args.scheduled_at or "").strip()
+        if pool == "todo" and self.todo_require_scheduled_at() and not scheduled_at:
+            scheduled_at = now_iso()
 
         payload = {
             "task_id": args.task_id,
@@ -352,7 +415,7 @@ class PolicyEnforcer:
             "acceptance": args.acceptance,
             "observable_outputs": args.observable_outputs,
             "acceptance_thresholds": args.acceptance_thresholds,
-            "scheduled_at": args.scheduled_at,
+            "scheduled_at": scheduled_at,
         }
 
         created = self.db.create_task(payload, actor=args.actor)
@@ -369,7 +432,29 @@ class PolicyEnforcer:
 
     def assign_task(self, args: argparse.Namespace) -> dict[str, Any]:
         self.assert_dispatcher_actor(args.actor)
-        return self.db.assign_task(task_id=args.task_id, assignee=args.assignee, actor=args.actor)
+        assignee = str(args.assignee or "").strip()
+        fallback_used = False
+        if assignee.lower() in {"", "none", "null", "unassigned"}:
+            if not self.dispatcher_fallback_self_execute():
+                raise PolicyError("assignee empty and dispatcher_fallback_self_execute is disabled")
+            assignee = self.dispatcher_agent()
+            fallback_used = True
+
+        assigned = self.db.assign_task(task_id=args.task_id, assignee=assignee, actor=args.actor)
+        if fallback_used:
+            with self.db.conn:
+                self.db.add_event(
+                    task_id=args.task_id,
+                    actor=args.actor,
+                    event_type="assign_fallback_self_execute",
+                    stage="assign",
+                    details={
+                        "fallback_assignee": assignee,
+                        "requested_assignee": str(args.assignee or "").strip(),
+                        "reason": str(args.reason or "dispatcher_unable_to_route").strip(),
+                    },
+                )
+        return assigned
 
     def confirm_risk(self, args: argparse.Namespace) -> dict[str, Any]:
         return self.db.confirm_human(task_id=args.task_id, actor=args.actor, confirmed=parse_bool(args.confirmed, True))
@@ -598,23 +683,75 @@ class PolicyEnforcer:
             raise PolicyError("description cannot be empty")
         norm = text.lower()
 
-        high_risk_hits = [k for k in self.routing.get("high_risk_keywords", []) if str(k).lower() in norm]
-        low_risk_hits = [k for k in self.routing.get("low_risk_keywords", []) if str(k).lower() in norm]
+        def try_direct_project_route(raw_text: str) -> tuple[dict[str, Any] | None, str]:
+            route_rules = self.routing.get("direct_route_prefixes", [])
+            direct_aliases: list[dict[str, Any]] = []
+            if isinstance(route_rules, list):
+                for item in route_rules:
+                    if isinstance(item, dict):
+                        direct_aliases.append(item)
+            if not direct_aliases:
+                direct_aliases = [
+                    {
+                        "prefixes": self.project_agent_alias_prefixes(),
+                        "entry_agent": "project-agent",
+                        "assignee": "project-agent",
+                        "bypass_dispatcher": True,
+                        "pool": "todo",
+                        "priority": "low",
+                    }
+                ]
+
+            for rule in direct_aliases:
+                prefixes = rule.get("prefixes", [])
+                if not isinstance(prefixes, list):
+                    continue
+                for prefix in prefixes:
+                    prefix_text = str(prefix).strip()
+                    if not prefix_text:
+                        continue
+                    pattern = rf"^\s*{re.escape(prefix_text)}(?:[\s:：,\-，]+)?(?P<body>.*)$"
+                    m = re.match(pattern, raw_text, flags=re.IGNORECASE)
+                    if not m:
+                        continue
+                    if not self.allow_project_agent_alias_entry():
+                        break
+                    stripped = str(m.group("body") or "").strip() or raw_text.strip()
+                    return (
+                        {
+                            "alias_prefix": prefix_text,
+                            "entry_agent": str(rule.get("entry_agent", "project-agent")).strip() or "project-agent",
+                            "assignee": str(rule.get("assignee", "project-agent")).strip() or "project-agent",
+                            "bypass_dispatcher": bool(rule.get("bypass_dispatcher", True)),
+                            "pool": str(rule.get("pool", "todo")).strip() or "todo",
+                            "priority": str(rule.get("priority", "low")).strip() or "low",
+                        },
+                        stripped,
+                    )
+            return None, raw_text
+
+        direct_route, effective_text = try_direct_project_route(text)
+        effective_norm = effective_text.lower()
+
+        high_risk_hits = [k for k in self.routing.get("high_risk_keywords", []) if str(k).lower() in effective_norm]
+        low_risk_hits = [k for k in self.routing.get("low_risk_keywords", []) if str(k).lower() in effective_norm]
 
         risk_level = "high" if high_risk_hits else "low"
 
-        priority = "medium"
+        priority = "low"
         high_priority_hits = [
             k
             for k in self.routing.get("priority_keywords", {}).get("high", [])
-            if str(k).lower() in norm
+            if str(k).lower() in effective_norm
         ]
         low_priority_hits = [
             k
             for k in self.routing.get("priority_keywords", {}).get("low", [])
-            if str(k).lower() in norm
+            if str(k).lower() in effective_norm
         ]
-        if high_priority_hits or risk_level == "high":
+        if high_priority_hits:
+            priority = "high"
+        elif risk_level == "high":
             priority = "high"
         elif low_priority_hits:
             priority = "low"
@@ -629,24 +766,36 @@ class PolicyEnforcer:
             if not candidate or not isinstance(keywords, list):
                 continue
             for keyword in keywords:
-                if str(keyword).lower() in norm:
+                if str(keyword).lower() in effective_norm:
                     assignee = candidate
                     assignee_hit = str(keyword)
                     break
             if assignee_hit:
                 break
 
-        pool = "jobs" if priority == "high" else "todo"
+        entry_agent = sorted(self.allowed_entry_agents())[0] if self.allowed_entry_agents() else ""
+        bypass_dispatcher = False
+        if direct_route:
+            entry_agent = str(direct_route.get("entry_agent", entry_agent)).strip() or entry_agent
+            assignee = str(direct_route.get("assignee", assignee)).strip() or assignee
+            bypass_dispatcher = bool(direct_route.get("bypass_dispatcher", False))
+            priority = str(direct_route.get("priority", priority)).strip() or priority
+            pool = str(direct_route.get("pool", "todo")).strip() or "todo"
+        else:
+            pool = "jobs" if priority == "high" else "todo"
+
         need_human_confirm = risk_level == "high" and parse_bool(
             self.policy.get("high_risk_requires_human_confirm", True),
             True,
         )
 
         return {
-            "description": text,
+            "description": effective_text,
+            "raw_description": text,
             "source": args.source,
-            "entry_agent": sorted(self.allowed_entry_agents())[0] if self.allowed_entry_agents() else "",
+            "entry_agent": entry_agent,
             "dispatcher_agent": self.dispatcher_agent(),
+            "bypass_dispatcher": bypass_dispatcher,
             "priority": priority,
             "risk_level": risk_level,
             "pool": pool,
@@ -658,7 +807,38 @@ class PolicyEnforcer:
                 "priority_high": high_priority_hits,
                 "priority_low": low_priority_hits,
                 "assignee_hit": assignee_hit,
+                "direct_route_prefix": str(direct_route.get("alias_prefix", "")) if direct_route else "",
             },
+        }
+
+    def next_todo(self, args: argparse.Namespace) -> dict[str, Any]:
+        limit_raw = int(args.limit or 0)
+        limit = self.todo_queue_max_dispatch() if limit_raw <= 0 else max(1, limit_raw)
+        now_value = now_iso()
+        rows = self.db.conn.execute(
+            """
+            SELECT *
+            FROM tasks
+            WHERE pool = 'todo'
+              AND status = 'pending'
+              AND (scheduled_at IS NULL OR scheduled_at <= ?)
+            ORDER BY COALESCE(scheduled_at, created_at) ASC, created_at ASC
+            LIMIT ?
+            """,
+            (now_value, limit),
+        ).fetchall()
+        tasks = []
+        for row in rows:
+            item = dict(row)
+            item["need_human_confirm"] = bool(item.get("need_human_confirm"))
+            item["human_confirmed"] = bool(item.get("human_confirmed"))
+            tasks.append(item)
+        return {
+            "policy_limit": self.todo_queue_max_dispatch(),
+            "requested_limit": limit_raw,
+            "effective_limit": limit,
+            "now": now_value,
+            "tasks": tasks,
         }
 
     def update_routing(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -766,6 +946,16 @@ class PolicyEnforcer:
             "dispatcher_is_coordinator",
             self.dispatcher_agent() == "coordinator",
             f"dispatcher_agent={self.dispatcher_agent()}",
+        )
+        add_check(
+            "project_agent_alias_entry_enabled",
+            self.allow_project_agent_alias_entry(),
+            f"allow_project_agent_alias_entry={self.allow_project_agent_alias_entry()}",
+        )
+        add_check(
+            "dispatcher_fallback_self_execute_enabled",
+            self.dispatcher_fallback_self_execute(),
+            f"dispatcher_fallback_self_execute={self.dispatcher_fallback_self_execute()}",
         )
 
         pricing = load_pricing(self.paths.pricing_file)
@@ -912,7 +1102,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--task-type", default="workflow")
     create.add_argument("--reason", required=True)
     create.add_argument("--source", default="openclaw")
-    create.add_argument("--priority", default="medium")
+    create.add_argument("--priority", default="low")
     create.add_argument("--risk-level", default="low")
     create.add_argument("--pool", default="")
     create.add_argument("--assignee", default="")
@@ -929,7 +1119,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     assign = sub.add_parser("assign-task", help="assign task")
     assign.add_argument("--task-id", required=True)
-    assign.add_argument("--assignee", required=True)
+    assign.add_argument("--assignee", default="")
+    assign.add_argument("--reason", default="dispatcher_unable_to_route")
     assign.add_argument("--actor", default="coordinator")
 
     confirm = sub.add_parser("confirm-risk", help="confirm high-risk task")
@@ -982,6 +1173,9 @@ def build_parser() -> argparse.ArgumentParser:
     route = sub.add_parser("route-task", help="route task by routing rules")
     route.add_argument("--description", required=True)
     route.add_argument("--source", default="openclaw")
+
+    next_todo = sub.add_parser("next-todo", help="get FIFO todo batch by policy limit")
+    next_todo.add_argument("--limit", default="0")
 
     update = sub.add_parser("update-routing", help="update routing rules")
     update.add_argument("--add-high-risk", action="append", default=[])
@@ -1072,6 +1266,8 @@ def main() -> int:
                 emit_json({"ok": True, "report": enforcer.task_report(args)})
             elif args.command == "route-task":
                 emit_json({"ok": True, "route": enforcer.route_task(args)})
+            elif args.command == "next-todo":
+                emit_json({"ok": True, "result": enforcer.next_todo(args)})
             elif args.command == "update-routing":
                 emit_json({"ok": True, "result": enforcer.update_routing(args)})
             elif args.command == "assert-entry":
