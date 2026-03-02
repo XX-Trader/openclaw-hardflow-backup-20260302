@@ -1,0 +1,93 @@
+{
+  "version": "1.0",
+  "projectName": "MyProject",
+  "projectType": "fullstack",
+  "autoDetected": false,
+  "description": "Windows 本地开发环境配置文件",
+
+  "services": {
+    "backend": {
+      "enabled": true,
+      "type": "django",
+      "path": "backend",
+      "port": 8000,
+      "host": "0.0.0.0",
+      "virtualEnv": true,
+      "venvName": "venv",
+      "pythonVersion": "3.10",
+      "commands": {
+        "install": "pip install -r requirements.txt",
+        "migrate": "python manage.py migrate",
+        "makemigrations": "python manage.py makemigrations",
+        "start": "python manage.py runserver 0.0.0.0:8000",
+        "createsuperuser": "python manage.py createsuperuser",
+        "collectstatic": "python manage.py collectstatic --noinput"
+      }
+    },
+
+    "frontend": {
+      "enabled": true,
+      "type": "vue",
+      "path": "frontend",
+      "port": 8083,
+      "host": "localhost",
+      "nodeVersion": "20.19.0",
+      "buildTool": "vite",
+      "commands": {
+        "install": "npm install",
+        "start": "npm run dev",
+        "build": "npm run build",
+        "preview": "npm run preview"
+      }
+    },
+
+    "database": {
+      "type": "mysql",
+      "enabled": true,
+      "serviceName": "MySQL80",
+      "port": 3306,
+      "host": "127.0.0.1",
+      "autoStart": true,
+      "description": "MySQL 数据库配置"
+    },
+
+    "cache": {
+      "type": "redis",
+      "enabled": true,
+      "useWSL": true,
+      "port": 6379,
+      "host": "127.0.0.1",
+      "autoStart": true,
+      "description": "Redis 缓存配置（使用 WSL）"
+    },
+
+    "celery": {
+      "enabled": false,
+      "worker": true,
+      "beat": true,
+      "description": "Celery 异步任务队列（可选）"
+    }
+  },
+
+  "environment": {
+    "pythonVersion": "3.10",
+    "nodeVersion": "20.19.0",
+    "mysqlRequired": true,
+    "redisRequired": true,
+    "description": "环境依赖版本要求"
+  },
+
+  "ports": {
+    "backend": 8000,
+    "frontend": 8083,
+    "mysql": 3306,
+    "redis": 6379
+  },
+
+  "paths": {
+    "backend": "backend",
+    "frontend": "frontend",
+    "venv": "backend/venv",
+    "node_modules": "frontend/node_modules"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "version": "1.0",
+
+  "projectName": "MyProject",
+  "testDate": "2026-01-05",
+  "tester": "Your Name",
+
+  "services": {
+    "mysql": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 3306,
+      "timeout": 5000
+    },
+    "redis": {
+      "enabled": true,
+      "host": "127.0.0.1",
+      "port": 6379,
+      "timeout": 5000
+    },
+    "backend": {
+      "enabled": true,
+      "url": "http://localhost:8000",
+      "timeout": 10000
+    },
+    "frontend": {
+      "enabled": true,
+      "url": "http://localhost:8083",
+      "timeout": 10000
+    }
+  },
+
+  "testAccounts": {
+    "email": "test@example.com",
+    "password": "Test123456",
+    "nickname": "测试用户"
+  },
+
+  "apiEndpoints": [
+    {
+      "name": "用户登录",
+      "method": "POST",
+      "path": "/api/accounts/login/",
+      "body": {
+        "email": "{{email}}",
+        "password": "{{password}}"
+      },
+      "expectedStatus": 200,
+      "expectedCode": 200,
+      "needAuth": false
+    },
+    {
+      "name": "获取机器人列表",
+      "method": "GET",
+      "path": "/api/pm-robot/list",
+      "expectedStatus": 200,
+      "expectedCode": 200,
+      "needAuth": true
+    },
+    {
+      "name": "获取用户信息",
+      "method": "GET",
+      "path": "/api/accounts/userinfo/",
+      "expectedStatus": 200,
+      "expectedCode": 200,
+      "needAuth": true
+    }
+  ],
+
+  "uiTests": [
+    {
+      "name": "访问首页",
+      "url": "/",
+      "actions": [
+        {
+          "type": "waitFor",
+          "target": "loadstate",
+          "value": "networkidle"
+        },
+        {
+          "type": "assert",
+          "check": "title",
+          "expected": "首页"
+        }
+      ]
+    },
+    {
+      "name": "登录功能测试",
+      "url": "/login",
+      "actions": [
+        {
+          "type": "fill",
+          "selector": "#email",
+          "value": "{{email}}"
+        },
+        {
+          "type": "fill",
+          "selector": "#password",
+          "value": "{{password}}"
+        },
+        {
+          "type": "click",
+          "selector": "button[type='submit']"
+        },
+        {
+          "type": "waitFor",
+          "target": "navigation"
+        },
+        {
+          "type": "screenshot",
+          "name": "登录成功后"
+        }
+      ]
+    }
+  ],
+
+  "report": {
+    "outputDir": "test_reports",
+    "includeScreenshots": true,
+    "includeRequestLogs": true
+  }
+}

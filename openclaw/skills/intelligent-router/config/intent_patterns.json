@@ -1,0 +1,59 @@
+{
+  "version": "1.0.0",
+  "updated_at": "2026-01-25",
+  "description": "显式调用声明的识别模式",
+
+  "explicit_call_patterns": [
+    {
+      "name": "skill_call",
+      "pattern": "\\[调用技能:\\s*([^\\]]+)\\]\\s*(?:执行|来处理)?\\s*(.*)",
+      "type": "skill",
+      "priority": 1,
+      "examples": [
+        "[调用技能: pdf] 提取表格数据",
+        "[调用技能: frontend-design] 设计登录页面"
+      ]
+    },
+    {
+      "name": "subagent_call",
+      "pattern": "\\[调用\\s*Subagent:\\s*([^\\]]+)\\]\\s*(?:执行|来处理)?\\s*(.*)",
+      "type": "subagent",
+      "priority": 1,
+      "examples": [
+        "[调用 Subagent: smart-flow:python-expert] 优化代码",
+        "[调用 Subagent: backend-developer] 创建 API"
+      ]
+    },
+    {
+      "name": "combo_call",
+      "pattern": "\\[调用组合:\\s*([^\\]]+)\\]\\s*(?:执行|来处理)?\\s*(.*)",
+      "type": "combo",
+      "priority": 1,
+      "examples": [
+        "[调用组合: 量化交易组合] 分析策略",
+        "[调用组合: 全栈开发组合] 开发应用"
+      ]
+    }
+  ],
+
+  "task_extraction": {
+    "description": "从显式调用中提取任务描述的规则",
+    "fallback_keywords": ["执行", "来处理", "去处理", "帮我"],
+    "max_length": 200,
+    "trim_whitespace": true
+  },
+
+  "fallback_behavior": {
+    "invalid_skill": "fallback_to_keyword_matching",
+    "invalid_subagent": "fallback_to_keyword_matching",
+    "invalid_combo": "fallback_to_keyword_matching",
+    "empty_task": "use_full_user_input"
+  },
+
+  "validation": {
+    "check_skill_exists": true,
+    "check_subagent_exists": true,
+    "check_combo_exists": true,
+    "case_sensitive": false
+  }
+}

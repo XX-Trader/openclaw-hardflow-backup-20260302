@@ -1,0 +1,347 @@
+{
+  "updatedAt": "2026-02-28T15:48:18.493066",
+  "canonicalRoot": "C:\\Users\\superma\\.openclaw\\skills",
+  "count": 68,
+  "skills": [
+    {
+      "name": "agent-combos",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\agent-combos",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\agent-combos\\SKILL.md"
+    },
+    {
+      "name": "agent-manager",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\agent-manager",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\agent-manager\\SKILL.md"
+    },
+    {
+      "name": "artifacts-builder",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\artifacts-builder",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\artifacts-builder\\SKILL.md"
+    },
+    {
+      "name": "auto-fix",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\auto-fix",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\auto-fix\\SKILL.md"
+    },
+    {
+      "name": "baoyu-format-markdown",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\baoyu-format-markdown",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\baoyu-format-markdown\\SKILL.md"
+    },
+    {
+      "name": "baoyu-infographic",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\baoyu-infographic",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\baoyu-infographic\\SKILL.md"
+    },
+    {
+      "name": "brainstorming",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\brainstorming",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\brainstorming\\SKILL.md"
+    },
+    {
+      "name": "browser-mcp-guide",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\browser-mcp-guide",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\browser-mcp-guide\\SKILL.md"
+    },
+    {
+      "name": "canvas-design",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\canvas-design",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\canvas-design\\SKILL.md"
+    },
+    {
+      "name": "changelog-generator",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\changelog-generator",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\changelog-generator\\SKILL.md"
+    },
+    {
+      "name": "codeagent",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\codeagent",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\codeagent\\SKILL.md"
+    },
+    {
+      "name": "codex",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\codex",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\codex\\SKILL.md"
+    },
+    {
+      "name": "content-research-writer",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\content-research-writer",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\content-research-writer\\SKILL.md"
+    },
+    {
+      "name": "cron-mastery",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\cron-mastery",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\cron-mastery\\SKILL.md"
+    },
+    {
+      "name": "db-deploy",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\db-deploy",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\db-deploy\\SKILL.md"
+    },
+    {
+      "name": "deployment-test",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\deployment-test",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\deployment-test\\SKILL.md"
+    },
+    {
+      "name": "developer-growth-analysis",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\developer-growth-analysis",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\developer-growth-analysis\\SKILL.md"
+    },
+    {
+      "name": "dispatching-parallel-agents",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\dispatching-parallel-agents",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\dispatching-parallel-agents\\SKILL.md"
+    },
+    {
+      "name": "doc",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\doc",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\doc\\SKILL.md"
+    },
+    {
+      "name": "doc-coauthoring",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\doc-coauthoring",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\doc-coauthoring\\SKILL.md"
+    },
+    {
+      "name": "docx",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\docx",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\docx\\SKILL.md"
+    },
+    {
+      "name": "executing-plans",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\executing-plans",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\executing-plans\\SKILL.md"
+    },
+    {
+      "name": "feature-development",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\feature-development",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\feature-development\\SKILL.md"
+    },
+    {
+      "name": "file-organizer",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\file-organizer",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\file-organizer\\SKILL.md"
+    },
+    {
+      "name": "finishing-a-development-branch",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\finishing-a-development-branch",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\finishing-a-development-branch\\SKILL.md"
+    },
+    {
+      "name": "frontend-design",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\frontend-design",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\frontend-design\\SKILL.md"
+    },
+    {
+      "name": "gh-address-comments",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\gh-address-comments",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\gh-address-comments\\SKILL.md"
+    },
+    {
+      "name": "gh-fix-ci",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\gh-fix-ci",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\gh-fix-ci\\SKILL.md"
+    },
+    {
+      "name": "github-actions-runner",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\github-actions-runner",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\github-actions-runner\\SKILL.md"
+    },
+    {
+      "name": "image-enhancer",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\image-enhancer",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\image-enhancer\\SKILL.md"
+    },
+    {
+      "name": "intelligent-router",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\intelligent-router",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\intelligent-router\\SKILL.md"
+    },
+    {
+      "name": "internal-comms",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\internal-comms",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\internal-comms\\SKILL.md"
+    },
+    {
+      "name": "jupyter-notebook",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\jupyter-notebook",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\jupyter-notebook\\SKILL.md"
+    },
+    {
+      "name": "logv",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\logv",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\logv\\SKILL.md"
+    },
+    {
+      "name": "mcp-builder",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\mcp-builder",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\mcp-builder\\SKILL.md"
+    },
+    {
+      "name": "netlify-deploy",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\netlify-deploy",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\netlify-deploy\\SKILL.md"
+    },
+    {
+      "name": "openai-docs",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\openai-docs",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\openai-docs\\SKILL.md"
+    },
+    {
+      "name": "openclaw-security-audit",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\openclaw-security-audit",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\openclaw-security-audit\\SKILL.md"
+    },
+    {
+      "name": "openclaw-server-setup",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\openclaw-server-setup",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\openclaw-server-setup\\SKILL.md"
+    },
+    {
+      "name": "parallel-executor",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\parallel-executor",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\parallel-executor\\SKILL.md"
+    },
+    {
+      "name": "pdf",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\pdf",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\pdf\\SKILL.md"
+    },
+    {
+      "name": "playwright",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\playwright",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\playwright\\SKILL.md"
+    },
+    {
+      "name": "pptx",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\pptx",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\pptx\\SKILL.md"
+    },
+    {
+      "name": "product-requirements",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\product-requirements",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\product-requirements\\SKILL.md"
+    },
+    {
+      "name": "prototype-prompt-generator",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\prototype-prompt-generator",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\prototype-prompt-generator\\SKILL.md"
+    },
+    {
+      "name": "receiving-code-review",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\receiving-code-review",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\receiving-code-review\\SKILL.md"
+    },
+    {
+      "name": "requesting-code-review",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\requesting-code-review",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\requesting-code-review\\SKILL.md"
+    },
+    {
+      "name": "requirements-clarity",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\requirements-clarity",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\requirements-clarity\\SKILL.md"
+    },
+    {
+      "name": "result-synthesizer",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\result-synthesizer",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\result-synthesizer\\SKILL.md"
+    },
+    {
+      "name": "screenshot",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\screenshot",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\screenshot\\SKILL.md"
+    },
+    {
+      "name": "skill-creator",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\skill-creator",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\skill-creator\\SKILL.md"
+    },
+    {
+      "name": "skill-share",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\skill-share",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\skill-share\\SKILL.md"
+    },
+    {
+      "name": "smart-workflow",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\smart-workflow",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\smart-workflow\\SKILL.md"
+    },
+    {
+      "name": "subagent-driven-development",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\subagent-driven-development",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\subagent-driven-development\\SKILL.md"
+    },
+    {
+      "name": "systematic-debugging",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\systematic-debugging",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\systematic-debugging\\SKILL.md"
+    },
+    {
+      "name": "task-decomposer",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\task-decomposer",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\task-decomposer\\SKILL.md"
+    },
+    {
+      "name": "test-driven-development",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\test-driven-development",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\test-driven-development\\SKILL.md"
+    },
+    {
+      "name": "theme-factory",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\theme-factory",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\theme-factory\\SKILL.md"
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\ui-ux-pro-max",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\ui-ux-pro-max\\SKILL.md"
+    },
+    {
+      "name": "using-git-worktrees",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\using-git-worktrees",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\using-git-worktrees\\SKILL.md"
+    },
+    {
+      "name": "vercel-deploy",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\vercel-deploy",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\vercel-deploy\\SKILL.md"
+    },
+    {
+      "name": "verification-before-completion",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\verification-before-completion",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\verification-before-completion\\SKILL.md"
+    },
+    {
+      "name": "web-artifacts-builder",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\web-artifacts-builder",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\web-artifacts-builder\\SKILL.md"
+    },
+    {
+      "name": "webapp-testing",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\webapp-testing",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\webapp-testing\\SKILL.md"
+    },
+    {
+      "name": "windows-fullstack-deploy",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\windows-fullstack-deploy",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\windows-fullstack-deploy\\SKILL.md"
+    },
+    {
+      "name": "writing-plans",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\writing-plans",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\writing-plans\\SKILL.md"
+    },
+    {
+      "name": "writing-skills",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\writing-skills",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\writing-skills\\SKILL.md"
+    },
+    {
+      "name": "xlsx",
+      "path": "C:\\Users\\superma\\.openclaw\\skills\\xlsx",
+      "skill_md": "C:\\Users\\superma\\.openclaw\\skills\\xlsx\\SKILL.md"
+    }
+  ]
+}

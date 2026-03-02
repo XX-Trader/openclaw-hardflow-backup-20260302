@@ -1,0 +1,717 @@
+{
+  "canonical_count": 81,
+  "source_unique_skill_names": 81,
+  "extra_unique_names": 2,
+  "extra_names": [
+    {
+      "name": "skills",
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\requirements-clarity\\skills",
+        "C:\\Users\\superma\\.claude\\skills\\requirements-clarity\\skills"
+      ]
+    },
+    {
+      "name": "template",
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\template",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\template",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\template",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\template",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\template",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\template"
+      ]
+    }
+  ],
+  "duplicates_in_sources": [
+    {
+      "name": "agent-combos",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\agent-combos",
+        "C:\\Users\\superma\\.claude\\skills\\agent-combos"
+      ]
+    },
+    {
+      "name": "agent-manager",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\agent-manager",
+        "C:\\Users\\superma\\.claude\\skills\\agent-manager"
+      ]
+    },
+    {
+      "name": "algorithmic-art",
+      "copies": 8,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\algorithmic-art",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\algorithmic-art",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\algorithmic-art",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\algorithmic-art",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\algorithmic-art",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\algorithmic-art",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\algorithmic-art",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\algorithmic-art"
+      ]
+    },
+    {
+      "name": "artifacts-builder",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\artifacts-builder",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\artifacts-builder",
+        "C:\\Users\\superma\\.claude\\skills\\artifacts-builder"
+      ]
+    },
+    {
+      "name": "auto-fix",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\auto-fix",
+        "C:\\Users\\superma\\.claude\\skills\\auto-fix"
+      ]
+    },
+    {
+      "name": "brainstorming",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\brainstorming",
+        "C:\\Users\\superma\\.claude\\skills\\brainstorming"
+      ]
+    },
+    {
+      "name": "brand-guidelines",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\brand-guidelines",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\brand-guidelines",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\brand-guidelines",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\brand-guidelines",
+        "C:\\Users\\superma\\.claude\\skills\\brand-guidelines",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\brand-guidelines",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\brand-guidelines",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\brand-guidelines",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\brand-guidelines"
+      ]
+    },
+    {
+      "name": "browser-mcp-guide",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\browser-mcp-guide",
+        "C:\\Users\\superma\\.claude\\skills\\browser-mcp-guide"
+      ]
+    },
+    {
+      "name": "canvas-design",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\canvas-design",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\canvas-design",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\canvas-design",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\canvas-design",
+        "C:\\Users\\superma\\.claude\\skills\\canvas-design",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\canvas-design",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\canvas-design",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\canvas-design",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\canvas-design"
+      ]
+    },
+    {
+      "name": "changelog-generator",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\changelog-generator",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\changelog-generator",
+        "C:\\Users\\superma\\.claude\\skills\\changelog-generator"
+      ]
+    },
+    {
+      "name": "codeagent",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\codeagent",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\codeagent",
+        "C:\\Users\\superma\\.claude\\skills\\codeagent"
+      ]
+    },
+    {
+      "name": "codex",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\codex",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\codex",
+        "C:\\Users\\superma\\.claude\\skills\\codex"
+      ]
+    },
+    {
+      "name": "competitive-ads-extractor",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\competitive-ads-extractor",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\competitive-ads-extractor",
+        "C:\\Users\\superma\\.claude\\skills\\competitive-ads-extractor"
+      ]
+    },
+    {
+      "name": "content-research-writer",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\content-research-writer",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\content-research-writer",
+        "C:\\Users\\superma\\.claude\\skills\\content-research-writer"
+      ]
+    },
+    {
+      "name": "db-deploy",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\db-deploy",
+        "C:\\Users\\superma\\.claude\\skills\\db-deploy"
+      ]
+    },
+    {
+      "name": "deployment-test",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\deployment-test",
+        "C:\\Users\\superma\\.claude\\skills\\deployment-test"
+      ]
+    },
+    {
+      "name": "developer-growth-analysis",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\developer-growth-analysis",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\developer-growth-analysis",
+        "C:\\Users\\superma\\.claude\\skills\\developer-growth-analysis"
+      ]
+    },
+    {
+      "name": "dispatching-parallel-agents",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\dispatching-parallel-agents",
+        "C:\\Users\\superma\\.claude\\skills\\dispatching-parallel-agents"
+      ]
+    },
+    {
+      "name": "doc-coauthoring",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\doc-coauthoring",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\doc-coauthoring",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\doc-coauthoring",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\doc-coauthoring",
+        "C:\\Users\\superma\\.claude\\skills\\doc-coauthoring",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\doc-coauthoring",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\doc-coauthoring",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\doc-coauthoring",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\doc-coauthoring"
+      ]
+    },
+    {
+      "name": "docx",
+      "copies": 12,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\document-skills\\docx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\docx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\docx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\docx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\document-skills\\docx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\docx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\docx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\docx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\docx",
+        "C:\\Users\\superma\\.claude\\skills\\docx",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\docx",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\docx"
+      ]
+    },
+    {
+      "name": "domain-name-brainstormer",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\domain-name-brainstormer",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\domain-name-brainstormer",
+        "C:\\Users\\superma\\.claude\\skills\\domain-name-brainstormer"
+      ]
+    },
+    {
+      "name": "executing-plans",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\executing-plans",
+        "C:\\Users\\superma\\.claude\\skills\\executing-plans"
+      ]
+    },
+    {
+      "name": "feature-development",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\feature-development",
+        "C:\\Users\\superma\\.claude\\skills\\feature-development"
+      ]
+    },
+    {
+      "name": "file-organizer",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\file-organizer",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\file-organizer",
+        "C:\\Users\\superma\\.claude\\skills\\file-organizer"
+      ]
+    },
+    {
+      "name": "finishing-a-development-branch",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\finishing-a-development-branch",
+        "C:\\Users\\superma\\.claude\\skills\\finishing-a-development-branch"
+      ]
+    },
+    {
+      "name": "frontend-design",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\frontend-design",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\frontend-design",
+        "C:\\Users\\superma\\.cc-switch\\skills\\frontend-design",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\frontend-design",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\frontend-design",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\frontend-design",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\frontend-design",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\frontend-design",
+        "C:\\Users\\superma\\.claude\\skills\\frontend-design"
+      ]
+    },
+    {
+      "name": "gemini",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\gemini",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\gemini",
+        "C:\\Users\\superma\\.claude\\skills\\gemini"
+      ]
+    },
+    {
+      "name": "github-actions-runner",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\github-actions-runner",
+        "C:\\Users\\superma\\.claude\\skills\\github-actions-runner"
+      ]
+    },
+    {
+      "name": "image-enhancer",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\image-enhancer",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\image-enhancer",
+        "C:\\Users\\superma\\.claude\\skills\\image-enhancer"
+      ]
+    },
+    {
+      "name": "intelligent-router",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\intelligent-router",
+        "C:\\Users\\superma\\.claude\\skills\\intelligent-router"
+      ]
+    },
+    {
+      "name": "internal-comms",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\internal-comms",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\internal-comms",
+        "C:\\Users\\superma\\.cc-switch\\skills\\internal-comms",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\internal-comms",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\internal-comms",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\internal-comms",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\internal-comms",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\internal-comms",
+        "C:\\Users\\superma\\.claude\\skills\\internal-comms"
+      ]
+    },
+    {
+      "name": "invoice-organizer",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\invoice-organizer",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\invoice-organizer",
+        "C:\\Users\\superma\\.claude\\skills\\invoice-organizer"
+      ]
+    },
+    {
+      "name": "lead-research-assistant",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\lead-research-assistant",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\lead-research-assistant",
+        "C:\\Users\\superma\\.claude\\skills\\lead-research-assistant"
+      ]
+    },
+    {
+      "name": "logv",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\logv",
+        "C:\\Users\\superma\\.claude\\skills\\logv"
+      ]
+    },
+    {
+      "name": "mcp-builder",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\mcp-builder",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\mcp-builder",
+        "C:\\Users\\superma\\.cc-switch\\skills\\mcp-builder",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\mcp-builder",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\mcp-builder",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\mcp-builder",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\mcp-builder",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\mcp-builder",
+        "C:\\Users\\superma\\.claude\\skills\\mcp-builder"
+      ]
+    },
+    {
+      "name": "meeting-insights-analyzer",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\meeting-insights-analyzer",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\meeting-insights-analyzer",
+        "C:\\Users\\superma\\.claude\\skills\\meeting-insights-analyzer"
+      ]
+    },
+    {
+      "name": "openclaw-server-setup",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\openclaw-server-setup",
+        "C:\\Users\\superma\\.claude\\skills\\openclaw-server-setup"
+      ]
+    },
+    {
+      "name": "parallel-executor",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\parallel-executor",
+        "C:\\Users\\superma\\.claude\\skills\\parallel-executor"
+      ]
+    },
+    {
+      "name": "pdf",
+      "copies": 12,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\document-skills\\pdf",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\pdf",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\pdf",
+        "C:\\Users\\superma\\.cc-switch\\skills\\pdf",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\document-skills\\pdf",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\pdf",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\pdf",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\pdf",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\pdf",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\pdf",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\pdf",
+        "C:\\Users\\superma\\.claude\\skills\\pdf"
+      ]
+    },
+    {
+      "name": "pptx",
+      "copies": 12,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\document-skills\\pptx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\pptx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\pptx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\pptx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\document-skills\\pptx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\pptx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\pptx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\pptx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\pptx",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\pptx",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\pptx",
+        "C:\\Users\\superma\\.claude\\skills\\pptx"
+      ]
+    },
+    {
+      "name": "product-requirements",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\product-requirements",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\product-requirements",
+        "C:\\Users\\superma\\.claude\\skills\\product-requirements"
+      ]
+    },
+    {
+      "name": "prototype-prompt-generator",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\prototype-prompt-generator",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\prototype-prompt-generator",
+        "C:\\Users\\superma\\.claude\\skills\\prototype-prompt-generator"
+      ]
+    },
+    {
+      "name": "raffle-winner-picker",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\raffle-winner-picker",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\raffle-winner-picker",
+        "C:\\Users\\superma\\.claude\\skills\\raffle-winner-picker"
+      ]
+    },
+    {
+      "name": "receiving-code-review",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\receiving-code-review",
+        "C:\\Users\\superma\\.claude\\skills\\receiving-code-review"
+      ]
+    },
+    {
+      "name": "requesting-code-review",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\requesting-code-review",
+        "C:\\Users\\superma\\.claude\\skills\\requesting-code-review"
+      ]
+    },
+    {
+      "name": "result-synthesizer",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\result-synthesizer",
+        "C:\\Users\\superma\\.claude\\skills\\result-synthesizer"
+      ]
+    },
+    {
+      "name": "skill-creator",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\skill-creator",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\skill-creator",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skill-creator",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\skill-creator",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\skill-creator",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\skill-creator",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\skill-creator",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\skill-creator",
+        "C:\\Users\\superma\\.claude\\skills\\skill-creator"
+      ]
+    },
+    {
+      "name": "skill-share",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\skill-share",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\skill-share",
+        "C:\\Users\\superma\\.claude\\skills\\skill-share"
+      ]
+    },
+    {
+      "name": "skills",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\requirements-clarity\\skills",
+        "C:\\Users\\superma\\.claude\\skills\\requirements-clarity\\skills"
+      ]
+    },
+    {
+      "name": "slack-gif-creator",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\slack-gif-creator",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\slack-gif-creator",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\slack-gif-creator",
+        "C:\\Users\\superma\\.cc-switch\\skills\\slack-gif-creator",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\slack-gif-creator",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\slack-gif-creator",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\slack-gif-creator",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\slack-gif-creator",
+        "C:\\Users\\superma\\.claude\\skills\\slack-gif-creator"
+      ]
+    },
+    {
+      "name": "smart-workflow",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\smart-workflow",
+        "C:\\Users\\superma\\.claude\\skills\\smart-workflow"
+      ]
+    },
+    {
+      "name": "subagent-driven-development",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\subagent-driven-development",
+        "C:\\Users\\superma\\.claude\\skills\\subagent-driven-development"
+      ]
+    },
+    {
+      "name": "systematic-debugging",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\systematic-debugging",
+        "C:\\Users\\superma\\.claude\\skills\\systematic-debugging"
+      ]
+    },
+    {
+      "name": "task-decomposer",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\task-decomposer",
+        "C:\\Users\\superma\\.claude\\skills\\task-decomposer"
+      ]
+    },
+    {
+      "name": "template",
+      "copies": 6,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\template",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\template",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\template",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\template",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\template",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\template"
+      ]
+    },
+    {
+      "name": "template-skill",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\template-skill",
+        "C:\\Users\\superma\\.cc-switch\\skills\\template-skill",
+        "C:\\Users\\superma\\.claude\\skills\\template-skill"
+      ]
+    },
+    {
+      "name": "test-driven-development",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\test-driven-development",
+        "C:\\Users\\superma\\.claude\\skills\\test-driven-development"
+      ]
+    },
+    {
+      "name": "theme-factory",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\theme-factory",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\theme-factory",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\theme-factory",
+        "C:\\Users\\superma\\.cc-switch\\skills\\theme-factory",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\theme-factory",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\theme-factory",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\theme-factory",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\theme-factory",
+        "C:\\Users\\superma\\.claude\\skills\\theme-factory"
+      ]
+    },
+    {
+      "name": "using-git-worktrees",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\using-git-worktrees",
+        "C:\\Users\\superma\\.claude\\skills\\using-git-worktrees"
+      ]
+    },
+    {
+      "name": "using-superpowers",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\using-superpowers",
+        "C:\\Users\\superma\\.claude\\skills\\using-superpowers"
+      ]
+    },
+    {
+      "name": "verification-before-completion",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\verification-before-completion",
+        "C:\\Users\\superma\\.claude\\skills\\verification-before-completion"
+      ]
+    },
+    {
+      "name": "video-downloader",
+      "copies": 3,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\video-downloader",
+        "C:\\Users\\superma\\.cc-switch\\skills\\video-downloader",
+        "C:\\Users\\superma\\.claude\\skills\\video-downloader"
+      ]
+    },
+    {
+      "name": "web-artifacts-builder",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\web-artifacts-builder",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\web-artifacts-builder",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\web-artifacts-builder",
+        "C:\\Users\\superma\\.cc-switch\\skills\\web-artifacts-builder",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\web-artifacts-builder",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\web-artifacts-builder",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\web-artifacts-builder",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\web-artifacts-builder",
+        "C:\\Users\\superma\\.claude\\skills\\web-artifacts-builder"
+      ]
+    },
+    {
+      "name": "webapp-testing",
+      "copies": 9,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\webapp-testing",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\webapp-testing",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\webapp-testing",
+        "C:\\Users\\superma\\.cc-switch\\skills\\webapp-testing",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\webapp-testing",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\webapp-testing",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\webapp-testing",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\webapp-testing",
+        "C:\\Users\\superma\\.claude\\skills\\webapp-testing"
+      ]
+    },
+    {
+      "name": "windows-fullstack-deploy",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\windows-fullstack-deploy",
+        "C:\\Users\\superma\\.claude\\skills\\windows-fullstack-deploy"
+      ]
+    },
+    {
+      "name": "writing-plans",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\writing-plans",
+        "C:\\Users\\superma\\.claude\\skills\\writing-plans"
+      ]
+    },
+    {
+      "name": "writing-skills",
+      "copies": 2,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\writing-skills",
+        "C:\\Users\\superma\\.claude\\skills\\writing-skills"
+      ]
+    },
+    {
+      "name": "xlsx",
+      "copies": 11,
+      "paths": [
+        "C:\\Users\\superma\\.cc-switch\\skills\\document-skills\\xlsx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\69c0b1a06741\\skills\\xlsx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\example-skills\\unknown\\skills\\xlsx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\document-skills\\xlsx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\skills\\xlsx",
+        "C:\\Users\\superma\\.cc-switch\\skills\\xlsx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\69c0b1a06741\\skills\\xlsx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\unknown\\skills\\xlsx",
+        "C:\\Users\\superma\\.claude\\skills\\document-skills\\xlsx",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\69c0b1a06741\\skills\\xlsx",
+        "C:\\Users\\superma\\.claude\\skills\\example-skills\\unknown\\skills\\xlsx"
+      ]
+    }
+  ]
+}

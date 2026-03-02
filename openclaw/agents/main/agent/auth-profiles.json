@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "default": {
+      "provider": "volcengine",
+      "mode": "api_key"
+    }
+  }
+}

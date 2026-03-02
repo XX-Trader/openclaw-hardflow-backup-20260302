@@ -1,0 +1,85 @@
+{
+  "version": "1.0",
+
+  "project": {
+    "root": "Project",
+    "backendPath": "Project/ShengBeiDjango",
+    "frontendPath": "Project/ShengBeiVue"
+  },
+
+  "test": {
+    "configPath": "test.config.json",
+    "reportDir": "test_reports",
+    "testScriptsPath": "../deployment-test/scripts"
+  },
+
+  "fix": {
+    "autoCommit": true,
+    "maxIterations": 10,
+    "strategy": "balanced",
+    "stopOnComplexProblem": true
+  },
+
+  "git": {
+    "branchPrefix": "auto-fix",
+    "commitAuthor": "Auto-Fix System <auto-fix@example.com>",
+    "autoMerge": true,
+    "deleteBranchAfterMerge": true
+  },
+
+  "categories": {
+    "config": {
+      "enabled": true,
+      "priority": 0,
+      "stage": 0,
+      "autoFix": true
+    },
+    "database": {
+      "enabled": true,
+      "priority": 1,
+      "stage": 1,
+      "autoFix": true
+    },
+    "api": {
+      "enabled": true,
+      "priority": 2,
+      "stage": 1,
+      "autoFix": true
+    },
+    "auth": {
+      "enabled": true,
+      "priority": 3,
+      "stage": 1,
+      "autoFix": true
+    },
+    "frontend": {
+      "enabled": true,
+      "priority": 4,
+      "stage": 2,
+      "autoFix": true
+    }
+  },
+
+  "stages": {
+    "0": {
+      "name": "配置修复",
+      "categories": ["config"],
+      "retest": true
+    },
+    "1": {
+      "name": "后端依赖链修复",
+      "categories": ["database", "api", "auth"],
+      "retest": true,
+      "order": ["database", "api", "auth"]
+    },
+    "2": {
+      "name": "前端修复",
+      "categories": ["frontend"],
+      "retest": true
+    },
+    "3": {
+      "name": "集成测试",
+      "retest": true
+    }
+  }
+}

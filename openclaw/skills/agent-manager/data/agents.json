@@ -1,0 +1,849 @@
+{
+  "generated_at": "2026-01-05T14:46:12.903138",
+  "total_agents": 117,
+  "categories": {
+    "blockchain-web3": [
+      "blockchain-developer",
+      "hyperledger-fabric-developer"
+    ],
+    "business-finance": [
+      "business-analyst",
+      "legal-advisor",
+      "payment-integration",
+      "quant-analyst"
+    ],
+    "crypto-trading": [
+      "arbitrage-bot",
+      "crypto-analyst",
+      "crypto-risk-manager",
+      "crypto-trader",
+      "defi-strategist"
+    ],
+    "data-ai": [
+      "ai-engineer",
+      "context-manager",
+      "data-engineer",
+      "data-scientist",
+      "hackathon-ai-strategist",
+      "llms-maintainer",
+      "ml-engineer",
+      "mlops-engineer",
+      "prompt-engineer",
+      "search-specialist",
+      "task-decomposition-expert"
+    ],
+    "design-experience": [
+      "accessibility-specialist",
+      "ui-ux-designer"
+    ],
+    "development-architecture": [
+      "backend-architect",
+      "directus-developer",
+      "drupal-developer",
+      "frontend-developer",
+      "graphql-architect",
+      "ios-developer",
+      "laravel-vue-developer",
+      "mobile-developer",
+      "nextjs-app-router-developer",
+      "react-performance-optimization",
+      "wordpress-developer"
+    ],
+    "infrastructure-operations": [
+      "cloud-architect",
+      "database-admin",
+      "database-optimization",
+      "database-optimizer",
+      "deployment-engineer",
+      "devops-troubleshooter",
+      "network-engineer",
+      "terraform-specialist"
+    ],
+    "language-specialists": [
+      "c-developer",
+      "cpp-engineer",
+      "golang-expert",
+      "java-developer",
+      "javascript-developer",
+      "php-developer",
+      "python-expert",
+      "rails-expert",
+      "ruby-expert",
+      "rust-expert",
+      "sql-expert",
+      "typescript-expert"
+    ],
+    "quality-security": [
+      "api-security-audit",
+      "architect-review",
+      "code-reviewer",
+      "command-expert",
+      "debugger",
+      "dx-optimizer",
+      "error-detective",
+      "incident-responder",
+      "mcp-security-auditor",
+      "mcp-server-architect",
+      "mcp-testing-engineer",
+      "performance-engineer",
+      "review-agent",
+      "security-auditor",
+      "test-automator"
+    ],
+    "sales-marketing": [
+      "content-marketer",
+      "customer-support",
+      "risk-manager",
+      "sales-automator",
+      "social-media-clip-creator",
+      "social-media-copywriter"
+    ],
+    "specialized-domains": [
+      "academic-research-synthesizer",
+      "academic-researcher",
+      "agent-expert",
+      "api-documenter",
+      "audio-quality-controller",
+      "comprehensive-researcher",
+      "connection-agent",
+      "data-analyst",
+      "docusaurus-expert",
+      "episode-orchestrator",
+      "game-developer",
+      "legacy-modernizer",
+      "markdown-syntax-formatter",
+      "market-research-analyst",
+      "mcp-deployment-orchestrator",
+      "mcp-expert",
+      "mcp-registry-navigator",
+      "metadata-agent",
+      "moc-agent",
+      "ocr-grammar-fixer",
+      "ocr-quality-assurance",
+      "podcast-content-analyzer",
+      "podcast-metadata-specialist",
+      "podcast-transcriber",
+      "podcast-trend-scout",
+      "project-supervisor-orchestrator",
+      "query-clarifier",
+      "report-generator",
+      "research-brief-generator",
+      "research-coordinator",
+      "research-orchestrator",
+      "research-synthesizer",
+      "seo-podcast-optimizer",
+      "tag-agent",
+      "technical-researcher",
+      "text-comparison-validator",
+      "timestamp-precision-specialist",
+      "twitter-ai-influencer-manager",
+      "url-context-validator",
+      "url-link-extractor",
+      "visual-analysis-ocr"
+    ]
+  },
+  "agents": [
+    {
+      "name": "academic-research-synthesizer",
+      "description": "Synthesize academic research from multiple sources with citations. Conducts literature reviews, technical investigations, and trend analysis combining academic papers with current web information. Use PROACTIVELY for research requiring academic rigor and comprehensive analysis.",
+      "category": "specialized-domains",
+      "file": "academic-research-synthesizer"
+    },
+    {
+      "name": "academic-researcher",
+      "description": "Find and analyze scholarly sources, research papers, and academic literature. Use PROACTIVELY for literature reviews, verifying claims with scientific evidence, or understanding research trends.",
+      "category": "specialized-domains",
+      "file": "academic-researcher"
+    },
+    {
+      "name": "accessibility-specialist",
+      "description": "Ensure web applications meet WCAG 2.1 AA/AAA standards. Implements ARIA attributes, keyboard navigation, and screen reader support. Use PROACTIVELY when building UI components, forms, or reviewing accessibility compliance.",
+      "category": "design-experience",
+      "file": "accessibility-specialist"
+    },
+    {
+      "name": "agent-expert",
+      "description": "Create and optimize specialized Claude Code agents. Expertise in agent design, prompt engineering, domain modeling, and best practices for claude-code-templates system. Use PROACTIVELY when designing new agents or improving existing ones.",
+      "category": "specialized-domains",
+      "file": "agent-expert"
+    },
+    {
+      "name": "ai-engineer",
+      "description": "Build LLM applications, RAG systems, and prompt pipelines. Implements vector search, agent orchestration, and AI API integrations. Use PROACTIVELY for LLM features, chatbots, or AI-powered applications.",
+      "category": "data-ai",
+      "file": "ai-engineer"
+    },
+    {
+      "name": "api-documenter",
+      "description": "Create OpenAPI/Swagger specs, generate SDKs, and write developer documentation. Handles versioning, examples, and interactive docs. Use PROACTIVELY for API documentation or client library generation.",
+      "category": "specialized-domains",
+      "file": "api-documenter"
+    },
+    {
+      "name": "api-security-audit",
+      "description": "Conduct security audits for REST APIs and identify vulnerabilities. Use PROACTIVELY for authentication reviews, authorization checks, or security compliance validation.",
+      "category": "quality-security",
+      "file": "api-security-audit"
+    },
+    {
+      "name": "arbitrage-bot",
+      "description": "Identify and execute cryptocurrency arbitrage opportunities across exchanges and DeFi protocols. Use PROACTIVELY for arbitrage bot development, cross-exchange trading, and DEX/CEX arbitrage.",
+      "category": "crypto-trading",
+      "file": "arbitrage-bot"
+    },
+    {
+      "name": "architect-review",
+      "description": "Reviews code changes for architectural consistency and patterns. Use PROACTIVELY after any structural changes, new services, or API modifications. Ensures SOLID principles, proper layering, and maintainability.",
+      "category": "quality-security",
+      "file": "architect-review"
+    },
+    {
+      "name": "audio-quality-controller",
+      "description": "Analyzes, enhances, and standardizes audio quality for professional-grade content. Normalizes loudness levels, removes background noise, fixes artifacts, and generates detailed quality reports with before/after metrics using industry-standard tools like FFMPEG.",
+      "category": "specialized-domains",
+      "file": "audio-quality-controller"
+    },
+    {
+      "name": "backend-architect",
+      "description": "Design RESTful APIs, microservice boundaries, and database schemas. Reviews system architecture for scalability and performance bottlenecks. Use PROACTIVELY when creating new backend services or APIs.",
+      "category": "development-architecture",
+      "file": "backend-architect"
+    },
+    {
+      "name": "blockchain-developer",
+      "description": "Develop smart contracts, DeFi protocols, and Web3 applications. Expertise in Solidity, security auditing, and gas optimization. Use PROACTIVELY for blockchain development, smart contract security, or Web3 integration.",
+      "category": "blockchain-web3",
+      "file": "blockchain-developer"
+    },
+    {
+      "name": "business-analyst",
+      "description": "Analyze metrics, create reports, and track KPIs. Builds dashboards, revenue models, and growth projections. Use PROACTIVELY for business metrics or investor updates.",
+      "category": "business-finance",
+      "file": "business-analyst"
+    },
+    {
+      "name": "c-developer",
+      "description": "C programming expert for systems programming and embedded development. Use PROACTIVELY for memory management, low-level optimization, or hardware interaction.",
+      "category": "language-specialists",
+      "file": "c-developer"
+    },
+    {
+      "name": "cloud-architect",
+      "description": "Design AWS/Azure/GCP infrastructure, implement Terraform IaC, and optimize cloud costs. Handles auto-scaling, multi-region deployments, and serverless architectures. Use PROACTIVELY for cloud infrastructure, cost optimization, or migration planning.",
+      "category": "infrastructure-operations",
+      "file": "cloud-architect"
+    },
+    {
+      "name": "code-reviewer",
+      "description": "Expert code review specialist. Proactively reviews code for quality, security, and maintainability. Use immediately after writing or modifying code.",
+      "category": "quality-security",
+      "file": "code-reviewer"
+    },
+    {
+      "name": "command-expert",
+      "description": "Create CLI commands for automation and tooling. Use PROACTIVELY when designing command-line interfaces, argument parsing, or task automation.",
+      "category": "quality-security",
+      "file": "command-expert"
+    },
+    {
+      "name": "comprehensive-researcher",
+      "description": "Conduct in-depth research with multiple sources, cross-verification, and structured reports. Breaks down complex topics into research questions, finds authoritative sources, and synthesizes information. Use PROACTIVELY for comprehensive investigations requiring citations and balanced analysis.",
+      "category": "specialized-domains",
+      "file": "comprehensive-researcher"
+    },
+    {
+      "name": "connection-agent",
+      "description": "Analyzes and suggests meaningful links between related content in knowledge management systems. Identifies entity-based connections, keyword overlaps, orphaned notes, and generates actionable link suggestions for manual curation.",
+      "category": "specialized-domains",
+      "file": "connection-agent"
+    },
+    {
+      "name": "content-marketer",
+      "description": "Write blog posts, social media content, and email newsletters. Optimizes for SEO and creates content calendars. Use PROACTIVELY for marketing content or social media posts.",
+      "category": "sales-marketing",
+      "file": "content-marketer"
+    },
+    {
+      "name": "context-manager",
+      "description": "Manages context across multiple agents and long-running tasks. Use PROACTIVELY when coordinating complex multi-agent workflows or when context needs to be preserved across multiple sessions. MUST BE USED for projects exceeding 10k tokens.",
+      "category": "data-ai",
+      "file": "context-manager"
+    },
+    {
+      "name": "cpp-engineer",
+      "description": "Write idiomatic C++ code with modern features, RAII, smart pointers, and STL algorithms. Handles templates, move semantics, and performance optimization. Use PROACTIVELY for C++ refactoring, memory safety, or complex C++ patterns.",
+      "category": "language-specialists",
+      "file": "cpp-engineer"
+    },
+    {
+      "name": "crypto-analyst",
+      "description": "Perform cryptocurrency market analysis, on-chain analytics, and sentiment analysis. Use PROACTIVELY for market research, token analysis, and trading signal generation.",
+      "category": "crypto-trading",
+      "file": "crypto-analyst"
+    },
+    {
+      "name": "crypto-risk-manager",
+      "description": "Implement risk management systems for cryptocurrency trading and DeFi positions. Use PROACTIVELY for portfolio risk assessment, position sizing, and risk monitoring systems.",
+      "category": "crypto-trading",
+      "file": "crypto-risk-manager"
+    },
+    {
+      "name": "crypto-trader",
+      "description": "Build cryptocurrency trading systems, implement trading strategies, and integrate with exchange APIs. Use PROACTIVELY for crypto trading bots, order execution, and portfolio management.",
+      "category": "crypto-trading",
+      "file": "crypto-trader"
+    },
+    {
+      "name": "customer-support",
+      "description": "Handle support tickets, FAQ responses, and customer emails. Creates help docs, troubleshooting guides, and canned responses. Use PROACTIVELY for customer inquiries or support documentation.",
+      "category": "sales-marketing",
+      "file": "customer-support"
+    },
+    {
+      "name": "data-analyst",
+      "description": "Quantitative analysis, statistical insights, and data-driven research. Use PROACTIVELY for trend analysis, performance metrics, benchmarking, or statistical evaluation.",
+      "category": "specialized-domains",
+      "file": "data-analyst"
+    },
+    {
+      "name": "data-engineer",
+      "description": "Build ETL pipelines, data warehouses, and streaming architectures. Implements Spark jobs, Airflow DAGs, and Kafka streams. Use PROACTIVELY for data pipeline design or analytics infrastructure.",
+      "category": "data-ai",
+      "file": "data-engineer"
+    },
+    {
+      "name": "data-scientist",
+      "description": "Data analysis expert for SQL queries, BigQuery operations, and data insights. Use proactively for data analysis tasks and queries.",
+      "category": "data-ai",
+      "file": "data-scientist"
+    },
+    {
+      "name": "database-admin",
+      "description": "Manage database operations, backups, replication, and monitoring. Handles user permissions, maintenance tasks, and disaster recovery. Use PROACTIVELY for database setup, operational issues, or recovery procedures.",
+      "category": "infrastructure-operations",
+      "file": "database-admin"
+    },
+    {
+      "name": "database-optimization",
+      "description": "Database performance specialist focusing on query optimization, indexing strategies, schema design, connection pooling, and database monitoring. Covers SQL optimization, NoSQL tuning, and architecture best practices.",
+      "category": "infrastructure-operations",
+      "file": "database-optimization"
+    },
+    {
+      "name": "database-optimizer",
+      "description": "Optimize SQL queries, design efficient indexes, and handle database migrations. Solves N+1 problems, slow queries, and implements caching. Use PROACTIVELY for database performance issues or schema optimization.",
+      "category": "infrastructure-operations",
+      "file": "database-optimizer"
+    },
+    {
+      "name": "debugger",
+      "description": "Debugging specialist for errors, test failures, and unexpected behavior. Use proactively when encountering any issues, build failures, runtime errors, or unexpected test results.",
+      "category": "quality-security",
+      "file": "debugger"
+    },
+    {
+      "name": "defi-strategist",
+      "description": "Design and implement DeFi yield strategies, liquidity provision, and protocol interactions. Use PROACTIVELY for yield farming, liquidity mining, and DeFi protocol integration.",
+      "category": "crypto-trading",
+      "file": "defi-strategist"
+    },
+    {
+      "name": "deployment-engineer",
+      "description": "Configure CI/CD pipelines, Docker containers, and cloud deployments. Handles GitHub Actions, Kubernetes, and infrastructure automation. Use PROACTIVELY when setting up deployments, containers, or CI/CD workflows.",
+      "category": "infrastructure-operations",
+      "file": "deployment-engineer"
+    },
+    {
+      "name": "devops-troubleshooter",
+      "description": "Debug production issues, analyze logs, and fix deployment failures. Masters monitoring tools, incident response, and root cause analysis. Use PROACTIVELY for production debugging or system outages.",
+      "category": "infrastructure-operations",
+      "file": "devops-troubleshooter"
+    },
+    {
+      "name": "directus-developer",
+      "description": "Build and customize Directus applications with extensions, hooks, and API integrations. Expert in Directus data models, permissions, workflows, and custom extensions. Use PROACTIVELY for Directus development, CMS configuration, or headless architecture.",
+      "category": "development-architecture",
+      "file": "directus-developer"
+    },
+    {
+      "name": "docusaurus-expert",
+      "description": "Configure and troubleshoot Docusaurus documentation sites. Specializes in configuration, theming, content management, sidebar organization, and build issues. Use PROACTIVELY when working with Docusaurus v2/v3 sites, especially in docs_to_claude folder.",
+      "category": "specialized-domains",
+      "file": "docusaurus-expert"
+    },
+    {
+      "name": "drupal-developer",
+      "description": "Build and customize Drupal applications with custom modules, themes, and integrations. Expert in Drupal architecture, content modeling, theming, and performance optimization. Use PROACTIVELY for Drupal development, module creation, or CMS architecture.",
+      "category": "development-architecture",
+      "file": "drupal-developer"
+    },
+    {
+      "name": "dx-optimizer",
+      "description": "Developer Experience specialist. Improves tooling, setup, and workflows. Use PROACTIVELY when setting up new projects, after team feedback, or when development friction is noticed.",
+      "category": "quality-security",
+      "file": "dx-optimizer"
+    },
+    {
+      "name": "episode-orchestrator",
+      "description": "Manages episode-based workflows by coordinating multiple specialized agents in sequence. Detects complete episode details and dispatches to predefined agent sequences or asks for clarification before routing.",
+      "category": "specialized-domains",
+      "file": "episode-orchestrator"
+    },
+    {
+      "name": "error-detective",
+      "description": "Search logs for error patterns and identify root causes. Use PROACTIVELY when debugging issues, analyzing logs, or investigating production errors.",
+      "category": "quality-security",
+      "file": "error-detective"
+    },
+    {
+      "name": "frontend-developer",
+      "description": "Build Next.js applications with React components, shadcn/ui, and Tailwind CSS. Expert in SSR/SSG, app router, and modern frontend patterns. Use PROACTIVELY for Next.js development, UI component creation, or frontend architecture.",
+      "category": "development-architecture",
+      "file": "frontend-developer"
+    },
+    {
+      "name": "game-developer",
+      "description": "Build games with Unity, Unreal Engine, or web technologies. Implements game mechanics, physics, AI, and optimization. Use PROACTIVELY for game development, engine integration, or gameplay programming.",
+      "category": "specialized-domains",
+      "file": "game-developer"
+    },
+    {
+      "name": "golang-expert",
+      "description": "Write idiomatic Go code with goroutines, channels, and interfaces. Optimizes concurrency, implements Go patterns, and ensures proper error handling. Use PROACTIVELY for Go refactoring, concurrency issues, or performance optimization.",
+      "category": "language-specialists",
+      "file": "golang-expert"
+    },
+    {
+      "name": "graphql-architect",
+      "description": "Design GraphQL schemas, resolvers, and federation. Optimizes queries, solves N+1 problems, and implements subscriptions. Use PROACTIVELY for GraphQL API design or performance issues.",
+      "category": "development-architecture",
+      "file": "graphql-architect"
+    },
+    {
+      "name": "hackathon-ai-strategist",
+      "description": "Expert guidance on hackathon strategy, AI solution ideation, and project evaluation. Provides judge-perspective feedback, brainstorms winning AI concepts, and assesses project feasibility for tight timeframes.",
+      "category": "data-ai",
+      "file": "hackathon-ai-strategist"
+    },
+    {
+      "name": "hyperledger-fabric-developer",
+      "description": "Develop enterprise blockchain solutions with Hyperledger Fabric v2.5 LTS and v3.x. Expertise in chaincode development, network architecture, BFT consensus, and permissioned blockchain design. Use PROACTIVELY for enterprise blockchain, supply chain solutions, or private network implementations.",
+      "category": "blockchain-web3",
+      "file": "hyperledger-fabric-developer"
+    },
+    {
+      "name": "incident-responder",
+      "description": "Handles production incidents with urgency and precision. Use IMMEDIATELY when production issues occur. Coordinates debugging, implements fixes, and documents post-mortems.",
+      "category": "quality-security",
+      "file": "incident-responder"
+    },
+    {
+      "name": "ios-developer",
+      "description": "Develop native iOS applications with Swift/SwiftUI. Masters UIKit/SwiftUI, Core Data, networking, and app lifecycle. Use PROACTIVELY for iOS-specific features, App Store optimization, or native iOS development.",
+      "category": "development-architecture",
+      "file": "ios-developer"
+    },
+    {
+      "name": "java-developer",
+      "description": "Master modern Java with streams, concurrency, and JVM optimization. Handles Spring Boot, reactive programming, and enterprise patterns. Use PROACTIVELY for Java performance tuning, concurrent programming, or complex enterprise solutions.",
+      "category": "language-specialists",
+      "file": "java-developer"
+    },
+    {
+      "name": "javascript-developer",
+      "description": "JavaScript expert for modern ES6+, async patterns, and Node.js. Use PROACTIVELY for React, TypeScript, performance optimization, or complex async flows.",
+      "category": "language-specialists",
+      "file": "javascript-developer"
+    },
+    {
+      "name": "laravel-vue-developer",
+      "description": "Build full-stack Laravel applications with Vue3 frontend. Expert in Laravel APIs, Vue3 composition API, Pinia state management, and modern full-stack patterns. Use PROACTIVELY for Laravel backend development, Vue3 frontend components, API integration, or full-stack architecture.",
+      "category": "development-architecture",
+      "file": "laravel-vue-developer"
+    },
+    {
+      "name": "legacy-modernizer",
+      "description": "Refactor legacy codebases, migrate outdated frameworks, and implement gradual modernization. Handles technical debt, dependency updates, and backward compatibility. Use PROACTIVELY for legacy system updates, framework migrations, or technical debt reduction.",
+      "category": "specialized-domains",
+      "file": "legacy-modernizer"
+    },
+    {
+      "name": "legal-advisor",
+      "description": "Draft privacy policies, terms of service, disclaimers, and legal notices. Creates GDPR-compliant texts, cookie policies, and data processing agreements. Use PROACTIVELY for legal documentation, compliance texts, or regulatory requirements.",
+      "category": "business-finance",
+      "file": "legal-advisor"
+    },
+    {
+      "name": "llms-maintainer",
+      "description": "Generates and maintains llms.txt roadmap files for AI crawler navigation. Updates when build processes complete, content changes, or site structure modifications occur.",
+      "category": "data-ai",
+      "file": "llms-maintainer"
+    },
+    {
+      "name": "markdown-syntax-formatter",
+      "description": "Converts text with visual formatting into proper markdown syntax, fixes markdown formatting issues, and ensures consistent document structure. Handles lists, headings, code blocks, and emphasis markers.",
+      "category": "specialized-domains",
+      "file": "markdown-syntax-formatter"
+    },
+    {
+      "name": "market-research-analyst",
+      "description": "Conducts comprehensive market research and competitive analysis for business strategy and investment decisions. Analyzes industry trends, identifies key players, gathers pricing intelligence, and evaluates market opportunities with collaborative research workflows.",
+      "category": "specialized-domains",
+      "file": "market-research-analyst"
+    },
+    {
+      "name": "mcp-deployment-orchestrator",
+      "description": "Deploys MCP servers to production with containerization, Kubernetes deployments, autoscaling, monitoring, and high-availability operations. Handles Docker images, Helm charts, service mesh setup, security hardening, and performance optimization.",
+      "category": "specialized-domains",
+      "file": "mcp-deployment-orchestrator"
+    },
+    {
+      "name": "mcp-expert",
+      "description": "Create Model Context Protocol integrations and server configurations. Use PROACTIVELY when building MCP servers, configuring integrations, or designing protocol implementations.",
+      "category": "specialized-domains",
+      "file": "mcp-expert"
+    },
+    {
+      "name": "mcp-registry-navigator",
+      "description": "You are an MCP Registry Navigator specializing in discovering, evaluating, and integrating MCP servers from various registries. Use when searching for servers with specific capabilities, assessing trustworthiness, generating configurations, or publishing to registries.",
+      "category": "specialized-domains",
+      "file": "mcp-registry-navigator"
+    },
+    {
+      "name": "mcp-security-auditor",
+      "description": "You are an MCP Security Auditor specializing in reviewing MCP server implementations for vulnerabilities, designing authentication systems, and ensuring compliance. Use when implementing OAuth 2.1, designing RBAC, conducting security reviews, or auditing MCP servers.",
+      "category": "quality-security",
+      "file": "mcp-security-auditor"
+    },
+    {
+      "name": "mcp-server-architect",
+      "description": "Designs and implements MCP servers with transport layers, tool/resource/prompt definitions, completion support, session management, and protocol compliance. Creates servers from scratch or enhances existing ones following MCP specification best practices.",
+      "category": "quality-security",
+      "file": "mcp-server-architect"
+    },
+    {
+      "name": "mcp-testing-engineer",
+      "description": "Tests, debugs, and ensures quality for MCP servers including JSON schema validation, protocol compliance, security vulnerability assessment, load testing, and comprehensive debugging. Provides automated testing strategies and detailed quality reports.",
+      "category": "quality-security",
+      "file": "mcp-testing-engineer"
+    },
+    {
+      "name": "metadata-agent",
+      "description": "Handles frontmatter standardization and metadata addition across vault files. Ensures consistent metadata structure, generates tags, and maintains creation/modification dates.",
+      "category": "specialized-domains",
+      "file": "metadata-agent"
+    },
+    {
+      "name": "ml-engineer",
+      "description": "Implement ML pipelines, model serving, and feature engineering. Handles TensorFlow/PyTorch deployment, A/B testing, and monitoring. Use PROACTIVELY for ML model integration or production deployment.",
+      "category": "data-ai",
+      "file": "ml-engineer"
+    },
+    {
+      "name": "mlops-engineer",
+      "description": "Build ML pipelines, experiment tracking, and model registries. Implements MLflow, Kubeflow, and automated retraining. Handles data versioning and reproducibility. Use PROACTIVELY for ML infrastructure, experiment management, or pipeline automation.",
+      "category": "data-ai",
+      "file": "mlops-engineer"
+    },
+    {
+      "name": "mobile-developer",
+      "description": "Develop React Native or Flutter apps with native integrations. Handles offline sync, push notifications, and app store deployments. Use PROACTIVELY for mobile features, cross-platform code, or app optimization.",
+      "category": "development-architecture",
+      "file": "mobile-developer"
+    },
+    {
+      "name": "moc-agent",
+      "description": "Identifies and generates missing Maps of Content (MOCs) and organizes orphaned assets. Creates navigation hubs for vault content and maintains MOC networks with proper linking structure.",
+      "category": "specialized-domains",
+      "file": "moc-agent"
+    },
+    {
+      "name": "network-engineer",
+      "description": "Debug network connectivity, configure load balancers, and analyze traffic patterns. Handles DNS, SSL/TLS, CDN setup, and network security. Use PROACTIVELY for connectivity issues, network optimization, or protocol debugging.",
+      "category": "infrastructure-operations",
+      "file": "network-engineer"
+    },
+    {
+      "name": "nextjs-app-router-developer",
+      "description": "Build modern Next.js applications using App Router with Server Components, Server Actions, PPR, and advanced caching strategies. Expert in Next.js 14+ features including streaming, suspense boundaries, and parallel routes. Use PROACTIVELY for Next.js App Router development, performance optimization, or migrating from Pages Router.",
+      "category": "development-architecture",
+      "file": "nextjs-app-router-developer"
+    },
+    {
+      "name": "ocr-grammar-fixer",
+      "description": "You are an OCR Grammar Fixer specializing in cleaning up text processed through OCR that contains recognition errors, spacing issues, or grammatical problems. Use when correcting OCR-processed marketing copy, business documents, or scanned text with typical recognition artifacts.",
+      "category": "specialized-domains",
+      "file": "ocr-grammar-fixer"
+    },
+    {
+      "name": "ocr-quality-assurance",
+      "description": "You are an OCR Quality Assurance specialist performing final review and validation of OCR-corrected text against original image sources. Use as the final step in OCR pipelines after visual analysis, text comparison, grammar fixes, and markdown formatting.",
+      "category": "specialized-domains",
+      "file": "ocr-quality-assurance"
+    },
+    {
+      "name": "payment-integration",
+      "description": "Integrate Stripe, PayPal, and payment processors. Handles checkout flows, subscriptions, webhooks, and PCI compliance. Use PROACTIVELY when implementing payments, billing, or subscription features.",
+      "category": "business-finance",
+      "file": "payment-integration"
+    },
+    {
+      "name": "performance-engineer",
+      "description": "Profile applications, optimize bottlenecks, and implement caching strategies. Handles load testing, CDN setup, and query optimization. Use PROACTIVELY for performance issues or optimization tasks.",
+      "category": "quality-security",
+      "file": "performance-engineer"
+    },
+    {
+      "name": "php-developer",
+      "description": "Write idiomatic PHP code with design patterns, SOLID principles, and modern best practices. Implements PSR standards, dependency injection, and comprehensive testing. Use PROACTIVELY for PHP architecture, refactoring, or implementing design patterns.",
+      "category": "language-specialists",
+      "file": "php-developer"
+    },
+    {
+      "name": "podcast-content-analyzer",
+      "description": "Analyze podcast transcripts to identify engaging segments and viral moments. Use PROACTIVELY for content optimization, chapter creation, or social media clip selection.",
+      "category": "specialized-domains",
+      "file": "podcast-content-analyzer"
+    },
+    {
+      "name": "podcast-metadata-specialist",
+      "description": "You are a Podcast Metadata Specialist generating comprehensive metadata, show notes, chapter markers, and platform-specific descriptions for podcast episodes. Use when creating SEO-optimized titles, timestamps, social media posts, and formatted descriptions for podcast platforms.",
+      "category": "specialized-domains",
+      "file": "podcast-metadata-specialist"
+    },
+    {
+      "name": "podcast-transcriber",
+      "description": "You are a Podcast Transcriber specializing in extracting accurate transcripts from audio/video files with timestamp precision. Use when converting media files for transcription, generating timestamped segments, identifying speakers, and producing structured transcript data.",
+      "category": "specialized-domains",
+      "file": "podcast-transcriber"
+    },
+    {
+      "name": "podcast-trend-scout",
+      "description": "You are a Podcast Trend Scout identifying emerging tech topics and news for podcast episodes. Use when planning content for tech podcasts, researching current trends, finding breaking developments, or suggesting timely topics aligned with tech focus areas.",
+      "category": "specialized-domains",
+      "file": "podcast-trend-scout"
+    },
+    {
+      "name": "project-supervisor-orchestrator",
+      "description": "You are a Project Supervisor Orchestrator managing complex multi-step workflows that coordinate multiple specialized agents in sequence. Use when orchestrating agent pipelines, detecting incomplete information, or managing sophisticated multi-agent processes.",
+      "category": "specialized-domains",
+      "file": "project-supervisor-orchestrator"
+    },
+    {
+      "name": "prompt-engineer",
+      "description": "Optimizes prompts for LLMs and AI systems. Use when building AI features, improving agent performance, or crafting system prompts. Expert in prompt patterns and techniques.",
+      "category": "data-ai",
+      "file": "prompt-engineer"
+    },
+    {
+      "name": "python-expert",
+      "description": "Write idiomatic Python code with advanced features like decorators, generators, and async/await. Optimizes performance, implements design patterns, and ensures comprehensive testing. Use PROACTIVELY for Python refactoring, optimization, or complex Python features.",
+      "category": "language-specialists",
+      "file": "python-expert"
+    },
+    {
+      "name": "quant-analyst",
+      "description": "Build financial models, backtest trading strategies, and analyze market data. Implements risk metrics, portfolio optimization, and statistical arbitrage. Use PROACTIVELY for quantitative finance, trading algorithms, or risk analysis.",
+      "category": "business-finance",
+      "file": "quant-analyst"
+    },
+    {
+      "name": "query-clarifier",
+      "description": "Analyze research queries for clarity and determine if clarification is needed. Use PROACTIVELY at the beginning of research workflows to ensure queries are specific and actionable.",
+      "category": "specialized-domains",
+      "file": "query-clarifier"
+    },
+    {
+      "name": "rails-expert",
+      "description": "Build scalable Rails applications with modern patterns and best practices. Implements service objects, background jobs, and API design. Use PROACTIVELY for Rails development, performance optimization, or architectural decisions.",
+      "category": "language-specialists",
+      "file": "rails-expert"
+    },
+    {
+      "name": "react-performance-optimization",
+      "description": "You are a React Performance Optimization specialist focusing on identifying, analyzing, and resolving performance bottlenecks in React applications. Your expertise covers rendering optimization, bundle analysis, memory management, and Core Web Vitals improvements.",
+      "category": "development-architecture",
+      "file": "react-performance-optimization"
+    },
+    {
+      "name": "report-generator",
+      "description": "You are the Report Generator, a specialized expert in transforming synthesized research findings into comprehensive, well-structured final reports. Your expertise lies in creating clear narratives from complex data while maintaining academic rigor and proper citation standards.",
+      "category": "specialized-domains",
+      "file": "report-generator"
+    },
+    {
+      "name": "research-brief-generator",
+      "description": "Transforms user research queries into structured, actionable research briefs with specific questions, keywords, source preferences, and success criteria. Creates comprehensive research plans that guide subsequent research activities.",
+      "category": "specialized-domains",
+      "file": "research-brief-generator"
+    },
+    {
+      "name": "research-coordinator",
+      "description": "Strategically plan and coordinate complex research tasks across multiple specialists. Use PROACTIVELY for multi-faceted research projects requiring diverse expertise.",
+      "category": "specialized-domains",
+      "file": "research-coordinator"
+    },
+    {
+      "name": "research-orchestrator",
+      "description": "You are the Research Orchestrator, an elite coordinator responsible for managing comprehensive research projects using the Open Deep Research methodology. You excel at breaking down complex research queries into manageable phases and coordinating specialized agents to deliver thorough, high-quality research outputs.",
+      "category": "specialized-domains",
+      "file": "research-orchestrator"
+    },
+    {
+      "name": "research-synthesizer",
+      "description": "Consolidate and synthesize findings from multiple research sources into unified analysis. Use when merging diverse perspectives, identifying patterns, and creating structured insights from complex research.",
+      "category": "specialized-domains",
+      "file": "research-synthesizer"
+    },
+    {
+      "name": "review-agent",
+      "description": "You are a specialized quality assurance agent for knowledge management systems. Your primary responsibility is to review and validate work performed by other enhancement agents, ensuring consistency and quality across the vault through systematic validation and cross-checking.",
+      "category": "quality-security",
+      "file": "review-agent"
+    },
+    {
+      "name": "risk-manager",
+      "description": "You are a risk manager specializing in portfolio protection and risk measurement. Monitor portfolio risk, R-multiples, and position limits. Creates hedging strategies, calculates expectancy, and implements stop-losses for comprehensive risk assessment and trade tracking.",
+      "category": "sales-marketing",
+      "file": "risk-manager"
+    },
+    {
+      "name": "ruby-expert",
+      "description": "Write idiomatic Ruby code following best practices and design patterns. Implements SOLID principles, service objects, and comprehensive testing. Use PROACTIVELY for Ruby refactoring, performance optimization, or complex Ruby features.",
+      "category": "language-specialists",
+      "file": "ruby-expert"
+    },
+    {
+      "name": "rust-expert",
+      "description": "Write idiomatic Rust code with ownership, lifetimes, and type safety. Implements concurrent systems, async programming, and memory-safe abstractions. Use PROACTIVELY for Rust development, systems programming, or performance-critical code.",
+      "category": "language-specialists",
+      "file": "rust-expert"
+    },
+    {
+      "name": "sales-automator",
+      "description": "Draft cold emails, follow-ups, and proposal templates. Creates pricing pages, case studies, and sales scripts. Use PROACTIVELY for sales outreach or lead nurturing.",
+      "category": "sales-marketing",
+      "file": "sales-automator"
+    },
+    {
+      "name": "search-specialist",
+      "description": "You are a search specialist expert at finding and synthesizing information from the web. Masters advanced search techniques, result filtering, multi-source verification, competitive analysis, and fact-checking using sophisticated query optimization strategies.",
+      "category": "data-ai",
+      "file": "search-specialist"
+    },
+    {
+      "name": "security-auditor",
+      "description": "Review code for vulnerabilities, implement secure authentication, and ensure OWASP compliance. Handles JWT, OAuth2, CORS, CSP, and encryption. Use PROACTIVELY for security reviews, auth flows, or vulnerability fixes.",
+      "category": "quality-security",
+      "file": "security-auditor"
+    },
+    {
+      "name": "seo-podcast-optimizer",
+      "description": "You are an SEO consultant specializing in tech podcasts. Your expertise lies in crafting search-optimized content that balances keyword effectiveness with engaging, click-worthy copy that accurately represents podcast content for maximum search visibility.",
+      "category": "specialized-domains",
+      "file": "seo-podcast-optimizer"
+    },
+    {
+      "name": "social-media-clip-creator",
+      "description": "Creates optimized video clips for social media platforms from longer content. Handles platform-specific aspect ratios, durations, encoding settings for TikTok, Instagram, YouTube Shorts, Twitter, and LinkedIn using FFMPEG processing and optimization.",
+      "category": "sales-marketing",
+      "file": "social-media-clip-creator"
+    },
+    {
+      "name": "social-media-copywriter",
+      "description": "You are an expert social media copywriter specializing in podcast promotion. Your role is to transform episode information into compelling social media content that drives engagement and listenership across Twitter/X, LinkedIn, and Instagram platforms.",
+      "category": "sales-marketing",
+      "file": "social-media-copywriter"
+    },
+    {
+      "name": "sql-expert",
+      "description": "Write complex SQL queries and optimize database performance. Use PROACTIVELY for query optimization, schema design, or complex data transformations.",
+      "category": "language-specialists",
+      "file": "sql-expert"
+    },
+    {
+      "name": "tag-agent",
+      "description": "Normalizes and hierarchically organizes tag taxonomy for knowledge management systems. Maintains clean, consistent tag structures and consolidates duplicates.",
+      "category": "specialized-domains",
+      "file": "tag-agent"
+    },
+    {
+      "name": "task-decomposition-expert",
+      "description": "Break down complex user goals into actionable tasks and identify optimal combinations of tools, agents, and workflows for system integration.",
+      "category": "data-ai",
+      "file": "task-decomposition-expert"
+    },
+    {
+      "name": "technical-researcher",
+      "description": "Analyze code repositories, technical documentation, and implementation details. Use PROACTIVELY for evaluating technical solutions, reviewing APIs, or assessing code quality.",
+      "category": "specialized-domains",
+      "file": "technical-researcher"
+    },
+    {
+      "name": "terraform-specialist",
+      "description": "Write Terraform modules and manage infrastructure as code. Use PROACTIVELY for infrastructure automation, state management, or multi-environment deployments.",
+      "category": "infrastructure-operations",
+      "file": "terraform-specialist"
+    },
+    {
+      "name": "test-automator",
+      "description": "Create comprehensive test suites with unit, integration, and e2e tests. Sets up CI pipelines, mocking strategies, and test data. Use PROACTIVELY for test coverage improvement or test automation setup.",
+      "category": "quality-security",
+      "file": "test-automator"
+    },
+    {
+      "name": "text-comparison-validator",
+      "description": "Compare extracted text from images with existing markdown files to ensure accuracy and consistency. Detects discrepancies, errors, and formatting inconsistencies.",
+      "category": "specialized-domains",
+      "file": "text-comparison-validator"
+    },
+    {
+      "name": "timestamp-precision-specialist",
+      "description": "Extract frame-accurate timestamps from audio/video files for podcast editing. Identifies precise cut points, detects speech boundaries, and ensures clean transitions.",
+      "category": "specialized-domains",
+      "file": "timestamp-precision-specialist"
+    },
+    {
+      "name": "twitter-ai-influencer-manager",
+      "description": "Interact with Twitter around AI thought leaders and influencers. Post tweets, search content, analyze influencer tweets, schedule posts, and engage with AI community.",
+      "category": "specialized-domains",
+      "file": "twitter-ai-influencer-manager"
+    },
+    {
+      "name": "typescript-expert",
+      "description": "Write type-safe TypeScript with advanced type system features, generics, and utility types. Implements complex type inference, discriminated unions, and conditional types. Use PROACTIVELY for TypeScript development, type system design, or migrating JavaScript to TypeScript.",
+      "category": "language-specialists",
+      "file": "typescript-expert"
+    },
+    {
+      "name": "ui-ux-designer",
+      "description": "Design user interfaces and experiences with modern design principles, accessibility standards, and design systems. Expert in user research, wireframing, prototyping, and design implementation. Use PROACTIVELY for UI/UX design, design systems, or user experience optimization.",
+      "category": "design-experience",
+      "file": "ui-ux-designer"
+    },
+    {
+      "name": "url-context-validator",
+      "description": "Validate URLs for both technical functionality and contextual appropriateness. Goes beyond link checking to analyze content relevance and alignment.",
+      "category": "specialized-domains",
+      "file": "url-context-validator"
+    },
+    {
+      "name": "url-link-extractor",
+      "description": "Find, extract, and catalog all URLs and links within website codebases. Includes internal links, external links, API endpoints, and asset references.",
+      "category": "specialized-domains",
+      "file": "url-link-extractor"
+    },
+    {
+      "name": "visual-analysis-ocr",
+      "description": "Extract and analyze text content from PNG images while preserving original formatting and structure. Converts visual hierarchy into markdown format.",
+      "category": "specialized-domains",
+      "file": "visual-analysis-ocr"
+    },
+    {
+      "name": "wordpress-developer",
+      "description": "Build professional WordPress solutions with custom themes, plugins, and advanced functionality. Expert in WordPress architecture, custom post types, block development, performance optimization, and security. Use PROACTIVELY for WordPress development, custom plugin creation, or WP architecture.",
+      "category": "development-architecture",
+      "file": "wordpress-developer"
+    }
+  ]
+}

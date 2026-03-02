@@ -1,0 +1,279 @@
+# ==============================================================================
+# GitHub Actions 自动部署工作流
+# ==============================================================================
+# 使用说明:
+# 1. 将此文件复制到项目根目录的 .github/workflows/deploy.yml
+# 2. 在 GitHub 仓库设置中配置 Secrets (Settings → Secrets and variables → Actions)
+# 3. 推送代码到 main 分支即可自动触发部署
+# ==============================================================================
+
+name: 🚀 Auto Deploy
+
+# 触发条件
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:  # 允许手动触发
+
+# 环境变量
+env:
+  PYTHON_VERSION: "3.10"
+  NODE_VERSION: "18"
+
+jobs:
+  # ==============================================================================
+  # 部署到服务器
+  # ==============================================================================
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+
+    # 并发控制: 同一分支的多次推送只执行最后一次
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      # ------------------------------------------------
+      # 步骤 1: 检查代码
+      # ------------------------------------------------
+      - name: 🔍 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 获取完整历史记录
+
+      # ------------------------------------------------
+      # 步骤 2: 显示部署信息
+      # ------------------------------------------------
+      - name: 📋 Display deployment info
+        run: |
+          echo "🚀 Deploying to production server..."
+          echo "📦 Repository: ${{ github.repository }}"
+          echo "🔀 Branch: ${{ github.ref_name }}"
+          echo "👤 Author: ${{ github.actor }}"
+          echo "📝 Commit: ${{ github.sha }}"
+          echo "🔗 URL: https://${{ secrets.DOMAIN }}"
+
+      # ------------------------------------------------
+      # 步骤 3: 部署到服务器
+      # ------------------------------------------------
+      - name: 🚀 Deploy to server via SSH
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          password: ${{ secrets.SERVER_PASSWORD }}  # 备用: 如果没有配置密钥
+          script_stop: true  # 遇到错误停止执行
+          debug: false  # 设置为 true 启用调试模式
+
+          # 部署脚本
+          script: |
+            # 设置变量
+            PROJECT_NAME="${{ secrets.PROJECT_NAME || 'my-project' }}"
+            PROJECT_ROOT="/www/wwwroot/$PROJECT_NAME"
+            DOMAIN="${{ secrets.DOMAIN }}"
+            DB_NAME="${{ secrets.DB_NAME }}"
+            DB_USER="${{ secrets.DB_USER }}"
+            DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+
+            echo "📍 Project root: $PROJECT_ROOT"
+            echo "🌐 Domain: $DOMAIN"
+
+            # 进入项目目录
+            cd $PROJECT_ROOT || exit 1
+
+            # ============================================================
+            # 更新代码
+            # ============================================================
+            echo "📥 Pulling latest code..."
+            git pull origin main
+
+            # ============================================================
+            # 更新后端
+            # ============================================================
+            echo "🐍 Updating backend..."
+            cd backend/Project/ShengBeiDjango || exit 1
+
+            # 激活虚拟环境
+            if [ -d "venv" ]; then
+              source venv/bin/activate
+            else
+              echo "❌ Virtual environment not found!"
+              exit 1
+            fi
+
+            # 安装依赖
+            echo "📦 Installing Python dependencies..."
+            pip install --upgrade pip
+              pip install -r requirements.txt
+
+            # 数据库迁移
+            echo "🗄️ Running database migrations..."
+            python manage.py migrate --noinput
+
+            # 收集静态文件
+            echo "📁 Collecting static files..."
+            python manage.py collectstatic --noinput
+
+            # ============================================================
+            # 更新前端
+            # ============================================================
+            echo "🎨 Updating frontend..."
+            cd $PROJECT_ROOT/frontend/Project/ShengBeiVue || exit 1
+
+            # 安装依赖
+            echo "📦 Installing Node.js dependencies..."
+            npm install
+
+            # 构建前端
+            echo "🔨 Building frontend..."
+              npm run build
+
+            # ============================================================
+            # 重启服务
+            # ============================================================
+            echo "🔄 Restarting services..."
+            sudo supervisorctl restart ${PROJECT_NAME}:django || echo "⚠️ Django service restart failed"
+            sudo nginx -s reload || echo "⚠️ Nginx reload failed"
+
+            echo "✅ Deployment completed successfully!"
+            echo "🌐 Website: https://$DOMAIN"
+
+      # ------------------------------------------------
+      # 步骤 4: 验证部署
+      # ------------------------------------------------
+      - name: 🔍 Verify deployment
+        run: |
+          echo "⏳ Waiting for services to start..."
+          sleep 10
+
+          # 检查网站是否可访问
+          DOMAIN="${{ secrets.DOMAIN }}"
+          if [ -n "$DOMAIN" ]; then
+            echo "🌐 Checking website: https://$DOMAIN"
+            curl -f -s -o /dev/null -w "HTTP Status: %{http_code}\n" https://$DOMAIN || echo "⚠️ Website check failed"
+          fi
+
+      # ------------------------------------------------
+      # 步骤 5: 发送通知 (可选)
+      # ------------------------------------------------
+      - name: 📧 Send notification
+        if: always()
+        run: |
+          STATUS="${{ job.status }}"
+          if [ "$STATUS" = "success" ]; then
+            echo "✅ Deployment successful!"
+          else
+            echo "❌ Deployment failed!"
+          fi
+          # 可以在这里添加 Slack/Email/企业微信等通知
+
+  # ==============================================================================
+  # 备份数据 (可选)
+  # ==============================================================================
+  backup:
+    name: 📦 Backup Database
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: 🗄️ Backup database
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            PROJECT_NAME="${{ secrets.PROJECT_NAME || 'my-project' }}"
+            DB_NAME="${{ secrets.DB_NAME }}"
+            DB_USER="${{ secrets.DB_USER }}"
+            DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+            BACKUP_DIR="/www/wwwroot/$PROJECT_NAME/backups/db"
+
+            # 创建备份目录
+            mkdir -p $BACKUP_DIR
+
+            # 备份数据库
+            BACKUP_FILE="$BACKUP_DIR/db_backup_$(date +%Y%m%d_%H%M%S).sql"
+            mysqldump -u $DB_USER -p$DB_PASSWORD $DB_NAME > $BACKUP_FILE
+
+            # 删除 7 天前的备份
+            find $BACKUP_DIR -name "db_backup_*.sql" -mtime +7 -delete
+
+            echo "✅ Backup completed: $BACKUP_FILE"
+
+  # ==============================================================================
+  # 健康检查 (可选)
+  # ==============================================================================
+  health-check:
+    name: 🏥 Health Check
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+
+    steps:
+      - name: 🔍 Check service health
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            PROJECT_NAME="${{ secrets.PROJECT_NAME || 'my-project' }}"
+
+            echo "🔍 Checking services status..."
+            sudo supervisorctl status $PROJECT_NAME:*
+            sudo systemctl status nginx --no-pager
+
+            echo ""
+            echo "📊 Disk usage:"
+            df -h | grep -E "Filesystem|/dev/"
+
+            echo ""
+            echo "💾 Memory usage:"
+            free -h
+
+# ==============================================================================
+# 工作流配置说明
+# ==============================================================================
+#
+# 必需的 GitHub Secrets:
+# ---------------------
+# SERVER_HOST         - 服务器 IP 地址
+# SERVER_PORT         - SSH 端口 (可选，默认 22)
+# SERVER_USER         - SSH 用户名
+# SERVER_SSH_KEY      - SSH 私钥 (推荐) 或 SERVER_PASSWORD
+# PROJECT_NAME        - 项目名称 (可选，默认 my-project)
+# DOMAIN              - 域名
+# DB_NAME             - 数据库名称
+# DB_USER             - 数据库用户
+# DB_PASSWORD         - 数据库密码
+#
+# 可选的 GitHub Secrets:
+# ---------------------
+# DJANGO_SECRET_KEY   - Django 密钥 (如果需要在服务器上生成可省略)
+#
+# 触发方式:
+# ---------------------
+# 1. 自动: 推送代码到 main 或 master 分支
+# 2. 手动: 在 GitHub Actions 页面点击 "Run workflow"
+# 3. PR: 创建或更新 Pull Request
+#
+# 故障排查:
+# ---------------------
+# 1. 查看运行日志: 仓库 → Actions → 选择运行记录
+# 2. 启用调试模式: 将步骤 3 的 debug 设置为 true
+# 3. 本地测试 SSH: ssh -i ~/.ssh/id_ed255 user@server
+#
+# ==============================================================================

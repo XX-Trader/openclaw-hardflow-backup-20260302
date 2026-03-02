@@ -1,0 +1,483 @@
+{
+  "timestamp": "2026-02-28T16:29:45.862243",
+  "count": 68,
+  "zh_ok_count": 68,
+  "rows": [
+    {
+      "name": "agent-combos",
+      "has_frontmatter": true,
+      "description": "预定义的专业 Subagent 组合，一键调用多个专家并行工作",
+      "description_zh": "agent-combos技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "agent-manager",
+      "has_frontmatter": true,
+      "description": "agent-manager 技能",
+      "description_zh": "agent-manager技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "artifacts-builder",
+      "has_frontmatter": true,
+      "description": "artifacts-builder 技能",
+      "description_zh": "artifacts-builder技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "auto-fix",
+      "has_frontmatter": true,
+      "description": "全自动测试-修复循环系统。自动运行测试、分析问题、修复代码、验证修复、Git 提交，直到所有测试通过。适用于 Django + Vue 全栈项目。",
+      "description_zh": "auto-fix技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "baoyu-format-markdown",
+      "has_frontmatter": true,
+      "description": "Formats plain text or markdown files with frontmatter, titles, summaries, headings, bold, lists, and code blocks. Use when user asks to \"format markdown\", \"beautify article\", \"add formatting\", or improve article layout. Outputs to {filename}-formatted.md.",
+      "description_zh": "baoyu-format-markdown技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "baoyu-infographic",
+      "has_frontmatter": true,
+      "description": "Generates professional infographics with 20 layout types and 17 visual styles. Analyzes content, recommends layout×style combinations, and generates publication-ready infographics. Use when user asks to create \"infographic\", \"信息图\", \"visual summary\", or \"可视化\".",
+      "description_zh": "baoyu-infographic技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "brainstorming",
+      "has_frontmatter": true,
+      "description": "You MUST use this before any creative work - creating features, building components, adding functionality, or modifying behavior. Explores user intent, requirements and design before implementation.",
+      "description_zh": "brainstorming技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "browser-mcp-guide",
+      "has_frontmatter": true,
+      "description": "Chrome MCP 浏览器自动化工具使用指南",
+      "description_zh": "browser-mcp-guide技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "canvas-design",
+      "has_frontmatter": true,
+      "description": "canvas-design 技能",
+      "description_zh": "canvas-design技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "changelog-generator",
+      "has_frontmatter": true,
+      "description": "Automatically creates user-facing changelogs from git commits by analyzing commit history, categorizing changes, and transforming technical commits into clear, customer-friendly release notes. Turns hours of manual changelog writing into minutes of automated generation.",
+      "description_zh": "changelog-generator技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "codeagent",
+      "has_frontmatter": true,
+      "description": "codeagent 技能",
+      "description_zh": "codeagent技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "codex",
+      "has_frontmatter": true,
+      "description": "codex 技能",
+      "description_zh": "codex技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "content-research-writer",
+      "has_frontmatter": true,
+      "description": "content-research-writer 技能",
+      "description_zh": "content-research-writer技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "cron-mastery",
+      "has_frontmatter": true,
+      "description": "Master OpenClaw's timing systems. Use for scheduling reliable reminders, setting up periodic maintenance (janitor jobs), and understanding when to use Cron vs Heartbeat for time-sensitive tasks.",
+      "description_zh": "cron-mastery技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "db-deploy",
+      "has_frontmatter": true,
+      "description": "全栈项目自动部署技能。支持 Django 后端、Vue3 前端、MySQL 数据库、Redis 缓存、Nginx 反向代理和 Python 脚本的完整部署流程。当用户请求部署、更新、或维护 Web 项目时使用此技能。支持多仓库配置、GitHub Actions 自动部署、SSL 证书自动配置。",
+      "description_zh": "db-deploy技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "deployment-test",
+      "has_frontmatter": true,
+      "description": "全栈项目部署后自动化测试技能。支持交互式快速测试、端口检测、API 接口测试、浏览器 UI 自动化测试、测试报告生成。适用于 Django + Vue 全栈项目部署后的验收测试。",
+      "description_zh": "deployment-test技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "developer-growth-analysis",
+      "has_frontmatter": true,
+      "description": "developer-growth-analysis 技能",
+      "description_zh": "developer-growth-analysis技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "dispatching-parallel-agents",
+      "has_frontmatter": true,
+      "description": "Use when facing 2+ independent tasks that can be worked on without shared state or sequential dependencies",
+      "description_zh": "dispatching-parallel-agents技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "doc",
+      "has_frontmatter": true,
+      "description": "Use when the task involves reading, creating, or editing `.docx` documents, especially when formatting or layout fidelity matters; prefer `python-docx` plus the bundled `scripts/render_docx.py` for visual checks.",
+      "description_zh": "doc技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "doc-coauthoring",
+      "has_frontmatter": true,
+      "description": "doc-coauthoring 技能",
+      "description_zh": "doc-coauthoring技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "docx",
+      "has_frontmatter": true,
+      "description": "Comprehensive document creation, editing, and analysis with support for tracked changes, comments, formatting preservation, and text extraction. When Claude needs to work with professional documents (.docx files) for: (1) Creating new documents, (2) Modifying or editing content, (3) Working with tracked changes, (4) Adding comments, or any other document tasks",
+      "description_zh": "docx技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "executing-plans",
+      "has_frontmatter": true,
+      "description": "Use when you have a written implementation plan to execute in a separate session with review checkpoints",
+      "description_zh": "executing-plans技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "feature-development",
+      "has_frontmatter": true,
+      "description": "Django + Vue 全栈功能开发标准化流程。支持需求分析、技术方案设计、API设计、数据库设计、UI原型设计的完整开发流程。根据功能复杂度自动选择开发流程：简单功能（直接实施）、中等功能（2个表及以上/前后端联动）、复杂功能（技术可行性评估）。",
+      "description_zh": "feature-development技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "file-organizer",
+      "has_frontmatter": true,
+      "description": "file-organizer 技能",
+      "description_zh": "file-organizer技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "finishing-a-development-branch",
+      "has_frontmatter": true,
+      "description": "Use when implementation is complete, all tests pass, and you need to decide how to integrate the work - guides completion of development work by presenting structured options for merge, PR, or cleanup",
+      "description_zh": "finishing-a-development-branch技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "frontend-design",
+      "has_frontmatter": true,
+      "description": "Create distinctive, production-grade frontend interfaces with high design quality. Use this skill when the user asks to build web components, pages, artifacts, posters, or applications (examples include websites, landing pages, dashboards, React components, HTML/CSS layouts, or when styling/beautifying any web UI). Generates creative, polished code and UI design that avoids generic AI aesthetics.",
+      "description_zh": "frontend-design技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "gh-address-comments",
+      "has_frontmatter": true,
+      "description": "Help address review/issue comments on the open GitHub PR for the current branch using gh CLI; verify gh auth first and prompt the user to authenticate if not logged in.",
+      "description_zh": "gh-address-comments技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "gh-fix-ci",
+      "has_frontmatter": true,
+      "description": "Use when a user asks to debug or fix failing GitHub PR checks that run in GitHub Actions; use `gh` to inspect checks and logs, summarize failure context, draft a fix plan, and implement only after explicit approval. Treat external providers (for example Buildkite) as out of scope and report only the details URL.",
+      "description_zh": "gh-fix-ci技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "github-actions-runner",
+      "has_frontmatter": true,
+      "description": "GitHub Actions 自托管 Runner 部署和管理技能。自动在服务器上部署 GitHub Actions Runner，实现无需白名单的 CI/CD、内网服务访问、更快的构建速度和更好的数据隐私。支持自动启动、监控和维护。",
+      "description_zh": "github-actions-runner技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "image-enhancer",
+      "has_frontmatter": true,
+      "description": "image-enhancer 技能",
+      "description_zh": "image-enhancer技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "intelligent-router",
+      "has_frontmatter": true,
+      "description": "intelligent-router 技能",
+      "description_zh": "intelligent-router技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "internal-comms",
+      "has_frontmatter": true,
+      "description": "internal-comms 技能",
+      "description_zh": "internal-comms技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "jupyter-notebook",
+      "has_frontmatter": true,
+      "description": "Use when the user asks to create, scaffold, or edit Jupyter notebooks (`.ipynb`) for experiments, explorations, or tutorials; prefer the bundled templates and run the helper script `new_notebook.py` to generate a clean starting notebook.",
+      "description_zh": "jupyter-notebook技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "logv",
+      "has_frontmatter": true,
+      "description": "logv 技能",
+      "description_zh": "logv技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "mcp-builder",
+      "has_frontmatter": true,
+      "description": "Guide for creating high-quality MCP (Model Context Protocol) servers that enable LLMs to interact with external services through well-designed tools. Use when building MCP servers to integrate external APIs or services, whether in Python (FastMCP) or Node/TypeScript (MCP SDK).",
+      "description_zh": "mcp-builder技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "netlify-deploy",
+      "has_frontmatter": true,
+      "description": "Deploy web projects to Netlify using the Netlify CLI (`npx netlify`). Use when the user asks to deploy, host, publish, or link a site/repo on Netlify, including preview and production deploys.",
+      "description_zh": "netlify-deploy技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "openai-docs",
+      "has_frontmatter": true,
+      "description": "Use when the user asks how to build with OpenAI products or APIs and needs up-to-date official documentation with citations (for example: Codex, Responses API, Chat Completions, Apps SDK, Agents SDK, Realtime, model capabilities or limits); prioritize OpenAI docs MCP tools and restrict any fallback browsing to official OpenAI domains.",
+      "description_zh": "openai-docs技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "openclaw-security-audit",
+      "has_frontmatter": true,
+      "description": "Audit OpenClaw/Clawdbot deployments for misconfigurations and attack vectors. Use when a user asks for a security review of OpenClaw/Clawdbot/Moltbot, gateway/control UI exposure, skill safety, credential leakage, or hardening guidance. Produces a terminal report with OK/VULNERABLE findings and fixes.",
+      "description_zh": "openclaw-security-audit技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "openclaw-server-setup",
+      "has_frontmatter": true,
+      "description": "openclaw-server-setup 技能",
+      "description_zh": "openclaw-server-setup技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "parallel-executor",
+      "has_frontmatter": true,
+      "description": "Use when tasks are decomposed and user confirmed configuration. Executes tasks in parallel stages with real-time progress tracking.",
+      "description_zh": "parallel-executor技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "pdf",
+      "has_frontmatter": true,
+      "description": "Comprehensive PDF manipulation toolkit for extracting text and tables, creating new PDFs, merging/splitting documents, and handling forms. When Claude needs to fill in a PDF form or programmatically process, generate, or analyze PDF documents at scale.",
+      "description_zh": "pdf技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "playwright",
+      "has_frontmatter": true,
+      "description": "Use when the task requires automating a real browser from the terminal (navigation, form filling, snapshots, screenshots, data extraction, UI-flow debugging) via `playwright-cli` or the bundled wrapper script.",
+      "description_zh": "playwright技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "pptx",
+      "has_frontmatter": true,
+      "description": "Presentation creation, editing, and analysis. When Claude needs to work with presentations (.pptx files) for: (1) Creating new presentations, (2) Modifying or editing content, (3) Working with layouts, (4) Adding comments or speaker notes, or any other presentation tasks",
+      "description_zh": "pptx技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "product-requirements",
+      "has_frontmatter": true,
+      "description": "product-requirements 技能",
+      "description_zh": "product-requirements技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "prototype-prompt-generator",
+      "has_frontmatter": true,
+      "description": "prototype-prompt-generator 技能",
+      "description_zh": "prototype-prompt-generator技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "receiving-code-review",
+      "has_frontmatter": true,
+      "description": "Use when receiving code review feedback, before implementing suggestions, especially if feedback seems unclear or technically questionable - requires technical rigor and verification, not performative agreement or blind implementation",
+      "description_zh": "receiving-code-review技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "requesting-code-review",
+      "has_frontmatter": true,
+      "description": "Use when completing tasks, implementing major features, or before merging to verify work meets requirements",
+      "description_zh": "requesting-code-review技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "requirements-clarity",
+      "has_frontmatter": true,
+      "description": "Use when user wants to build something but requirements are unclear, vague, or incomplete. Forces systematic questioning before any implementation.",
+      "description_zh": "requirements-clarity技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "result-synthesizer",
+      "has_frontmatter": true,
+      "description": "Use when all agents have completed execution. Synthesizes all outputs into a comprehensive report, then guides through testing-modification loop until bug-free, then deployment.",
+      "description_zh": "result-synthesizer技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "screenshot",
+      "has_frontmatter": true,
+      "description": "Use when the user explicitly asks for a desktop or system screenshot (full screen, specific app or window, or a pixel region), or when tool-specific capture capabilities are unavailable and an OS-level capture is needed.",
+      "description_zh": "screenshot技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "skill-creator",
+      "has_frontmatter": true,
+      "description": "Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Claude's capabilities with specialized knowledge, workflows, or tool integrations.",
+      "description_zh": "skill-creator技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "skill-share",
+      "has_frontmatter": true,
+      "description": "skill-share 技能",
+      "description_zh": "skill-share技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "smart-workflow",
+      "has_frontmatter": true,
+      "description": "Use when user wants to build a feature or start a new project. Automatically orchestrates requirements clarification, task decomposition, parallel agent execution, and result synthesis.",
+      "description_zh": "smart-workflow技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "subagent-driven-development",
+      "has_frontmatter": true,
+      "description": "Use when executing implementation plans with independent tasks in the current session",
+      "description_zh": "subagent-driven-development技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "systematic-debugging",
+      "has_frontmatter": true,
+      "description": "Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes",
+      "description_zh": "systematic-debugging技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "task-decomposer",
+      "has_frontmatter": true,
+      "description": "Use when requirements are clear. Automatically decomposes requirements into tasks, recommends optimal agent combinations, and generates execution plan.",
+      "description_zh": "task-decomposer技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "test-driven-development",
+      "has_frontmatter": true,
+      "description": "Use when implementing any feature or bugfix, before writing implementation code",
+      "description_zh": "test-driven-development技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "theme-factory",
+      "has_frontmatter": true,
+      "description": "theme-factory 技能",
+      "description_zh": "theme-factory技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "ui-ux-pro-max",
+      "has_frontmatter": true,
+      "description": "UI/UX design intelligence. 50 styles, 21 palettes, 50 font pairings, 20 charts, 9 stacks (React, Next.js, Vue, Svelte, SwiftUI, React Native, Flutter, Tailwind, shadcn/ui). Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, mobile app, .html, .tsx, .vue, .svelte. Elements: button, modal, navbar, sidebar, card, table, form, chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, flat design. Topics: color palette, accessibility, animation, layout, typography, font pairing, spacing, hover, shadow, gradient. Integrations: shadcn/ui MCP for component search and examples.",
+      "description_zh": "ui-ux-pro-max技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "using-git-worktrees",
+      "has_frontmatter": true,
+      "description": "Use when starting feature work that needs isolation from current workspace or before executing implementation plans - creates isolated git worktrees with smart directory selection and safety verification",
+      "description_zh": "using-git-worktrees技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "vercel-deploy",
+      "has_frontmatter": true,
+      "description": "Deploy applications and websites to Vercel. Use when the user requests deployment actions like \"deploy my app\", \"deploy and give me the link\", \"push this live\", or \"create a preview deployment\".",
+      "description_zh": "vercel-deploy技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "verification-before-completion",
+      "has_frontmatter": true,
+      "description": "Use when about to claim work is complete, fixed, or passing, before committing or creating PRs - requires running verification commands and confirming output before making any success claims; evidence before assertions always",
+      "description_zh": "verification-before-completion技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "web-artifacts-builder",
+      "has_frontmatter": true,
+      "description": "web-artifacts-builder 技能",
+      "description_zh": "web-artifacts-builder技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "webapp-testing",
+      "has_frontmatter": true,
+      "description": "Toolkit for interacting with and testing local web applications using Playwright. Supports verifying frontend functionality, debugging UI behavior, capturing browser screenshots, and viewing browser logs.",
+      "description_zh": "webapp-testing技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "windows-fullstack-deploy",
+      "has_frontmatter": true,
+      "description": "Windows 本地开发环境自动化部署技能。支持 Django/FastAPI/Flask 后端、Vue3/React 前端、MySQL 数据库、Redis 缓存的完整本地开发流程。当用户在 Windows 上搭建本地开发环境时使用此技能。支持项目自动检测、配置文件驱动、一键启动所有服务。",
+      "description_zh": "windows-fullstack-deploy技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "writing-plans",
+      "has_frontmatter": true,
+      "description": "Use when you have a spec or requirements for a multi-step task, before touching code",
+      "description_zh": "writing-plans技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "writing-skills",
+      "has_frontmatter": true,
+      "description": "Use when creating new skills, editing existing skills, or verifying skills work before deployment",
+      "description_zh": "writing-skills技能，详见 SKILL.md",
+      "zh_ok": true
+    },
+    {
+      "name": "xlsx",
+      "has_frontmatter": true,
+      "description": "Comprehensive spreadsheet creation, editing, and analysis with support for formulas, formatting, data analysis, and visualization. When Claude needs to work with spreadsheets (.xlsx, .xlsm, .csv, .tsv, etc) for: (1) Creating new spreadsheets with formulas and formatting, (2) Reading or analyzing data, (3) Modify existing spreadsheets while preserving formulas, (4) Data analysis and visualization in spreadsheets, or (5) Recalculating formulas",
+      "description_zh": "xlsx技能，详见 SKILL.md",
+      "zh_ok": true
+    }
+  ]
+}

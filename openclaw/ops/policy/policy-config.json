@@ -1,0 +1,60 @@
+{
+  "schema_version": "2026-03-02",
+  "primary_model": "glmcode/glm-5",
+  "fallback_models": [
+    "kimicode/kimi-k2.5",
+    "glmcode/glm-4.7"
+  ],
+  "allowed_models": [
+    "glmcode/glm-5",
+    "kimicode/kimi-k2.5",
+    "glmcode/glm-4.7"
+  ],
+  "allowed_entry_agents": [
+    "coordinator"
+  ],
+  "blocked_direct_code_agents": [
+    "coordinator",
+    "project-agent"
+  ],
+  "code_execution_stages": [
+    "implement",
+    "fix",
+    "deploy"
+  ],
+  "required_task_fields": [
+    "reason",
+    "requirement",
+    "result_output",
+    "acceptance"
+  ],
+  "high_risk_requires_human_confirm": true,
+  "max_failure_before_escalate": 3,
+  "pass_line_raw": 75.0,
+  "status_flow": {
+    "pending": [
+      "running",
+      "cancelled",
+      "escalated"
+    ],
+    "running": [
+      "running",
+      "passed",
+      "failed",
+      "escalated",
+      "cancelled"
+    ],
+    "failed": [
+      "running",
+      "escalated",
+      "cancelled"
+    ],
+    "escalated": [
+      "running",
+      "cancelled",
+      "passed"
+    ],
+    "passed": [],
+    "cancelled": []
+  }
+}

@@ -1,0 +1,434 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-01-07",
+  "description": "关键词到 Agent 的路由映射规则",
+  "keywords": [
+    {
+      "category": "开发相关",
+      "patterns": [
+        "新增功能",
+        "开发功能",
+        "功能模块",
+        "添加功能",
+        "实现功能",
+        "功能开发"
+      ],
+      "agent": "feature-development",
+      "description": "Django+Vue 标准化开发流程",
+      "priority": 1
+    },
+    {
+      "category": "开发相关",
+      "patterns": [
+        "修复 bug",
+        "修复错误",
+        "fix bug",
+        "解决问题",
+        "调试问题",
+        "bug 修复"
+      ],
+      "agent": "auto-fix",
+      "description": "自动测试-修复-提交循环",
+      "priority": 1
+    },
+    {
+      "category": "部署相关",
+      "patterns": [
+        "部署项目",
+        "部署到服务器",
+        "生产部署",
+        "部署到生产",
+        "线上部署"
+      ],
+      "agent": "db-deploy",
+      "description": "全栈项目自动部署",
+      "priority": 1
+    },
+    {
+      "category": "部署相关",
+      "patterns": [
+        "本地环境",
+        "本地部署",
+        "windows 环境",
+        "开发环境搭建"
+      ],
+      "agent": "windows-fullstack-deploy",
+      "description": "Windows 本地开发环境部署",
+      "priority": 2
+    },
+    {
+      "category": "部署相关",
+      "patterns": [
+        "部署测试",
+        "验收测试",
+        "部署后测试"
+      ],
+      "agent": "deployment-test",
+      "description": "部署后自动化测试",
+      "priority": 2
+    },
+    {
+      "category": "代码审查",
+      "patterns": [
+        "审查代码",
+        "代码审查",
+        "代码质量",
+        "检查代码",
+        "review 代码"
+      ],
+      "agent": "code-reviewer",
+      "description": "代码质量、安全审查",
+      "priority": 1
+    },
+    {
+      "category": "调试相关",
+      "patterns": [
+        "调试",
+        "debug",
+        "排错",
+        "查找错误",
+        "分析错误"
+      ],
+      "agent": "debugger",
+      "description": "错误分析和修复",
+      "priority": 1
+    },
+    {
+      "category": "性能优化",
+      "patterns": [
+        "性能优化",
+        "优化性能",
+        "性能分析",
+        "性能调优",
+        "提升性能"
+      ],
+      "agent": "performance-engineer",
+      "description": "应用性能分析和优化",
+      "priority": 2
+    },
+    {
+      "category": "架构设计",
+      "patterns": [
+        "架构设计",
+        "系统架构",
+        "设计架构",
+        "架构规划"
+      ],
+      "agent": "backend-architect",
+      "description": "后端架构设计",
+      "priority": 2
+    },
+    {
+      "category": "数据库设计",
+      "patterns": [
+        "数据库设计",
+        "设计数据库",
+        "数据模型",
+        "表结构设计"
+      ],
+      "agent": "database-architect",
+      "description": "数据库架构设计",
+      "priority": 2
+    },
+    {
+      "category": "需求分析",
+      "patterns": [
+        "需求分析",
+        "需求澄清",
+        "需求不明确",
+        "确认需求"
+      ],
+      "agent": "query-clarifier",
+      "description": "需求澄清和确认",
+      "priority": 1
+    },
+    {
+      "category": "数据库优化",
+      "patterns": [
+        "查询优化",
+        "sql 优化",
+        "优化查询",
+        "慢查询",
+        "索引优化"
+      ],
+      "agent": "database-optimizer",
+      "description": "SQL 优化和索引",
+      "priority": 1
+    },
+    {
+      "category": "数据库性能",
+      "patterns": [
+        "数据库性能",
+        "数据库调优",
+        "优化数据库",
+        "数据库优化"
+      ],
+      "agent": "database-optimization",
+      "description": "数据库性能优化",
+      "priority": 2
+    },
+    {
+      "category": "数据库管理",
+      "patterns": [
+        "数据库管理",
+        "数据库运维",
+        "数据库备份",
+        "dba"
+      ],
+      "agent": "database-admin",
+      "description": "数据库运维、备份、监控",
+      "priority": 2
+    },
+    {
+      "category": "Python 开发",
+      "patterns": [
+        "python 代码",
+        "python 函数",
+        "python 脚本",
+        "优化 python"
+      ],
+      "agent": "python-expert",
+      "description": "Python 高级特性",
+      "priority": 2
+    },
+    {
+      "category": "JavaScript 开发",
+      "patterns": [
+        "javascript 代码",
+        "js 代码",
+        "优化 js",
+        "优化 javascript"
+      ],
+      "agent": "javascript-developer",
+      "description": "现代 ES6+ + Node.js",
+      "priority": 2
+    },
+    {
+      "category": "TypeScript 开发",
+      "patterns": [
+        "typescript 代码",
+        "ts 代码",
+        "优化 ts",
+        "优化 typescript"
+      ],
+      "agent": "typescript-expert",
+      "description": "TypeScript 类型安全",
+      "priority": 2
+    },
+    {
+      "category": "Go 开发",
+      "patterns": [
+        "go 代码",
+        "golang 代码",
+        "优化 go"
+      ],
+      "agent": "golang-expert",
+      "description": "Go 并发编程",
+      "priority": 2
+    },
+    {
+      "category": "Java 开发",
+      "patterns": [
+        "java 代码",
+        "优化 java"
+      ],
+      "agent": "java-developer",
+      "description": "现代 Java + Spring Boot",
+      "priority": 2
+    },
+    {
+      "category": "前端开发",
+      "patterns": [
+        "前端代码",
+        "前端组件",
+        "前端页面",
+        "优化前端"
+      ],
+      "agent": "frontend-developer",
+      "description": "Next.js + React + shadcn/ui",
+      "priority": 2
+    },
+    {
+      "category": "React 优化",
+      "patterns": [
+        "react 性能",
+        "优化 react",
+        "react 组件优化"
+      ],
+      "agent": "react-performance-optimization",
+      "description": "React 性能优化",
+      "priority": 2
+    },
+    {
+      "category": "安全审计",
+      "patterns": [
+        "安全审计",
+        "安全检查",
+        "安全漏洞",
+        "安全性检查"
+      ],
+      "agent": "security-auditor",
+      "description": "代码安全漏洞审查",
+      "priority": 1
+    },
+    {
+      "category": "API 安全",
+      "patterns": [
+        "api 安全",
+        "接口安全",
+        "rest api 安全"
+      ],
+      "agent": "api-security-audit",
+      "description": "REST API 安全审计",
+      "priority": 2
+    },
+    {
+      "category": "测试自动化",
+      "patterns": [
+        "编写测试",
+        "测试用例",
+        "单元测试",
+        "集成测试",
+        "自动化测试"
+      ],
+      "agent": "test-automator",
+      "description": "单元/集成/E2E 测试",
+      "priority": 2
+    },
+    {
+      "category": "代码重构",
+      "patterns": [
+        "重构代码",
+        "代码重构",
+        "现代化改造"
+      ],
+      "agent": "legacy-modernizer",
+      "description": "遗留代码现代化",
+      "priority": 2
+    },
+    {
+      "category": "云架构",
+      "patterns": [
+        "云架构",
+        "云部署",
+        "aws",
+        "azure",
+        "gcp",
+        "云平台"
+      ],
+      "agent": "cloud-architect",
+      "description": "云架构设计",
+      "priority": 2
+    },
+    {
+      "category": "DevOps",
+      "patterns": [
+        "cicd",
+        "ci/cd",
+        "持续集成",
+        "持续部署",
+        "devops"
+      ],
+      "agent": "deployment-engineer",
+      "description": "CI/CD、Docker、云部署",
+      "priority": 2
+    },
+    {
+      "category": "AI/ML",
+      "patterns": [
+        "llm 应用",
+        "ai 应用",
+        "rag 系统",
+        "prompt 工程",
+        "prompt 优化"
+      ],
+      "agent": "ai-engineer",
+      "description": "构建 LLM 应用、RAG 系统",
+      "priority": 2
+    },
+    {
+      "category": "数据处理",
+      "patterns": [
+        "etl 管道",
+        "数据管道",
+        "数据仓库",
+        "数据处理",
+        "数据工程"
+      ],
+      "agent": "data-engineer",
+      "description": "构建 ETL 管道、数据仓库",
+      "priority": 2
+    },
+    {
+      "category": "机器学习",
+      "patterns": [
+        "ml 管道",
+        "机器学习",
+        "模型服务",
+        "模型部署"
+      ],
+      "agent": "ml-engineer",
+      "description": "ML 管道、模型服务",
+      "priority": 2
+    },
+    {
+      "category": "数据分析",
+      "patterns": [
+        "数据分析",
+        "统计分析",
+        "数据洞察",
+        "定量分析"
+      ],
+      "agent": "data-analyst",
+      "description": "定量分析、统计洞察",
+      "priority": 2
+    },
+    {
+      "category": "综合研究",
+      "patterns": [
+        "技术研究",
+        "技术调研",
+        "深入研究",
+        "综合研究"
+      ],
+      "agent": "research-orchestrator",
+      "description": "研究项目编排",
+      "priority": 2
+    },
+    {
+      "category": "文档编写",
+      "patterns": [
+        "编写文档",
+        "api 文档",
+        "openapi",
+        "swagger 文档"
+      ],
+      "agent": "api-documenter",
+      "description": "OpenAPI/Swagger 文档",
+      "priority": 2
+    },
+    {
+      "category": "架构审查",
+      "patterns": [
+        "架构审查",
+        "架构评审",
+        "架构一致性"
+      ],
+      "agent": "architect-review",
+      "description": "架构一致性审查",
+      "priority": 2
+    },
+    {
+      "category": "UI/UX 设计",
+      "patterns": [
+        "ui 设计",
+        "ux 设计",
+        "界面设计",
+        "用户体验"
+      ],
+      "agent": "ui-ux-designer",
+      "description": "用户界面和体验设计",
+      "priority": 2
+    }
+  ]
+}

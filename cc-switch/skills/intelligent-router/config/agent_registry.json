@@ -1,0 +1,681 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-01-07",
+  "description": "所有可用 Agent 的注册表",
+  "agents": [
+    {
+      "name": "feature-development",
+      "description": "Django + Vue 全栈功能开发标准化流程",
+      "category": "用户技能",
+      "capabilities": [
+        "新增功能模块",
+        "三级流程自动选择",
+        "标准化文档模板",
+        "前端先行开发"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "auto-fix",
+      "description": "全自动测试-修复循环系统",
+      "category": "用户技能",
+      "capabilities": [
+        "自动运行测试",
+        "智能问题分类",
+        "自动修复代码",
+        "Git 自动提交"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "db-deploy",
+      "description": "全栈项目自动部署",
+      "category": "用户技能",
+      "capabilities": [
+        "GitHub Actions 自动部署",
+        "Nginx 反向代理",
+        "SSL 证书配置",
+        "多项目支持"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "windows-fullstack-deploy",
+      "description": "Windows 本地开发环境部署",
+      "category": "用户技能",
+      "capabilities": [
+        "项目自动检测",
+        "一键启动所有服务",
+        "配置文件驱动"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "deployment-test",
+      "description": "部署后自动化测试",
+      "category": "用户技能",
+      "capabilities": [
+        "端口检测",
+        "API 接口测试",
+        "浏览器 UI 自动化",
+        "测试报告生成"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "code-reviewer",
+      "description": "代码质量、安全审查",
+      "category": "Quality & Security",
+      "capabilities": [
+        "代码质量审查",
+        "安全漏洞检测",
+        "最佳实践建议",
+        "可维护性分析"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "debugger",
+      "description": "错误分析和修复",
+      "category": "Quality & Security",
+      "capabilities": [
+        "错误调试",
+        "测试失败分析",
+        "问题定位",
+        "修复方案建议"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "performance-engineer",
+      "description": "应用性能分析和优化",
+      "category": "Quality & Security",
+      "capabilities": [
+        "性能分析",
+        "瓶颈识别",
+        "优化建议",
+        "性能测试"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "security-auditor",
+      "description": "代码安全漏洞审查",
+      "category": "Quality & Security",
+      "capabilities": [
+        "安全审计",
+        "漏洞检测",
+        "OWASP Top 10",
+        "安全最佳实践"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "test-automator",
+      "description": "单元/集成/E2E 测试",
+      "category": "Quality & Security",
+      "capabilities": [
+        "单元测试",
+        "集成测试",
+        "E2E 测试",
+        "测试自动化"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "architect-review",
+      "description": "架构一致性审查",
+      "category": "Quality & Security",
+      "capabilities": [
+        "架构评审",
+        "一致性检查",
+        "模式验证",
+        "设计评估"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "api-security-audit",
+      "description": "REST API 安全审计",
+      "category": "Quality & Security",
+      "capabilities": [
+        "API 安全审查",
+        "认证授权检查",
+        "数据验证",
+        "安全配置"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "backend-architect",
+      "description": "设计 REST API、微服务、数据库模式",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "后端架构设计",
+        "API 设计",
+        "微服务架构",
+        "数据库设计"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "frontend-developer",
+      "description": "Next.js + React + shadcn/ui",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "前端开发",
+        "React 组件",
+        "Vue 组件",
+        "UI 实现"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "python-expert",
+      "description": "Python 高级特性",
+      "category": "Language Specialists",
+      "capabilities": [
+        "Python 开发",
+        "高级特性",
+        "性能优化",
+        "最佳实践"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "javascript-developer",
+      "description": "现代 ES6+ + Node.js",
+      "category": "Language Specialists",
+      "capabilities": [
+        "JavaScript 开发",
+        "Node.js",
+        "ES6+ 特性",
+        "异步编程"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "typescript-expert",
+      "description": "TypeScript 类型安全",
+      "category": "Language Specialists",
+      "capabilities": [
+        "TypeScript 开发",
+        "类型系统",
+        "泛型编程",
+        "类型安全"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "golang-expert",
+      "description": "Go 并发编程",
+      "category": "Language Specialists",
+      "capabilities": [
+        "Go 开发",
+        "并发编程",
+        "性能优化",
+        "最佳实践"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "java-developer",
+      "description": "现代 Java + Spring Boot",
+      "category": "Language Specialists",
+      "capabilities": [
+        "Java 开发",
+        "Spring Boot",
+        "企业开发",
+        "JVM 优化"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "cpp-engineer",
+      "description": "现代 C++ 开发",
+      "category": "Language Specialists",
+      "capabilities": [
+        "C++ 开发",
+        "系统编程",
+        "性能优化",
+        "RAII"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "rust-expert",
+      "description": "Rust 系统编程",
+      "category": "Language Specialists",
+      "capabilities": [
+        "Rust 开发",
+        "系统编程",
+        "内存安全",
+        "性能优化"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "sql-expert",
+      "description": "复杂 SQL 查询优化",
+      "category": "Language Specialists",
+      "capabilities": [
+        "SQL 开发",
+        "查询优化",
+        "索引设计",
+        "数据库编程"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "database-optimizer",
+      "description": "SQL 优化和索引",
+      "category": "Infrastructure & Operations",
+      "capabilities": [
+        "查询优化",
+        "索引设计",
+        "性能调优",
+        "执行计划分析"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "database-optimization",
+      "description": "数据库性能优化",
+      "category": "Infrastructure & Operations",
+      "capabilities": [
+        "数据库优化",
+        "性能调优",
+        "配置优化",
+        "监控分析"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "database-admin",
+      "description": "数据库运维、备份、监控",
+      "category": "Infrastructure & Operations",
+      "capabilities": [
+        "数据库管理",
+        "备份恢复",
+        "监控告警",
+        "故障处理"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "cloud-architect",
+      "description": "设计云基础设施、Terraform IaC",
+      "category": "Infrastructure & Operations",
+      "capabilities": [
+        "云架构设计",
+        "AWS/Azure/GCP",
+        "Terraform",
+        "成本优化"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "deployment-engineer",
+      "description": "CI/CD、Docker、云部署",
+      "category": "Infrastructure & Operations",
+      "capabilities": [
+        "CI/CD 配置",
+        "Docker 容器化",
+        "自动化部署",
+        "DevOps 实践"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "terraform-specialist",
+      "description": "Terraform 基础设施即代码",
+      "category": "Infrastructure & Operations",
+      "capabilities": [
+        "Terraform 开发",
+        "IaC 设计",
+        "模块化",
+        "状态管理"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "ai-engineer",
+      "description": "构建 LLM 应用、RAG 系统",
+      "category": "Data & AI",
+      "capabilities": [
+        "AI 应用开发",
+        "RAG 系统",
+        "Prompt 工程",
+        "LLM 集成"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "data-engineer",
+      "description": "构建 ETL 管道、数据仓库",
+      "category": "Data & AI",
+      "capabilities": [
+        "ETL 开发",
+        "数据仓库",
+        "流处理",
+        "数据建模"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "ml-engineer",
+      "description": "ML 管道、模型服务",
+      "category": "Data & AI",
+      "capabilities": [
+        "ML 管道",
+        "模型部署",
+        "特征工程",
+        "实验管理"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "data-analyst",
+      "description": "定量分析、统计洞察",
+      "category": "Data & AI",
+      "capabilities": [
+        "数据分析",
+        "统计分析",
+        "可视化",
+        "报告生成"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "prompt-engineer",
+      "description": "优化 LLM 和 AI 系统提示",
+      "category": "Data & AI",
+      "capabilities": [
+        "Prompt 优化",
+        "提示工程",
+        "系统设计",
+        "效果评估"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "query-clarifier",
+      "description": "需求澄清和确认",
+      "category": "Specialized Domains",
+      "capabilities": [
+        "需求澄清",
+        "问题分析",
+        "范围确认",
+        "目标明确"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "research-orchestrator",
+      "description": "研究项目编排",
+      "category": "Specialized Domains",
+      "capabilities": [
+        "综合研究",
+        "多源信息",
+        "深度分析",
+        "报告生成"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "legacy-modernizer",
+      "description": "遗留代码现代化",
+      "category": "Specialized Domains",
+      "capabilities": [
+        "代码重构",
+        "现代化改造",
+        "技术升级",
+        "架构优化"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "api-documenter",
+      "description": "OpenAPI/Swagger 文档",
+      "category": "Specialized Domains",
+      "capabilities": [
+        "API 文档生成",
+        "OpenAPI 规范",
+        "SDK 生成",
+        "文档维护"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "ui-ux-designer",
+      "description": "用户界面和体验设计",
+      "category": "Design & Experience",
+      "capabilities": [
+        "UI 设计",
+        "UX 设计",
+        "原型设计",
+        "用户研究"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "react-performance-optimization",
+      "description": "React 性能优化",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "React 性能优化",
+        "渲染优化",
+        "Bundle 分析",
+        "内存优化"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "command-expert",
+      "description": "CLI 命令创建",
+      "category": "Quality & Security",
+      "capabilities": [
+        "命令行工具",
+        "Shell 脚本",
+        "自动化脚本",
+        "工具开发"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "php-developer",
+      "description": "PHP 开发（设计模式）",
+      "category": "Language Specialists",
+      "capabilities": [
+        "PHP 开发",
+        "Laravel",
+        "设计模式",
+        "最佳实践"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "ruby-expert",
+      "description": "Ruby 最佳实践",
+      "category": "Language Specialists",
+      "capabilities": [
+        "Ruby 开发",
+        "Rails",
+        "最佳实践",
+        "代码质量"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "rails-expert",
+      "description": "Ruby on Rails 开发",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "Rails 开发",
+        "MVC 架构",
+        "ActiveRecord",
+        "REST API"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "laravel-vue-developer",
+      "description": "Laravel + Vue3 全栈开发",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "Laravel 开发",
+        "Vue3 开发",
+        "全栈开发",
+        "API 设计"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "nextjs-app-router-developer",
+      "description": "Next.js App Router",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "Next.js 开发",
+        "App Router",
+        "Server Components",
+        "SSR/SSG"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "mobile-developer",
+      "description": "React Native/Flutter 应用",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "跨平台开发",
+        "React Native",
+        "Flutter",
+        "移动应用"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "ios-developer",
+      "description": "iOS 原生应用开发",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "iOS 开发",
+        "Swift",
+        "SwiftUI",
+        "UIKit"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "blockchain-developer",
+      "description": "开发智能合约、DeFi 协议、Web3 应用",
+      "category": "Blockchain & Web3",
+      "capabilities": [
+        "智能合约",
+        "Solidity",
+        "DeFi",
+        "Web3"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "hyperledger-fabric-developer",
+      "description": "企业级区块链解决方案（Hyperledger Fabric）",
+      "category": "Blockchain & Web3",
+      "capabilities": [
+        "联盟链",
+        "Hyperledger",
+        "链码开发",
+        "企业区块链"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "quant-analyst",
+      "description": "金融建模、回测、市场数据分析",
+      "category": "Business & Finance",
+      "capabilities": [
+        "量化分析",
+        "金融建模",
+        "回测",
+        "风险管理"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "business-analyst",
+      "description": "指标分析、报告、KPI 追踪",
+      "category": "Business & Finance",
+      "capabilities": [
+        "业务分析",
+        "KPI 分析",
+        "报告生成",
+        "数据洞察"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "markdown-syntax-formatter",
+      "description": "Markdown 格式化",
+      "category": "Specialized Domains",
+      "capabilities": [
+        "Markdown 格式化",
+        "文档格式化",
+        "语法修复"
+      ],
+      "priority": 3,
+      "available": true
+    }
+  ]
+}

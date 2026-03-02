@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "projects": [
+    {
+      "project_id": "dabai-market-center",
+      "name": "DabaiMarketCenter",
+      "repo_path": "/home/ubuntu/DabaiMarketCenter",
+      "index_dir": "/home/ubuntu/DabaiMarketCenter/docs/project-index",
+      "module_dirs": [
+        "RealTime-Pub/app",
+        "RealTime-Pub/scripts",
+        "ai-sniper",
+        "scripts"
+      ],
+      "api_dirs": [
+        "RealTime-Pub/app",
+        "ai-sniper",
+        "scripts"
+      ],
+      "keywords": [
+        "??",
+        "??",
+        "realtime",
+        "websocket",
+        "api"
+      ]
+    }
+  ]
+}

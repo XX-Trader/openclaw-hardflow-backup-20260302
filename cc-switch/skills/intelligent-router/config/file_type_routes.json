@@ -1,0 +1,253 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-01-07",
+  "description": "文件扩展名到 Agent 的路由映射规则",
+  "file_types": [
+    {
+      "category": "前端框架",
+      "extensions": [".vue", ".jsx", ".tsx"],
+      "agent": "frontend-developer",
+      "description": "Vue/React 组件",
+      "priority": 1
+    },
+    {
+      "category": "前端资源",
+      "extensions": [".js", ".ts", ".javascript", ".typescript"],
+      "agent": "javascript-developer",
+      "description": "JavaScript/TypeScript 代码",
+      "priority": 2
+    },
+    {
+      "category": "样式文件",
+      "extensions": [".css", ".scss", ".sass", ".less", ".styl"],
+      "agent": "frontend-developer",
+      "description": "样式表",
+      "priority": 2
+    },
+    {
+      "category": "Python",
+      "extensions": [".py", ".pyw", ".pyi"],
+      "agent": "python-expert",
+      "description": "Python 代码",
+      "priority": 1
+    },
+    {
+      "category": "Go",
+      "extensions": [".go"],
+      "agent": "golang-expert",
+      "description": "Go 代码",
+      "priority": 1
+    },
+    {
+      "category": "Java",
+      "extensions": [".java", ".jar", ".war"],
+      "agent": "java-developer",
+      "description": "Java 代码",
+      "priority": 1
+    },
+    {
+      "category": "C/C++",
+      "extensions": [".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx"],
+      "agent": "cpp-engineer",
+      "description": "C/C++ 代码",
+      "priority": 1
+    },
+    {
+      "category": "C#",
+      "extensions": [".cs", ".csx"],
+      "agent": "c-developer",
+      "description": "C# 代码",
+      "priority": 1
+    },
+    {
+      "category": "Rust",
+      "extensions": [".rs"],
+      "agent": "rust-expert",
+      "description": "Rust 代码",
+      "priority": 1
+    },
+    {
+      "category": "Ruby",
+      "extensions": [".rb", ".rbw"],
+      "agent": "ruby-expert",
+      "description": "Ruby 代码",
+      "priority": 1
+    },
+    {
+      "category": "PHP",
+      "extensions": [".php", ".phtml"],
+      "agent": "php-developer",
+      "description": "PHP 代码",
+      "priority": 1
+    },
+    {
+      "category": "数据库",
+      "extensions": [".sql", ".ddl", ".dml"],
+      "agent": "sql-expert",
+      "description": "SQL 查询/脚本",
+      "priority": 1
+    },
+    {
+      "category": "数据库优化",
+      "extensions": [".sql", ".ddl"],
+      "agent_alternative": "database-optimizer",
+      "description": "SQL 查询优化",
+      "priority": 2
+    },
+    {
+      "category": "Shell 脚本",
+      "extensions": [".sh", ".bash", ".zsh", ".fish"],
+      "agent": "command-expert",
+      "description": "Shell 脚本",
+      "priority": 2
+    },
+    {
+      "category": "PowerShell",
+      "extensions": [".ps1", ".psm1", ".psd1"],
+      "agent": "command-expert",
+      "description": "PowerShell 脚本",
+      "priority": 2
+    },
+    {
+      "category": "配置文件",
+      "extensions": [".yaml", ".yml", ".json", ".toml", ".ini", ".cfg", ".conf"],
+      "agent": "deployment-engineer",
+      "description": "配置文件",
+      "priority": 3
+    },
+    {
+      "category": "Docker",
+      "extensions": ["Dockerfile", ".dockerignore", "docker-compose.yml", "docker-compose.yaml"],
+      "agent": "deployment-engineer",
+      "description": "Docker 配置",
+      "priority": 1
+    },
+    {
+      "category": "Kubernetes",
+      "extensions": [".k8s", ".k8s.yaml", ".k8s.yml"],
+      "agent": "deployment-engineer",
+      "description": "Kubernetes 配置",
+      "priority": 1
+    },
+    {
+      "category": "Terraform",
+      "extensions": [".tf", ".tfvars"],
+      "agent": "terraform-specialist",
+      "description": "Terraform 配置",
+      "priority": 1
+    },
+    {
+      "category": "Markdown 文档",
+      "extensions": [".md", ".markdown"],
+      "agent": "markdown-syntax-formatter",
+      "description": "Markdown 文档",
+      "priority": 3
+    },
+    {
+      "category": "Word 文档",
+      "extensions": [".docx", ".doc"],
+      "agent": "document-skills:docx",
+      "description": "Word 文档处理",
+      "priority": 2
+    },
+    {
+      "category": "PowerPoint 文档",
+      "extensions": [".pptx", ".ppt"],
+      "agent": "document-skills:pptx",
+      "description": "PowerPoint 演示文稿",
+      "priority": 2
+    },
+    {
+      "category": "PDF 文档",
+      "extensions": [".pdf"],
+      "agent": "document-skills:pdf",
+      "description": "PDF 文档处理",
+      "priority": 2
+    },
+    {
+      "category": "Excel 表格",
+      "extensions": [".xlsx", ".xls", ".csv"],
+      "agent": "document-skills:xlsx",
+      "description": "Excel 表格处理",
+      "priority": 2
+    },
+    {
+      "category": "HTML",
+      "extensions": [".html", ".htm"],
+      "agent": "frontend-developer",
+      "description": "HTML 页面",
+      "priority": 2
+    },
+    {
+      "category": "XML",
+      "extensions": [".xml", ".xsl", ".xslt"],
+      "agent": "data-engineer",
+      "description": "XML 数据",
+      "priority": 3
+    },
+    {
+      "category": "Makefile",
+      "extensions": ["Makefile", "makefile", ".mk"],
+      "agent": "command-expert",
+      "description": "Makefile",
+      "priority": 2
+    },
+    {
+      "category": "R 脚本",
+      "extensions": [".r", ".rmd"],
+      "agent": "data-analyst",
+      "description": "R 数据分析",
+      "priority": 2
+    },
+    {
+      "category": "Jupyter Notebook",
+      "extensions": [".ipynb"],
+      "agent": "data-scientist",
+      "description": "Jupyter Notebook",
+      "priority": 2
+    },
+    {
+      "category": "Swift",
+      "extensions": [".swift"],
+      "agent": "ios-developer",
+      "description": "Swift/iOS 代码",
+      "priority": 1
+    },
+    {
+      "category": "Kotlin",
+      "extensions": [".kt", ".kts"],
+      "agent": "mobile-developer",
+      "description": "Kotlin/Android 代码",
+      "priority": 1
+    },
+    {
+      "category": "Dart",
+      "extensions": [".dart"],
+      "agent": "mobile-developer",
+      "description": "Dart/Flutter 代码",
+      "priority": 1
+    },
+    {
+      "category": "Lua",
+      "extensions": [".lua"],
+      "agent": "game-developer",
+      "description": "Lua 脚本",
+      "priority": 2
+    },
+    {
+      "category": "Solidity",
+      "extensions": [".sol"],
+      "agent": "blockchain-developer",
+      "description": "Solidity 智能合约",
+      "priority": 1
+    },
+    {
+      "category": "Rust 智能合约",
+      "extensions": [".rs"],
+      "agent": "hyperledger-fabric-developer",
+      "description": "Hyperledger Fabric 链码",
+      "context_required": "blockchain",
+      "priority": 1
+    }
+  ]
+}
