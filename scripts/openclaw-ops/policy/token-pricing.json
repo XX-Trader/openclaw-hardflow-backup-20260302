@@ -1,0 +1,19 @@
+{
+  "version": "2026-03-02",
+  "currency": "CNY",
+  "unit": "per_1m_tokens",
+  "models": {
+    "glmcode/glm-5": {
+      "input": 0,
+      "output": 0
+    },
+    "kimicode/kimi-k2.5": {
+      "input": 0,
+      "output": 0
+    },
+    "glmcode/glm-4.7": {
+      "input": 0,
+      "output": 0
+    }
+  }
+}
