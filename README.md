@@ -19,3 +19,9 @@ This repository is a private backup of local OpenClaw hardflow workflow artifact
 - Redacted examples are provided:
   - openclaw/openclaw.json.example
   - openclaw/agents/main/agent/models.json.example
+
+## Project-scoped OpenClaw assets
+- project-openclaw/.claude/hardflow
+- project-openclaw/.claude/hardflow-lobster
+- project-openclaw/scripts/hardflow
+- project-openclaw/scripts/openclaw-ops

@@ -1,0 +1,19 @@
+{
+  "projects": [
+    {
+      "name": "dabaipm-website",
+      "path": "/srv/projects/DabaiPMwebsite",
+      "remote_name": "origin",
+      "expected_remote": "git@github.com:your-org/DabaiPMwebsite.git",
+      "check_remote": true
+    },
+    {
+      "name": "quant-trading-engine",
+      "path": "/srv/projects/quant-trading-engine",
+      "remote_name": "origin",
+      "expected_remote": "",
+      "check_remote": true
+    }
+  ]
+}
+
