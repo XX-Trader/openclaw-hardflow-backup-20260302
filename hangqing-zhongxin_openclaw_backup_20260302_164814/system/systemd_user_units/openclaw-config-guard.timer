@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenClaw Config Guard Timer
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+Persistent=true
+Unit=openclaw-config-guard.service
+
+[Install]
+WantedBy=timers.target

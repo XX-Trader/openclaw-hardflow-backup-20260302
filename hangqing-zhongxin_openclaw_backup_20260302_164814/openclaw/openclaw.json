@@ -1,0 +1,342 @@
+{
+  "meta": {
+    "lastTouchedVersion": "2026.2.26",
+    "lastTouchedAt": "2026-03-02T08:32:23.512Z"
+  },
+  "auth": {
+    "profiles": {}
+  },
+  "models": {
+    "providers": {
+      "glmcode": {
+        "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
+        "apiKey": "85d7fd33030d4925a6aae6e31a450e88.mrKxCoSOwRj7jsHo",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "glm-5",
+            "name": "GLM-5"
+          },
+          {
+            "id": "glm-4.7",
+            "name": "GLM-4.7"
+          }
+        ]
+      },
+      "kimicode": {
+        "baseUrl": "https://ark.cn-beijing.volces.com/api/coding/v3",
+        "apiKey": "82c9795c-30f3-47d8-9cfe-e2275c35b28e",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "kimi-k2.5",
+            "name": "Kimi K2.5"
+          }
+        ]
+      },
+      "openai-codex": {
+        "baseUrl": "https://api.openai.com/v1",
+        "api": "openai-completions",
+        "models": [
+          {
+            "id": "gpt-5.3-codex",
+            "name": "GPT-5.3 Codex"
+          },
+          {
+            "id": "gpt-5.3-codex-spark",
+            "name": "GPT-5.3 Codex Spark"
+          }
+        ]
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "glmcode/glm-5",
+        "fallbacks": [
+          "kimicode/kimi-k2.5",
+          "glmcode/glm-4.7"
+        ]
+      },
+      "models": {
+        "glmcode/glm-5": {
+          "alias": "glm"
+        },
+        "kimicode/kimi-k2.5": {
+          "alias": "kimi"
+        },
+        "glmcode/glm-4.7": {
+          "alias": "glm47"
+        }
+      },
+      "memorySearch": {
+        "enabled": true,
+        "provider": "openai",
+        "remote": {
+          "baseUrl": "https://openrouter.ai/api/v1",
+          "apiKey": "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"
+        },
+        "fallback": "none",
+        "model": "baai/bge-m3",
+        "sync": {
+          "watch": true
+        }
+      },
+      "compaction": {
+        "mode": "safeguard"
+      },
+      "thinkingDefault": "high",
+      "timeoutSeconds": 1200,
+      "maxConcurrent": 4,
+      "subagents": {
+        "maxConcurrent": 8,
+        "maxSpawnDepth": 2,
+        "maxChildrenPerAgent": 5
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "name": "大总管",
+        "workspace": "/home/ubuntu/.openclaw/workspace",
+        "model": "glmcode/glm-5",
+        "subagents": {
+          "allowAgents": [
+            "agent-factory",
+            "backend-dev",
+            "coordinator",
+            "deployer",
+            "doc-writer",
+            "frontend-dev",
+            "main",
+            "ops-agent",
+            "optimize-agent",
+            "project-agent",
+            "reviewer",
+            "tester"
+          ]
+        }
+      },
+      {
+        "id": "coordinator",
+        "name": "coordinator",
+        "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
+        "model": "glmcode/glm-5",
+        "subagents": {
+          "allowAgents": [
+            "agent-factory",
+            "backend-dev",
+            "coordinator",
+            "deployer",
+            "doc-writer",
+            "frontend-dev",
+            "main",
+            "ops-agent",
+            "optimize-agent",
+            "project-agent",
+            "reviewer",
+            "tester"
+          ]
+        }
+      },
+      {
+        "id": "doc-writer",
+        "name": "doc-writer",
+        "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
+        "model": "glmcode/glm-5"
+      },
+      {
+        "id": "frontend-dev",
+        "name": "frontend-dev",
+        "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
+        "model": "glmcode/glm-5"
+      },
+      {
+        "id": "backend-dev",
+        "name": "backend-dev",
+        "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
+        "model": "glmcode/glm-5"
+      },
+      {
+        "id": "reviewer",
+        "name": "代码审核",
+        "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
+        "model": "glmcode/glm-5"
+      },
+      {
+        "id": "tester",
+        "name": "测试验收",
+        "workspace": "/home/ubuntu/.openclaw/workspace-tester",
+        "model": "glmcode/glm-5"
+      },
+      {
+        "id": "deployer",
+        "name": "deployer",
+        "workspace": "/home/ubuntu/.openclaw/workspace-deployer",
+        "model": "glmcode/glm-5"
+      },
+      {
+        "id": "agent-factory",
+        "name": "agent-factory",
+        "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
+        "model": "glmcode/glm-5",
+        "subagents": {
+          "allowAgents": [
+            "optimize-agent",
+            "project-agent"
+          ]
+        }
+      },
+      {
+        "id": "ops-agent",
+        "name": "ops-agent",
+        "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
+        "agentDir": "/home/ubuntu/.openclaw/agents/ops-agent/agent",
+        "model": "glmcode/glm-4.7",
+        "subagents": {
+          "allowAgents": [
+            "optimize-agent",
+            "project-agent"
+          ]
+        }
+      },
+      {
+        "id": "optimize-agent",
+        "name": "optimize-agent",
+        "workspace": "/home/ubuntu/.openclaw/workspace-optimize-agent",
+        "agentDir": "/home/ubuntu/.openclaw/agents/optimize-agent/agent",
+        "model": "glmcode/glm-5",
+        "subagents": {
+          "allowAgents": [
+            "project-agent"
+          ]
+        }
+      },
+      {
+        "id": "project-agent",
+        "name": "project-agent",
+        "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
+        "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
+        "model": "glmcode/glm-5"
+      }
+    ]
+  },
+  "tools": {
+    "alsoAllow": [
+      "lobster",
+      "codex"
+    ],
+    "agentToAgent": {
+      "enabled": true,
+      "allow": [
+        "agent-factory",
+        "backend-dev",
+        "coordinator",
+        "deployer",
+        "doc-writer",
+        "frontend-dev",
+        "main",
+        "project-agent",
+        "reviewer",
+        "tester"
+      ]
+    },
+    "exec": {
+      "notifyOnExit": false
+    }
+  },
+  "bindings": [
+    {
+      "agentId": "coordinator",
+      "match": {
+        "channel": "telegram"
+      }
+    }
+  ],
+  "messages": {
+    "ackReactionScope": "group-mentions"
+  },
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "restart": true,
+    "ownerDisplay": "raw"
+  },
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "entries": {
+        "command-logger": {
+          "enabled": true
+        },
+        "session-memory": {
+          "enabled": true
+        },
+        "boot-md": {
+          "enabled": true
+        },
+        "hardflow-command-guard": {
+          "enabled": true
+        },
+        "hardflow-audit": {
+          "enabled": true
+        },
+        "hardflow-stop-gate-reminder": {
+          "enabled": true
+        },
+        "hardflow-policy-enforcer": {
+          "enabled": true
+        }
+      },
+      "load": {
+        "extraDirs": [
+          "/home/ubuntu/.claude/hooks"
+        ]
+      }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "commands": {
+        "native": true,
+        "nativeSkills": false
+      },
+      "dmPolicy": "pairing",
+      "botToken": "8514601368:AAE6NsWDUeSkPK641NDUiu0ymHMiuYMG-eI",
+      "groups": {
+        "*": {
+          "requireMention": false
+        }
+      },
+      "allowFrom": [
+        "1309629117"
+      ],
+      "groupAllowFrom": [],
+      "groupPolicy": "open",
+      "streaming": "off"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "mode": "local",
+    "bind": "loopback",
+    "auth": {
+      "mode": "token",
+      "token": "3fe778da5b51a39780dc4d53add1a1ac"
+    },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    }
+  },
+  "plugins": {
+    "entries": {
+      "telegram": {
+        "enabled": true
+      }
+    }
+  }
+}

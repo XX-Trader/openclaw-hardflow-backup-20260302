@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "profiles": {
+    "openai-codex:default": {
+      "type": "oauth",
+      "provider": "openai-codex",
+      "access": "eyJhbGciOiJSUzI1NiIsImtpZCI6IjE5MzQ0ZTY1LWJiYzktNDRkMS1hOWQwLWY5NTdiMDc5YmQwZSIsInR5cCI6IkpXVCJ9.eyJhdWQiOlsiaHR0cHM6Ly9hcGkub3BlbmFpLmNvbS92MSJdLCJjbGllbnRfaWQiOiJhcHBfRU1vYW1FRVo3M2YwQ2tYYVhwN2hyYW5uIiwiZXhwIjoxNzcyOTUxODA2LCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiNDAzNWVlN2MtOWI3Yi00YzYzLWJkZGItYzkxMDMxN2M5MDM0IiwiY2hhdGdwdF9hY2NvdW50X3VzZXJfaWQiOiJ1c2VyLTVjMVM2bDBIbTNVbnBxdkVYQWU5OUJ5UV9fNDAzNWVlN2MtOWI3Yi00YzYzLWJkZGItYzkxMDMxN2M5MDM0IiwiY2hhdGdwdF9jb21wdXRlX3Jlc2lkZW5jeSI6Im5vX2NvbnN0cmFpbnQiLCJjaGF0Z3B0X3BsYW5fdHlwZSI6InBybyIsImNoYXRncHRfdXNlcl9pZCI6InVzZXItNWMxUzZsMEhtM1VucHF2RVhBZTk5QnlRIiwidXNlcl9pZCI6InVzZXItNWMxUzZsMEhtM1VucHF2RVhBZTk5QnlRIn0sImh0dHBzOi8vYXBpLm9wZW5haS5jb20vcHJvZmlsZSI6eyJlbWFpbCI6Im1hd2VuemhlMTk5M0BnbWFpbC5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZX0sImlhdCI6MTc3MjA4NzgwNiwiaXNzIjoiaHR0cHM6Ly9hdXRoLm9wZW5haS5jb20iLCJqdGkiOiI4ZGNkNGQyZS00NjNjLTQ3NDMtOTE0MC0zY2FjN2IzNWRmMGYiLCJuYmYiOjE3NzIwODc4MDYsInB3ZF9hdXRoX3RpbWUiOjE3NzExNzAwNzcxMTAsInNjcCI6WyJvcGVuaWQiLCJwcm9maWxlIiwiZW1haWwiLCJvZmZsaW5lX2FjY2VzcyJdLCJzZXNzaW9uX2lkIjoiYXV0aHNlc3Nfam5FM1NDVXNVNFhQaGRxNmM2MU1GMXRpIiwic3ViIjoiZ29vZ2xlLW9hdXRoMnwxMTM2NDE0NTU1NzIyNDQzNTU5NjUifQ.sI3X3tMqepFoIY7ylDKsLLWQNc7QHu9VGIvIW3JcCTkdYJ0laGbfZ3rHaF5eutmtWrTfJGVElHL7G0YDBLleHSHCXfJXY6nGG-SDA50m4vb-kYUdSgv_A9B-HNciQD2czU0cNeUgJ10dKfIKO9FiW7t0VvUtI7lSSHbEnuW5wKQwS1HpoRV_T-Op6f441ttHxZ4RstqCFns4ksT3IXjyOMZLY_9-r5spDYxTNylo45iYlifHsV80e9TyAFFWrKBRIQXMiUZrenvTv83W-BVcgKg_0i6xL2Lx6wIgDS1ghBJjvkFePTQ_QGyLYtKHfLXOTlAhDjfCHN8R5foA-smgQK4nVsexdUgmtuwnemrOPu9uaiLeqfWKQepYLQYI3b1NsR1FW00rINmF1wzyb96sAR9yQ-rP-_g4UyJcx8pZWWpp5h7isckeBnayNf_mPWcZdwBqpS0cVKvSbOVo-A7Jw9zukWOXAjiOD9wtT3EsQrwnyFKFxBA2vu574eeHEadaE8vJKpMddjNtwertUklHB-5fPKcTD3ItGceLlPTgyZOwCFKfDd3v0uLFfAYsJTTO2Zihnq2qNNnmJL1M7gJJvD4cSqps_C4ccjt32sHtF-x30DsfZ2U6oM3-_zGDTgk8gJjezD_jrGHc7mZjlGef3C8vHnxPPaIDCg2WM570J_o",
+      "refresh": "rt_iWbLpl-gPHEPg7_JqdVJ013UUGG7cul7IyvBcU-qocI.Z1WeXhWMobWyURHVKywy6U_nPGNRyDs3q58t9UrMYkE",
+      "expires": 1772951805694,
+      "accountId": "4035ee7c-9b7b-4c63-bddb-c910317c9034"
+    }
+  },
+  "lastGood": {
+    "openai-codex": "openai-codex:default"
+  },
+  "usageStats": {
+    "openai-codex:default": {
+      "lastUsed": 1772377557207,
+      "errorCount": 0,
+      "lastFailureAt": 1772207632322
+    }
+  }
+}

@@ -1,0 +1,7 @@
+[Unit]
+Description=OpenClaw Agent Gap Scan
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /home/ubuntu/DabaiMarketCenter/scripts/openclaw-ops/agent_gap_queue.py --window-days 7 --ops-dir /home/ubuntu/.openclaw/ops --queue-file /home/ubuntu/.openclaw/ops/agent-gap-queue.json --report-file /home/ubuntu/.openclaw/ops/agent-gap-report.md
+WorkingDirectory=/home/ubuntu

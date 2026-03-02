@@ -1,0 +1,144 @@
+[
+  {
+    "id": "main",
+    "name": "大总管",
+    "default": true,
+    "workspace": "/home/ubuntu/.openclaw/workspace",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": [
+      "agent-factory",
+      "backend-dev",
+      "coordinator",
+      "deployer",
+      "doc-writer",
+      "frontend-dev",
+      "main",
+      "ops-agent",
+      "optimize-agent",
+      "project-agent",
+      "reviewer",
+      "tester"
+    ]
+  },
+  {
+    "id": "coordinator",
+    "name": "coordinator",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": [
+      "agent-factory",
+      "backend-dev",
+      "coordinator",
+      "deployer",
+      "doc-writer",
+      "frontend-dev",
+      "main",
+      "ops-agent",
+      "optimize-agent",
+      "project-agent",
+      "reviewer",
+      "tester"
+    ]
+  },
+  {
+    "id": "doc-writer",
+    "name": "doc-writer",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": []
+  },
+  {
+    "id": "frontend-dev",
+    "name": "frontend-dev",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": []
+  },
+  {
+    "id": "backend-dev",
+    "name": "backend-dev",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": []
+  },
+  {
+    "id": "reviewer",
+    "name": "代码审核",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": []
+  },
+  {
+    "id": "tester",
+    "name": "测试验收",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-tester",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": []
+  },
+  {
+    "id": "deployer",
+    "name": "deployer",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-deployer",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": []
+  },
+  {
+    "id": "agent-factory",
+    "name": "agent-factory",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
+    "agentDir": null,
+    "model": "glmcode/glm-5",
+    "allowAgents": [
+      "optimize-agent",
+      "project-agent"
+    ]
+  },
+  {
+    "id": "ops-agent",
+    "name": "ops-agent",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
+    "agentDir": "/home/ubuntu/.openclaw/agents/ops-agent/agent",
+    "model": "glmcode/glm-4.7",
+    "allowAgents": [
+      "optimize-agent",
+      "project-agent"
+    ]
+  },
+  {
+    "id": "optimize-agent",
+    "name": "optimize-agent",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-optimize-agent",
+    "agentDir": "/home/ubuntu/.openclaw/agents/optimize-agent/agent",
+    "model": "glmcode/glm-5",
+    "allowAgents": [
+      "project-agent"
+    ]
+  },
+  {
+    "id": "project-agent",
+    "name": "project-agent",
+    "default": false,
+    "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
+    "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
+    "model": "glmcode/glm-5",
+    "allowAgents": []
+  }
+]
