@@ -41,6 +41,29 @@ def normalize_sender_identity(value: str, default: str = DEFAULT_SENDER_IDENTITY
     return sender or default
 
 
+def load_env_file(path: Path) -> dict[str, str]:
+    out: dict[str, str] = {}
+    if not path.exists():
+        return out
+    for raw in path.read_text(encoding="utf-8-sig").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip("'").strip('"')
+        if key:
+            out[key] = value
+    return out
+
+
+def load_env_files(paths: list[Path]) -> dict[str, str]:
+    envs: dict[str, str] = {}
+    for path in paths:
+        envs.update(load_env_file(path))
+    return envs
+
+
 def load_json(path: Path, default: Any) -> Any:
     if not path.exists():
         return default
@@ -155,6 +178,7 @@ def main() -> int:
     parser.add_argument("--dingtalk-webhook-env", default="DINGTALK_WEBHOOK_URL")
     parser.add_argument("--dingtalk-secret", default="")
     parser.add_argument("--dingtalk-secret-env", default="DINGTALK_SECRET")
+    parser.add_argument("--env-file", action="append", default=[])
     parser.add_argument("--max-db-tasks", type=int, default=2000)
     parser.add_argument("--max-notify-items", type=int, default=15)
     parser.add_argument("--emit-json", action="store_true")
@@ -164,6 +188,14 @@ def main() -> int:
     state_path = Path(args.state_file).expanduser()
     report_dir = Path(args.report_dir).expanduser()
     report_dir.mkdir(parents=True, exist_ok=True)
+
+    env_files: list[Path] = [Path(x).expanduser() for x in args.env_file if str(x).strip()]
+    openclaw_home = Path(os.environ.get("OPENCLAW_HOME", str(home / ".openclaw"))).expanduser()
+    default_runtime_env = openclaw_home / "ops" / "runtime.env"
+    if default_runtime_env not in env_files:
+        env_files.append(default_runtime_env)
+    env_from_files = load_env_files(env_files)
+
     state = load_json(state_path, None)
     if not isinstance(state, dict):
         state = default_state()
@@ -174,7 +206,9 @@ def main() -> int:
 
     unresolved_statuses = {"pending", "running", "failed", "escalated"}
     todo_candidates = [x for x in tasks if str(x.get("status", "")).lower() in unresolved_statuses]
-    done_candidates = [x for x in tasks if str(x.get("status", "")).lower() == "passed" and is_today_local(x.get("updated_at", ""))]
+    done_candidates = [
+        x for x in tasks if str(x.get("status", "")).lower() == "passed" and is_today_local(x.get("updated_at", ""))
+    ]
 
     new_todo = [x for x in todo_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_todo_ids]
     new_done = [x for x in done_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_done_ids]
@@ -183,7 +217,7 @@ def main() -> int:
     normal_log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
     sender_identity = normalize_sender_identity(args.sender_identity)
 
-    # 按要求：只有有新工作记录时才发送。
+    # Only send message when new TODO/DONE records exist.
     notify = has_new_records
 
     report = {
@@ -208,9 +242,9 @@ def main() -> int:
         lines.append(f"# {title}")
         lines.append(f"- sender_identity: {sender_identity}")
         lines.append(f"- task: {args.task_id or '-'}")
-        lines.append(f"- 时间: {now_iso()}")
-        lines.append(f"- 新增TODO: {len(new_todo)}")
-        lines.append(f"- 新增DONE: {len(new_done)}")
+        lines.append(f"- time: {now_iso()}")
+        lines.append(f"- new_todo: {len(new_todo)}")
+        lines.append(f"- new_done: {len(new_done)}")
         lines.append("")
         lines.append("## TODO (新增)")
         lines.extend(summarize_items(new_todo, int(args.max_notify_items)) or ["- 无"])
@@ -220,8 +254,16 @@ def main() -> int:
         text = "\n".join(lines)
         output = text
 
-        webhook = str(args.dingtalk_webhook or os.environ.get(args.dingtalk_webhook_env, "")).strip()
-        secret = str(args.dingtalk_secret or os.environ.get(args.dingtalk_secret_env, "")).strip()
+        webhook = str(
+            args.dingtalk_webhook
+            or os.environ.get(args.dingtalk_webhook_env, "")
+            or env_from_files.get(args.dingtalk_webhook_env, "")
+        ).strip()
+        secret = str(
+            args.dingtalk_secret
+            or os.environ.get(args.dingtalk_secret_env, "")
+            or env_from_files.get(args.dingtalk_secret_env, "")
+        ).strip()
         if webhook:
             dingtalk_status["attempted"] = True
             ok, note = post_dingtalk(webhook=webhook, secret=secret, title=title, text=text)
@@ -230,7 +272,10 @@ def main() -> int:
         else:
             dingtalk_status["attempted"] = True
             dingtalk_status["ok"] = False
-            dingtalk_status["note"] = f"webhook_missing:{args.dingtalk_webhook_env}"
+            dingtalk_status["note"] = (
+                f"webhook_missing:{args.dingtalk_webhook_env};"
+                f"checked_env_files={','.join(str(x) for x in env_files if x.exists())}"
+            )
 
         for item in new_todo:
             tid = str(item.get("task_id", "")).strip()

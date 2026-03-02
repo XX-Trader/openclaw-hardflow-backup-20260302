@@ -1,0 +1,30 @@
+{
+  "projects": [
+    {
+      "id": "openclaw-hardflow-backup-20260302",
+      "name": "openclaw-hardflow-backup-20260302",
+      "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+      "index_dir": ".workflow/project-index",
+      "auto_pull": true,
+      "git_remote": "origin",
+      "git_branch": "main",
+      "deployment": {
+        "strategy": "manual",
+        "reason": "no standard deployment marker detected",
+        "commands": [
+          "add project-specific deploy command",
+          "verify health and rollback strategy",
+          "bash scripts/hardflow/hardflow-run.sh deploy"
+        ],
+        "detected_signals": [
+          "hardflow"
+        ],
+        "project_path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302"
+      },
+      "setup_hints": [
+        "Git remote read failed: check SSH key/token/network.",
+        "Git push dry-run failed: verify write permission/deploy key."
+      ]
+    }
+  ]
+}

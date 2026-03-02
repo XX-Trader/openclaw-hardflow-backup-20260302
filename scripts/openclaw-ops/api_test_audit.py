@@ -456,6 +456,7 @@ def main() -> int:
     parser.add_argument("--engine", default="", help="http|playwright|selenium; empty uses config")
     parser.add_argument("--sender-identity", default=DEFAULT_SENDER_IDENTITY)
     parser.add_argument("--normal-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--allow-auto-default-config", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
 
@@ -465,9 +466,64 @@ def main() -> int:
     history_dir.mkdir(parents=True, exist_ok=True)
 
     config = load_json(config_path, None)
+    config_source = "file"
     if not isinstance(config, dict):
-        config = default_config()
-        save_json(config_path, config)
+        if bool(args.allow_auto_default_config):
+            config = default_config()
+            save_json(config_path, config)
+            config_source = "auto-default"
+        else:
+            sender_identity = normalize_sender_identity(args.sender_identity)
+            normal_log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
+            run_record = {
+                "run_id": uuid.uuid4().hex[:12],
+                "time": now_iso(),
+                "sender_identity": sender_identity,
+                "task_id": str(args.task_id or ""),
+                "engine": normalize_engine(args.engine or "http", default="http"),
+                "normal_log_mode": normal_log_mode,
+                "notify": True,
+                "risk_reasons": ["config_missing"],
+                "issue_stats": {"new_high": 1, "reopened_high": 0, "resolved": 0, "open_total": 1},
+                "endpoint_count": 0,
+                "browser_check_count": 0,
+                "high_count": 1,
+                "config_source": "missing",
+                "results": [
+                    {
+                        "id": "api-test-config",
+                        "risk_level": "high",
+                        "status": "failed",
+                        "reasons": ["config_missing"],
+                        "config_file": str(config_path),
+                        "suggestion": "run init_api_test_config.py to create real endpoint checks",
+                    }
+                ],
+            }
+            run_file = history_dir / f"{now().strftime('%Y%m%d_%H%M%S')}_{run_record['run_id']}.json"
+            save_json(run_file, run_record)
+            state = load_json(state_path, None)
+            if not isinstance(state, dict):
+                state = default_state()
+            state["updated_at"] = now_iso()
+            state["runs"] = int(state.get("runs", 0)) + 1
+            state["last_run_file"] = str(run_file)
+            save_json(state_path, state)
+            output = (
+                "# api-test-audit\n"
+                f"- sender_identity: {sender_identity}\n"
+                f"- task: {args.task_id or '-'}\n"
+                f"- time: {now_iso()}\n"
+                f"- normal_log_mode: {normal_log_mode}\n"
+                "- risk_reasons: config_missing\n"
+                f"- config_file: {config_path}\n"
+                "- action: run init_api_test_config.py and replace placeholders"
+            )
+            if args.emit_json:
+                print(json.dumps({"notify": True, "output": output, "record": str(run_file)}, ensure_ascii=False))
+            else:
+                print(f"{output}\n- evidence: {run_file}")
+            return 0
 
     state = load_json(state_path, None)
     if not isinstance(state, dict):
@@ -481,6 +537,8 @@ def main() -> int:
 
     endpoint_items = config.get("endpoints") if isinstance(config.get("endpoints"), list) else []
     browser_items = config.get("browser_checks") if isinstance(config.get("browser_checks"), list) else []
+    endpoint_items = [x for x in endpoint_items if isinstance(x, dict) and bool(x.get("enabled", True))]
+    browser_items = [x for x in browser_items if isinstance(x, dict) and bool(x.get("enabled", True))]
 
     endpoint_results = [
         evaluate_endpoint(
@@ -532,6 +590,8 @@ def main() -> int:
         "endpoint_count": len(endpoint_results),
         "browser_check_count": len(browser_results),
         "high_count": len(high_issues),
+        "config_source": config_source,
+        "config_file": str(config_path),
         "results": all_results,
     }
     run_file = history_dir / f"{now().strftime('%Y%m%d_%H%M%S')}_{run_record['run_id']}.json"

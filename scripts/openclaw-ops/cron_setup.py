@@ -264,12 +264,14 @@ def build_daily_work_job(
     log_mode: str,
     webhook_env: str,
     secret_env: str,
+    env_file: str,
 ) -> dict[str, Any]:
     ts = now_ms()
     cmd = (
         f"python3 {script_py} --db {db_file} --state-file {state_file} --report-dir {report_dir} "
         f"--task-id cron:ops-daily-work-report --normal-log-mode {normalize_log_mode(log_mode)} "
-        f"--dingtalk-webhook-env {webhook_env} --dingtalk-secret-env {secret_env}"
+        f"--dingtalk-webhook-env {webhook_env} --dingtalk-secret-env {secret_env} "
+        f"--env-file {env_file}"
     )
     return {
         "id": "9873ab34-c4af-4db0-8cd5-40df68f92efd",
@@ -318,6 +320,236 @@ def build_self_evolution_job(
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1800},
     }
+
+
+def int_or_default(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def normalize_schedule(schedule: Any) -> dict[str, Any]:
+    if not isinstance(schedule, dict):
+        return {}
+    kind = str(schedule.get("kind", "")).strip()
+    if kind == "every":
+        return {
+            "kind": "every",
+            "everyMs": int_or_default(schedule.get("everyMs"), 0),
+            "anchorMs": int_or_default(schedule.get("anchorMs"), 0),
+        }
+    if kind == "cron":
+        return {
+            "kind": "cron",
+            "expr": str(schedule.get("expr", "")).strip(),
+            "tz": str(schedule.get("tz", "")).strip(),
+        }
+    return {"kind": kind}
+
+
+def normalize_payload(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        "kind": str(payload.get("kind", "")).strip(),
+        "message": str(payload.get("message", "")).strip(),
+        "timeoutSeconds": int_or_default(payload.get("timeoutSeconds"), 0),
+    }
+
+
+def normalize_delivery(delivery: Any) -> dict[str, str]:
+    if not isinstance(delivery, dict):
+        return {"mode": "", "channel": "", "to": ""}
+    return {
+        "mode": str(delivery.get("mode", "")).strip(),
+        "channel": str(delivery.get("channel", "")).strip(),
+        "to": str(delivery.get("to", "")).strip(),
+    }
+
+
+def find_existing_for_expected(
+    jobs: list[dict[str, Any]],
+    expected: dict[str, Any],
+) -> tuple[dict[str, Any] | None, str]:
+    expected_id = str(expected.get("id", "")).strip()
+    expected_name = str(expected.get("name", "")).strip()
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id", "")).strip() == expected_id:
+            return item, "id"
+    if expected_name:
+        for item in jobs:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("name", "")).strip() == expected_name:
+                return item, "name"
+    return None, "missing"
+
+
+def compare_expected_job(
+    existing: dict[str, Any],
+    expected: dict[str, Any],
+    expected_channel: str,
+    expected_target: str,
+) -> list[str]:
+    drifts: list[str] = []
+    if str(existing.get("agentId", "")).strip() != str(expected.get("agentId", "")).strip():
+        drifts.append("agentId")
+    if bool(existing.get("enabled", False)) != bool(expected.get("enabled", False)):
+        drifts.append("enabled")
+    if str(existing.get("sessionTarget", "")).strip() != str(expected.get("sessionTarget", "")).strip():
+        drifts.append("sessionTarget")
+    if str(existing.get("wakeMode", "")).strip() != str(expected.get("wakeMode", "")).strip():
+        drifts.append("wakeMode")
+    if normalize_schedule(existing.get("schedule")) != normalize_schedule(expected.get("schedule")):
+        drifts.append("schedule")
+    if normalize_payload(existing.get("payload")) != normalize_payload(expected.get("payload")):
+        drifts.append("payload")
+    expected_delivery = {"mode": "announce", "channel": expected_channel, "to": expected_target}
+    if normalize_delivery(existing.get("delivery")) != expected_delivery:
+        drifts.append("delivery")
+    return drifts
+
+
+def audit_jobs(
+    jobs: list[dict[str, Any]],
+    expected_jobs: list[dict[str, Any]],
+    channel: str,
+    target: str,
+) -> dict[str, Any]:
+    entries: list[dict[str, Any]] = []
+    for expected in expected_jobs:
+        expected_id = str(expected.get("id", "")).strip()
+        expected_name = str(expected.get("name", "")).strip()
+        existing, matched_by = find_existing_for_expected(jobs, expected)
+        if not isinstance(existing, dict):
+            entries.append(
+                {
+                    "job_id": expected_id,
+                    "job_name": expected_name,
+                    "status": "missing",
+                    "matched_by": "missing",
+                    "existing_job_id": "",
+                    "drift_fields": ["missing"],
+                    "observed": {},
+                    "expected": {
+                        "schedule": normalize_schedule(expected.get("schedule")),
+                        "payload": normalize_payload(expected.get("payload")),
+                        "delivery": {"mode": "announce", "channel": channel, "to": target},
+                    },
+                }
+            )
+            continue
+
+        drifts = compare_expected_job(existing, expected, channel, target)
+        existing_id = str(existing.get("id", "")).strip()
+        if matched_by == "name" and existing_id != expected_id:
+            drifts = ["id", *drifts]
+
+        status = "compliant" if not drifts else "drifted"
+        entries.append(
+            {
+                "job_id": expected_id,
+                "job_name": expected_name,
+                "status": status,
+                "matched_by": matched_by,
+                "existing_job_id": existing_id,
+                "drift_fields": drifts,
+                "observed": {
+                    "schedule": normalize_schedule(existing.get("schedule")),
+                    "payload": normalize_payload(existing.get("payload")),
+                    "delivery": normalize_delivery(existing.get("delivery")),
+                },
+                "expected": {
+                    "schedule": normalize_schedule(expected.get("schedule")),
+                    "payload": normalize_payload(expected.get("payload")),
+                    "delivery": {"mode": "announce", "channel": channel, "to": target},
+                },
+            }
+        )
+
+    counts = {
+        "existing_total": sum(1 for x in jobs if isinstance(x, dict)),
+        "expected_total": len(expected_jobs),
+        "compliant": sum(1 for x in entries if x.get("status") == "compliant"),
+        "drifted": sum(1 for x in entries if x.get("status") == "drifted"),
+        "missing": sum(1 for x in entries if x.get("status") == "missing"),
+    }
+    return {
+        "counts": counts,
+        "jobs": entries,
+    }
+
+
+def remove_name_conflicts(
+    jobs: list[dict[str, Any]],
+    expected_jobs: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    expected_by_name = {
+        str(item.get("name", "")).strip(): str(item.get("id", "")).strip()
+        for item in expected_jobs
+        if isinstance(item, dict) and str(item.get("name", "")).strip() and str(item.get("id", "")).strip()
+    }
+    if not expected_by_name:
+        return jobs, []
+
+    kept: list[dict[str, Any]] = []
+    removed: list[dict[str, str]] = []
+    for item in jobs:
+        if not isinstance(item, dict):
+            kept.append(item)
+            continue
+        name = str(item.get("name", "")).strip()
+        jid = str(item.get("id", "")).strip()
+        expected_id = expected_by_name.get(name)
+        if expected_id and jid and jid != expected_id:
+            removed.append({"id": jid, "name": name})
+            continue
+        kept.append(item)
+    return kept, removed
+
+
+def validate_runtime_paths(args: argparse.Namespace) -> dict[str, Any]:
+    checks: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    def add_check(label: str, raw_path: str, required: bool = True, expect: str = "file") -> None:
+        path = Path(raw_path).expanduser()
+        exists = path.exists()
+        if expect == "file":
+            ok = exists and path.is_file()
+        elif expect == "dir":
+            ok = exists and path.is_dir()
+        else:
+            ok = exists
+        checks.append(
+            {
+                "label": label,
+                "path": str(path),
+                "exists": exists,
+                "ok": ok if required else True,
+                "required": required,
+                "expect": expect,
+            }
+        )
+        if required and not ok:
+            errors.append(f"{label}_missing:{path}")
+
+    add_check("runner_py", str(args.runner_py), required=True, expect="file")
+    if bool(args.install_system_schedule_job):
+        add_check("system_schedule_py", str(args.system_schedule_py), required=True, expect="file")
+    if bool(args.install_api_test_job):
+        add_check("api_test_py", str(args.api_test_py), required=True, expect="file")
+        add_check("api_test_config", str(args.api_test_config), required=True, expect="file")
+    if bool(args.install_daily_work_job):
+        add_check("daily_work_py", str(args.daily_work_py), required=True, expect="file")
+        add_check("daily_work_env_file", str(args.daily_work_env_file), required=False, expect="file")
+    if bool(args.install_self_evolution_job):
+        add_check("self_evolution_py", str(args.self_evolution_py), required=True, expect="file")
+
+    return {"ok": len(errors) == 0, "errors": errors, "checks": checks}
 
 
 def upsert_jobs(
@@ -406,6 +638,7 @@ def main() -> int:
     parser.add_argument("--daily-work-log-mode", default="silent", choices=sorted(LOG_MODES))
     parser.add_argument("--dingtalk-webhook-env", default="DINGTALK_WEBHOOK_URL")
     parser.add_argument("--dingtalk-secret-env", default="DINGTALK_SECRET")
+    parser.add_argument("--daily-work-env-file", default=str(home / ".openclaw/ops/runtime.env"))
 
     parser.add_argument("--install-self-evolution-job", action="store_true")
     parser.add_argument("--self-evolution-py", default=str(home / ".openclaw/ops/self_evolution_todo.py"))
@@ -419,6 +652,8 @@ def main() -> int:
 
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
+    parser.add_argument("--keep-name-conflicts", action="store_true")
+    parser.add_argument("--skip-script-path-check", action="store_true")
     parser.add_argument("--overwrite-config", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
@@ -439,6 +674,14 @@ def main() -> int:
         target = target or got_target
     if not target:
         raise SystemExit("missing delivery target: pass --to or keep existing delivery target")
+
+    path_validation = validate_runtime_paths(args)
+    if (not path_validation.get("ok")) and (not bool(args.skip_script_path_check)):
+        raise SystemExit(
+            "script/path validation failed: "
+            + ", ".join(path_validation.get("errors", []))
+            + "; fix paths or pass --skip-script-path-check"
+        )
 
     cfg = ensure_monitor_config(
         config_file=config_file,
@@ -503,6 +746,7 @@ def main() -> int:
                 log_mode=args.daily_work_log_mode,
                 webhook_env=str(args.dingtalk_webhook_env),
                 secret_env=str(args.dingtalk_secret_env),
+                env_file=str(Path(args.daily_work_env_file).expanduser()),
             )
         )
     if bool(args.install_self_evolution_job):
@@ -520,8 +764,13 @@ def main() -> int:
             )
         )
 
+    audit_before = audit_jobs(jobs=jobs, expected_jobs=fresh_jobs, channel=channel, target=target)
     merged_jobs, status = upsert_jobs(jobs=jobs, fresh_jobs=fresh_jobs, channel=channel, target=target)
+    removed_name_conflicts: list[dict[str, str]] = []
+    if not bool(args.keep_name_conflicts):
+        merged_jobs, removed_name_conflicts = remove_name_conflicts(jobs=merged_jobs, expected_jobs=fresh_jobs)
     data["jobs"] = merged_jobs
+    audit_after = audit_jobs(jobs=merged_jobs, expected_jobs=fresh_jobs, channel=channel, target=target)
 
     backup_file = ""
     if jobs_file.exists() and not args.dry_run:
@@ -541,6 +790,12 @@ def main() -> int:
         "job_status": status,
         "job_ids": [item["id"] for item in fresh_jobs],
         "skill_log_switches": cfg.get("skill_log_switches", {}),
+        "path_validation": path_validation,
+        "audit": {
+            "before": audit_before,
+            "after": audit_after,
+            "removed_name_conflicts": removed_name_conflicts,
+        },
         "installed": {
             "core_jobs": True,
             "system_schedule_job": bool(args.install_system_schedule_job),
@@ -556,9 +811,25 @@ def main() -> int:
             print(f"backup={backup_file}")
         print(f"jobs_file={jobs_file}")
         print(f"config_file={config_file}")
+        print(f"path_validation_ok={path_validation.get('ok')}")
         for jid in result["job_ids"]:
             print(f"{jid}={status.get(jid, 'unknown')}")
         print(f"delivery={channel}:{target}")
+        before_counts = result.get("audit", {}).get("before", {}).get("counts", {})
+        after_counts = result.get("audit", {}).get("after", {}).get("counts", {})
+        print(
+            "audit_before="
+            f"compliant:{before_counts.get('compliant', 0)},"
+            f"drifted:{before_counts.get('drifted', 0)},"
+            f"missing:{before_counts.get('missing', 0)}"
+        )
+        print(
+            "audit_after="
+            f"compliant:{after_counts.get('compliant', 0)},"
+            f"drifted:{after_counts.get('drifted', 0)},"
+            f"missing:{after_counts.get('missing', 0)}"
+        )
+        print(f"name_conflicts_removed={len(result.get('audit', {}).get('removed_name_conflicts', []))}")
         print(json.dumps(result["installed"], ensure_ascii=False))
         if args.dry_run:
             print("dry_run=true")

@@ -46,6 +46,228 @@ def run_cmd(cmd: list[str], cwd: Path | None = None, timeout: int = 20) -> tuple
         return 127, "", str(exc), False
 
 
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def run_openclaw_detect(
+    script_path: Path,
+    scan_roots: list[Path],
+    max_depth: int,
+    max_results: int,
+    prefer_path: Path | None,
+) -> dict[str, Any]:
+    if not script_path.exists():
+        return {"ok": False, "error": f"detect script missing: {script_path}"}
+
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--emit-json",
+        "--max-depth",
+        str(max(1, int(max_depth))),
+        "--max-results",
+        str(max(1, int(max_results))),
+    ]
+    if prefer_path is not None:
+        cmd.extend(["--prefer-path", str(prefer_path)])
+    for root in scan_roots:
+        cmd.extend(["--scan-root", str(root)])
+
+    rc, out, err, _ = run_cmd(cmd, timeout=60)
+    payload = parse_json_output(out) if rc == 0 else None
+    if rc == 0 and isinstance(payload, dict):
+        payload.setdefault("ok", True)
+        return payload
+    return {
+        "ok": False,
+        "error": err or out or f"detect openclaw exit={rc}",
+    }
+
+
+def choose_openclaw_installation_interactive(
+    installations: list[dict[str, Any]],
+    recommended_path: str,
+) -> Path | None:
+    if not installations:
+        return None
+    print("Discovered OpenClaw installations:")
+    default_idx = 1
+    for idx, item in enumerate(installations, start=1):
+        path = str(item.get("path", "")).strip() or "-"
+        ver = str(item.get("version", "")).strip() or "-"
+        valid = bool(item.get("valid", False))
+        score = int(item.get("marker_score", 0))
+        marker = " (recommended)" if path == recommended_path else ""
+        if path == recommended_path:
+            default_idx = idx
+        print(f"  {idx:>2}. {path} | valid={valid} | score={score} | version={ver}{marker}")
+
+    default_text = str(default_idx)
+    raw = prompt_text("Select OpenClaw installation index", default_text)
+    if raw.strip().isdigit():
+        idx = int(raw.strip())
+        if 1 <= idx <= len(installations):
+            chosen = str(installations[idx - 1].get("path", "")).strip()
+            if chosen:
+                return Path(chosen).expanduser()
+    chosen_default = str(installations[default_idx - 1].get("path", "")).strip()
+    return Path(chosen_default).expanduser() if chosen_default else None
+
+
+def run_ops_sync(
+    script_path: Path,
+    source_dir: Path,
+    openclaw_home: Path,
+    manifest_file: Path | None,
+    dry_run: bool,
+    keep_stale_files: bool,
+) -> tuple[bool, dict[str, Any]]:
+    if not script_path.exists():
+        return False, {"ok": False, "error": f"sync script missing: {script_path}"}
+
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--source-dir",
+        str(source_dir),
+        "--target-ops-dir",
+        str(openclaw_home / "ops"),
+        "--emit-json",
+    ]
+    if manifest_file is not None:
+        cmd.extend(["--manifest-file", str(manifest_file)])
+    if keep_stale_files:
+        cmd.append("--keep-stale-files")
+    if dry_run:
+        cmd.append("--dry-run")
+
+    rc, out, err, _ = run_cmd(cmd, timeout=180)
+    payload = parse_json_output(out)
+    if rc == 0 and isinstance(payload, dict):
+        payload.setdefault("ok", True)
+        return True, payload
+    return False, payload or {"ok": False, "error": err or out or f"sync ops files exit={rc}"}
+
+
+def validate_sync_source_layout(source_dir: Path, allow_nonstandard: bool) -> tuple[bool, dict[str, Any]]:
+    required = [
+        source_dir / "cron_setup.py",
+        source_dir / "api_test_audit.py",
+        source_dir / "daily_work_report.py",
+        source_dir / "policy" / "workflow_setup.py",
+        source_dir / "policy" / "policy_enforcer.py",
+    ]
+    missing = [str(p) for p in required if not p.exists()]
+    nonstandard = source_dir.name != "openclaw-ops"
+    ok = (len(missing) == 0) and (allow_nonstandard or (not nonstandard))
+    detail = {
+        "source_dir": str(source_dir),
+        "nonstandard_layout": nonstandard,
+        "allow_nonstandard": allow_nonstandard,
+        "missing_required_files": missing,
+        "ok": ok,
+    }
+    return ok, detail
+
+
+def run_init_api_test_config(
+    script_path: Path,
+    config_file: Path,
+    base_url: str,
+) -> tuple[bool, dict[str, Any]]:
+    if not script_path.exists():
+        return False, {"ok": False, "error": f"init_api_test_config script missing: {script_path}"}
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--output-file",
+        str(config_file),
+        "--base-url",
+        base_url,
+        "--emit-json",
+    ]
+    rc, out, err, _ = run_cmd(cmd, timeout=30)
+    payload = parse_json_output(out)
+    if rc == 0 and isinstance(payload, dict):
+        payload.setdefault("ok", True)
+        return True, payload
+    return False, payload or {"ok": False, "error": err or out or f"init api-test-config exit={rc}"}
+
+
+def run_configure_runtime_env(
+    script_path: Path,
+    env_file: Path,
+    dingtalk_webhook_url: str,
+    dingtalk_secret: str,
+    set_items: list[str],
+) -> tuple[bool, dict[str, Any]]:
+    if not script_path.exists():
+        return False, {"ok": False, "error": f"configure_runtime_env script missing: {script_path}"}
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--env-file",
+        str(env_file),
+        "--emit-json",
+    ]
+    for item in set_items:
+        if str(item).strip():
+            cmd.extend(["--set", str(item).strip()])
+    if str(dingtalk_webhook_url).strip():
+        cmd.extend(["--dingtalk-webhook-url", str(dingtalk_webhook_url).strip()])
+    if str(dingtalk_secret).strip():
+        cmd.extend(["--dingtalk-secret", str(dingtalk_secret).strip()])
+    rc, out, err, _ = run_cmd(cmd, timeout=30)
+    payload = parse_json_output(out)
+    if rc == 0 and isinstance(payload, dict):
+        payload.setdefault("ok", True)
+        return True, payload
+    return False, payload or {"ok": False, "error": err or out or f"configure runtime env exit={rc}"}
+
+
+def run_verify_job_payload_paths(
+    script_path: Path,
+    jobs_file: Path,
+    job_names: list[str],
+) -> tuple[bool, dict[str, Any]]:
+    if not script_path.exists():
+        return False, {"ok": False, "error": f"verify_job_payload_paths script missing: {script_path}"}
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--jobs-file",
+        str(jobs_file),
+        "--emit-json",
+        "--strict",
+        "--require-parse",
+    ]
+    for name in job_names:
+        if str(name).strip():
+            cmd.extend(["--job-name", str(name).strip()])
+    rc, out, err, _ = run_cmd(cmd, timeout=40)
+    payload = parse_json_output(out)
+    if rc == 0 and isinstance(payload, dict):
+        payload.setdefault("ok", True)
+        return True, payload
+    return False, payload or {"ok": False, "error": err or out or f"verify job payload paths exit={rc}"}
+
+
 def is_writable_dir(path: Path) -> tuple[bool, str]:
     if not path.exists() or not path.is_dir():
         return False, f"path not found: {path}"
@@ -417,6 +639,9 @@ def write_markdown_report(
     openclaw_home: Path,
     strict_remote: bool,
     dry_run: bool,
+    openclaw_detection: dict[str, Any] | None,
+    openclaw_selection: str,
+    sync_result: dict[str, Any] | None,
     selected: list[ProjectAssessment],
     bootstrap_result: dict[str, Any] | None,
     install_job_result: dict[str, Any] | None,
@@ -430,6 +655,19 @@ def write_markdown_report(
     lines.append(f"- strict_git_remote: {strict_remote}")
     lines.append(f"- dry_run: {dry_run}")
     lines.append(f"- project_count: {len(selected)}")
+    lines.append(f"- openclaw_selection: {openclaw_selection}")
+    if isinstance(openclaw_detection, dict):
+        lines.append(f"- openclaw_detect_ok: {openclaw_detection.get('ok')}")
+        lines.append(f"- openclaw_detect_count: {openclaw_detection.get('count', 0)}")
+        lines.append(f"- openclaw_detect_valid_count: {openclaw_detection.get('valid_count', 0)}")
+    if isinstance(sync_result, dict):
+        lines.append(f"- sync_ok: {sync_result.get('ok')}")
+        lines.append(f"- sync_dry_run: {sync_result.get('dry_run')}")
+        counts = sync_result.get("counts", {})
+        if isinstance(counts, dict):
+            lines.append(f"- sync_added: {counts.get('added', 0)}")
+            lines.append(f"- sync_updated: {counts.get('updated', 0)}")
+            lines.append(f"- sync_deleted: {counts.get('deleted', 0)}")
     lines.append("")
 
     for item in selected:
@@ -467,6 +705,26 @@ def write_markdown_report(
     if cron_setup_result is not None:
         lines.append(f"- cron_setup_ok: {cron_setup_result.get('ok')}")
         lines.append(f"- cron_setup_note: {cron_setup_result.get('note', '-')}")
+        cron_detail = cron_setup_result.get("detail", {})
+        if isinstance(cron_detail, dict):
+            audit = cron_detail.get("audit", {})
+            if isinstance(audit, dict):
+                before = audit.get("before", {}).get("counts", {})
+                after = audit.get("after", {}).get("counts", {})
+                if isinstance(before, dict):
+                    lines.append(
+                        "- cron_audit_before: "
+                        f"compliant={before.get('compliant', 0)},"
+                        f"drifted={before.get('drifted', 0)},"
+                        f"missing={before.get('missing', 0)}"
+                    )
+                if isinstance(after, dict):
+                    lines.append(
+                        "- cron_audit_after: "
+                        f"compliant={after.get('compliant', 0)},"
+                        f"drifted={after.get('drifted', 0)},"
+                        f"missing={after.get('missing', 0)}"
+                    )
     else:
         lines.append("- cron_setup: skipped")
     lines.append("")
@@ -585,6 +843,7 @@ def run_cron_setup(
     install_daily_work_job: bool,
     daily_work_expr: str,
     daily_work_log_mode: str,
+    daily_work_env_file: str,
     dingtalk_webhook_env: str,
     dingtalk_secret_env: str,
     install_self_evolution_job: bool,
@@ -592,7 +851,7 @@ def run_cron_setup(
     self_evolution_log_mode: str,
     self_evolution_min_interval_days: int,
     self_evolution_max_tasks_per_run: int,
-) -> tuple[bool, str]:
+) -> tuple[bool, dict[str, Any]]:
     cmd = [
         sys.executable,
         str(script_path),
@@ -644,6 +903,8 @@ def run_cron_setup(
                 daily_work_expr,
                 "--daily-work-log-mode",
                 daily_work_log_mode,
+                "--daily-work-env-file",
+                daily_work_env_file,
                 "--dingtalk-webhook-env",
                 dingtalk_webhook_env,
                 "--dingtalk-secret-env",
@@ -668,17 +929,25 @@ def run_cron_setup(
         cmd.extend(["--channel", channel])
     if target:
         cmd.extend(["--to", target])
+    cmd.append("--emit-json")
     rc, out, err, _ = run_cmd(cmd, timeout=90)
+    payload = parse_json_output(out)
+    if rc == 0 and isinstance(payload, dict):
+        return True, payload
     if rc == 0:
-        return True, out or "ok"
-    return False, err or out or f"cron setup exit={rc}"
+        return True, {"ok": True, "note": out or "ok"}
+    return False, payload or {"ok": False, "error": err or out or f"cron setup exit={rc}"}
 
 
 def main() -> int:
     home = Path(os.environ.get("HOME", str(Path.home()))).expanduser()
     parser = argparse.ArgumentParser(description="OpenClaw workflow setup/init wizard")
     parser.add_argument("mode", nargs="?", default="init", choices=["init", "setup"], help="wizard mode")
-    parser.add_argument("--openclaw-home", default=str(Path(os.environ.get("OPENCLAW_HOME", home / ".openclaw"))))
+    parser.add_argument("--openclaw-home", default="")
+    parser.add_argument("--skip-openclaw-detect", action="store_true")
+    parser.add_argument("--openclaw-detect-scan-root", action="append", default=[])
+    parser.add_argument("--openclaw-detect-max-depth", type=int, default=5)
+    parser.add_argument("--openclaw-detect-max-results", type=int, default=80)
     parser.add_argument("--scan-root", action="append", default=[])
     parser.add_argument("--include-path", action="append", default=[])
     parser.add_argument("--projects-file", default="")
@@ -707,6 +976,7 @@ def main() -> int:
     parser.add_argument("--cron-install-daily-work-job", action="store_true")
     parser.add_argument("--cron-daily-work-expr", default="15 0 * * *")
     parser.add_argument("--cron-daily-work-log-mode", default="silent", choices=["silent", "chat"])
+    parser.add_argument("--cron-daily-work-env-file", default="")
     parser.add_argument("--cron-dingtalk-webhook-env", default="DINGTALK_WEBHOOK_URL")
     parser.add_argument("--cron-dingtalk-secret-env", default="DINGTALK_SECRET")
     parser.add_argument("--cron-install-self-evolution-job", action="store_true")
@@ -714,17 +984,91 @@ def main() -> int:
     parser.add_argument("--cron-self-evolution-log-mode", default="silent", choices=["silent", "chat"])
     parser.add_argument("--cron-self-evolution-min-interval-days", type=int, default=7)
     parser.add_argument("--cron-self-evolution-max-tasks-per-run", type=int, default=3)
+    parser.add_argument("--skip-ops-sync", action="store_true")
+    parser.add_argument("--sync-source-dir", default="")
+    parser.add_argument("--sync-manifest-file", default="")
+    parser.add_argument("--sync-keep-stale-files", action="store_true")
+    parser.add_argument("--allow-nonstandard-sync-source", action="store_true")
+    parser.add_argument("--skip-init-api-test-config", action="store_true")
+    parser.add_argument("--api-test-config-file", default="")
+    parser.add_argument("--api-test-base-url", default="http://127.0.0.1:8845")
+    parser.add_argument("--runtime-env-file", default="")
+    parser.add_argument("--configure-runtime-env", action="store_true")
+    parser.add_argument("--dingtalk-webhook-url", default="")
+    parser.add_argument("--dingtalk-secret", default="")
+    parser.add_argument("--set-runtime-env", action="append", default=[])
+    parser.add_argument("--skip-job-path-verify", action="store_true")
     parser.add_argument("--yes", action="store_true", help="non-interactive with defaults")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
 
     interactive = (not args.yes) and sys.stdin.isatty() and sys.stdout.isatty()
-    openclaw_home = Path(args.openclaw_home).expanduser()
     policy_dir = Path(__file__).resolve().parent
     bootstrap_py = policy_dir / "bootstrap_multi_project.py"
     install_job_py = policy_dir.parent / "install_project_index_job.py"
     cron_setup_py = policy_dir.parent / "cron_setup.py"
+    detect_openclaw_py = policy_dir.parent / "detect_openclaw_installations.py"
+    sync_ops_py = policy_dir.parent / "sync_openclaw_ops_files.py"
+    init_api_cfg_py = policy_dir.parent / "init_api_test_config.py"
+    configure_runtime_env_py = policy_dir.parent / "configure_runtime_env.py"
+    verify_job_paths_py = policy_dir.parent / "verify_job_payload_paths.py"
+
+    default_openclaw_home = Path(os.environ.get("OPENCLAW_HOME", str(home / ".openclaw"))).expanduser()
+    requested_openclaw_home = Path(args.openclaw_home).expanduser() if str(args.openclaw_home).strip() else None
+
+    openclaw_detect_scan_roots = [
+        Path(x).expanduser()
+        for x in [*args.openclaw_detect_scan_root, *args.scan_root]
+        if str(x).strip()
+    ]
+    openclaw_detection_result: dict[str, Any] | None = None
+    if not bool(args.skip_openclaw_detect):
+        openclaw_detection_result = run_openclaw_detect(
+            script_path=detect_openclaw_py,
+            scan_roots=openclaw_detect_scan_roots,
+            max_depth=max(1, int(args.openclaw_detect_max_depth)),
+            max_results=max(1, int(args.openclaw_detect_max_results)),
+            prefer_path=requested_openclaw_home,
+        )
+
+    openclaw_selection = "default"
+    if requested_openclaw_home is not None:
+        openclaw_home = requested_openclaw_home
+        openclaw_selection = "cli-arg"
+    else:
+        recommended_path = ""
+        if isinstance(openclaw_detection_result, dict):
+            recommended = openclaw_detection_result.get("recommended")
+            if isinstance(recommended, dict):
+                recommended_path = str(recommended.get("path", "")).strip()
+
+        if interactive and isinstance(openclaw_detection_result, dict):
+            installs = openclaw_detection_result.get("installations", [])
+            if isinstance(installs, list) and len(installs) > 1:
+                selected = choose_openclaw_installation_interactive(
+                    installations=[x for x in installs if isinstance(x, dict)],
+                    recommended_path=recommended_path,
+                )
+                if selected is not None:
+                    openclaw_home = selected
+                    openclaw_selection = "interactive-select"
+                elif recommended_path:
+                    openclaw_home = Path(recommended_path).expanduser()
+                    openclaw_selection = "detected-recommended"
+                else:
+                    openclaw_home = default_openclaw_home
+            elif recommended_path:
+                openclaw_home = Path(recommended_path).expanduser()
+                openclaw_selection = "detected-recommended"
+            else:
+                openclaw_home = default_openclaw_home
+        elif recommended_path:
+            openclaw_home = Path(recommended_path).expanduser()
+            openclaw_selection = "detected-recommended"
+        else:
+            openclaw_home = default_openclaw_home
+
     task_center_dir = openclaw_home / "ops" / "task-center"
     setup_dir = task_center_dir / "workflow-setup"
     ensure_dir(setup_dir)
@@ -753,6 +1097,10 @@ def main() -> int:
     install_api_test_job = bool(args.cron_install_api_test_job)
     install_daily_work_job = bool(args.cron_install_daily_work_job)
     install_self_evolution_job = bool(args.cron_install_self_evolution_job)
+    sync_ops_enabled = not bool(args.skip_ops_sync)
+    configure_runtime_env_enabled = bool(args.configure_runtime_env)
+    init_api_test_config_enabled = not bool(args.skip_init_api_test_config)
+    verify_job_paths_enabled = not bool(args.skip_job_path_verify)
     dry_run = bool(args.dry_run)
 
     if interactive:
@@ -790,6 +1138,8 @@ def main() -> int:
         payload = {
             "ok": False,
             "error": "no project selected",
+            "openclaw_home": str(openclaw_home),
+            "openclaw_detection": openclaw_detection_result,
             "scan_roots": [str(x) for x in scan_roots],
         }
         print(json.dumps(payload, ensure_ascii=False))
@@ -809,6 +1159,7 @@ def main() -> int:
             )
         dry_run = not prompt_yes_no("Apply setup now", default=not dry_run)
         if not dry_run:
+            sync_ops_enabled = prompt_yes_no("Sync repository scripts into selected OPENCLAW_HOME/ops", default=sync_ops_enabled or True)
             install_index_job = prompt_yes_no("Install project-index cron job", default=install_index_job)
             if install_index_job:
                 args.job_channel = prompt_text("Job delivery channel (optional)", args.job_channel or "")
@@ -913,6 +1264,89 @@ def main() -> int:
     args.cron_self_evolution_min_interval_days = max(1, int(args.cron_self_evolution_min_interval_days or 7))
     args.cron_self_evolution_max_tasks_per_run = max(1, int(args.cron_self_evolution_max_tasks_per_run or 3))
 
+    api_test_config_file = (
+        Path(args.api_test_config_file).expanduser()
+        if str(args.api_test_config_file).strip()
+        else (openclaw_home / "ops" / "api-test-config.json")
+    )
+    daily_work_env_file = (
+        Path(args.cron_daily_work_env_file).expanduser()
+        if str(args.cron_daily_work_env_file).strip()
+        else (openclaw_home / "ops" / "runtime.env")
+    )
+    runtime_env_file = (
+        Path(args.runtime_env_file).expanduser() if str(args.runtime_env_file).strip() else daily_work_env_file
+    )
+
+    sync_source_dir = Path(args.sync_source_dir).expanduser() if str(args.sync_source_dir).strip() else policy_dir.parent
+    sync_layout_ok, sync_layout_detail = validate_sync_source_layout(
+        source_dir=sync_source_dir,
+        allow_nonstandard=bool(args.allow_nonstandard_sync_source),
+    )
+    if not sync_layout_ok:
+        payload = {
+            "ok": False,
+            "error": "invalid sync source layout",
+            "sync_source_check": sync_layout_detail,
+        }
+        print(json.dumps(payload, ensure_ascii=False))
+        return 2
+
+    sync_result: dict[str, Any] | None = None
+    runtime_env_result: dict[str, Any] | None = None
+    api_test_config_init_result: dict[str, Any] | None = None
+    job_payload_path_check_result: dict[str, Any] | None = None
+    sync_manifest_file = (
+        Path(args.sync_manifest_file).expanduser() if str(args.sync_manifest_file).strip() else None
+    )
+    if sync_ops_enabled:
+        sync_ok, sync_payload = run_ops_sync(
+            script_path=sync_ops_py,
+            source_dir=sync_source_dir,
+            openclaw_home=openclaw_home,
+            manifest_file=sync_manifest_file,
+            dry_run=dry_run,
+            keep_stale_files=bool(args.sync_keep_stale_files),
+        )
+        sync_result = sync_payload
+        if (not sync_ok) and (not dry_run):
+            payload = {
+                "ok": False,
+                "error": "openclaw ops sync failed",
+                "openclaw_home": str(openclaw_home),
+                "sync": sync_payload,
+            }
+            print(json.dumps(payload, ensure_ascii=False))
+            return 2
+
+    if configure_runtime_env_enabled:
+        if dry_run:
+            runtime_env_result = {
+                "ok": True,
+                "dry_run": True,
+                "env_file": str(runtime_env_file),
+                "would_update_keys": sorted(
+                    {
+                        *[str(x).split("=", 1)[0].strip() for x in args.set_runtime_env if "=" in str(x)],
+                        *(["DINGTALK_WEBHOOK_URL"] if str(args.dingtalk_webhook_url).strip() else []),
+                        *(["DINGTALK_SECRET"] if str(args.dingtalk_secret).strip() else []),
+                    }
+                ),
+            }
+        else:
+            env_ok, env_payload = run_configure_runtime_env(
+                script_path=configure_runtime_env_py,
+                env_file=runtime_env_file,
+                dingtalk_webhook_url=str(args.dingtalk_webhook_url or ""),
+                dingtalk_secret=str(args.dingtalk_secret or ""),
+                set_items=[str(x) for x in args.set_runtime_env],
+            )
+            runtime_env_result = env_payload
+            if not env_ok:
+                payload = {"ok": False, "error": "configure runtime env failed", "runtime_env": env_payload}
+                print(json.dumps(payload, ensure_ascii=False))
+                return 2
+
     generated_projects_file = setup_dir / "projects.generated.json"
     projects_payload = {"projects": [x.to_bootstrap_item(strict_remote=strict_remote) for x in assessments]}
     generated_projects_file.write_text(json.dumps(projects_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -944,6 +1378,18 @@ def main() -> int:
             "report_md": str(bootstrap_report_md),
         }
 
+        if ok and install_api_test_job and init_api_test_config_enabled and (not api_test_config_file.exists()):
+            init_ok, init_payload = run_init_api_test_config(
+                script_path=init_api_cfg_py,
+                config_file=api_test_config_file,
+                base_url=str(args.api_test_base_url or "http://127.0.0.1:8845"),
+            )
+            api_test_config_init_result = init_payload
+            if not init_ok:
+                payload = {"ok": False, "error": "init api-test-config failed", "api_test_config_init": init_payload}
+                print(json.dumps(payload, ensure_ascii=False))
+                return 2
+
         if ok and install_index_job:
             job_ok, job_note = run_install_job(
                 script_path=install_job_py,
@@ -957,7 +1403,7 @@ def main() -> int:
             install_result = {"ok": False, "note": "bootstrap failed, skipped install_project_index_job"}
 
         if ok and install_cron_setup:
-            cron_ok, cron_note = run_cron_setup(
+            cron_ok, cron_payload = run_cron_setup(
                 script_path=cron_setup_py,
                 openclaw_home=openclaw_home,
                 channel=args.cron_channel.strip(),
@@ -978,6 +1424,7 @@ def main() -> int:
                 install_daily_work_job=bool(install_daily_work_job),
                 daily_work_expr=args.cron_daily_work_expr.strip(),
                 daily_work_log_mode=args.cron_daily_work_log_mode,
+                daily_work_env_file=str(daily_work_env_file),
                 dingtalk_webhook_env=args.cron_dingtalk_webhook_env.strip(),
                 dingtalk_secret_env=args.cron_dingtalk_secret_env.strip(),
                 install_self_evolution_job=bool(install_self_evolution_job),
@@ -986,7 +1433,36 @@ def main() -> int:
                 self_evolution_min_interval_days=int(args.cron_self_evolution_min_interval_days),
                 self_evolution_max_tasks_per_run=int(args.cron_self_evolution_max_tasks_per_run),
             )
-            cron_setup_result = {"ok": cron_ok, "note": cron_note}
+            cron_setup_result = {
+                "ok": cron_ok,
+                "note": str(cron_payload.get("error") or cron_payload.get("note") or ("ok" if cron_ok else "failed")),
+                "detail": cron_payload,
+            }
+            if cron_ok and verify_job_paths_enabled:
+                verify_names = [
+                    "project_index_maintainer_30m",
+                    "ops_incremental_monitor",
+                    "ops_full_calibration",
+                    "ops_daily_summary",
+                ]
+                if bool(install_system_schedule_job):
+                    verify_names.append("ops_system_schedule_audit")
+                if bool(install_api_test_job):
+                    verify_names.append("ops_api_test_audit")
+                if bool(install_daily_work_job):
+                    verify_names.append("ops_daily_work_report_dingtalk")
+                if bool(install_self_evolution_job):
+                    verify_names.append("ops_self_evolution_weekly_todo")
+                verify_ok, verify_payload = run_verify_job_payload_paths(
+                    script_path=verify_job_paths_py,
+                    jobs_file=openclaw_home / "cron" / "jobs.json",
+                    job_names=verify_names,
+                )
+                job_payload_path_check_result = verify_payload
+                if not verify_ok:
+                    payload = {"ok": False, "error": "job payload path verify failed", "verify": verify_payload}
+                    print(json.dumps(payload, ensure_ascii=False))
+                    return 2
         elif install_cron_setup:
             cron_setup_result = {"ok": False, "note": "bootstrap failed, skipped cron_setup"}
 
@@ -997,10 +1473,13 @@ def main() -> int:
         "mode": args.mode,
         "generated_at": now_iso(),
         "openclaw_home": str(openclaw_home),
+        "openclaw_selection": openclaw_selection,
+        "openclaw_detection": openclaw_detection_result,
         "task_center_dir": str(task_center_dir),
         "strict_git_remote": strict_remote,
         "dry_run": dry_run,
         "scan_roots": [str(x) for x in scan_roots],
+        "openclaw_detect_scan_roots": [str(x) for x in openclaw_detect_scan_roots],
         "selected_projects": [
             {
                 "name": x.name,
@@ -1020,6 +1499,12 @@ def main() -> int:
         "bootstrap": bootstrap_result,
         "install_project_index_job": install_result,
         "install_cron_setup": cron_setup_result,
+        "ops_sync": sync_result,
+        "sync_source_check": sync_layout_detail,
+        "runtime_env": runtime_env_result,
+        "api_test_config_file": str(api_test_config_file),
+        "api_test_config_init": api_test_config_init_result,
+        "job_payload_path_check": job_payload_path_check_result,
         "cron_setup_options": {
             "install_system_schedule_job": bool(install_system_schedule_job),
             "install_api_test_job": bool(install_api_test_job),
@@ -1034,12 +1519,22 @@ def main() -> int:
             "api_test_log_mode": args.cron_api_test_log_mode,
             "daily_work_expr": args.cron_daily_work_expr,
             "daily_work_log_mode": args.cron_daily_work_log_mode,
+            "daily_work_env_file": str(daily_work_env_file),
             "dingtalk_webhook_env": args.cron_dingtalk_webhook_env,
             "dingtalk_secret_env": args.cron_dingtalk_secret_env,
             "self_evolution_expr": args.cron_self_evolution_expr,
             "self_evolution_log_mode": args.cron_self_evolution_log_mode,
             "self_evolution_min_interval_days": int(args.cron_self_evolution_min_interval_days),
             "self_evolution_max_tasks_per_run": int(args.cron_self_evolution_max_tasks_per_run),
+            "sync_ops_enabled": bool(sync_ops_enabled),
+            "sync_source_dir": str(sync_source_dir),
+            "sync_manifest_file": str(sync_manifest_file) if sync_manifest_file is not None else "",
+            "sync_keep_stale_files": bool(args.sync_keep_stale_files),
+            "allow_nonstandard_sync_source": bool(args.allow_nonstandard_sync_source),
+            "configure_runtime_env": bool(configure_runtime_env_enabled),
+            "runtime_env_file": str(runtime_env_file),
+            "verify_job_paths_enabled": bool(verify_job_paths_enabled),
+            "init_api_test_config_enabled": bool(init_api_test_config_enabled),
         },
         "reports": {
             "setup_json": str(setup_latest_json),
@@ -1055,6 +1550,9 @@ def main() -> int:
         openclaw_home=openclaw_home,
         strict_remote=strict_remote,
         dry_run=dry_run,
+        openclaw_detection=openclaw_detection_result,
+        openclaw_selection=openclaw_selection,
+        sync_result=sync_result,
         selected=assessments,
         bootstrap_result=bootstrap_result,
         install_job_result=install_result,
@@ -1066,7 +1564,16 @@ def main() -> int:
     else:
         print("")
         print(f"Setup report: {setup_latest_md}")
+        print(f"OpenClaw home: {openclaw_home} ({openclaw_selection})")
         print(f"Registry: {registry_file}")
+        if sync_result:
+            sync_counts = sync_result.get("counts", {}) if isinstance(sync_result, dict) else {}
+            print(
+                "Ops sync: "
+                f"added={sync_counts.get('added', 0)}, "
+                f"updated={sync_counts.get('updated', 0)}, "
+                f"deleted={sync_counts.get('deleted', 0)}"
+            )
         if bootstrap_result:
             print(f"Bootstrap: {'ok' if bootstrap_result.get('ok') else 'failed'}")
         if install_result:

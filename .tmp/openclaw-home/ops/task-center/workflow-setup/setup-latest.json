@@ -1,0 +1,307 @@
+{
+  "ok": true,
+  "mode": "init",
+  "generated_at": "2026-03-02T15:59:43+00:00",
+  "openclaw_home": ".tmp\\openclaw-home",
+  "openclaw_selection": "cli-arg",
+  "openclaw_detection": {
+    "ok": true,
+    "generated_at": "2026-03-02T15:58:41+00:00",
+    "count": 6,
+    "valid_count": 1,
+    "recommended": {
+      "path": "C:\\Users\\superma\\.openclaw",
+      "exists": true,
+      "source": "default",
+      "valid": true,
+      "marker_score": 3,
+      "markers": {
+        "openclaw_json": true,
+        "cron_jobs": true,
+        "ops_dir": true
+      },
+      "version": "",
+      "jobs_file": "C:\\Users\\superma\\.openclaw\\cron\\jobs.json",
+      "jobs_count": 0,
+      "last_modified_ts": 1772453681.1576428
+    },
+    "installations": [
+      {
+        "path": "C:\\Users\\superma\\.config\\openclaw",
+        "exists": false,
+        "source": "default",
+        "valid": false,
+        "marker_score": 0,
+        "markers": {
+          "openclaw_json": false,
+          "cron_jobs": false,
+          "ops_dir": false
+        },
+        "version": "",
+        "jobs_file": "C:\\Users\\superma\\.config\\openclaw\\cron\\jobs.json",
+        "jobs_count": -1,
+        "last_modified_ts": 0.0
+      },
+      {
+        "path": "C:\\Users\\superma\\.openclaw",
+        "exists": true,
+        "source": "default",
+        "valid": true,
+        "marker_score": 3,
+        "markers": {
+          "openclaw_json": true,
+          "cron_jobs": true,
+          "ops_dir": true
+        },
+        "version": "",
+        "jobs_file": "C:\\Users\\superma\\.openclaw\\cron\\jobs.json",
+        "jobs_count": 0,
+        "last_modified_ts": 1772453681.1576428
+      },
+      {
+        "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+        "exists": true,
+        "source": "scan:D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+        "valid": false,
+        "marker_score": 2,
+        "markers": {
+          "openclaw_json": true,
+          "cron_jobs": true,
+          "ops_dir": false
+        },
+        "version": "",
+        "jobs_file": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\cron\\jobs.json",
+        "jobs_count": 13,
+        "last_modified_ts": 1772455952.6162906
+      },
+      {
+        "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\openclaw",
+        "exists": true,
+        "source": "scan:D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+        "valid": false,
+        "marker_score": 1,
+        "markers": {
+          "openclaw_json": true,
+          "cron_jobs": false,
+          "ops_dir": false
+        },
+        "version": "",
+        "jobs_file": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\openclaw\\cron\\jobs.json",
+        "jobs_count": -1,
+        "last_modified_ts": 1772448197.4118648
+      },
+      {
+        "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops",
+        "exists": true,
+        "source": "scan:D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+        "valid": false,
+        "marker_score": 0,
+        "markers": {
+          "openclaw_json": false,
+          "cron_jobs": false,
+          "ops_dir": false
+        },
+        "version": "",
+        "jobs_file": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\cron\\jobs.json",
+        "jobs_count": -1,
+        "last_modified_ts": 1772466893.1141067
+      },
+      {
+        "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\skills\\library\\openclaw-security-audit",
+        "exists": true,
+        "source": "scan:D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+        "valid": false,
+        "marker_score": 0,
+        "markers": {
+          "openclaw_json": false,
+          "cron_jobs": false,
+          "ops_dir": false
+        },
+        "version": "",
+        "jobs_file": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\skills\\library\\openclaw-security-audit\\cron\\jobs.json",
+        "jobs_count": -1,
+        "last_modified_ts": 1772271726.0
+      }
+    ]
+  },
+  "task_center_dir": ".tmp\\openclaw-home\\ops\\task-center",
+  "strict_git_remote": false,
+  "dry_run": true,
+  "scan_roots": [
+    "."
+  ],
+  "openclaw_detect_scan_roots": [
+    "."
+  ],
+  "selected_projects": [
+    {
+      "name": "openclaw-hardflow-backup-20260302",
+      "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+      "writable": true,
+      "git_repo": true,
+      "remote_url": "https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git",
+      "remote_read_ok": false,
+      "remote_push_ok": false,
+      "deployment": {
+        "strategy": "manual",
+        "reason": "no standard deployment marker detected",
+        "commands": [
+          "add project-specific deploy command",
+          "verify health and rollback strategy",
+          "bash scripts/hardflow/hardflow-run.sh deploy"
+        ],
+        "detected_signals": [
+          "hardflow"
+        ],
+        "project_path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302"
+      },
+      "hints": [
+        "Git remote read failed: check SSH key/token/network.",
+        "Git push dry-run failed: verify write permission/deploy key."
+      ]
+    }
+  ],
+  "generated_projects_file": ".tmp\\openclaw-home\\ops\\task-center\\workflow-setup\\projects.generated.json",
+  "project_registry": ".tmp\\openclaw-home\\ops\\task-center\\project-registry.json",
+  "bootstrap": null,
+  "install_project_index_job": null,
+  "install_cron_setup": null,
+  "ops_sync": {
+    "ok": true,
+    "generated_at": "2026-03-02T15:59:43+00:00",
+    "dry_run": true,
+    "source_dir": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops",
+    "target_ops_dir": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\openclaw-home\\ops",
+    "manifest_file": ".tmp\\openclaw-home\\ops\\.hardflow-sync-manifest.json",
+    "counts": {
+      "managed_source_files": 37,
+      "previous_managed_files": 0,
+      "added": 37,
+      "updated": 0,
+      "unchanged": 0,
+      "deleted": 0,
+      "moved": 0
+    },
+    "changes": {
+      "added": [
+        "api_test_audit.py",
+        "configure_runtime_env.py",
+        "cron_setup.py",
+        "daily_work_report.py",
+        "detect_openclaw_installations.py",
+        "init_api_test_config.py",
+        "install_project_index_job.py",
+        "install_todo_patrol_job.py",
+        "ops_cron_runner.py",
+        "policy/bootstrap_multi_project.py",
+        "policy/MULTI_PROJECT_INSTALL.md",
+        "policy/policy-config.json",
+        "policy/policy_enforcer.py",
+        "policy/project-registry.example.json",
+        "policy/project_index_maintainer.py",
+        "policy/projects.example.json",
+        "policy/README.md",
+        "policy/risk_rule_sync.py",
+        "policy/routing-rules.json",
+        "policy/runtime.env.example",
+        "policy/task_center.py",
+        "policy/token-pricing.json",
+        "policy/workflow_setup.py",
+        "README.md",
+        "self_evolution_todo.py",
+        "SETUP_WORKFLOW.md",
+        "sync_agents_12_to_servers.sh",
+        "sync_model_to_doubao_servers.ps1",
+        "sync_model_to_doubao_servers.sh",
+        "sync_openclaw_ops_files.py",
+        "sync_policy_enforcer_to_servers.ps1",
+        "sync_policy_enforcer_to_servers.sh",
+        "sync_todo_patrol_to_servers.ps1",
+        "sync_todo_patrol_to_servers.sh",
+        "system_schedule_snapshot.py",
+        "todo_patrol.py",
+        "verify_job_payload_paths.py"
+      ],
+      "updated": [],
+      "deleted": [],
+      "moved": []
+    },
+    "notes": {
+      "keep_stale_files": false
+    }
+  },
+  "sync_source_check": {
+    "source_dir": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops",
+    "nonstandard_layout": false,
+    "allow_nonstandard": false,
+    "missing_required_files": [],
+    "ok": true
+  },
+  "runtime_env": {
+    "ok": true,
+    "generated_at": "2026-03-02T15:59:43+00:00",
+    "env_file": ".tmp\\openclaw-home\\ops\\runtime.env",
+    "updated_keys": [
+      "DINGTALK_SECRET",
+      "DINGTALK_WEBHOOK_URL",
+      "TEST_FLAG"
+    ],
+    "changed": {
+      "TEST_FLAG": {
+        "changed": true,
+        "old_masked": "",
+        "new_masked": "*"
+      },
+      "DINGTALK_WEBHOOK_URL": {
+        "changed": true,
+        "old_masked": "",
+        "new_masked": "http*************om/h"
+      },
+      "DINGTALK_SECRET": {
+        "changed": true,
+        "old_masked": "",
+        "new_masked": "***"
+      }
+    }
+  },
+  "api_test_config_file": ".tmp\\openclaw-home\\ops\\api-test-config.json",
+  "api_test_config_init": null,
+  "job_payload_path_check": null,
+  "cron_setup_options": {
+    "install_system_schedule_job": false,
+    "install_api_test_job": false,
+    "install_daily_work_job": false,
+    "install_self_evolution_job": false,
+    "incremental_log_mode": "silent",
+    "full_log_mode": "silent",
+    "daily_log_mode": "silent",
+    "system_log_mode": "silent",
+    "api_test_expr": "*/15 * * * *",
+    "api_test_engine": "playwright",
+    "api_test_log_mode": "silent",
+    "daily_work_expr": "15 0 * * *",
+    "daily_work_log_mode": "silent",
+    "daily_work_env_file": ".tmp\\openclaw-home\\ops\\runtime.env",
+    "dingtalk_webhook_env": "DINGTALK_WEBHOOK_URL",
+    "dingtalk_secret_env": "DINGTALK_SECRET",
+    "self_evolution_expr": "30 3 * * 1",
+    "self_evolution_log_mode": "silent",
+    "self_evolution_min_interval_days": 7,
+    "self_evolution_max_tasks_per_run": 3,
+    "sync_ops_enabled": true,
+    "sync_source_dir": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops",
+    "sync_manifest_file": "",
+    "sync_keep_stale_files": false,
+    "allow_nonstandard_sync_source": false,
+    "configure_runtime_env": true,
+    "runtime_env_file": ".tmp\\openclaw-home\\ops\\runtime.env",
+    "verify_job_paths_enabled": true,
+    "init_api_test_config_enabled": true
+  },
+  "reports": {
+    "setup_json": ".tmp\\openclaw-home\\ops\\task-center\\workflow-setup\\setup-latest.json",
+    "setup_md": ".tmp\\openclaw-home\\ops\\task-center\\workflow-setup\\setup-latest.md",
+    "bootstrap_json": ".tmp\\openclaw-home\\ops\\task-center\\workflow-setup\\bootstrap-report.json",
+    "bootstrap_md": ".tmp\\openclaw-home\\ops\\task-center\\workflow-setup\\bootstrap-report.md"
+  }
+}

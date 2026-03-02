@@ -122,6 +122,7 @@ def main() -> None:
     parser.add_argument("--every-ms", type=int, default=1800000)
     parser.add_argument("--maintainer-py", default=str(home / ".openclaw/ops/project_index_maintainer.py"))
     parser.add_argument("--registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
+    parser.add_argument("--skip-path-check", action="store_true")
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
     args = parser.parse_args()
@@ -140,6 +141,14 @@ def main() -> None:
     if not target:
         raise SystemExit("missing delivery target: pass --to or keep existing project-agent/ops-agent delivery")
 
+    maintainer_path = Path(args.maintainer_py).expanduser()
+    registry_path = Path(args.registry).expanduser()
+    if not bool(args.skip_path_check):
+        if not maintainer_path.exists() or not maintainer_path.is_file():
+            raise SystemExit(f"maintainer script missing: {maintainer_path}")
+        if not registry_path.exists() or not registry_path.is_file():
+            raise SystemExit(f"project registry missing: {registry_path}")
+
     if jobs_path.exists():
         backup = jobs_path.with_name(f"{jobs_path.name}.bak.{stamp()}")
         shutil.copy2(jobs_path, backup)
@@ -149,8 +158,8 @@ def main() -> None:
         jobs=jobs,
         job_id=args.job_id,
         every_ms=int(args.every_ms),
-        maintainer_py=args.maintainer_py,
-        registry=args.registry,
+        maintainer_py=str(maintainer_path),
+        registry=str(registry_path),
         channel=channel,
         target=target,
     )
@@ -160,8 +169,8 @@ def main() -> None:
     print(f"job_id={args.job_id}")
     print(f"status={'updated' if existed else 'created'}")
     print(f"jobs_file={jobs_path}")
-    print(f"maintainer_py={args.maintainer_py}")
-    print(f"registry={args.registry}")
+    print(f"maintainer_py={maintainer_path}")
+    print(f"registry={registry_path}")
     print(f"delivery={channel}:{target}")
 
 
