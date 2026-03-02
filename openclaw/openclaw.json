@@ -29,8 +29,8 @@
         "api": "openai-completions",
         "models": [
           {
-            "id": "kimi-k2.5",
-            "name": "Kimi K2.5"
+            "id": "Doubao-Seed-2.0-Code",
+            "name": "Doubao-Seed-2.0-Code"
           }
         ]
       },
@@ -53,18 +53,17 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "glmcode/glm-5",
+        "primary": "kimicode/Doubao-Seed-2.0-Code",
         "fallbacks": [
-          "kimicode/kimi-k2.5",
-          "glmcode/glm-4.7"
+          "glmcode/glm-5"
         ]
       },
       "models": {
+        "kimicode/Doubao-Seed-2.0-Code": {
+          "alias": "doubao"
+        },
         "glmcode/glm-5": {
           "alias": "glm"
-        },
-        "kimicode/kimi-k2.5": {
-          "alias": "kimi"
         },
         "glmcode/glm-4.7": {
           "alias": "glm47"
@@ -101,7 +100,7 @@
         "default": true,
         "name": "大总管",
         "workspace": "/home/ubuntu/.openclaw/workspace",
-        "model": "glmcode/glm-5",
+        "model": "kimicode/Doubao-Seed-2.0-Code",
         "subagents": {
           "allowAgents": [
             "agent-factory",
@@ -123,7 +122,7 @@
         "id": "coordinator",
         "name": "coordinator",
         "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
-        "model": "glmcode/glm-5",
+        "model": "kimicode/Doubao-Seed-2.0-Code",
         "subagents": {
           "allowAgents": [
             "agent-factory",
@@ -145,43 +144,43 @@
         "id": "doc-writer",
         "name": "doc-writer",
         "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
-        "model": "glmcode/glm-5"
+        "model": "kimicode/Doubao-Seed-2.0-Code"
       },
       {
         "id": "frontend-dev",
         "name": "frontend-dev",
         "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
-        "model": "glmcode/glm-5"
+        "model": "kimicode/Doubao-Seed-2.0-Code"
       },
       {
         "id": "backend-dev",
         "name": "backend-dev",
         "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
-        "model": "glmcode/glm-5"
+        "model": "kimicode/Doubao-Seed-2.0-Code"
       },
       {
         "id": "reviewer",
         "name": "代码审核",
         "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
-        "model": "glmcode/glm-5"
+        "model": "kimicode/Doubao-Seed-2.0-Code"
       },
       {
         "id": "tester",
         "name": "测试验收",
         "workspace": "/home/ubuntu/.openclaw/workspace-tester",
-        "model": "glmcode/glm-5"
+        "model": "kimicode/Doubao-Seed-2.0-Code"
       },
       {
         "id": "deployer",
         "name": "deployer",
         "workspace": "/home/ubuntu/.openclaw/workspace-deployer",
-        "model": "glmcode/glm-5"
+        "model": "kimicode/Doubao-Seed-2.0-Code"
       },
       {
         "id": "agent-factory",
         "name": "agent-factory",
         "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
-        "model": "glmcode/glm-5",
+        "model": "kimicode/Doubao-Seed-2.0-Code",
         "subagents": {
           "allowAgents": [
             "optimize-agent",
@@ -194,7 +193,7 @@
         "name": "ops-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/ops-agent/agent",
-        "model": "glmcode/glm-4.7",
+        "model": "kimicode/Doubao-Seed-2.0-Code",
         "subagents": {
           "allowAgents": [
             "optimize-agent",
@@ -207,7 +206,7 @@
         "name": "optimize-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-optimize-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/optimize-agent/agent",
-        "model": "glmcode/glm-5",
+        "model": "kimicode/Doubao-Seed-2.0-Code",
         "subagents": {
           "allowAgents": [
             "project-agent"
@@ -219,7 +218,7 @@
         "name": "project-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
-        "model": "glmcode/glm-5"
+        "model": "kimicode/Doubao-Seed-2.0-Code"
       }
     ]
   },

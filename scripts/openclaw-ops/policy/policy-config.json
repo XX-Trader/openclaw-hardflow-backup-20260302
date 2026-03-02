@@ -1,13 +1,12 @@
 {
   "schema_version": "2026-03-02",
-  "primary_model": "glmcode/glm-5",
+  "primary_model": "kimicode/Doubao-Seed-2.0-Code",
   "fallback_models": [
-    "kimicode/kimi-k2.5",
-    "glmcode/glm-4.7"
+    "glmcode/glm-5"
   ],
   "allowed_models": [
+    "kimicode/Doubao-Seed-2.0-Code",
     "glmcode/glm-5",
-    "kimicode/kimi-k2.5",
     "glmcode/glm-4.7"
   ],
   "allowed_entry_agents": [

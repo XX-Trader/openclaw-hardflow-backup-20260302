@@ -74,8 +74,8 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "kimi-k2.5",
-          "name": "Kimi K2.5",
+          "id": "Doubao-Seed-2.0-Code",
+          "name": "Doubao-Seed-2.0-Code",
           "reasoning": false,
           "input": [
             "text"
@@ -139,8 +139,8 @@
       "api": "openai-completions",
       "models": [
         {
-          "id": "kimi-k2.5",
-          "name": "Kimi K2.5",
+          "id": "Doubao-Seed-2.0-Code",
+          "name": "Doubao-Seed-2.0-Code",
           "reasoning": false,
           "input": [
             "text"

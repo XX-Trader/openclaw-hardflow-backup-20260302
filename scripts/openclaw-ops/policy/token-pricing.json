@@ -3,11 +3,11 @@
   "currency": "CNY",
   "unit": "per_1m_tokens",
   "models": {
-    "glmcode/glm-5": {
+    "kimicode/Doubao-Seed-2.0-Code": {
       "input": 0,
       "output": 0
     },
-    "kimicode/kimi-k2.5": {
+    "glmcode/glm-5": {
       "input": 0,
       "output": 0
     },
