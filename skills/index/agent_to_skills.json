@@ -1,0 +1,253 @@
+{
+  "main": {
+    "skills": [
+      "agent-manager",
+      "requirements-clarity",
+      "smart-workflow",
+      "result-synthesizer",
+      "intelligent-router",
+      "task-decomposer",
+      "codex",
+      "using-superpowers"
+    ],
+    "source": {
+      "matrix": [
+        "agent-manager",
+        "requirements-clarity",
+        "smart-workflow",
+        "result-synthesizer",
+        "intelligent-router",
+        "task-decomposer",
+        "codex",
+        "using-superpowers"
+      ],
+      "soul": [
+        "agent-manager",
+        "requirements-clarity",
+        "smart-workflow",
+        "result-synthesizer",
+        "intelligent-router",
+        "task-decomposer",
+        "codex",
+        "using-superpowers"
+      ]
+    }
+  },
+  "coordinator": {
+    "skills": [
+      "task-decomposer",
+      "smart-workflow",
+      "dispatching-parallel-agents",
+      "parallel-executor",
+      "agent-manager",
+      "requirements-clarity"
+    ],
+    "source": {
+      "matrix": [
+        "task-decomposer",
+        "smart-workflow",
+        "dispatching-parallel-agents",
+        "parallel-executor",
+        "agent-manager",
+        "requirements-clarity"
+      ],
+      "soul": []
+    }
+  },
+  "doc-writer": {
+    "skills": [
+      "writing-plans",
+      "docx",
+      "changelog-generator",
+      "internal-comms",
+      "product-requirements",
+      "baoyu-format-markdown",
+      "pdf",
+      "pptx",
+      "xlsx"
+    ],
+    "source": {
+      "matrix": [
+        "writing-plans",
+        "docx",
+        "changelog-generator",
+        "internal-comms",
+        "product-requirements",
+        "baoyu-format-markdown",
+        "pdf",
+        "pptx",
+        "xlsx"
+      ],
+      "soul": [
+        "writing-plans",
+        "docx",
+        "changelog-generator",
+        "internal-comms",
+        "product-requirements",
+        "baoyu-format-markdown",
+        "pdf",
+        "pptx",
+        "xlsx"
+      ]
+    }
+  },
+  "frontend-dev": {
+    "skills": [
+      "frontend-design",
+      "feature-development",
+      "ui-ux-pro-max",
+      "verification-before-completion",
+      "auto-fix",
+      "webapp-testing",
+      "using-git-worktrees"
+    ],
+    "source": {
+      "matrix": [
+        "frontend-design",
+        "feature-development",
+        "ui-ux-pro-max",
+        "verification-before-completion",
+        "auto-fix",
+        "webapp-testing",
+        "using-git-worktrees"
+      ],
+      "soul": [
+        "frontend-design",
+        "feature-development",
+        "ui-ux-pro-max",
+        "verification-before-completion",
+        "auto-fix",
+        "webapp-testing",
+        "using-git-worktrees"
+      ]
+    }
+  },
+  "backend-dev": {
+    "skills": [
+      "feature-development",
+      "systematic-debugging",
+      "auto-fix",
+      "verification-before-completion",
+      "mcp-builder",
+      "using-git-worktrees"
+    ],
+    "source": {
+      "matrix": [
+        "feature-development",
+        "systematic-debugging",
+        "auto-fix",
+        "verification-before-completion",
+        "mcp-builder",
+        "using-git-worktrees"
+      ],
+      "soul": [
+        "feature-development",
+        "systematic-debugging",
+        "auto-fix",
+        "verification-before-completion",
+        "mcp-builder",
+        "using-git-worktrees"
+      ]
+    }
+  },
+  "reviewer": {
+    "skills": [
+      "requesting-code-review",
+      "receiving-code-review",
+      "systematic-debugging",
+      "verification-before-completion",
+      "openclaw-security-audit"
+    ],
+    "source": {
+      "matrix": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ],
+      "soul": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ]
+    }
+  },
+  "tester": {
+    "skills": [
+      "webapp-testing",
+      "auto-fix",
+      "deployment-test",
+      "systematic-debugging"
+    ],
+    "source": {
+      "matrix": [
+        "webapp-testing",
+        "auto-fix",
+        "deployment-test",
+        "systematic-debugging"
+      ],
+      "soul": [
+        "webapp-testing",
+        "auto-fix",
+        "deployment-test",
+        "systematic-debugging"
+      ]
+    }
+  },
+  "deployer": {
+    "skills": [
+      "db-deploy",
+      "deployment-test",
+      "github-actions-runner",
+      "windows-fullstack-deploy",
+      "openclaw-security-audit"
+    ],
+    "source": {
+      "matrix": [
+        "db-deploy",
+        "deployment-test",
+        "github-actions-runner",
+        "windows-fullstack-deploy",
+        "openclaw-security-audit"
+      ],
+      "soul": [
+        "db-deploy",
+        "deployment-test",
+        "github-actions-runner",
+        "windows-fullstack-deploy",
+        "openclaw-security-audit"
+      ]
+    }
+  },
+  "agent-factory": {
+    "skills": [],
+    "source": {
+      "matrix": [],
+      "soul": []
+    }
+  },
+  "ops-agent": {
+    "skills": [],
+    "source": {
+      "matrix": [],
+      "soul": []
+    }
+  },
+  "optimize-agent": {
+    "skills": [],
+    "source": {
+      "matrix": [],
+      "soul": []
+    }
+  },
+  "project-agent": {
+    "skills": [],
+    "source": {
+      "matrix": [],
+      "soul": []
+    }
+  }
+}

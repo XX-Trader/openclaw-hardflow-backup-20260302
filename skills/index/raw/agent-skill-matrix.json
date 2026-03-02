@@ -1,0 +1,100 @@
+{
+  "meta": {
+    "version": "1.1",
+    "updatedBy": "openclaw-config",
+    "updatedAt": "2026-02-27T21:00:00+08:00",
+    "notes": "Multi-agent 技能映射：用于 codex bridge + 手工核查统一口径"
+  },
+  "agents": {
+    "main": {
+      "label": "大总管（入口/分流）",
+      "skills": [
+        "agent-manager",
+        "requirements-clarity",
+        "smart-workflow",
+        "result-synthesizer",
+        "intelligent-router",
+        "task-decomposer",
+        "codex",
+        "using-superpowers"
+      ]
+    },
+    "coordinator": {
+      "label": "任务协调",
+      "skills": [
+        "task-decomposer",
+        "smart-workflow",
+        "dispatching-parallel-agents",
+        "parallel-executor",
+        "agent-manager",
+        "requirements-clarity"
+      ]
+    },
+    "doc-writer": {
+      "label": "文档治理",
+      "skills": [
+        "writing-plans",
+        "docx",
+        "changelog-generator",
+        "internal-comms",
+        "product-requirements",
+        "baoyu-format-markdown",
+        "pdf",
+        "pptx",
+        "xlsx"
+      ]
+    },
+    "frontend-dev": {
+      "label": "前端开发",
+      "skills": [
+        "frontend-design",
+        "feature-development",
+        "ui-ux-pro-max",
+        "verification-before-completion",
+        "auto-fix",
+        "webapp-testing",
+        "using-git-worktrees"
+      ]
+    },
+    "backend-dev": {
+      "label": "后端开发",
+      "skills": [
+        "feature-development",
+        "systematic-debugging",
+        "auto-fix",
+        "verification-before-completion",
+        "mcp-builder",
+        "using-git-worktrees"
+      ]
+    },
+    "reviewer": {
+      "label": "代码审核",
+      "skills": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ]
+    },
+    "tester": {
+      "label": "测试验收",
+      "skills": [
+        "webapp-testing",
+        "auto-fix",
+        "deployment-test",
+        "systematic-debugging"
+      ]
+    },
+    "deployer": {
+      "label": "发布运维",
+      "skills": [
+        "db-deploy",
+        "deployment-test",
+        "github-actions-runner",
+        "windows-fullstack-deploy",
+        "openclaw-security-audit"
+      ]
+    }
+  }
+}

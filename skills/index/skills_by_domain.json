@@ -1,0 +1,49 @@
+{
+  "deployment_ops": [
+    "db-deploy",
+    "deployment-test",
+    "github-actions-runner",
+    "windows-fullstack-deploy"
+  ],
+  "development": [
+    "auto-fix",
+    "codex",
+    "feature-development",
+    "frontend-design",
+    "mcp-builder",
+    "systematic-debugging",
+    "ui-ux-pro-max",
+    "using-git-worktrees",
+    "webapp-testing"
+  ],
+  "documentation": [
+    "baoyu-format-markdown",
+    "changelog-generator",
+    "docx",
+    "internal-comms",
+    "pdf",
+    "pptx",
+    "product-requirements",
+    "writing-plans",
+    "xlsx"
+  ],
+  "orchestration": [
+    "agent-manager",
+    "dispatching-parallel-agents",
+    "intelligent-router",
+    "parallel-executor",
+    "requirements-clarity",
+    "result-synthesizer",
+    "smart-workflow",
+    "task-decomposer",
+    "using-superpowers"
+  ],
+  "quality": [
+    "receiving-code-review",
+    "requesting-code-review",
+    "verification-before-completion"
+  ],
+  "security": [
+    "openclaw-security-audit"
+  ]
+}

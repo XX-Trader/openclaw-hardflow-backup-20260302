@@ -1,0 +1,122 @@
+{
+  "agent-manager": [
+    "main",
+    "coordinator"
+  ],
+  "auto-fix": [
+    "frontend-dev",
+    "backend-dev",
+    "tester"
+  ],
+  "baoyu-format-markdown": [
+    "doc-writer"
+  ],
+  "changelog-generator": [
+    "doc-writer"
+  ],
+  "codex": [
+    "main"
+  ],
+  "db-deploy": [
+    "deployer"
+  ],
+  "deployment-test": [
+    "tester",
+    "deployer"
+  ],
+  "dispatching-parallel-agents": [
+    "coordinator"
+  ],
+  "docx": [
+    "doc-writer"
+  ],
+  "feature-development": [
+    "frontend-dev",
+    "backend-dev"
+  ],
+  "frontend-design": [
+    "frontend-dev"
+  ],
+  "github-actions-runner": [
+    "deployer"
+  ],
+  "intelligent-router": [
+    "main"
+  ],
+  "internal-comms": [
+    "doc-writer"
+  ],
+  "mcp-builder": [
+    "backend-dev"
+  ],
+  "openclaw-security-audit": [
+    "reviewer",
+    "deployer"
+  ],
+  "parallel-executor": [
+    "coordinator"
+  ],
+  "pdf": [
+    "doc-writer"
+  ],
+  "pptx": [
+    "doc-writer"
+  ],
+  "product-requirements": [
+    "doc-writer"
+  ],
+  "receiving-code-review": [
+    "reviewer"
+  ],
+  "requesting-code-review": [
+    "reviewer"
+  ],
+  "requirements-clarity": [
+    "main",
+    "coordinator"
+  ],
+  "result-synthesizer": [
+    "main"
+  ],
+  "smart-workflow": [
+    "main",
+    "coordinator"
+  ],
+  "systematic-debugging": [
+    "backend-dev",
+    "reviewer",
+    "tester"
+  ],
+  "task-decomposer": [
+    "main",
+    "coordinator"
+  ],
+  "ui-ux-pro-max": [
+    "frontend-dev"
+  ],
+  "using-git-worktrees": [
+    "frontend-dev",
+    "backend-dev"
+  ],
+  "using-superpowers": [
+    "main"
+  ],
+  "verification-before-completion": [
+    "frontend-dev",
+    "backend-dev",
+    "reviewer"
+  ],
+  "webapp-testing": [
+    "frontend-dev",
+    "tester"
+  ],
+  "windows-fullstack-deploy": [
+    "deployer"
+  ],
+  "writing-plans": [
+    "doc-writer"
+  ],
+  "xlsx": [
+    "doc-writer"
+  ]
+}
