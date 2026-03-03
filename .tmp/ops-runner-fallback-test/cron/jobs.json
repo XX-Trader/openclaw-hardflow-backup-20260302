@@ -1,0 +1,13 @@
+﻿{
+    "jobs":  [
+                 {
+                     "state":  {
+                                   "lastStatus":  "ok",
+                                   "lastRunAtMs":  1772503556103
+                               },
+                     "name":  "daily_todo_digest_daily",
+                     "id":  "job-abc",
+                     "enabled":  true
+                 }
+             ]
+}

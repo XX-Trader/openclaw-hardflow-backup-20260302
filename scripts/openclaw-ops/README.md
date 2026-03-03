@@ -134,3 +134,36 @@ python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
 
 - Context gate and source split: scripts/openclaw-ops/policy/CONTEXT_GATE.md
 
+
+## Reviewer Scheduler Update (2026-03-03)
+
+`install_reviewer_scan_jobs.py` now supports hourly git fetch / PR scan / approved merge flow:
+
+```bash
+python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
+  --jobs-file ~/.openclaw/cron/jobs.json \
+  --runner-py ~/.openclaw/ops/reviewer_cron_runner.py \
+  --workspace ~/.openclaw/workspace \
+  --state-file ~/.openclaw/ops/reviewer-scan-state.json \
+  --history-dir ~/.openclaw/ops/reviewer-scan-runs \
+  --normal-log-mode silent \
+  --daily-fix-command "python3 ~/.openclaw/ops/policy_enforcer.py next-todo --limit 5" \
+  --hourly-git-fetch \
+  --hourly-check-pr \
+  --no-hourly-allow-merge
+```
+
+To enable approved auto merge:
+
+```bash
+python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
+  ... \
+  --hourly-allow-merge \
+  --hourly-merge-approval-file ~/.openclaw/ops/reviewer-merge-approval.json
+```
+
+`reviewer_cron_runner.py` modes:
+- `hourly_git`: branch sync + PR check + optional approved merge
+- `daily_incremental`: incremental scan + optional fix command
+- `bi_daily_recurring`: recurring issue scan with dedupe
+- `weekly_structure`: coupling/duplication/config/I-O contract audit

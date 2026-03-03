@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Reviewer scheduled scan runner.
 
 Modes:
@@ -646,3 +646,314 @@ def update_issues(state: dict[str, Any], *, findings: list[dict[str, Any]], mode
         "recurring_open_total": recurring_total,
     }
 
+def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_mode: str) -> RunResult:
+    repos = discover_git_repos(Path(args.workspace).expanduser())
+    repo_state = state.setdefault("repos", {})
+    findings: list[dict[str, Any]] = []
+    repo_summaries: list[dict[str, Any]] = []
+    total_changed_repos = total_behind_branches = total_dirty = pr_open_total = 0
+    merge_actions: list[dict[str, Any]] = []
+
+    approvals = load_merge_approvals(Path(args.merge_approval_file).expanduser()) if args.allow_merge else {"exists": False, "approved_prs": [], "approved_branches": []}
+
+    for repo in repos:
+        key = repo_key(repo)
+        rec = repo_state.get(key, {}) if isinstance(repo_state.get(key), dict) else {}
+        prev_head = str(rec.get("last_hourly_head", "")).strip()
+        snap = collect_git_snapshot(repo, git_fetch=bool(args.git_fetch), previous_head=prev_head)
+        repo_summaries.append(snap)
+        if snap.get("head_changed"):
+            total_changed_repos += 1
+        total_dirty += int(snap.get("dirty_count", 0) or 0)
+
+        branch_sync = snap.get("branch_sync", [])
+        if isinstance(branch_sync, list):
+            for item in branch_sync:
+                behind = int(item.get("behind", 0) or 0)
+                if behind > 0:
+                    total_behind_branches += 1
+                    findings.append({"key": issue_key("git.branch_behind", key, str(item.get("branch", "")), str(behind)), "category": "git.branch_behind", "severity": "high" if behind >= 10 else "medium", "path": key, "title": f"Branch behind upstream: {item.get('branch')} behind={behind}", "detail": f"upstream={item.get('upstream')}"})
+
+        pr_data = collect_prs(repo, enabled=bool(args.check_pr))
+        snap["pr"] = pr_data
+        prs = pr_data.get("prs", []) if isinstance(pr_data, dict) else []
+        pr_open_total += len(prs) if isinstance(prs, list) else 0
+
+        if args.allow_merge:
+            pr_actions = merge_approved_prs(repo, prs if isinstance(prs, list) else [], approvals.get("approved_prs", []))
+            branch_actions = merge_approved_branches(repo, approvals.get("approved_branches", []), push_after_merge=bool(args.push_after_merge))
+            actions = pr_actions + branch_actions
+            if actions:
+                merge_actions.extend([{**x, "repo": key} for x in actions])
+                for action in actions:
+                    if not action.get("ok", False):
+                        findings.append({"key": issue_key("merge.failure", key, str(action.get("kind", "")), str(action)), "category": "merge.failure", "severity": "high", "path": key, "title": f"Approved merge failed ({action.get('kind')}): {key}", "detail": str(action.get("reason", ""))[:180]})
+
+        rec["last_hourly_head"] = str(snap.get("head", "")).strip()
+        rec["last_hourly_at"] = now_iso()
+        repo_state[key] = rec
+
+    issue_stats = update_issues(state, findings=findings, mode="hourly_git")
+
+    risk_reasons: list[str] = []
+    change_reasons: list[str] = []
+    if total_behind_branches > 0:
+        risk_reasons.append(f"branches_behind={total_behind_branches}")
+    merge_failed = sum(1 for x in merge_actions if not x.get("ok", False))
+    if merge_failed > 0:
+        risk_reasons.append(f"merge_failed={merge_failed}")
+    if issue_stats["new_high"] > 0 or issue_stats["reopened_high"] > 0:
+        risk_reasons.append(f"high_issue_delta={issue_stats['new_high'] + issue_stats['reopened_high']}")
+
+    if total_changed_repos > 0:
+        change_reasons.append(f"repos_head_changed={total_changed_repos}")
+    if total_dirty > 0:
+        change_reasons.append(f"dirty_repos={total_dirty}")
+    if pr_open_total > 0 and args.check_pr:
+        change_reasons.append(f"open_prs={pr_open_total}")
+    if merge_actions:
+        ok_merges = sum(1 for x in merge_actions if x.get("ok", False))
+        change_reasons.append(f"merge_actions={len(merge_actions)},ok={ok_merges}")
+
+    notify = bool(risk_reasons or change_reasons)
+    if not notify and normal_log_mode == "chat":
+        notify = True
+
+    lines = ["NO_REPLY"]
+    if notify:
+        lines = [
+            "# reviewer-cron hourly_git",
+            f"- sender_identity: {DEFAULT_SENDER_PREFIX}:hourly_git",
+            f"- task: {args.task_id or '-'}",
+            f"- time: {now_iso()}",
+            f"- normal_log_mode: {normal_log_mode}",
+            f"- repos: total={len(repos)}, head_changed={total_changed_repos}, dirty={total_dirty}",
+            f"- branches_behind: {total_behind_branches}",
+            f"- prs_open: {pr_open_total}",
+            f"- issue: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}",
+            f"- approvals: allow_merge={bool(args.allow_merge)}, approval_file={args.merge_approval_file}",
+        ]
+        if risk_reasons:
+            lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
+        if change_reasons:
+            lines.append(f"- change_reasons: {', '.join(change_reasons)}")
+
+    record = {
+        "run_id": uuid.uuid4().hex[:12],
+        "sender_identity": f"{DEFAULT_SENDER_PREFIX}:hourly_git",
+        "task_id": args.task_id,
+        "mode": "hourly_git",
+        "time": now_iso(),
+        "notify": notify,
+        "normal_log_mode": normal_log_mode,
+        "risk_reasons": risk_reasons,
+        "change_reasons": change_reasons,
+        "issue_stats": issue_stats,
+        "repos": repo_summaries,
+        "merge_actions": merge_actions,
+        "token_usage": {"input_tokens": 0, "output_tokens": 0},
+        "cost_estimate": 0.0,
+    }
+    return RunResult(notify=notify, output="\n".join(lines), record=record)
+
+
+def run_quality_scan(
+    args: argparse.Namespace,
+    state: dict[str, Any],
+    normal_log_mode: str,
+    *,
+    mode: str,
+    incremental_from_head: bool,
+    full_scan_skip_unchanged: bool,
+    run_fix_command: bool,
+) -> RunResult:
+    repos = discover_git_repos(Path(args.workspace).expanduser())
+    repo_state = state.setdefault("repos", {})
+    findings: list[dict[str, Any]] = []
+    summary: list[dict[str, Any]] = []
+    total_io_missing = total_files_scanned = total_files_skipped = 0
+    fix_result: dict[str, Any] = {}
+
+    for repo in repos:
+        key = repo_key(repo)
+        rec = repo_state.get(key, {}) if isinstance(repo_state.get(key), dict) else {}
+        rc, head, _err = run_git(repo, ["rev-parse", "HEAD"], timeout=20)
+        if rc != 0 or not head:
+            continue
+
+        paths: list[Path] = []
+        if incremental_from_head:
+            previous = str(rec.get("last_daily_head", "")).strip()
+            changed = list_changed_files_since(repo, previous, head)
+            if not changed:
+                rc2, out2, _err2 = run_git(repo, ["diff", "--name-only", "HEAD~1..HEAD"], timeout=20)
+                if rc2 == 0:
+                    changed = [line.strip() for line in out2.splitlines() if line.strip()]
+            for rel in changed[:400]:
+                path = repo / rel
+                if path.exists() and path.is_file() and path.suffix.lower() in SCANNED_SUFFIXES:
+                    paths.append(path)
+            rec["last_daily_head"] = head
+            rec["last_daily_at"] = now_iso()
+            repo_state[key] = rec
+        else:
+            paths = iter_code_files(repo, max_files=3000)
+            rec[f"last_{mode}_at"] = now_iso()
+            repo_state[key] = rec
+
+        repo_findings, _function_index, metrics, io_missing = scan_paths(mode=mode, repo=repo, paths=paths, state=state, skip_unchanged=full_scan_skip_unchanged)
+        findings.extend(repo_findings)
+        total_io_missing += io_missing
+        total_files_scanned += int(metrics.get("files_scanned", 0))
+        total_files_skipped += int(metrics.get("files_skipped", 0))
+        summary.append({"repo": key, "files": len(paths), "scanned": int(metrics.get("files_scanned", 0)), "skipped": int(metrics.get("files_skipped", 0)), "findings": len(repo_findings), "io_missing": io_missing})
+
+    if run_fix_command and args.fix and str(args.fix_command or "").strip():
+        rc, out, err = run_cmd(str(args.fix_command), cwd=Path(args.workspace).expanduser(), timeout=1800, shell=True)
+        fix_result = {"ran": True, "ok": rc == 0, "exit_code": rc, "stdout": out[-1000:], "stderr": err[-1000:]}
+        if rc != 0:
+            findings.append({"key": issue_key("fix_command.failed", mode, "", str(rc)), "category": "fix_command.failed", "severity": "high", "path": str(Path(args.workspace).expanduser()), "title": f"Fix command failed in mode={mode}", "detail": (err or out or f"exit_code={rc}")[:180]})
+
+    issue_stats = update_issues(state, findings=findings, mode=mode)
+
+    risk_reasons: list[str] = []
+    change_reasons: list[str] = []
+    if issue_stats["new_high"] > 0 or issue_stats["reopened_high"] > 0:
+        risk_reasons.append(f"high_issue_delta={issue_stats['new_high'] + issue_stats['reopened_high']}")
+    if fix_result.get("ran") and not fix_result.get("ok", True):
+        risk_reasons.append("fix_command_failed")
+    if issue_stats["new"] > 0:
+        change_reasons.append(f"new_issue={issue_stats['new']}")
+    if issue_stats["reopened"] > 0:
+        change_reasons.append(f"reopened_issue={issue_stats['reopened']}")
+    if issue_stats["resolved"] > 0:
+        change_reasons.append(f"resolved_issue={issue_stats['resolved']}")
+    if total_io_missing > 0:
+        change_reasons.append(f"io_contract_missing={total_io_missing}")
+    if mode == "bi_daily_recurring" and issue_stats["recurring_open_total"] > 0:
+        change_reasons.append(f"recurring_open={issue_stats['recurring_open_total']}")
+
+    notify = bool(risk_reasons or change_reasons)
+    if not notify and normal_log_mode == "chat":
+        notify = True
+
+    lines = ["NO_REPLY"]
+    if notify:
+        lines = [
+            f"# reviewer-cron {mode}",
+            f"- sender_identity: {DEFAULT_SENDER_PREFIX}:{mode}",
+            f"- task: {args.task_id or '-'}",
+            f"- time: {now_iso()}",
+            f"- normal_log_mode: {normal_log_mode}",
+            f"- repos: {len(repos)}",
+            f"- files: scanned={total_files_scanned}, skipped={total_files_skipped}",
+            f"- issue: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}, recurring_open={issue_stats['recurring_open_total']}",
+            f"- io_contract_missing: {total_io_missing} (planner should create TODO/request info before edits)",
+        ]
+        if risk_reasons:
+            lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
+        if change_reasons:
+            lines.append(f"- change_reasons: {', '.join(change_reasons)}")
+        if fix_result.get("ran"):
+            lines.append(f"- fix_command: ok={fix_result.get('ok')}, exit_code={fix_result.get('exit_code')}")
+
+    record = {
+        "run_id": uuid.uuid4().hex[:12],
+        "sender_identity": f"{DEFAULT_SENDER_PREFIX}:{mode}",
+        "task_id": args.task_id,
+        "mode": mode,
+        "time": now_iso(),
+        "notify": notify,
+        "normal_log_mode": normal_log_mode,
+        "risk_reasons": risk_reasons,
+        "change_reasons": change_reasons,
+        "issue_stats": issue_stats,
+        "summary": summary[:80],
+        "fix_result": fix_result,
+        "token_usage": {"input_tokens": 0, "output_tokens": 0},
+        "cost_estimate": 0.0,
+    }
+    return RunResult(notify=notify, output="\n".join(lines), record=record)
+
+
+def default_state() -> dict[str, Any]:
+    return {
+        "schema_version": "2026-03-03",
+        "updated_at": "",
+        "runs": {"hourly_git": 0, "daily_incremental": 0, "bi_daily_recurring": 0, "weekly_structure": 0},
+        "repos": {},
+        "issues": {},
+        "scan_fingerprints": {},
+        "last_run_record": "",
+    }
+
+
+def run_mode(args: argparse.Namespace, state: dict[str, Any], normal_log_mode: str) -> RunResult:
+    state.setdefault("runs", {})
+    state["runs"][args.mode] = int(state["runs"].get(args.mode, 0) or 0) + 1
+    if args.mode == "hourly_git":
+        return run_hourly_git(args, state, normal_log_mode)
+    if args.mode == "daily_incremental":
+        return run_quality_scan(args, state, normal_log_mode, mode="daily_incremental", incremental_from_head=True, full_scan_skip_unchanged=False, run_fix_command=True)
+    if args.mode == "bi_daily_recurring":
+        return run_quality_scan(args, state, normal_log_mode, mode="bi_daily_recurring", incremental_from_head=False, full_scan_skip_unchanged=True, run_fix_command=False)
+    return run_quality_scan(args, state, normal_log_mode, mode="weekly_structure", incremental_from_head=False, full_scan_skip_unchanged=False, run_fix_command=False)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    home = Path(os.path.expanduser("~"))
+    parser = argparse.ArgumentParser(description="Reviewer scheduled scan runner")
+    parser.add_argument("--mode", choices=["hourly_git", "daily_incremental", "bi_daily_recurring", "weekly_structure"], default="hourly_git")
+    parser.add_argument("--workspace", default=str(home / ".openclaw/workspace"))
+    parser.add_argument("--state-file", default=str(home / ".openclaw/ops/reviewer-scan-state.json"))
+    parser.add_argument("--history-dir", default=str(home / ".openclaw/ops/reviewer-scan-runs"))
+    parser.add_argument("--task-id", default="")
+    parser.add_argument("--normal-log-mode", default="silent", choices=["silent", "chat"])
+    parser.add_argument("--emit-json", action="store_true")
+
+    parser.add_argument("--fix", action="store_true")
+    parser.add_argument("--fix-command", default="")
+
+    parser.add_argument("--git-fetch", action="store_true")
+    parser.add_argument("--check-pr", action="store_true")
+    parser.add_argument("--allow-merge", action="store_true")
+    parser.add_argument("--push-after-merge", action="store_true")
+    parser.add_argument("--merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"), help="json file with approved_prs/approved_branches")
+    return parser
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    history_dir = Path(args.history_dir).expanduser()
+    history_dir.mkdir(parents=True, exist_ok=True)
+    state_path = Path(args.state_file).expanduser()
+    state = load_json(state_path, None)
+    if not isinstance(state, dict):
+        state = default_state()
+
+    normal_log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
+    result = run_mode(args, state, normal_log_mode)
+
+    stamp = now().strftime("%Y%m%d_%H%M%S")
+    run_id = result.record.get("run_id", uuid.uuid4().hex[:8])
+    run_file = history_dir / f"{stamp}_{args.mode}_{run_id}.json"
+    save_json(run_file, result.record)
+    state["updated_at"] = now_iso()
+    state["last_run_record"] = str(run_file)
+    save_json(state_path, state)
+
+    if args.emit_json:
+        print(json.dumps({"notify": result.notify, "output": result.output, "record": str(run_file)}, ensure_ascii=False))
+        return 0
+
+    if result.notify:
+        print(f"{result.output}\n- evidence: {run_file}")
+    else:
+        print("NO_REPLY")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

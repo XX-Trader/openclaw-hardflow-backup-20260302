@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import shutil
 import subprocess
 import sys
@@ -145,6 +146,20 @@ def default_config() -> dict[str, Any]:
             "major_only": True,
             "window_hours": 24,
             "top_issue_limit": 8,
+        },
+        "workflow_monitor": {
+            "enabled": True,
+            "jobs_file": str(home / ".openclaw" / "cron" / "jobs.json"),
+            "max_report_jobs": 8,
+            "stale_error_minutes": 30,
+        },
+        "token_monitor": {
+            "enabled": True,
+            "task_center_db": str(home / ".openclaw" / "ops" / "task-center" / "task_center.db"),
+            "cron_runs_dir": str(home / ".openclaw" / "cron" / "runs"),
+            "jobs_file": str(home / ".openclaw" / "cron" / "jobs.json"),
+            "window_hours": 24,
+            "top_agents": 5,
         },
         "skill_log_switches": {
             "incremental": {"normal_log_mode": "silent", "risk_always_notify": True},
@@ -466,6 +481,414 @@ def collect_system_metrics(cfg: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _ms_to_iso(ms_value: Any) -> str:
+    try:
+        ms = int(ms_value or 0)
+    except Exception:
+        return ""
+    if ms <= 0:
+        return ""
+    try:
+        return datetime.fromtimestamp(ms / 1000.0, TZ).isoformat(timespec="seconds")
+    except Exception:
+        return ""
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def _parse_any_ts_to_utc(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        iv = int(value)
+        if iv <= 0:
+            return None
+        # Heuristic: unix ms if value is large enough.
+        if iv > 10_000_000_000:
+            iv = iv / 1000.0
+        return datetime.fromtimestamp(iv, tz=timezone.utc)
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _collect_token_usage_from_cron_runs(
+    monitor: dict[str, Any],
+    *,
+    window_hours: int,
+    top_agents: int,
+) -> dict[str, Any]:
+    runs_dir = Path(
+        str(monitor.get("cron_runs_dir", "")).strip() or str(Path.home() / ".openclaw" / "cron" / "runs")
+    ).expanduser()
+    jobs_file = Path(str(monitor.get("jobs_file", "")).strip() or str(Path.home() / ".openclaw" / "cron" / "jobs.json")).expanduser()
+    start_utc = datetime.now(tz=timezone.utc) - timedelta(hours=window_hours)
+    errors: list[str] = []
+
+    name_by_job_id: dict[str, str] = {}
+    jobs_raw = load_json(jobs_file, {})
+    jobs = jobs_raw.get("jobs", []) if isinstance(jobs_raw, dict) else []
+    if isinstance(jobs, list):
+        for item in jobs:
+            if not isinstance(item, dict):
+                continue
+            jid = str(item.get("id", "")).strip()
+            if not jid:
+                continue
+            name_by_job_id[jid] = str(item.get("name", "")).strip() or jid
+
+    if not runs_dir.exists():
+        return {
+            "rows": 0,
+            "total_tokens": 0,
+            "cost_estimate": 0.0,
+            "by_agent": [],
+            "runs_dir": str(runs_dir),
+            "jobs_file": str(jobs_file),
+            "errors": [f"cron_runs_dir_missing:{runs_dir}"],
+        }
+
+    rows = 0
+    total_tokens = 0
+    total_cost = 0.0
+    by_agent: dict[str, dict[str, Any]] = {}
+
+    for run_file in sorted(runs_dir.glob("*.jsonl")):
+        job_id = run_file.stem
+        agent_id = name_by_job_id.get(job_id, job_id)
+        try:
+            file_mtime_utc = datetime.fromtimestamp(run_file.stat().st_mtime, tz=timezone.utc)
+        except Exception:
+            file_mtime_utc = datetime.now(tz=timezone.utc)
+        try:
+            with run_file.open("r", encoding="utf-8", errors="ignore") as fp:
+                for line in fp:
+                    text = line.strip().lstrip("\ufeff")
+                    if not text:
+                        continue
+                    try:
+                        payload = json.loads(text)
+                    except Exception:
+                        continue
+                    usage = payload.get("usage")
+                    if not isinstance(usage, dict):
+                        continue
+
+                    ts = (
+                        _parse_any_ts_to_utc(payload.get("finishedAtMs"))
+                        or _parse_any_ts_to_utc(payload.get("startedAtMs"))
+                        or _parse_any_ts_to_utc(payload.get("finished_at"))
+                        or _parse_any_ts_to_utc(payload.get("ended_at"))
+                        or _parse_any_ts_to_utc(payload.get("started_at"))
+                        or file_mtime_utc
+                    )
+                    if ts < start_utc:
+                        continue
+
+                    input_tokens = _safe_int(usage.get("input_tokens"), 0)
+                    output_tokens = _safe_int(usage.get("output_tokens"), 0)
+                    usage_total = _safe_int(usage.get("total_tokens"), 0)
+                    if usage_total <= 0:
+                        usage_total = max(0, input_tokens + output_tokens)
+                    try:
+                        usage_cost = float(usage.get("cost_estimate", 0.0) or 0.0)
+                    except Exception:
+                        usage_cost = 0.0
+
+                    rows += 1
+                    total_tokens += usage_total
+                    total_cost += usage_cost
+                    agg = by_agent.setdefault(
+                        agent_id,
+                        {
+                            "agent_id": agent_id,
+                            "total_tokens": 0,
+                            "cost_estimate": 0.0,
+                        },
+                    )
+                    agg["total_tokens"] = int(agg.get("total_tokens", 0) or 0) + usage_total
+                    agg["cost_estimate"] = float(agg.get("cost_estimate", 0.0) or 0.0) + usage_cost
+        except Exception as exc:
+            errors.append(f"cron_runs_read_failed:{run_file}:{exc}")
+
+    ranked = sorted(by_agent.values(), key=lambda x: int(x.get("total_tokens", 0) or 0), reverse=True)
+    top = []
+    for item in ranked[: max(1, top_agents)]:
+        tok = int(item.get("total_tokens", 0) or 0)
+        top.append(
+            {
+                "agent_id": str(item.get("agent_id", "")),
+                "total_tokens": tok,
+                "total_tokens_m": round(tok / 1_000_000.0, 6),
+                "cost_estimate": round(float(item.get("cost_estimate", 0.0) or 0.0), 6),
+            }
+        )
+    return {
+        "rows": rows,
+        "total_tokens": total_tokens,
+        "cost_estimate": round(total_cost, 6),
+        "by_agent": top,
+        "runs_dir": str(runs_dir),
+        "jobs_file": str(jobs_file),
+        "errors": errors,
+    }
+
+
+def collect_workflow_health(cfg: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    monitor = cfg.get("workflow_monitor")
+    if not isinstance(monitor, dict):
+        monitor = {}
+    if not bool(monitor.get("enabled", True)):
+        return {
+            "enabled": False,
+            "jobs_file": "",
+            "jobs_total": 0,
+            "jobs_enabled": 0,
+            "failed_count": 0,
+            "stale_failed_count": 0,
+            "new_failed_count": 0,
+            "recovered_count": 0,
+            "failed_jobs": [],
+            "errors": [],
+        }
+
+    jobs_file = Path(str(monitor.get("jobs_file", "")).strip() or str(Path.home() / ".openclaw" / "cron" / "jobs.json"))
+    jobs_file = jobs_file.expanduser()
+    errors: list[str] = []
+    raw = load_json(jobs_file, {})
+    jobs = raw.get("jobs", []) if isinstance(raw, dict) else []
+    if not isinstance(jobs, list):
+        jobs = []
+
+    prev_status = state.get("workflow_job_status", {})
+    if not isinstance(prev_status, dict):
+        prev_status = {}
+
+    current_status: dict[str, str] = {}
+    failed_jobs: list[dict[str, Any]] = []
+    jobs_total = 0
+    jobs_enabled = 0
+    now_ms = int(now().timestamp() * 1000)
+    new_failed = 0
+    recovered = 0
+
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        jobs_total += 1
+        jid = str(item.get("id", "")).strip() or f"job-{jobs_total}"
+        name = str(item.get("name", "")).strip() or jid
+        enabled = bool(item.get("enabled", False))
+        if enabled:
+            jobs_enabled += 1
+
+        st = item.get("state", {})
+        if not isinstance(st, dict):
+            st = {}
+        last_status = str(st.get("lastStatus") or st.get("lastRunStatus") or "").strip().lower()
+        current_status[jid] = last_status
+
+        prev = str(prev_status.get(jid, "")).strip().lower()
+        if enabled and last_status in {"error", "failed"} and prev not in {"error", "failed"}:
+            new_failed += 1
+        if enabled and last_status not in {"error", "failed"} and prev in {"error", "failed"}:
+            recovered += 1
+
+        if not enabled or last_status not in {"error", "failed"}:
+            continue
+
+        run_at_ms = _safe_int(st.get("lastRunAtMs"), 0)
+        stale_minutes = 0.0
+        if run_at_ms > 0:
+            stale_minutes = max(0.0, (now_ms - run_at_ms) / 60000.0)
+        failed_jobs.append(
+            {
+                "id": jid,
+                "name": name,
+                "agent_id": str(item.get("agentId", "")).strip(),
+                "last_status": last_status,
+                "consecutive_errors": _safe_int(st.get("consecutiveErrors"), 0),
+                "last_run_at_ms": run_at_ms,
+                "last_run_at": _ms_to_iso(run_at_ms),
+                "stale_minutes": round(stale_minutes, 2),
+                "last_error": str(st.get("lastError", "")).strip(),
+            }
+        )
+
+    stale_error_minutes = max(1, _safe_int(monitor.get("stale_error_minutes"), 30))
+    stale_failed_count = sum(1 for row in failed_jobs if float(row.get("stale_minutes", 0.0) or 0.0) >= stale_error_minutes)
+    failed_jobs.sort(
+        key=lambda x: (
+            -float(x.get("stale_minutes", 0.0) or 0.0),
+            -int(x.get("consecutive_errors", 0) or 0),
+            str(x.get("name", "")),
+        )
+    )
+    max_report_jobs = max(1, _safe_int(monitor.get("max_report_jobs"), 8))
+
+    state["workflow_job_status"] = current_status
+    state["workflow_monitor_meta"] = {
+        "updated_at": now_iso(),
+        "jobs_file": str(jobs_file),
+        "jobs_total": jobs_total,
+        "jobs_enabled": jobs_enabled,
+        "failed_count": len(failed_jobs),
+    }
+
+    if not jobs_file.exists():
+        errors.append(f"jobs_file_missing:{jobs_file}")
+
+    return {
+        "enabled": True,
+        "jobs_file": str(jobs_file),
+        "jobs_total": jobs_total,
+        "jobs_enabled": jobs_enabled,
+        "failed_count": len(failed_jobs),
+        "stale_failed_count": stale_failed_count,
+        "stale_error_minutes": stale_error_minutes,
+        "new_failed_count": new_failed,
+        "recovered_count": recovered,
+        "failed_jobs": failed_jobs[:max_report_jobs],
+        "errors": errors,
+    }
+
+
+def collect_token_usage_summary(cfg: dict[str, Any]) -> dict[str, Any]:
+    monitor = cfg.get("token_monitor")
+    if not isinstance(monitor, dict):
+        monitor = {}
+    if not bool(monitor.get("enabled", True)):
+        return {
+            "enabled": False,
+            "db_path": "",
+            "window_hours": 0,
+            "rows": 0,
+            "total_tokens": 0,
+            "total_tokens_m": 0.0,
+            "cost_estimate": 0.0,
+            "by_agent": [],
+            "errors": [],
+        }
+
+    db_path = Path(
+        str(monitor.get("task_center_db", "")).strip()
+        or str(Path.home() / ".openclaw" / "ops" / "task-center" / "task_center.db")
+    ).expanduser()
+    window_hours = max(1, _safe_int(monitor.get("window_hours"), 24))
+    top_agents = max(1, _safe_int(monitor.get("top_agents"), 5))
+
+    result = {
+        "enabled": True,
+        "db_path": str(db_path),
+        "source": "task_center_db",
+        "window_hours": window_hours,
+        "rows": 0,
+        "total_tokens": 0,
+        "total_tokens_m": 0.0,
+        "cost_estimate": 0.0,
+        "by_agent": [],
+        "errors": [],
+    }
+
+    db_error = ""
+    db_rows = 0
+
+    if db_path.exists():
+        start_iso = (datetime.now(tz=timezone.utc) - timedelta(hours=window_hours)).replace(microsecond=0).isoformat()
+        try:
+            conn = sqlite3.connect(str(db_path))
+            conn.row_factory = sqlite3.Row
+            totals = conn.execute(
+                """
+                SELECT
+                  COUNT(1) AS rows,
+                  COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                  COALESCE(SUM(cost_estimate), 0.0) AS total_cost
+                FROM token_usage
+                WHERE ts >= ?
+                """,
+                (start_iso,),
+            ).fetchone()
+            by_agent_rows = conn.execute(
+                """
+                SELECT
+                  agent_id,
+                  COALESCE(SUM(total_tokens), 0) AS total_tokens,
+                  COALESCE(SUM(cost_estimate), 0.0) AS total_cost
+                FROM token_usage
+                WHERE ts >= ?
+                GROUP BY agent_id
+                ORDER BY total_tokens DESC
+                LIMIT ?
+                """,
+                (start_iso, top_agents),
+            ).fetchall()
+            db_rows = int(totals["rows"] or 0) if totals else 0
+            total_tokens = int(totals["total_tokens"] or 0) if totals else 0
+            total_cost = float(totals["total_cost"] or 0.0) if totals else 0.0
+            result["rows"] = db_rows
+            result["total_tokens"] = total_tokens
+            result["total_tokens_m"] = round(total_tokens / 1_000_000.0, 6)
+            result["cost_estimate"] = round(total_cost, 6)
+            result["by_agent"] = [
+                {
+                    "agent_id": str(row["agent_id"]),
+                    "total_tokens": int(row["total_tokens"] or 0),
+                    "total_tokens_m": round(int(row["total_tokens"] or 0) / 1_000_000.0, 6),
+                    "cost_estimate": round(float(row["total_cost"] or 0.0), 6),
+                }
+                for row in by_agent_rows
+            ]
+        except Exception as exc:
+            db_error = f"token_usage_query_failed:{exc}"
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    else:
+        db_error = f"task_center_db_missing:{db_path}"
+
+    # Fallback: if task_center has no token rows, aggregate usage from cron run logs.
+    if db_rows <= 0:
+        fallback = _collect_token_usage_from_cron_runs(
+            monitor,
+            window_hours=window_hours,
+            top_agents=top_agents,
+        )
+        result["cron_runs_dir"] = str(fallback.get("runs_dir", ""))
+        cron_rows = int(fallback.get("rows", 0) or 0)
+        if cron_rows > 0:
+            total_tokens = int(fallback.get("total_tokens", 0) or 0)
+            total_cost = float(fallback.get("cost_estimate", 0.0) or 0.0)
+            result["source"] = "cron_runs"
+            result["rows"] = cron_rows
+            result["total_tokens"] = total_tokens
+            result["total_tokens_m"] = round(total_tokens / 1_000_000.0, 6)
+            result["cost_estimate"] = round(total_cost, 6)
+            result["by_agent"] = fallback.get("by_agent", [])
+        else:
+            if db_error:
+                result["errors"].append(db_error)
+            result["errors"].extend(list(fallback.get("errors", [])))
+    elif db_error:
+        result["errors"].append(db_error)
+
+    return result
+
+
 @dataclass(slots=True)
 class RunResult:
     notify: bool
@@ -564,6 +987,8 @@ def run_scan(
     state["services"] = service_snapshot
 
     metrics = collect_system_metrics(cfg)
+    workflow_health = collect_workflow_health(cfg, state)
+    token_usage_summary = collect_token_usage_summary(cfg)
     log_mode = resolve_log_mode(mode, cfg, normal_log_mode_override)
     sender_identity = sender_identity_for_mode(mode)
 
@@ -578,6 +1003,14 @@ def run_scan(
         risk_reasons.append(f"system_anomaly={len(metrics.get('anomalies', []))}")
     if service_error and prev_services:
         risk_reasons.append("service_monitor_error")
+    if int(workflow_health.get("failed_count", 0) or 0) > 0:
+        risk_reasons.append(f"workflow_job_error={int(workflow_health.get('failed_count', 0) or 0)}")
+    if int(workflow_health.get("stale_failed_count", 0) or 0) > 0:
+        risk_reasons.append(f"workflow_job_error_stale={int(workflow_health.get('stale_failed_count', 0) or 0)}")
+    if workflow_health.get("errors"):
+        risk_reasons.append(f"workflow_monitor_error={len(workflow_health.get('errors') or [])}")
+    if token_usage_summary.get("errors"):
+        risk_reasons.append(f"token_monitor_error={len(token_usage_summary.get('errors') or [])}")
 
     change_reasons: list[str] = []
     if issue_stats["new"] > 0:
@@ -590,6 +1023,10 @@ def run_scan(
         change_reasons.append(f"service_change=+{len(added)}/-{len(removed)}/~{len(changed)}")
     if fallback_used:
         change_reasons.append("fallback_full_scan")
+    if int(workflow_health.get("new_failed_count", 0) or 0) > 0:
+        change_reasons.append(f"workflow_new_failed={int(workflow_health.get('new_failed_count', 0) or 0)}")
+    if int(workflow_health.get("recovered_count", 0) or 0) > 0:
+        change_reasons.append(f"workflow_recovered={int(workflow_health.get('recovered_count', 0) or 0)}")
 
     major_reasons = [*risk_reasons, *change_reasons]
     notify = bool(risk_reasons)
@@ -620,6 +1057,30 @@ def run_scan(
             lines.append(f"- service_delta: added={len(added)}, removed={len(removed)}, changed={len(changed)}")
         if metrics.get("anomalies"):
             lines.append(f"- anomalies: {'; '.join(metrics['anomalies'][:5])}")
+        if int(workflow_health.get("failed_count", 0) or 0) > 0:
+            lines.append(
+                f"- workflow_health: failed={workflow_health.get('failed_count', 0)}, "
+                f"stale_failed={workflow_health.get('stale_failed_count', 0)}, "
+                f"recovered={workflow_health.get('recovered_count', 0)}"
+            )
+            for item in list(workflow_health.get("failed_jobs", []))[:3]:
+                lines.append(
+                    f"  - job[{item.get('id')}|{item.get('name')}]: status={item.get('last_status')} "
+                    f"stale_min={item.get('stale_minutes')} consecutive={item.get('consecutive_errors')}"
+                )
+        lines.append(
+            f"- token_24h: total_tokens={token_usage_summary.get('total_tokens', 0)}, "
+            f"total_m={token_usage_summary.get('total_tokens_m', 0)}, "
+            f"cost={token_usage_summary.get('cost_estimate', 0)} "
+            f"(rows={token_usage_summary.get('rows', 0)})"
+        )
+        top_agents = token_usage_summary.get("by_agent") or []
+        if isinstance(top_agents, list) and top_agents:
+            top = top_agents[0]
+            lines.append(
+                f"- token_top_agent: {top.get('agent_id')} "
+                f"tokens={top.get('total_tokens', 0)} cost={top.get('cost_estimate', 0)}"
+            )
         output = "\n".join(lines)
 
     record = {
@@ -648,14 +1109,16 @@ def run_scan(
             "service_error": service_error or "",
         },
         "metrics": metrics,
-        "token_usage": {"input_tokens": 0, "output_tokens": 0},
-        "cost_estimate": 0.0,
+        "workflow_health": workflow_health,
+        "token_usage": token_usage_summary,
+        "cost_estimate": float(token_usage_summary.get("cost_estimate", 0.0) or 0.0),
     }
     return RunResult(notify=notify, output=output, record=record)
 
 
 def build_daily_report(
     history_dir: Path,
+    cfg: dict[str, Any],
     state: dict[str, Any],
     major_only: bool,
     task_id: str,
@@ -686,18 +1149,32 @@ def build_daily_report(
     open_issues.sort(key=lambda x: (0 if x.get("severity") == "high" else 1, -int(x.get("occurrences", 0))))
     top = open_issues[:8]
     open_high = [x for x in open_issues if str(x.get("severity")) == "high"]
+    workflow_health = collect_workflow_health(cfg, state)
+    token_usage_summary = collect_token_usage_summary(cfg)
 
     risk_reasons: list[str] = []
     if failed > 0:
         risk_reasons.append(f"failed_runs_24h={failed}")
     if open_high:
         risk_reasons.append(f"open_high_issues={len(open_high)}")
+    if int(workflow_health.get("failed_count", 0) or 0) > 0:
+        risk_reasons.append(f"workflow_job_error={int(workflow_health.get('failed_count', 0) or 0)}")
+    if int(workflow_health.get("stale_failed_count", 0) or 0) > 0:
+        risk_reasons.append(f"workflow_job_error_stale={int(workflow_health.get('stale_failed_count', 0) or 0)}")
+    if workflow_health.get("errors"):
+        risk_reasons.append(f"workflow_monitor_error={len(workflow_health.get('errors') or [])}")
+    if token_usage_summary.get("errors"):
+        risk_reasons.append(f"token_monitor_error={len(token_usage_summary.get('errors') or [])}")
 
     change_reasons: list[str] = []
     if major > 0:
         change_reasons.append(f"major_runs_24h={major}")
     if top:
         change_reasons.append(f"open_issues={len(top)}")
+    if int(workflow_health.get("new_failed_count", 0) or 0) > 0:
+        change_reasons.append(f"workflow_new_failed={int(workflow_health.get('new_failed_count', 0) or 0)}")
+    if int(workflow_health.get("recovered_count", 0) or 0) > 0:
+        change_reasons.append(f"workflow_recovered={int(workflow_health.get('recovered_count', 0) or 0)}")
 
     notify = bool(risk_reasons)
     if not notify and major_only:
@@ -724,6 +1201,8 @@ def build_daily_report(
                 "change_reasons": [],
                 "major_reasons": [],
                 "daily": {"total_runs_24h": total, "major_runs_24h": major, "failed_runs_24h": failed},
+                "workflow_health": workflow_health,
+                "token_usage": token_usage_summary,
             },
         )
 
@@ -740,6 +1219,24 @@ def build_daily_report(
         lines.append(f"- change_reasons: {', '.join(change_reasons)}")
     lines.append(f"- runs: total={total}, major={major}, failed={failed}")
     lines.append(f"- open_issues: {len(open_issues)}")
+    lines.append(
+        f"- token_24h: total_tokens={token_usage_summary.get('total_tokens', 0)}, "
+        f"total_m={token_usage_summary.get('total_tokens_m', 0)}, "
+        f"cost={token_usage_summary.get('cost_estimate', 0)} "
+        f"(rows={token_usage_summary.get('rows', 0)})"
+    )
+    if int(workflow_health.get("failed_count", 0) or 0) > 0:
+        lines.append(
+            f"- workflow_health: failed={workflow_health.get('failed_count', 0)}, "
+            f"stale_failed={workflow_health.get('stale_failed_count', 0)}, "
+            f"recovered={workflow_health.get('recovered_count', 0)}"
+        )
+        for item in list(workflow_health.get("failed_jobs", []))[:3]:
+            lines.append(
+                f"- workflow_job[{item.get('id')}|{item.get('name')}]: "
+                f"status={item.get('last_status')} stale_min={item.get('stale_minutes')} "
+                f"consecutive={item.get('consecutive_errors')}"
+            )
     for item in top[:5]:
         lines.append(
             f"- issue[{item.get('severity')}|{item.get('occurrences', 0)}]: "
@@ -761,6 +1258,9 @@ def build_daily_report(
             "major_reasons": [*risk_reasons, *change_reasons] or ["daily_summary"],
             "daily": {"total_runs_24h": total, "major_runs_24h": major, "failed_runs_24h": failed},
             "open_issue_count": len(open_issues),
+            "workflow_health": workflow_health,
+            "token_usage": token_usage_summary,
+            "cost_estimate": float(token_usage_summary.get("cost_estimate", 0.0) or 0.0),
         },
     )
 
@@ -798,6 +1298,7 @@ def main() -> int:
     if args.mode == "daily":
         result = build_daily_report(
             history_dir,
+            cfg,
             state,
             major_only=bool(args.daily_major_only),
             task_id=args.task_id,

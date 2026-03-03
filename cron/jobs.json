@@ -431,24 +431,24 @@
       "id": "d3859fd5-3ea2-4ee5-ab1d-7fd526f26722",
       "agentId": "reviewer",
       "name": "reviewer_git_update_hourly",
-      "description": "每1小时检查 git 更新并记录（增量去重）",
+      "description": "Hourly git incremental scan (branch sync, PR check, optional approved merge)",
       "enabled": true,
       "createdAtMs": 1772473929944,
-      "updatedAtMs": 1772474071528,
+      "updatedAtMs": 1772502889342,
       "schedule": {
         "kind": "every",
         "everyMs": 3600000,
-        "anchorMs": 1772474071525
+        "anchorMs": 1772502889338
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are reviewer scheduled runner. Run command only:\npython3 \\home\\ubuntu\\.openclaw\\ops\\reviewer_cron_runner.py --workspace \\home\\ubuntu\\.openclaw\\workspace --state-file \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-state.json --history-dir \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-runs --normal-log-mode silent --mode hourly_git --task-id cron:reviewer-hourly-git\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
+        "message": "You are reviewer scheduled runner. Run command only:\npython3 \\home\\ubuntu\\.openclaw\\ops\\reviewer_cron_runner.py --workspace \\home\\ubuntu\\.openclaw\\workspace --state-file \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-state.json --history-dir \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-runs --normal-log-mode silent --mode hourly_git --task-id cron:reviewer-hourly-git --git-fetch --check-pr\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
         "timeoutSeconds": 1200
       },
       "state": {
-        "nextRunAtMs": 1772477671528
+        "nextRunAtMs": 1772506489342
       },
       "delivery": {
         "mode": "announce",
@@ -460,10 +460,10 @@
       "id": "0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a",
       "agentId": "reviewer",
       "name": "reviewer_incremental_daily_4am",
-      "description": "每天凌晨4点增量审查并执行修复命令（如配置）",
+      "description": "Daily 04:00 incremental review with optional fix command",
       "enabled": true,
       "createdAtMs": 1772473929944,
-      "updatedAtMs": 1772474071528,
+      "updatedAtMs": 1772502889342,
       "schedule": {
         "kind": "cron",
         "expr": "0 4 * * *",
@@ -487,10 +487,10 @@
       "id": "a9c4a133-bf5b-4b91-8d89-ec97995f95f9",
       "agentId": "reviewer",
       "name": "reviewer_recurring_bi_daily",
-      "description": "每2天全量检查重复问题并去重追踪",
+      "description": "Every 2 days recurring issue scan with dedupe",
       "enabled": true,
       "createdAtMs": 1772473929944,
-      "updatedAtMs": 1772474071528,
+      "updatedAtMs": 1772502889342,
       "schedule": {
         "kind": "cron",
         "expr": "20 4 */2 * *",
@@ -514,10 +514,10 @@
       "id": "771fda88-c8ff-49dc-a4da-6f57167c1d26",
       "agentId": "reviewer",
       "name": "reviewer_weekly_structure_review",
-      "description": "每周结构审查：耦合、重复实现、配置分散、边界清晰度",
+      "description": "Weekly structure review: coupling, duplication, config dispersion, boundary clarity",
       "enabled": true,
       "createdAtMs": 1772473929944,
-      "updatedAtMs": 1772474071528,
+      "updatedAtMs": 1772502889342,
       "schedule": {
         "kind": "cron",
         "expr": "40 4 * * 1",

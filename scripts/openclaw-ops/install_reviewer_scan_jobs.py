@@ -68,16 +68,34 @@ def build_jobs(
     tz_name: str,
     normal_log_mode: str,
     daily_fix_command: str,
+    hourly_git_fetch: bool,
+    hourly_check_pr: bool,
+    hourly_allow_merge: bool,
+    hourly_push_after_merge: bool,
+    hourly_merge_approval_file: str,
 ) -> list[dict[str, Any]]:
     ts = now_ms()
     cmd_base = (
         f"python3 {runner_py} --workspace {workspace} "
         f"--state-file {state_file} --history-dir {history_dir} --normal-log-mode {normal_log_mode}"
     )
+
     cmd_hourly = f"{cmd_base} --mode hourly_git --task-id cron:reviewer-hourly-git"
+    if hourly_git_fetch:
+        cmd_hourly += " --git-fetch"
+    if hourly_check_pr:
+        cmd_hourly += " --check-pr"
+    if hourly_allow_merge:
+        cmd_hourly += " --allow-merge"
+        if str(hourly_merge_approval_file).strip():
+            cmd_hourly += f" --merge-approval-file \"{hourly_merge_approval_file}\""
+        if hourly_push_after_merge:
+            cmd_hourly += " --push-after-merge"
+
     cmd_daily = f"{cmd_base} --mode daily_incremental --task-id cron:reviewer-daily-incremental --fix"
     if str(daily_fix_command).strip():
         cmd_daily += f" --fix-command \"{daily_fix_command}\""
+
     cmd_bi_daily = f"{cmd_base} --mode bi_daily_recurring --task-id cron:reviewer-bi-daily-recurring"
     cmd_weekly = f"{cmd_base} --mode weekly_structure --task-id cron:reviewer-weekly-structure"
 
@@ -86,7 +104,7 @@ def build_jobs(
             "id": HOURLY_JOB_ID,
             "agentId": "reviewer",
             "name": "reviewer_git_update_hourly",
-            "description": "每1小时检查 git 更新并记录（增量去重）",
+            "description": "Hourly git incremental scan (branch sync, PR check, optional approved merge)",
             "enabled": True,
             "createdAtMs": ts,
             "updatedAtMs": ts,
@@ -99,7 +117,7 @@ def build_jobs(
             "id": DAILY_JOB_ID,
             "agentId": "reviewer",
             "name": "reviewer_incremental_daily_4am",
-            "description": "每天凌晨4点增量审查并执行修复命令（如配置）",
+            "description": "Daily 04:00 incremental review with optional fix command",
             "enabled": True,
             "createdAtMs": ts,
             "updatedAtMs": ts,
@@ -112,7 +130,7 @@ def build_jobs(
             "id": BI_DAILY_JOB_ID,
             "agentId": "reviewer",
             "name": "reviewer_recurring_bi_daily",
-            "description": "每2天全量检查重复问题并去重追踪",
+            "description": "Every 2 days recurring issue scan with dedupe",
             "enabled": True,
             "createdAtMs": ts,
             "updatedAtMs": ts,
@@ -125,7 +143,7 @@ def build_jobs(
             "id": WEEKLY_JOB_ID,
             "agentId": "reviewer",
             "name": "reviewer_weekly_structure_review",
-            "description": "每周结构审查：耦合、重复实现、配置分散、边界清晰度",
+            "description": "Weekly structure review: coupling, duplication, config dispersion, boundary clarity",
             "enabled": True,
             "createdAtMs": ts,
             "updatedAtMs": ts,
@@ -191,6 +209,13 @@ def main() -> None:
     parser.add_argument("--tz", default="Asia/Shanghai")
     parser.add_argument("--normal-log-mode", default="silent", choices=["silent", "chat"])
     parser.add_argument("--daily-fix-command", default="")
+
+    parser.add_argument("--hourly-git-fetch", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--hourly-check-pr", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--hourly-allow-merge", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--hourly-push-after-merge", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--hourly-merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"))
+
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
     args = parser.parse_args()
@@ -209,6 +234,9 @@ def main() -> None:
     if not target:
         raise SystemExit("missing delivery target: pass --to or keep existing delivery target")
 
+    if args.hourly_allow_merge and not str(args.hourly_merge_approval_file).strip():
+        raise SystemExit("--hourly-allow-merge requires --hourly-merge-approval-file")
+
     fresh_jobs = build_jobs(
         runner_py=str(Path(args.runner_py).expanduser()),
         workspace=str(Path(args.workspace).expanduser()),
@@ -217,6 +245,11 @@ def main() -> None:
         tz_name=str(args.tz).strip() or "Asia/Shanghai",
         normal_log_mode=str(args.normal_log_mode).strip(),
         daily_fix_command=str(args.daily_fix_command),
+        hourly_git_fetch=bool(args.hourly_git_fetch),
+        hourly_check_pr=bool(args.hourly_check_pr),
+        hourly_allow_merge=bool(args.hourly_allow_merge),
+        hourly_push_after_merge=bool(args.hourly_push_after_merge),
+        hourly_merge_approval_file=str(Path(args.hourly_merge_approval_file).expanduser()),
     )
 
     if jobs_path.exists():
@@ -234,6 +267,11 @@ def main() -> None:
     print(f"state_file={args.state_file}")
     print(f"history_dir={args.history_dir}")
     print(f"delivery={channel}:{target}")
+    print(f"hourly_git_fetch={bool(args.hourly_git_fetch)}")
+    print(f"hourly_check_pr={bool(args.hourly_check_pr)}")
+    print(f"hourly_allow_merge={bool(args.hourly_allow_merge)}")
+    print(f"hourly_merge_approval_file={Path(args.hourly_merge_approval_file).expanduser()}")
+    print(f"hourly_push_after_merge={bool(args.hourly_push_after_merge)}")
     for jid in [HOURLY_JOB_ID, DAILY_JOB_ID, BI_DAILY_JOB_ID, WEEKLY_JOB_ID]:
         print(f"{jid}={status.get(jid, 'unknown')}")
 

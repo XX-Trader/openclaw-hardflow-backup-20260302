@@ -1,0 +1,56 @@
+{
+  "run_id": "fe90921d5674",
+  "sender_identity": "ops-agent/ops-cron-runner:daily",
+  "task_id": "",
+  "mode": "daily",
+  "time": "2026-03-03T10:06:50+08:00",
+  "notify": true,
+  "normal_log_mode": "chat",
+  "risk_reasons": [],
+  "change_reasons": [
+    "major_runs_24h=2"
+  ],
+  "major_reasons": [
+    "major_runs_24h=2"
+  ],
+  "daily": {
+    "total_runs_24h": 2,
+    "major_runs_24h": 2,
+    "failed_runs_24h": 0
+  },
+  "open_issue_count": 0,
+  "workflow_health": {
+    "enabled": true,
+    "jobs_file": ".tmp\\ops-runner-fallback-test\\cron\\jobs.json",
+    "jobs_total": 1,
+    "jobs_enabled": 1,
+    "failed_count": 0,
+    "stale_failed_count": 0,
+    "stale_error_minutes": 30,
+    "new_failed_count": 0,
+    "recovered_count": 0,
+    "failed_jobs": [],
+    "errors": []
+  },
+  "token_usage": {
+    "enabled": true,
+    "db_path": ".tmp\\ops-runner-fallback-test\\ops\\task-center\\task_center.db",
+    "source": "cron_runs",
+    "window_hours": 24,
+    "rows": 1,
+    "total_tokens": 1250,
+    "total_tokens_m": 0.00125,
+    "cost_estimate": 0.1234,
+    "by_agent": [
+      {
+        "agent_id": "daily_todo_digest_daily",
+        "total_tokens": 1250,
+        "total_tokens_m": 0.00125,
+        "cost_estimate": 0.1234
+      }
+    ],
+    "errors": [],
+    "cron_runs_dir": ".tmp\\ops-runner-fallback-test\\cron\\runs"
+  },
+  "cost_estimate": 0.1234
+}
