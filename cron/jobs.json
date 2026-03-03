@@ -18,7 +18,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 log-watcher 子agent。每次运行先读取 $HOME/.openclaw/workflows/log-watcher/targets.json（字段 targets），按其中项目列表巡检。\\n\\n强制去重与降噪规则（必须执行）：\\n1) 仅看增量窗口：优先检查上次扫描后新增日志；若无法定位上次偏移，则只看最近90分钟。\\n2) 对每个异常生成唯一特征 error_key：sha1(来源类别|项目|症状关键词|主证据路径|根因关键词)。\\n3) 状态文件：$HOME/.openclaw/workspace-ops-agent/ops/alert-dedupe-state.json。记录 error_key, first_seen, last_seen, last_status, last_alert_at, occurrences, run_ids。\\n4) 发送告警条件：\\n   - 新 error_key（首次出现）；\\n   - 同一 error_key 状态从 已修复 变为 待确认/未解决（复发）；\\n   - 同一 error_key 持续未解决且距离上次告警 >= 60分钟（确保及时反馈）。\\n5) 不发送告警条件：\\n   - 已处理且状态仍为 已修复；\\n   - 同一 error_key 在冷却期内重复出现；\\n   - 历史旧日志重复命中但无新证据。\\n6) gate-enforce-*（如 gate-enforce-block/pass）测试run默认不告警；仅当同run出现非预期错误才告警。\\n\\n\\n路径约束（必须）：仅允许写入 $HOME/.openclaw/workspace-ops-agent/**；禁止写入 ~/.openclaw/ops/**。\\n状态文件固定：$HOME/.openclaw/workspace-ops-agent/ops/alert-dedupe-state.json。任何情况下都不要写 ~/.openclaw/ops/alert-dedupe-state.json。\\n执行风险规则：\\nA) 低风险问题（路径/权限/配置缺失/可重试命令）直接修复并汇报。\\nB) 服务重启不再视为高风险：允许自动执行单服务重启（realtime-pub、subscription-center、openclaw-gateway），但必须先做 precheck（状态/端口）并在重启后做 postcheck（状态/端口/健康探测）并附证据。\\nC) 仍需人工确认的高风险：数据库结构变更、数据删除/回滚、破坏性文件操作、跨服务批量重启、业务逻辑改动。\\n\\n输出规则：\\nA) 无需告警时仅输出 NO_REPLY。\\nB) 需告警时按统一字段：发送人=ops-agent；发现者=ops-agent；任务=cron:fd8ae471-69f7-4bb5-9d2e-46aa26b092f1 + classification.task(若可得)；来源类别=工作流|hooks|技能|agent|代码|系统|配置；位置=...；时间区间=...（UTC+8）；次数=...；根因=...；方案=...；状态=已修复/待确认/观察中；error_key=...；证据路径=...。\\nC) 为避免渠道长度限制，最终回复必须<=1200字符，异常最多列3条；超出部分写入 $HOME/.openclaw/workspace-ops-agent/ops/logwatch-last.md，并在回复中仅给摘要+该文件路径。",
+        "message": "You are scheduled runner. Run command only:\nbash -lc 'mkdir -p $HOME/.openclaw/workspace-ops-agent/ops && LOCK=$HOME/.openclaw/workspace-ops-agent/ops/alert-dedupe-state.lock && flock -xn -E 75 \\\"$LOCK\\\" python3 $HOME/.openclaw/workspace-ops-agent/ops/log-watcher.py; rc=$?; if [ \\\"$rc\\\" -eq 75 ]; then echo NO_REPLY; exit 0; fi; exit \\\"$rc\\\"'\nDo not write, edit, create, move, or delete any file. Do not execute any other command.\nReturn EXACTLY raw stdout/stderr text from the command. Do not add explanation, greeting, or prefix text. If output is empty, reply NO_REPLY.",
         "timeoutSeconds": 1800
       },
       "delivery": {
@@ -408,7 +408,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 project-agent 项目索引维护任务。仅用命令执行：python3 $HOME/.openclaw/ops/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --git-pull --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
+        "message": "你是 project-agent 项目索引维护任务。仅用命令执行：python3 $HOME/.openclaw/ops/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --git-pull --doc-timeout 8 --doc-fetch-max-chars 24000 --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
         "timeoutSeconds": 1800
       },
       "delivery": {

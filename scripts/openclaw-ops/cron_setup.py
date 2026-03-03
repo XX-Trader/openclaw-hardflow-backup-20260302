@@ -17,7 +17,7 @@ except Exception:  # pragma: no cover
     runner_default_config = None
 
 LOG_MODES = {"silent", "chat"}
-API_ENGINES = {"http", "playwright", "selenium"}
+API_ENGINES = {"http", "playwright", "playwright-real", "selenium"}
 
 
 def now_ms() -> int:
@@ -33,7 +33,7 @@ def normalize_log_mode(value: str, default: str = "silent") -> str:
     return mode if mode in LOG_MODES else default
 
 
-def normalize_api_engine(value: str, default: str = "playwright") -> str:
+def normalize_api_engine(value: str, default: str = "playwright-real") -> str:
     engine = str(value or "").strip().lower()
     return engine if engine in API_ENGINES else default
 
@@ -173,8 +173,17 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
     workspace_dir = openclaw_home / "workspace"
     known: dict[str, dict[str, Any]] = {
         "log-watcher agent（双项目）": {
-            "description": "log-watcher command-runner (stable no-edit mode)",
-            "command": f"python3 {openclaw_home / 'workspace-ops-agent' / 'ops' / 'log-watcher.py'}",
+            "description": "log-watcher command-runner (stable no-edit mode, single-instance lock)",
+            "command": (
+                "bash -lc '"
+                f"mkdir -p {openclaw_home / 'workspace-ops-agent' / 'ops'} && "
+                f"LOCK={openclaw_home / 'workspace-ops-agent' / 'ops' / 'alert-dedupe-state.lock'} && "
+                f"flock -xn -E 75 \"$LOCK\" python3 {openclaw_home / 'workspace-ops-agent' / 'ops' / 'log-watcher.py'}; "
+                "rc=$?; "
+                "if [ \"$rc\" -eq 75 ]; then echo NO_REPLY; exit 0; fi; "
+                "exit \"$rc\""
+                "'"
+            ),
             "timeout": 900,
         },
         "daily_todo_digest_daily": {
@@ -759,7 +768,7 @@ def main() -> int:
     parser.add_argument("--api-test-state", default=str(home / ".openclaw/ops/api-test-state.json"))
     parser.add_argument("--api-test-history-dir", default=str(home / ".openclaw/ops/api-test-runs"))
     parser.add_argument("--api-test-expr", default="*/15 * * * *")
-    parser.add_argument("--api-test-engine", default="playwright", choices=sorted(API_ENGINES))
+    parser.add_argument("--api-test-engine", default="playwright-real", choices=sorted(API_ENGINES))
     parser.add_argument("--api-test-log-mode", default="silent", choices=sorted(LOG_MODES))
 
     parser.add_argument("--install-daily-work-job", action="store_true")

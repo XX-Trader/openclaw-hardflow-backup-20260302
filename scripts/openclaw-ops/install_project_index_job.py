@@ -72,7 +72,7 @@ def upsert_job(
         "id": job_id,
         "agentId": "project-agent",
         "name": "project_index_maintainer_30m",
-        "description": "Project index maintainer with optional git pull (every 30m)",
+        "description": "Project index + dynamic docs knowledge maintainer (every 30m)",
         "enabled": True,
         "createdAtMs": created_at,
         "updatedAtMs": ts,
@@ -87,7 +87,7 @@ def upsert_job(
             "kind": "agentTurn",
             "message": (
                 "You are project-index maintainer. Run command only:\n"
-                f"python3 {maintainer_py} --registry {registry} --git-pull --emit-json\n"
+                f"python3 {maintainer_py} --registry {registry} --git-pull --doc-timeout 8 --doc-fetch-max-chars 24000 --emit-json\n"
                 "Return EXACTLY raw stdout/stderr text from the command; "
                 "do not add explanation, greeting, or prefix text. "
                 "If output is NO_REPLY, reply NO_REPLY."

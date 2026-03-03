@@ -173,3 +173,24 @@ python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
 - `daily_incremental`: incremental scan + optional fix command
 - `bi_daily_recurring`: recurring issue scan with dedupe
 - `weekly_structure`: coupling/duplication/config/I-O contract audit
+
+## Guardrail Upgrades (2026-03-03)
+
+1. `api_test_audit.py` now supports `playwright-real` engine.
+2. `api_test_audit.py` supports browser `steps` for click/fill/press/wait E2E flows.
+3. Browser checks always produce screenshots and mark `visual_review_mode=native_ai_vision`.
+4. Config supports:
+   - `forbid_http_engine=true` (block curl-only fake-pass checks)
+   - `require_browser_checks=true`
+   - `real_browser.user_data_dir/profile_directory/channel/headless`
+5. `init_api_test_config.py` now generates real-browser defaults and click-step templates.
+6. `project_index_maintainer.py` now maintains:
+   - `.workflow/project-index/doc-knowledge.json`
+   - `.workflow/project-index/doc-search-index.json`
+   - `.workflow/project-index/DOC_KNOWLEDGE.md`
+   - docs update-check state in `doc-knowledge-state.json`
+   - direct-fetch cache under `.workflow/project-index/doc-source-cache/*.txt`
+7. Browser checks now export DevTools-like evidence:
+   - `history/devtools/<run>/check-id.json` includes console/network/xhr-fetch response excerpts
+   - scoring fields: `min_score`, `require_api_output`, `api_expectations`, `expect_selectors`
+   - high-risk output includes screenshot path + devtools log path for manual F12-style audit

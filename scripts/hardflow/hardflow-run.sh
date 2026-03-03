@@ -58,6 +58,14 @@ POLICY_AGENT_POST_TEST="${POLICY_AGENT_POST_TEST:-tester}"
 POLICY_AGENT_GIT_PUSH="${POLICY_AGENT_GIT_PUSH:-deployer}"
 POLICY_USAGE_INPUT_TOKENS="${POLICY_USAGE_INPUT_TOKENS:-0}"
 POLICY_USAGE_OUTPUT_TOKENS="${POLICY_USAGE_OUTPUT_TOKENS:-0}"
+HARDFLOW_REQUIRE_ATOMIC_TASK_JSON="${HARDFLOW_REQUIRE_ATOMIC_TASK_JSON:-1}"
+HARDFLOW_RESET_CONTEXT_EACH_ATTEMPT="${HARDFLOW_RESET_CONTEXT_EACH_ATTEMPT:-1}"
+HARDFLOW_CONTEXT_RESET_CMD="${HARDFLOW_CONTEXT_RESET_CMD:-}"
+HARDFLOW_ENFORCE_WRITE_SCOPE="${HARDFLOW_ENFORCE_WRITE_SCOPE:-0}"
+HARDFLOW_BACKEND_WRITE_PREFIXES="${HARDFLOW_BACKEND_WRITE_PREFIXES:-api/}"
+HARDFLOW_FRONTEND_WRITE_PREFIXES="${HARDFLOW_FRONTEND_WRITE_PREFIXES:-src/}"
+AUTO_GIT_ROLLBACK_ON_TEST_LOOP_FAIL="${AUTO_GIT_ROLLBACK_ON_TEST_LOOP_FAIL:-1}"
+HARDFLOW_ROLLBACK_FORCE_DIRTY="${HARDFLOW_ROLLBACK_FORCE_DIRTY:-0}"
 
 timestamp() {
   date -u +"%Y-%m-%dT%H:%M:%SZ"
@@ -129,6 +137,14 @@ Env (optional):
   POLICY_AGENT_GIT_PUSH
   POLICY_USAGE_INPUT_TOKENS
   POLICY_USAGE_OUTPUT_TOKENS
+  HARDFLOW_REQUIRE_ATOMIC_TASK_JSON
+  HARDFLOW_RESET_CONTEXT_EACH_ATTEMPT
+  HARDFLOW_CONTEXT_RESET_CMD
+  HARDFLOW_ENFORCE_WRITE_SCOPE
+  HARDFLOW_BACKEND_WRITE_PREFIXES
+  HARDFLOW_FRONTEND_WRITE_PREFIXES
+  AUTO_GIT_ROLLBACK_ON_TEST_LOOP_FAIL
+  HARDFLOW_ROLLBACK_FORCE_DIRTY
 EOF
 }
 
@@ -162,6 +178,13 @@ RUN_DIR="${WORKFLOW_DIR}/runs/${RUN_ID}"
 mkdir -p "${RUN_DIR}"
 TIMELINE_FILE="${RUN_DIR}/timeline.log"
 ISSUE_FILE="${RUN_DIR}/issues.ndjson"
+BASELINE_DIRTY_FILE="${RUN_DIR}/baseline_dirty_files.txt"
+CURRENT_DIRTY_FILE="${RUN_DIR}/current_dirty_files.txt"
+NEW_DIRTY_FILE="${RUN_DIR}/new_dirty_files.txt"
+SAVEPOINT_FILE="${RUN_DIR}/savepoint_commit.txt"
+PROGRESS_FILE="${WORKFLOW_DIR}/progress.txt"
+ATOMIC_TASK_FILE="${WORKFLOW_DIR}/task.json"
+CONTEXT_RUNTIME_DIR="${WORKFLOW_DIR}/context/runtime"
 
 touch "${ISSUE_FILE}"
 
@@ -182,6 +205,200 @@ git_head() {
   else
     true
   fi
+}
+
+collect_dirty_files() {
+  local out_file="$1"
+  : > "${out_file}"
+  if ! git -C "${ROOT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    return 0
+  fi
+  {
+    git -C "${ROOT_DIR}" diff --name-only --cached 2>/dev/null || true
+    git -C "${ROOT_DIR}" diff --name-only 2>/dev/null || true
+  } | sed '/^[[:space:]]*$/d' | sort -u > "${out_file}"
+}
+
+collect_new_dirty_files() {
+  local out_file="$1"
+  collect_dirty_files "${CURRENT_DIRTY_FILE}"
+  if [[ -f "${BASELINE_DIRTY_FILE}" ]]; then
+    comm -23 "${CURRENT_DIRTY_FILE}" "${BASELINE_DIRTY_FILE}" > "${out_file}" || true
+  else
+    cp "${CURRENT_DIRTY_FILE}" "${out_file}"
+  fi
+}
+
+save_git_savepoint() {
+  local reason="${1:-manual}"
+  local head
+  head="$(git_head)"
+  if [[ -z "${head}" ]]; then
+    log "WARN" "skip savepoint (${reason}): git head unavailable"
+    return 0
+  fi
+  printf '%s\n' "${head}" > "${SAVEPOINT_FILE}"
+  log "INFO" "savepoint set (${reason}): ${head}"
+}
+
+ensure_atomic_task_json() {
+  local task_text="$1"
+  if [[ "${HARDFLOW_REQUIRE_ATOMIC_TASK_JSON}" != "1" ]]; then
+    return 0
+  fi
+  local guard_py="${SCRIPT_DIR}/atomic_task_guard.py"
+  if [[ ! -f "${guard_py}" ]]; then
+    log "ERROR" "atomic task guard missing: ${guard_py}"
+    return 2
+  fi
+  if python3 "${guard_py}" \
+    --task-file "${ATOMIC_TASK_FILE}" \
+    --task-text "${task_text}" \
+    --min-items 4 >"${RUN_DIR}/task-atomic.log" 2>&1; then
+    log "INFO" "atomic task.json ready: ${ATOMIC_TASK_FILE}"
+    return 0
+  fi
+  log "ERROR" "atomic task.json check failed, see ${RUN_DIR}/task-atomic.log"
+  return 2
+}
+
+refresh_progress_context() {
+  local stage="$1"
+  local attempt="${2:-0}"
+
+  if [[ "${HARDFLOW_RESET_CONTEXT_EACH_ATTEMPT}" != "1" ]]; then
+    return 0
+  fi
+
+  mkdir -p "${CONTEXT_RUNTIME_DIR}" "$(dirname "${PROGRESS_FILE}")"
+  cat > "${PROGRESS_FILE}" <<EOF
+# hardflow-progress
+run_id=${RUN_ID}
+stage=${stage}
+attempt=${attempt}
+updated_at=$(timestamp)
+
+## latest_timeline
+$(tail -n 20 "${TIMELINE_FILE}" 2>/dev/null || true)
+
+## latest_issues
+$(tail -n 10 "${ISSUE_FILE}" 2>/dev/null || true)
+EOF
+
+  cat > "${CONTEXT_RUNTIME_DIR}/runtime.json" <<EOF
+{"run_id":"$(json_escape "${RUN_ID}")","stage":"$(json_escape "${stage}")","attempt":"$(json_escape "${attempt}")","progress_file":"$(json_escape "${PROGRESS_FILE}")","updated_at":"$(timestamp)"}
+EOF
+  export HARDFLOW_PROGRESS_FILE="${PROGRESS_FILE}"
+
+  if [[ -n "${HARDFLOW_CONTEXT_RESET_CMD}" ]]; then
+    run_cmd_capture \
+      "HARDFLOW_CONTEXT_RESET_CMD" \
+      "${HARDFLOW_CONTEXT_RESET_CMD}" \
+      "${RUN_DIR}/context-reset-${stage}-${attempt}.log" \
+      0 || true
+  fi
+}
+
+enforce_agent_write_scope() {
+  local agent_id="$1"
+  local stage="$2"
+  if [[ "${HARDFLOW_ENFORCE_WRITE_SCOPE}" != "1" ]]; then
+    return 0
+  fi
+
+  local allow_csv=""
+  case "${agent_id}" in
+    backend-dev) allow_csv="${HARDFLOW_BACKEND_WRITE_PREFIXES}" ;;
+    frontend-dev) allow_csv="${HARDFLOW_FRONTEND_WRITE_PREFIXES}" ;;
+    *) return 0 ;;
+  esac
+
+  collect_new_dirty_files "${NEW_DIRTY_FILE}"
+  if [[ ! -s "${NEW_DIRTY_FILE}" ]]; then
+    return 0
+  fi
+
+  if policy_enabled; then
+    if ! policy_run "write-scope-${stage}" assert-write-scope \
+      --agent-id "${agent_id}" \
+      --changed-files-file "${NEW_DIRTY_FILE}"; then
+      return $?
+    fi
+  fi
+
+  IFS=',' read -r -a allow_prefixes <<< "${allow_csv}"
+  local violations=()
+  while IFS= read -r file; do
+    [[ -z "${file}" ]] && continue
+    local allowed=0
+    local prefix
+    for prefix in "${allow_prefixes[@]}"; do
+      [[ -z "${prefix}" ]] && continue
+      if [[ "${file}" == "${prefix}"* ]]; then
+        allowed=1
+        break
+      fi
+    done
+    if [[ "${file}" == ".workflow/"* ]]; then
+      allowed=1
+    fi
+    if [[ ${allowed} -eq 0 ]]; then
+      violations+=("${file}")
+    fi
+  done < "${NEW_DIRTY_FILE}"
+
+  if (( ${#violations[@]} == 0 )); then
+    return 0
+  fi
+
+  printf '%s\n' "${violations[@]}" > "${RUN_DIR}/write-scope-violations-${stage}.txt"
+  log "ERROR" "write scope violation by ${agent_id} at ${stage}, see ${RUN_DIR}/write-scope-violations-${stage}.txt"
+  return 65
+}
+
+auto_git_reset_to_savepoint() {
+  local reason="$1"
+  local rollback_log="${RUN_DIR}/rollback.log"
+
+  if [[ "${AUTO_GIT_ROLLBACK_ON_TEST_LOOP_FAIL}" != "1" ]]; then
+    log "WARN" "auto git rollback disabled: AUTO_GIT_ROLLBACK_ON_TEST_LOOP_FAIL=${AUTO_GIT_ROLLBACK_ON_TEST_LOOP_FAIL}"
+    return 0
+  fi
+  if ! git -C "${ROOT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    log "WARN" "skip git rollback (${reason}): not a git repository"
+    return 0
+  fi
+  if [[ ! -f "${SAVEPOINT_FILE}" ]]; then
+    log "WARN" "skip git rollback (${reason}): savepoint missing"
+    return 0
+  fi
+  if [[ "${HARDFLOW_ROLLBACK_FORCE_DIRTY}" != "1" ]] && [[ -s "${BASELINE_DIRTY_FILE}" ]]; then
+    log "WARN" "skip git rollback (${reason}): baseline dirty tree detected; set HARDFLOW_ROLLBACK_FORCE_DIRTY=1 to override"
+    write_gate "rollback" "false" "rollback skipped due to baseline dirty files"
+    return 0
+  fi
+
+  local savepoint
+  savepoint="$(cat "${SAVEPOINT_FILE}" 2>/dev/null || true)"
+  if [[ -z "${savepoint}" ]]; then
+    log "WARN" "skip git rollback (${reason}): savepoint empty"
+    return 0
+  fi
+
+  set +e
+  git -C "${ROOT_DIR}" reset --hard "${savepoint}" >"${rollback_log}" 2>&1
+  local rc=$?
+  set -e
+
+  if [[ ${rc} -eq 0 ]]; then
+    write_gate "rollback" "true" "git reset --hard to savepoint ${savepoint} (${reason})"
+    log "WARN" "auto git rollback applied (${reason}) => ${savepoint}"
+    return 0
+  fi
+
+  write_gate "rollback" "false" "git rollback failed (${reason})"
+  log "ERROR" "auto git rollback failed (${reason}), see ${rollback_log}"
+  return ${rc}
 }
 
 policy_enabled() {
@@ -473,6 +690,11 @@ cmd_classify() {
     task="(empty)"
   fi
 
+  refresh_progress_context "classify" "0"
+  if ! ensure_atomic_task_json "${task}"; then
+    return 2
+  fi
+
   policy_run "route-classify" route-task --description "${task}" --source "hardflow" || true
   policy_ensure_task \
     "${task}" \
@@ -490,12 +712,8 @@ cmd_classify() {
 }
 EOF
 
-  if git -C "${ROOT_DIR}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    {
-      git -C "${ROOT_DIR}" diff --name-only --cached 2>/dev/null || true
-      git -C "${ROOT_DIR}" diff --name-only 2>/dev/null || true
-    } | sed '/^[[:space:]]*$/d' | sort -u > "${RUN_DIR}/baseline_dirty_files.txt"
-  fi
+  collect_dirty_files "${BASELINE_DIRTY_FILE}"
+  save_git_savepoint "classify"
 
   policy_post_stage "classify" "${stage_rc}" "classification stage failed" "${RUN_DIR}/classification.json" || return $?
   log "INFO" "classification done, task='${task}'"
@@ -504,6 +722,7 @@ EOF
 cmd_dispatch() {
   local stage_rc=0
   policy_pre_stage "dispatch" "${RUN_DIR}/dispatch.log"
+  refresh_progress_context "dispatch" "0"
   if ! run_cmd_capture "DISPATCH_CMD" "${DISPATCH_CMD:-}" "${RUN_DIR}/dispatch.log" 0; then
     stage_rc=$?
   fi
@@ -520,8 +739,14 @@ EOF
 cmd_implement() {
   local stage_rc=0
   policy_pre_stage "implement" "${RUN_DIR}/implement.log"
+  refresh_progress_context "implement" "0"
   if ! run_cmd_capture "IMPLEMENT_CMD" "${IMPLEMENT_CMD:-}" "${RUN_DIR}/implement.log" 0; then
     stage_rc=$?
+  fi
+  if [[ ${stage_rc} -eq 0 ]]; then
+    if ! enforce_agent_write_scope "${POLICY_AGENT_IMPLEMENT}" "implement"; then
+      stage_rc=$?
+    fi
   fi
   policy_post_stage "implement" "${stage_rc}" "implement stage failed" "${RUN_DIR}/implement.log" || return $?
   if [[ ${stage_rc} -ne 0 ]]; then
@@ -560,6 +785,7 @@ cmd_test_loop() {
     local test_log="${attempt_dir}/test.log"
     local fix_log="${attempt_dir}/fix.log"
     mkdir -p "${attempt_dir}"
+    refresh_progress_context "test-loop" "${attempt}"
 
     log "INFO" "test loop attempt ${attempt}/${max_retries}"
     if run_cmd_capture "TEST_CMD" "${TEST_CMD:-}" "${test_log}" 1; then
@@ -579,6 +805,12 @@ cmd_test_loop() {
     if (( attempt < max_retries )); then
       if run_cmd_capture "FIX_CMD" "${FIX_CMD:-}" "${fix_log}" 0; then
         fix_after="$(git_head)"
+        if ! enforce_agent_write_scope "${POLICY_AGENT_IMPLEMENT}" "fix-attempt-${attempt}"; then
+          {
+            echo ""
+            echo "[write-scope] violation detected after FIX_CMD"
+          } >> "${fix_log}"
+        fi
       fi
     else
       regression_result="retry-exhausted"
@@ -608,6 +840,7 @@ cmd_test_loop() {
 
   policy_post_stage "test-loop" 1 "test loop failed after retries" "${test_log:-}" || return $?
   write_gate "tester" "false" "test loop failed after retries"
+  auto_git_reset_to_savepoint "test-loop-failed" || true
   log "ERROR" "test loop finished with failure"
   return 1
 }
@@ -677,6 +910,7 @@ cmd_score_gate() {
     local gate_file="${gate_file_final}"
 
     mkdir -p "${attempt_dir}" "${RUN_DIR}/scorecards"
+    refresh_progress_context "${stage_name}" "${attempt}"
 
     log "INFO" "score gate '${gate}' attempt ${attempt}/${max_retries}"
 
@@ -846,6 +1080,7 @@ cmd_score_report() {
 cmd_review() {
   local stage_rc=0
   policy_pre_stage "review" "${RUN_DIR}/review.log"
+  refresh_progress_context "review" "0"
   if run_cmd_capture "REVIEW_CMD" "${REVIEW_CMD:-}" "${RUN_DIR}/review.log" 1; then
     policy_post_stage "review" 0 "review passed" "${RUN_DIR}/review.log" || return $?
     write_gate "reviewer" "true" "review passed"
@@ -863,6 +1098,7 @@ cmd_review() {
 cmd_deploy() {
   local stage_rc=0
   policy_pre_stage "deploy" "${RUN_DIR}/deploy.log"
+  refresh_progress_context "deploy" "0"
   if ! run_cmd_capture "DEPLOY_CMD" "${DEPLOY_CMD:-}" "${RUN_DIR}/deploy.log" 1; then
     stage_rc=$?
   fi
@@ -875,6 +1111,14 @@ cmd_deploy() {
 
 cmd_rollback_internal() {
   local reason="$1"
+
+  if [[ -z "${ROLLBACK_CMD:-}" ]]; then
+    if auto_git_reset_to_savepoint "manual-${reason}"; then
+      return 0
+    fi
+    write_gate "rollback" "false" "rollback failed without ROLLBACK_CMD: ${reason}"
+    return 1
+  fi
 
   if run_cmd_capture "ROLLBACK_CMD" "${ROLLBACK_CMD:-}" "${RUN_DIR}/rollback.log" 1; then
     write_gate "rollback" "true" "rollback passed: ${reason}"
@@ -892,6 +1136,7 @@ cmd_post_test() {
   local post_log="${RUN_DIR}/post-test.log"
 
   policy_pre_stage "post-test" "${post_log}"
+  refresh_progress_context "post-test" "0"
   if run_cmd_capture "POST_TEST_CMD/TEST_CMD" "${cmd}" "${post_log}" 1; then
     policy_post_stage "post-test" 0 "post deploy test passed" "${post_log}" || return $?
     write_gate "post_tester" "true" "post deploy test passed"
@@ -949,6 +1194,7 @@ cmd_rollback() {
 cmd_git_push() {
   local stage_rc=0
   policy_pre_stage "git-push" "${RUN_DIR}/git-push.log"
+  refresh_progress_context "git-push" "0"
   if ! run_cmd_capture "GIT_PUSH_CMD" "${GIT_PUSH_CMD:-}" "${RUN_DIR}/git-push.log" 1; then
     stage_rc=$?
   fi

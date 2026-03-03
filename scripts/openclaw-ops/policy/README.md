@@ -23,7 +23,7 @@
 - `token-pricing.json`：本地价格表（单位 `per_1m_tokens`）。
 - `runtime.env.example`：环境变量模板（避免路径写死）。
 - `bootstrap_multi_project.py`：多项目自适应安装器。
-- `project_index_maintainer.py`：`project-agent` 项目索引维护器（可选 git pull）。
+- `project_index_maintainer.py`：`project-agent` 项目索引维护器（可选 git pull），并维护动态文档知识索引（stack/API endpoints/official docs update checks/direct-fetch cache/search-index）。
 
 ## 3. 环境变量（推荐）
 

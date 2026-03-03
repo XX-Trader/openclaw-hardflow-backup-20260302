@@ -1,2 +1,7 @@
 ﻿__pycache__/
 *.pyc
+/chrome_user_data
+data/browserwing.db
+docs/BrowserWing-介绍.md
+log/browserwing.log
+config.toml

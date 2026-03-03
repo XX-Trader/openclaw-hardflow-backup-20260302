@@ -20,7 +20,15 @@ def now_iso() -> str:
 def default_config(base_url: str) -> dict[str, Any]:
     root = base_url.rstrip("/")
     return {
-        "engine": "playwright",
+        "engine": "playwright-real",
+        "forbid_http_engine": True,
+        "require_browser_checks": True,
+        "real_browser": {
+            "user_data_dir": os.environ.get("OPENCLAW_CHROME_USER_DATA_DIR", ""),
+            "profile_directory": os.environ.get("OPENCLAW_CHROME_PROFILE", "Default"),
+            "channel": os.environ.get("OPENCLAW_CHROME_CHANNEL", "chrome"),
+            "headless": False,
+        },
         "default_timeout_seconds": 12,
         "freshness_default_max_age_seconds": 300,
         "endpoints": [
@@ -48,20 +56,48 @@ def default_config(base_url: str) -> dict[str, Any]:
                 "id": "dashboard",
                 "url": f"{root}/dashboard",
                 "risk_level": "high",
-                "expect_text": "在线",
+                "expect_text": "Dashboard",
+                "expect_selectors": ["body"],
+                "min_score": 80,
+                "steps": [
+                    {"action": "wait_for", "selector": "body"},
+                    {"action": "click", "selector": "text=Login"},
+                    {"action": "wait_for", "selector": "text=Dashboard"}
+                ],
+                "api_expectations": [
+                    {
+                        "id": "dashboard-core-api",
+                        "url_contains": "/api/",
+                        "method": "GET",
+                        "min_hits": 1,
+                        "require_2xx": True,
+                        "require_output": True
+                    }
+                ]
             }
         ],
         "notes": [
             "Replace placeholder endpoints with real production APIs.",
             "Use risk_level=high for core data and contract-sensitive endpoints.",
             "Set freshness_field and freshness_max_age_seconds for time-sensitive data.",
+            "Use playwright-real + real browser profile for stateful debugging.",
+            "Provide browser click steps for end-to-end verification (not curl-only checks).",
+            "Screenshots should be reviewed by native AI vision, not image parsing scripts.",
+            "DevTools-like checks are exported to devtools/*.json (console/network/API output scoring).",
         ],
     }
 
 
 def merge_existing(existing: dict[str, Any], generated: dict[str, Any]) -> dict[str, Any]:
     out = dict(generated)
-    for key in ("engine", "default_timeout_seconds", "freshness_default_max_age_seconds"):
+    for key in (
+        "engine",
+        "forbid_http_engine",
+        "require_browser_checks",
+        "real_browser",
+        "default_timeout_seconds",
+        "freshness_default_max_age_seconds",
+    ):
         if key in existing:
             out[key] = existing[key]
     if isinstance(existing.get("endpoints"), list) and existing.get("endpoints"):
@@ -139,3 +175,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

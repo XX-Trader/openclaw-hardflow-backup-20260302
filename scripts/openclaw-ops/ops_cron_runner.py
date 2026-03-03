@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Unified OpenClaw ops cron runner with hard constraints.
 
 Modes:

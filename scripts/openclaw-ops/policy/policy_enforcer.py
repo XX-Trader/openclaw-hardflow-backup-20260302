@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Policy-Enforcer: fail-close policy checks for OpenClaw workflows."""
 
 from __future__ import annotations
@@ -653,6 +653,63 @@ class PolicyEnforcer:
         if agent_id in {str(x) for x in blocked_agents} and stage in {str(x) for x in code_stages}:
             raise PolicyError(f"agent {agent_id} is not allowed to execute code stage {stage}")
 
+    def agent_write_scope(self) -> dict[str, list[str]]:
+        raw = self.policy.get("agent_write_scope", {})
+        if not isinstance(raw, dict):
+            raise PolicyError("policy.agent_write_scope must be an object")
+        out: dict[str, list[str]] = {}
+        for agent_id, prefixes_raw in raw.items():
+            aid = str(agent_id).strip()
+            if not aid:
+                continue
+            prefixes: list[str] = []
+            if isinstance(prefixes_raw, list):
+                for item in prefixes_raw:
+                    value = str(item).strip().replace("\\", "/")
+                    if not value:
+                        continue
+                    prefixes.append(value)
+            out[aid] = prefixes
+        return out
+
+    def assert_agent_write_scope(self, agent_id: str, changed_files: list[str]) -> dict[str, Any]:
+        scopes = self.agent_write_scope()
+        allowed_prefixes = scopes.get(str(agent_id).strip(), [])
+        normalized_files = [str(x).strip().replace("\\", "/") for x in changed_files if str(x).strip()]
+        normalized_files = [x for x in normalized_files if x]
+
+        if not allowed_prefixes:
+            return {
+                "ok": True,
+                "agent_id": agent_id,
+                "scope_enabled": False,
+                "allowed_prefixes": [],
+                "checked_files": normalized_files,
+                "violations": [],
+            }
+
+        violations: list[str] = []
+        for rel in normalized_files:
+            if rel.startswith(".workflow/"):
+                continue
+            if any(rel.startswith(prefix) for prefix in allowed_prefixes):
+                continue
+            violations.append(rel)
+
+        if violations:
+            raise PolicyError(
+                f"write scope violation: agent={agent_id}, "
+                f"allowed={allowed_prefixes}, violations={','.join(violations)}"
+            )
+        return {
+            "ok": True,
+            "agent_id": agent_id,
+            "scope_enabled": True,
+            "allowed_prefixes": allowed_prefixes,
+            "checked_files": normalized_files,
+            "violations": [],
+        }
+
     def assert_transition_allowed(self, from_status: str, to_status: str) -> None:
         flow = self.status_flow()
         allowed = flow.get(from_status)
@@ -1304,6 +1361,32 @@ class PolicyEnforcer:
             "tasks": tasks,
         }
 
+    def assert_write_scope(self, args: argparse.Namespace) -> dict[str, Any]:
+        files: list[str] = []
+        changed_file_args = getattr(args, "changed_file", [])
+        if isinstance(changed_file_args, list):
+            files.extend(str(x) for x in changed_file_args if str(x).strip())
+
+        files_file = str(getattr(args, "changed_files_file", "") or "").strip()
+        if files_file:
+            path = Path(files_file).expanduser()
+            if not path.exists():
+                raise PolicyError(f"changed-files-file not found: {path}")
+            lines = [line.strip() for line in path.read_text(encoding="utf-8-sig").splitlines()]
+            files.extend(line for line in lines if line)
+
+        # preserve input order while removing duplicates
+        dedup: list[str] = []
+        seen: set[str] = set()
+        for item in files:
+            norm = str(item).strip().replace("\\", "/")
+            if not norm or norm in seen:
+                continue
+            seen.add(norm)
+            dedup.append(norm)
+
+        return self.assert_agent_write_scope(agent_id=str(args.agent_id).strip(), changed_files=dedup)
+
     def update_routing(self, args: argparse.Namespace) -> dict[str, Any]:
         routing = self.routing
 
@@ -1442,6 +1525,14 @@ class PolicyEnforcer:
             "context_policy_recommended_fields_parseable",
             isinstance(recommended_ctx, list),
             f"recommended_fields_count={len(recommended_ctx) if isinstance(recommended_ctx, list) else 0}",
+        )
+        write_scope_raw = self.policy.get("agent_write_scope", {})
+        write_scope_ok = isinstance(write_scope_raw, dict)
+        scope_agents = sorted(write_scope_raw.keys()) if isinstance(write_scope_raw, dict) else []
+        add_check(
+            "agent_write_scope_optional",
+            write_scope_ok,
+            f"enabled={bool(scope_agents)} agents_with_scope={scope_agents}",
         )
 
         pricing = load_pricing(self.paths.pricing_file)
@@ -1679,6 +1770,12 @@ def build_parser() -> argparse.ArgumentParser:
     next_todo = sub.add_parser("next-todo", help="get FIFO todo batch by policy limit")
     next_todo.add_argument("--limit", default="0")
 
+    write_scope = sub.add_parser("assert-write-scope", help="validate changed files against agent write scope")
+    write_scope.add_argument("--agent-id", required=True)
+    write_scope.add_argument("--changed-file", action="append", default=[])
+    write_scope.add_argument("--changed-files-file", default="")
+    _ = write_scope
+
     update = sub.add_parser("update-routing", help="update routing rules")
     update.add_argument("--add-high-risk", action="append", default=[])
     update.add_argument("--add-low-risk", action="append", default=[])
@@ -1772,6 +1869,8 @@ def main() -> int:
                 emit_json({"ok": True, "route": enforcer.route_task(args)})
             elif args.command == "next-todo":
                 emit_json({"ok": True, "result": enforcer.next_todo(args)})
+            elif args.command == "assert-write-scope":
+                emit_json({"ok": True, "result": enforcer.assert_write_scope(args)})
             elif args.command == "update-routing":
                 emit_json({"ok": True, "result": enforcer.update_routing(args)})
             elif args.command == "assert-entry":

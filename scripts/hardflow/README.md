@@ -24,13 +24,14 @@ HardFlow v2 是基于 `tmux + Codex CLI + Lobster + Hooks` 的多角色自动化
 
 ## 3. 关键文件
 
-1. `hardflow-run.sh`：主执行器（含测试回流、评分回流、部署回滚）。
+1. `hardflow-run.sh`：主执行器（含测试回流、评分回流、部署回滚、上下文重置、git 存档点回滚）。
 2. `check-score-gate.mjs`：单 Gate 评分校验器。
 3. `SCORECARD_SCHEMA.md`：评分输入格式约束。
 4. `check-api-doc-gate.sh`：接口文档门禁。
 5. `check-review-test-gate.sh`：部署前/后综合门禁。
 6. `hardflow-v1.lobster.yaml`：Lobster 工作流。
 7. `hardflow-tmux-runner.sh`：tmux 常驻执行入口。
+8. `atomic_task_guard.py`：保证 `.workflow/task.json` 为原子化细粒度任务（最少 4 个可执行子任务）。
 
 ## 4. 评分命令约定
 
@@ -114,6 +115,8 @@ bash scripts/hardflow/hardflow-run.sh score-report --format text
 4. `.workflow/runs/<run_id>/score-gate-audit.ndjson`
 5. `.workflow/gates/*.json`
 6. `.workflow/hook-audit/commands.log`
+7. `.workflow/task.json`
+8. `.workflow/progress.txt`
 
 ## 8. 经验进化维护（新增）
 

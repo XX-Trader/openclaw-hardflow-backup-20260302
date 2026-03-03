@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """TODO patrol with source-aware routing and policy-enforced dispatch."""
 
 from __future__ import annotations
