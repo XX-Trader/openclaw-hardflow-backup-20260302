@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shlex
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,11 +19,13 @@ FILE_FLAGS = {
     "--state-file",
     "--db",
     "--registry",
+    "--env-file",
 }
 DIR_FLAGS = {
     "--history-dir",
     "--report-dir",
     "--output-dir",
+    "--workspace",
 }
 OPTIONAL_FILE_FLAGS = {"--state-file"}
 OPTIONAL_DIR_FLAGS = {"--history-dir", "--report-dir", "--output-dir"}
@@ -36,18 +39,33 @@ def extract_command_from_message(message: str) -> str:
     text = str(message or "").strip()
     if not text:
         return ""
-    if "参数：" in text and "。将命令标准输出" in text:
-        return text.split("参数：", 1)[1].split("。将命令标准输出", 1)[0].strip()
-    if "Run command only:" in text:
-        part = text.split("Run command only:", 1)[1]
-        if "Reply only command output" in part:
-            return part.split("Reply only command output", 1)[0].strip()
-        return part.strip()
+
+    # English template (preferred)
+    m = re.search(r"Run command only:\s*(.+?)(?:\n(?:Reply|Do not)|$)", text, flags=re.IGNORECASE | re.DOTALL)
+    if m:
+        return str(m.group(1)).strip()
+
+    # Chinese template variants
+    for marker in ("参数：", "只执行以下命令", "仅用命令执行"):
+        if marker in text:
+            part = text.split(marker, 1)[1].lstrip("：: \n")
+            end_idx = len(part)
+            for stop in ("\n", "。", "；"):
+                idx = part.find(stop)
+                if idx >= 0:
+                    end_idx = min(end_idx, idx)
+            return part[:end_idx].strip()
+
+    # Generic fallback: first command-looking line.
+    m = re.search(r"((?:python|python3|bash|sh|node)\s+[^\n]+)", text, flags=re.IGNORECASE)
+    if m:
+        return str(m.group(1)).strip()
     return ""
 
 
 def resolve_path(raw: str, cwd: Path) -> Path:
-    p = Path(raw).expanduser()
+    expanded = os.path.expandvars(str(raw or ""))
+    p = Path(expanded).expanduser()
     if p.is_absolute():
         return p
     return (cwd / p).resolve()
@@ -64,9 +82,16 @@ def parse_references(command: str, cwd: Path) -> dict[str, Any]:
     if not parts:
         return refs
 
+    first = str(parts[0]).strip().lower()
     # python3 script.py ...
-    if parts[0].startswith("python") and len(parts) >= 2:
+    if first.startswith("python") and len(parts) >= 2:
         refs["script_path"] = str(resolve_path(parts[1], cwd))
+    # bash script.sh / node script.mjs
+    elif first in {"bash", "sh", "node"} and len(parts) >= 2:
+        refs["script_path"] = str(resolve_path(parts[1], cwd))
+    # /usr/bin/env bash script.sh ...
+    elif first.endswith("/env") and len(parts) >= 3 and str(parts[1]).strip().lower() in {"python", "python3", "bash", "sh", "node"}:
+        refs["script_path"] = str(resolve_path(parts[2], cwd))
 
     idx = 0
     while idx < len(parts):

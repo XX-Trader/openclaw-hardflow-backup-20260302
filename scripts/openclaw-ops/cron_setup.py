@@ -110,12 +110,101 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
 
 
 def build_message(command: str) -> str:
+    cmd = str(command or "").strip()
     return (
-        "你是 ops-agent 定时任务执行器。"
-        "只执行以下命令，不要执行其他命令，也不要改写命令参数："
-        f"{command}。"
-        "将命令标准输出原样作为唯一回复；若输出为 NO_REPLY，则只回复 NO_REPLY。"
+        "You are scheduled runner. Run command only:\n"
+        f"{cmd}\n"
+        "Do not write, edit, create, move, or delete any file. "
+        "Do not execute any other command.\n"
+        "Reply only command stdout/stderr text. If output is empty, reply NO_REPLY."
     )
+
+
+def infer_openclaw_home_from_jobs_file(jobs_file: Path) -> Path:
+    jobs_path = jobs_file.expanduser().resolve()
+    if jobs_path.parent.name == "cron":
+        return jobs_path.parent.parent
+    return jobs_path.parent
+
+
+def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[str, Any]:
+    """Harden legacy jobs that frequently fail due path/tool drift."""
+    openclaw_home = openclaw_home.expanduser()
+    ops_dir = openclaw_home / "ops"
+    workspace_dir = openclaw_home / "workspace"
+    known: dict[str, dict[str, Any]] = {
+        "daily_todo_digest_daily": {
+            "description": "Daily TODO digest (stable script path, run-only hard mode)",
+            "command": (
+                f"python3 {ops_dir / 'daily_todo_digest.py'} "
+                f"--db {ops_dir / 'task-center' / 'task_center.db'} "
+                f"--state-file {ops_dir / 'daily-todo-digest' / 'state.json'} "
+                f"--report-dir {ops_dir / 'daily-todo-digest' / 'reports'} "
+                "--task-id cron:daily-todo-digest --normal-log-mode silent"
+            ),
+            "timeout": 1200,
+        },
+        "experience_maintain_daily": {
+            "description": "Hardflow experience maintenance (daily, stable python runner)",
+            "command": (
+                f"python3 {ops_dir / 'experience_maintain.py'} "
+                f"--mode daily --workspace {workspace_dir} "
+                "--task-id cron:experience-maintain-daily --normal-log-mode silent"
+            ),
+            "timeout": 1200,
+        },
+        "experience_maintain_weekly": {
+            "description": "Hardflow experience maintenance (weekly, stable python runner)",
+            "command": (
+                f"python3 {ops_dir / 'experience_maintain.py'} "
+                f"--mode weekly --workspace {workspace_dir} "
+                "--task-id cron:experience-maintain-weekly --normal-log-mode silent"
+            ),
+            "timeout": 1200,
+        },
+        "experience_maintain_monthly": {
+            "description": "Hardflow experience maintenance (monthly, stable python runner)",
+            "command": (
+                f"python3 {ops_dir / 'experience_maintain.py'} "
+                f"--mode monthly --workspace {workspace_dir} "
+                "--task-id cron:experience-maintain-monthly --normal-log-mode silent"
+            ),
+            "timeout": 1200,
+        },
+    }
+
+    status: dict[str, str] = {}
+    refs: list[str] = []
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        spec = known.get(name)
+        if spec is None:
+            continue
+        payload = item.get("payload")
+        if not isinstance(payload, dict):
+            payload = {}
+        payload["kind"] = "agentTurn"
+        payload["message"] = build_message(str(spec["command"]))
+        payload["timeoutSeconds"] = int(spec["timeout"])
+        item["payload"] = payload
+        item["description"] = str(spec["description"])
+        status[name] = "hardened"
+
+        try:
+            cmd_parts = str(spec["command"]).split()
+            if len(cmd_parts) >= 2 and cmd_parts[0].startswith("python"):
+                refs.append(cmd_parts[1])
+        except Exception:
+            pass
+
+    missing_refs: list[str] = []
+    for path in sorted(set(refs)):
+        p = Path(path).expanduser()
+        if not p.exists():
+            missing_refs.append(str(p))
+    return {"status": status, "missing_refs": missing_refs}
 
 
 def build_core_jobs(
@@ -764,11 +853,20 @@ def main() -> int:
             )
         )
 
+    openclaw_home = infer_openclaw_home_from_jobs_file(jobs_file)
     audit_before = audit_jobs(jobs=jobs, expected_jobs=fresh_jobs, channel=channel, target=target)
     merged_jobs, status = upsert_jobs(jobs=jobs, fresh_jobs=fresh_jobs, channel=channel, target=target)
     removed_name_conflicts: list[dict[str, str]] = []
     if not bool(args.keep_name_conflicts):
         merged_jobs, removed_name_conflicts = remove_name_conflicts(jobs=merged_jobs, expected_jobs=fresh_jobs)
+    harden_result = harden_known_jobs(jobs=merged_jobs, openclaw_home=openclaw_home)
+    harden_missing_refs = list(harden_result.get("missing_refs", []))
+    if harden_missing_refs and not bool(args.skip_script_path_check):
+        raise SystemExit(
+            "harden known jobs failed: missing runtime scripts: "
+            + ", ".join(harden_missing_refs)
+            + "; run workflow sync first or pass --skip-script-path-check"
+        )
     data["jobs"] = merged_jobs
     audit_after = audit_jobs(jobs=merged_jobs, expected_jobs=fresh_jobs, channel=channel, target=target)
 
@@ -795,6 +893,10 @@ def main() -> int:
             "before": audit_before,
             "after": audit_after,
             "removed_name_conflicts": removed_name_conflicts,
+        },
+        "harden_known_jobs": {
+            "status": harden_result.get("status", {}),
+            "missing_refs": harden_missing_refs,
         },
         "installed": {
             "core_jobs": True,
@@ -830,6 +932,13 @@ def main() -> int:
             f"missing:{after_counts.get('missing', 0)}"
         )
         print(f"name_conflicts_removed={len(result.get('audit', {}).get('removed_name_conflicts', []))}")
+        harden_status = result.get("harden_known_jobs", {}).get("status", {})
+        print(f"hardened_known_jobs={len(harden_status)}")
+        if harden_status:
+            print("hardened_job_names=" + ",".join(sorted(str(k) for k in harden_status.keys())))
+        missing_refs = result.get("harden_known_jobs", {}).get("missing_refs", [])
+        if missing_refs:
+            print("harden_missing_refs=" + ",".join(str(x) for x in missing_refs))
         print(json.dumps(result["installed"], ensure_ascii=False))
         if args.dry_run:
             print("dry_run=true")
