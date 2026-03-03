@@ -133,6 +133,11 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
     ops_dir = openclaw_home / "ops"
     workspace_dir = openclaw_home / "workspace"
     known: dict[str, dict[str, Any]] = {
+        "log-watcher agent（双项目）": {
+            "description": "log-watcher command-runner (stable no-edit mode)",
+            "command": f"python3 {openclaw_home / 'workspace-ops-agent' / 'ops' / 'log-watcher.py'}",
+            "timeout": 900,
+        },
         "daily_todo_digest_daily": {
             "description": "Daily TODO digest (stable script path, run-only hard mode)",
             "command": (
