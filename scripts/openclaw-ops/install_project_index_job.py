@@ -86,8 +86,8 @@ def upsert_job(
         "payload": {
             "kind": "agentTurn",
             "message": (
-                "You are project-index maintainer. Run command only: "
-                f"python3 {maintainer_py} --registry {registry} --git-pull --emit-json. "
+                "You are project-index maintainer. Run command only:\n"
+                f"python3 {maintainer_py} --registry {registry} --git-pull --emit-json\n"
                 "Reply only command output; if output is NO_REPLY, reply NO_REPLY."
             ),
             "timeoutSeconds": 1800,

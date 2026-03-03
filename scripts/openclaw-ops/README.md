@@ -44,6 +44,13 @@
   - 只产出“建议与任务包”，禁止自动修改工作流与技能。
   - 任务统一写入 TODO（低优先级、高风险、需人工确认），并带 `scheduled_at`。
   - 按 FIFO 时间顺序入队，且每次运行限制最大产出数量，避免批量风险。
+- `reviewer_cron_runner.py`
+  - Reviewer 定时审查执行器，支持 `hourly_git / daily_incremental / bi_daily_recurring / weekly_structure` 四种模式。
+  - 内置问题去重与生命周期：`open / resolved / reopened`。
+  - 每次执行落盘历史证据，支持 `NO_REPLY` 降噪输出。
+- `install_reviewer_scan_jobs.py`
+  - 一键安装 Reviewer 四层审查任务（1小时、每日4点、每2天、每周）。
+  - 自动推断 delivery channel/to 并写入 `~/.openclaw/cron/jobs.json`。
 
 ## 风险动态更新
 
@@ -111,4 +118,19 @@ python3 scripts/openclaw-ops/self_evolution_todo.py \
 
 # 手动执行一次系统定时快照审计
 python3 scripts/openclaw-ops/system_schedule_snapshot.py --normal-log-mode silent
+
+# 安装 Reviewer 四层定时审查任务
+python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
+  --jobs-file ~/.openclaw/cron/jobs.json \
+  --runner-py ~/.openclaw/ops/reviewer_cron_runner.py \
+  --workspace ~/.openclaw/workspace \
+  --state-file ~/.openclaw/ops/reviewer-scan-state.json \
+  --history-dir ~/.openclaw/ops/reviewer-scan-runs \
+  --normal-log-mode silent \
+  --daily-fix-command "python3 ~/.openclaw/ops/policy_enforcer.py next-todo --limit 5"
 ```
+
+## New Docs
+
+- Context gate and source split: scripts/openclaw-ops/policy/CONTEXT_GATE.md
+

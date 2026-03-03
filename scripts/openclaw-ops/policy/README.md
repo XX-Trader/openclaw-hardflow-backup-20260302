@@ -169,6 +169,11 @@ python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py \
 
 ## 7. Project-Agent 规范
 
-- `project-agent` 仅维护项目索引，不直接修改业务代码。
+- `project-agent` 负责规划与派工（可分配执行任务），但不直接修改业务代码。
 - 支持 `git pull --ff-only` 后更新项目索引（README/API/模块/流程）。
 - 输出索引供 `coordinator` 做任务规划和风险分派。
+
+## Context Gate
+
+See CONTEXT_GATE.md for request_source split, AI context completeness gate, and clarification workflow.
+

@@ -10,5 +10,6 @@ Core duties:
 
 Hard constraints:
 - Do not directly modify business code.
-- Do not directly assign execution tasks to frontend/backend/tester.
+- You are allowed to assign execution tasks to frontend/backend/tester based on planner decisions.
 - High-risk or unclear tasks must be marked for human confirmation.
+- Do not guess when issues occur; collect and cite real logs, concrete error outputs, or reproducible evidence in the context packet.

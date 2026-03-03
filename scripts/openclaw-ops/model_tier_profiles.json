@@ -1,0 +1,67 @@
+{
+  "schema_version": "2026-03-03",
+  "default_tier": "high",
+  "tiers": {
+    "top": {
+      "name": "顶级",
+      "aliases": [
+        "top",
+        "premium",
+        "顶级",
+        "最高",
+        "codex",
+        "xhigh"
+      ],
+      "primary_model": "openai-codex/gpt-5.3-codex",
+      "fallback_models": [
+        "kimicode/Doubao-Seed-2.0-Code",
+        "glmcode/glm-5",
+        "glmcode/glm-4.7"
+      ],
+      "thinking_default": "xhigh"
+    },
+    "high": {
+      "name": "高级",
+      "aliases": [
+        "high",
+        "advanced",
+        "高级",
+        "doubao"
+      ],
+      "primary_model": "kimicode/Doubao-Seed-2.0-Code",
+      "fallback_models": [
+        "glmcode/glm-5",
+        "glmcode/glm-4.7"
+      ],
+      "thinking_default": "high"
+    },
+    "medium": {
+      "name": "中级",
+      "aliases": [
+        "medium",
+        "mid",
+        "中级",
+        "glm5",
+        "glm-5"
+      ],
+      "primary_model": "glmcode/glm-5",
+      "fallback_models": [
+        "glmcode/glm-4.7"
+      ],
+      "thinking_default": "medium"
+    },
+    "low": {
+      "name": "低级",
+      "aliases": [
+        "low",
+        "lite",
+        "低级",
+        "glm47",
+        "glm-4.7"
+      ],
+      "primary_model": "glmcode/glm-4.7",
+      "fallback_models": [],
+      "thinking_default": "low"
+    }
+  }
+}

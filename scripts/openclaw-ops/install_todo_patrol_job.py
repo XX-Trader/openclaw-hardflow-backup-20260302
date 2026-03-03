@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install or update OpenClaw TODO patrol job in ~/.openclaw/cron/jobs.json."""
+"""Install or update TODO patrol job in OpenClaw cron jobs.json."""
 
 from __future__ import annotations
 
@@ -33,16 +33,34 @@ def load_jobs(path: Path) -> dict[str, Any]:
     return data
 
 
-def infer_delivery(jobs: list[dict[str, Any]], agent_id: str) -> tuple[str | None, str | None]:
-    for job in jobs:
-        if str(job.get("agentId", "")).strip() != agent_id:
-            continue
-        delivery = job.get("delivery") or {}
-        channel = str(delivery.get("channel", "")).strip()
-        target = str(delivery.get("to", "")).strip()
-        if channel and target:
-            return channel, target
+def infer_delivery(jobs: list[dict[str, Any]], preferred_agents: list[str]) -> tuple[str | None, str | None]:
+    for agent_id in preferred_agents:
+        for job in jobs:
+            if str(job.get("agentId", "")).strip() != agent_id:
+                continue
+            delivery = job.get("delivery") or {}
+            channel = str(delivery.get("channel", "")).strip()
+            target = str(delivery.get("to", "")).strip()
+            if channel and target:
+                return channel, target
     return None, None
+
+
+def build_message(
+    ops_script: str,
+    max_dispatch: int,
+    default_request_source: str,
+    ai_context_min_pct: float,
+) -> str:
+    command = (
+        f"python3 {ops_script} --task cron:todo-patrol --max-dispatch {int(max_dispatch)} "
+        f"--default-request-source {default_request_source} --ai-context-min-pct {float(ai_context_min_pct)}"
+    )
+    return (
+        "You are ops-agent scheduled runner. Run command only:\n"
+        f"{command}\n"
+        "Reply only command output; if output is empty, reply NO_REPLY."
+    )
 
 
 def upsert_job(
@@ -50,6 +68,9 @@ def upsert_job(
     job_id: str,
     ops_script: str,
     every_ms: int,
+    max_dispatch: int,
+    default_request_source: str,
+    ai_context_min_pct: float,
     channel: str,
     target: str,
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -60,33 +81,34 @@ def upsert_job(
     old_state: dict[str, Any] = {}
 
     for item in jobs:
-        if item.get("id") == job_id:
-            existed = True
-            created_ms = int(item.get("createdAtMs", timestamp))
-            old_state = item.get("state") if isinstance(item.get("state"), dict) else {}
-            break
-
-    message = (
-        "你是 todo-patrol 子agent。仅用命令执行："
-        f"python3 {ops_script} --task cron:todo-patrol。"
-        "将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。"
-    )
+        if item.get("id") != job_id:
+            continue
+        existed = True
+        created_ms = int(item.get("createdAtMs", timestamp))
+        old_state = item.get("state") if isinstance(item.get("state"), dict) else {}
+        break
 
     payload = {
         "id": job_id,
         "agentId": "ops-agent",
-        "name": "TODO 巡检（15分钟）",
-        "description": (
-            "15分钟周期巡检 TODO.md；去重播报；检测执行状态；"
-            "仅对 UNASSIGNED 项请求 coordinator 分配；自动并入 tester 失败项"
-        ),
+        "name": "todo_patrol_15m",
+        "description": "Read coordinator TODO and auto-dispatch into task-center every 15 minutes",
         "enabled": True,
         "createdAtMs": created_ms,
         "updatedAtMs": timestamp,
         "schedule": {"kind": "every", "everyMs": every_ms, "anchorMs": created_ms},
         "sessionTarget": "isolated",
         "wakeMode": "now",
-        "payload": {"kind": "agentTurn", "message": message},
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(
+                ops_script=ops_script,
+                max_dispatch=max_dispatch,
+                default_request_source=default_request_source,
+                ai_context_min_pct=ai_context_min_pct,
+            ),
+            "timeoutSeconds": 1200,
+        },
         "delivery": {"mode": "announce", "channel": channel, "to": target},
         "state": old_state,
     }
@@ -108,16 +130,18 @@ def upsert_job(
 def main() -> None:
     home = Path(os.path.expanduser("~"))
     default_jobs = home / ".openclaw/cron/jobs.json"
-    default_ops_script = home / ".openclaw/workspace-ops-agent/ops/todo_patrol.py"
+    default_ops_script = home / ".openclaw/ops/todo_patrol.py"
 
     parser = argparse.ArgumentParser(description="Install TODO patrol cron job")
     parser.add_argument("--jobs-file", default=str(default_jobs))
     parser.add_argument("--job-id", default="16cb8d03-beb9-4697-927d-35952353bf8e")
     parser.add_argument("--ops-script", default=str(default_ops_script))
     parser.add_argument("--every-ms", type=int, default=900000)
+    parser.add_argument("--max-dispatch", type=int, default=5)
+    parser.add_argument("--default-request-source", default="human", choices=["human", "ai"])
+    parser.add_argument("--ai-context-min-pct", type=float, default=100.0)
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
-    parser.add_argument("--agent-id-for-delivery", default="ops-agent")
     args = parser.parse_args()
 
     jobs_path = Path(args.jobs_file).expanduser()
@@ -125,16 +149,16 @@ def main() -> None:
     data = load_jobs(jobs_path)
     jobs = data.get("jobs", [])
 
-    channel = args.channel.strip() or None
-    target = args.to.strip() or None
+    channel = str(args.channel).strip()
+    target = str(args.to).strip()
     if not channel or not target:
-        inferred_channel, inferred_target = infer_delivery(jobs, args.agent_id_for_delivery)
-        channel = channel or inferred_channel
-        target = target or inferred_target
-    if not channel:
-        channel = "telegram"
+        inferred_channel, inferred_target = infer_delivery(jobs, ["ops-agent", "coordinator", "project-agent"])
+        channel = channel or (inferred_channel or "telegram")
+        target = target or (inferred_target or "")
     if not target:
-        raise SystemExit("missing delivery target: pass --to or ensure existing delivery target exists")
+        raise SystemExit("missing delivery target: pass --to or keep existing delivery target")
+
+    ops_script = str(Path(args.ops_script).expanduser())
 
     if jobs_path.exists():
         backup = jobs_path.with_name(f"{jobs_path.name}.bak.{now_stamp()}")
@@ -143,9 +167,12 @@ def main() -> None:
 
     updated_jobs, existed = upsert_job(
         jobs=jobs,
-        job_id=args.job_id,
-        ops_script=args.ops_script,
-        every_ms=args.every_ms,
+        job_id=str(args.job_id),
+        ops_script=ops_script,
+        every_ms=int(args.every_ms),
+        max_dispatch=int(args.max_dispatch),
+        default_request_source=str(args.default_request_source),
+        ai_context_min_pct=float(args.ai_context_min_pct),
         channel=channel,
         target=target,
     )
@@ -155,7 +182,9 @@ def main() -> None:
     print(f"job_id={args.job_id}")
     print(f"status={'updated' if existed else 'created'}")
     print(f"jobs_file={jobs_path}")
-    print(f"ops_script={args.ops_script}")
+    print(f"ops_script={ops_script}")
+    print(f"default_request_source={args.default_request_source}")
+    print(f"ai_context_min_pct={float(args.ai_context_min_pct)}")
     print(f"delivery={channel}:{target}")
 
 

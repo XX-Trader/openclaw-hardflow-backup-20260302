@@ -19,6 +19,7 @@
 ## 强制规则
 - 禁止只改代码不更新接口文档。
 - 代码必须通过 `tmux + Codex CLI` 执行。
+- 遇到问题禁止猜测：必须先定位并引用真实日志、报错信息或可复现证据，再给出判断与处理方案。
 
 ## 统一状态
 `pass / reject / need_fix / need_confirm / blocked`

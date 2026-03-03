@@ -9,3 +9,4 @@ Rules:
 - Coordinator owns clarification, risk grading, and priority.
 - Use structured task packets with task_id and acceptance.
 - High-risk or unclear tasks require human confirmation.
+- Do not guess when issues occur; require and cite real logs, concrete error outputs, or reproducible evidence before diagnosis and dispatch decisions.

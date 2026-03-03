@@ -6,7 +6,7 @@
 - workspace: /home/ubuntu/.openclaw/workspace
 - agentDir: None
 - model: glmcode/glm-5
-- allowAgentsCount: 12
+- allowAgentsCount: 13
 
 ## coordinator
 - name: coordinator
@@ -14,7 +14,7 @@
 - workspace: /home/ubuntu/.openclaw/workspace-coordinator
 - agentDir: None
 - model: glmcode/glm-5
-- allowAgentsCount: 12
+- allowAgentsCount: 13
 
 ## doc-writer
 - name: doc-writer
@@ -70,7 +70,7 @@
 - workspace: /home/ubuntu/.openclaw/workspace-agent-factory
 - agentDir: None
 - model: glmcode/glm-5
-- allowAgentsCount: 2
+- allowAgentsCount: 3
 
 ## ops-agent
 - name: ops-agent
@@ -78,7 +78,15 @@
 - workspace: /home/ubuntu/.openclaw/workspace-ops-agent
 - agentDir: /home/ubuntu/.openclaw/agents/ops-agent/agent
 - model: glmcode/glm-4.7
-- allowAgentsCount: 2
+- allowAgentsCount: 3
+
+## optimization-agent
+- name: optimization-agent
+- default: False
+- workspace: /home/ubuntu/.openclaw/workspace-optimize-agent
+- agentDir: /home/ubuntu/.openclaw/agents/optimization-agent/agent
+- model: glmcode/glm-5
+- allowAgentsCount: 1
 
 ## optimize-agent
 - name: optimize-agent

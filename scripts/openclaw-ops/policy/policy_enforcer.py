@@ -44,6 +44,35 @@ DEFAULT_POLICY: dict[str, Any] = {
         "observable_outputs",
         "acceptance_thresholds"
     ],
+    "context_policy": {
+        "enabled": True,
+        "ai_required_fields": [
+            "problem",
+            "location",
+            "first_seen_at",
+            "duration",
+            "impact",
+            "evidence",
+            "target_state",
+            "scope",
+        ],
+        "ai_min_completeness_pct": 100.0,
+        "clarification_assignee": "project-agent",
+        "human_project_keywords": [
+            "项目",
+            "项目规划",
+            "项目说明",
+            "项目索引",
+            "模块",
+            "readme",
+            "api文档",
+            "接口文档",
+            "产品经理",
+            "项目经理",
+            "workflow",
+            "架构",
+        ],
+    },
     "high_risk_requires_human_confirm": True,
     "require_token_usage_before_done": True,
     "max_failure_before_escalate": 3,
@@ -322,6 +351,187 @@ class PolicyEnforcer:
             out[key] = {str(v) for v in value}
         return out
 
+    def context_policy(self) -> dict[str, Any]:
+        raw = self.policy.get("context_policy", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        defaults = DEFAULT_POLICY.get("context_policy", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+        return merge_missing_keys(raw, defaults)
+
+    def normalize_request_source(self, request_source: str | None, source_hint: str | None = None) -> str:
+        raw = str(request_source or "").strip().lower()
+        if raw in {"human", "user", "manual", "chat"}:
+            return "human"
+        if raw in {"ai", "agent", "bot", "automation", "auto", "cron", "system"}:
+            return "ai"
+        if any(token in raw for token in {"human", "manual", "user", "chat"}):
+            return "human"
+        if any(token in raw for token in {"agent", "bot", "cron", "auto", "automation", "patrol", "audit", "ops"}):
+            return "ai"
+
+        hint = str(source_hint or "").strip().lower()
+        if hint in {"human", "user", "manual", "chat"}:
+            return "human"
+        if hint in {"ai", "agent", "bot", "cron", "audit", "patrol", "ops", "system", "automation", "auto"}:
+            return "ai"
+        if any(token in hint for token in {"human", "manual", "user", "chat"}):
+            return "human"
+        if any(token in hint for token in {"agent", "bot", "cron", "auto", "automation", "patrol", "audit", "ops"}):
+            return "ai"
+        return "human"
+
+    def parse_context_json_arg(self, raw: str) -> dict[str, Any]:
+        text = str(raw or "").strip()
+        if not text:
+            return {}
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise PolicyError(f"context-json is not valid JSON: {exc}") from exc
+        if not isinstance(data, dict):
+            raise PolicyError("context-json must be a JSON object")
+        return data
+
+    def parse_context_payload(self, context_json: str, context_file: str = "") -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        path_text = str(context_file or "").strip()
+        if path_text:
+            path = Path(path_text).expanduser()
+            if not path.exists():
+                raise PolicyError(f"context-file not found: {path}")
+            try:
+                file_data = json.loads(path.read_text(encoding="utf-8-sig"))
+            except json.JSONDecodeError as exc:
+                raise PolicyError(f"context-file is not valid JSON: {exc}") from exc
+            if not isinstance(file_data, dict):
+                raise PolicyError("context-file must be a JSON object")
+            payload.update(file_data)
+        payload.update(self.parse_context_json_arg(context_json))
+        return payload
+
+    def extract_context_from_text(self, text: str) -> dict[str, str]:
+        raw = str(text or "").strip()
+        location = ""
+        first_seen = ""
+        duration = ""
+        impact = ""
+        evidence = ""
+        target_state = ""
+
+        location_match = re.search(
+            r"(https?://\S+|/[A-Za-z0-9._/\-]+(?:\?[^\s]+)?|[A-Za-z]:\\[^\s]+|[\w./-]+\.(?:py|js|ts|tsx|json|ya?ml|md|sql|sh|log))",
+            raw,
+        )
+        if location_match:
+            location = location_match.group(1)
+
+        first_seen_match = re.search(r"\d{4}-\d{1,2}-\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?", raw)
+        if first_seen_match:
+            first_seen = first_seen_match.group(0)
+
+        duration_match = re.search(r"(持续[^，。；;\s]{1,24}|[0-9]+(?:分钟|小时|天|周))", raw)
+        if duration_match:
+            duration = duration_match.group(1)
+
+        impact_keywords = ["影响", "阻塞", "不可用", "失败", "报错", "错误", "超时", "404", "500", "延迟", "回退"]
+        for kw in impact_keywords:
+            if kw in raw:
+                impact = f"contains:{kw}"
+                break
+
+        evidence_match = re.search(
+            r"(证据路径[:：]?\s*[^\s，。；;]+|/home/[^\s，。；;]+|[A-Za-z]:\\[^\s，。；;]+|[\w./-]+\.(?:json|log|txt))",
+            raw,
+        )
+        if evidence_match:
+            evidence = evidence_match.group(1)
+
+        target_match = re.search(r"(修复[^，。；;\n]{1,40}|恢复[^，。；;\n]{1,40}|目标[^，。；;\n]{1,40}|需要[^，。；;\n]{1,40})", raw)
+        if target_match:
+            target_state = target_match.group(1)
+
+        return {
+            "problem": raw,
+            "location": location,
+            "first_seen_at": first_seen,
+            "duration": duration,
+            "impact": impact,
+            "evidence": evidence,
+            "target_state": target_state,
+            "scope": "task_description",
+        }
+
+    def evaluate_context_gate(
+        self,
+        request_source: str,
+        context_payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        cfg = self.context_policy()
+        if not parse_bool(cfg.get("enabled", True), True):
+            return {
+                "needs_clarification": False,
+                "clarification_reason": "",
+                "context_completeness": 100.0,
+                "missing_fields": [],
+                "required_fields": [],
+            }
+
+        if request_source != "ai":
+            return {
+                "needs_clarification": False,
+                "clarification_reason": "",
+                "context_completeness": 100.0,
+                "missing_fields": [],
+                "required_fields": [],
+            }
+
+        required_raw = cfg.get("ai_required_fields", [])
+        if not isinstance(required_raw, list):
+            raise PolicyError("context_policy.ai_required_fields must be a list")
+        required_fields = [str(x).strip() for x in required_raw if str(x).strip()]
+        if not required_fields:
+            return {
+                "needs_clarification": False,
+                "clarification_reason": "",
+                "context_completeness": 100.0,
+                "missing_fields": [],
+                "required_fields": [],
+            }
+
+        missing_fields = [field for field in required_fields if not str(context_payload.get(field, "")).strip()]
+        completeness = round(((len(required_fields) - len(missing_fields)) / len(required_fields)) * 100.0, 2)
+        min_pct = float(cfg.get("ai_min_completeness_pct", 100.0) or 100.0)
+        needs_clarification = completeness < min_pct or bool(missing_fields)
+        reason = ""
+        if needs_clarification:
+            reason = (
+                f"ai_context_incomplete: completeness={completeness:.2f}, "
+                f"required={len(required_fields)}, missing={','.join(missing_fields)}"
+            )
+        return {
+            "needs_clarification": needs_clarification,
+            "clarification_reason": reason,
+            "context_completeness": completeness,
+            "missing_fields": missing_fields,
+            "required_fields": required_fields,
+        }
+
+    def clarification_assignee(self) -> str:
+        cfg = self.context_policy()
+        value = str(cfg.get("clarification_assignee", "project-agent")).strip()
+        return value or "project-agent"
+
+    def is_human_project_requirement(self, text: str) -> tuple[bool, list[str]]:
+        cfg = self.context_policy()
+        keywords_raw = cfg.get("human_project_keywords", [])
+        if not isinstance(keywords_raw, list):
+            keywords_raw = []
+        norm = str(text or "").lower()
+        hits = [str(x) for x in keywords_raw if str(x).strip() and str(x).lower() in norm]
+        return bool(hits), hits
+
     def assert_required_fields(self, task: dict[str, Any]) -> None:
         for field in self.required_task_fields():
             value = str(task.get(field, "")).strip()
@@ -393,23 +603,67 @@ class PolicyEnforcer:
         if entry_agent:
             self.assert_entry_agent_allowed(entry_agent)
 
+        request_source = self.normalize_request_source(
+            getattr(args, "request_source", ""),
+            getattr(args, "source", ""),
+        )
+        context_payload = self.parse_context_payload(
+            getattr(args, "context_json", ""),
+            getattr(args, "context_file", ""),
+        )
+        if not context_payload:
+            context_payload = self.extract_context_from_text(args.reason)
+        if not str(context_payload.get("problem", "")).strip():
+            context_payload["problem"] = str(args.reason).strip()
+        if not str(context_payload.get("target_state", "")).strip():
+            context_payload["target_state"] = str(args.result_output).strip()
+        if not str(context_payload.get("scope", "")).strip():
+            context_payload["scope"] = str(args.requirement).strip()
+        if not str(context_payload.get("acceptance", "")).strip():
+            context_payload["acceptance"] = str(args.acceptance).strip()
+        if not str(context_payload.get("evidence", "")).strip():
+            context_payload["evidence"] = str(args.observable_outputs).strip()
+
+        context_eval = self.evaluate_context_gate(request_source, context_payload)
+        force_needs_clarification = parse_bool(getattr(args, "force_needs_clarification", ""), False)
+        needs_clarification = force_needs_clarification or bool(context_eval["needs_clarification"])
+        clarification_reason = str(getattr(args, "clarification_reason", "") or "").strip()
+        if not clarification_reason:
+            clarification_reason = str(context_eval.get("clarification_reason", "")).strip()
+
         need_human_confirm = parse_bool(args.need_human_confirm, risk_level == "high")
         scheduled_at = str(args.scheduled_at or "").strip()
         if pool == "todo" and self.todo_require_scheduled_at() and not scheduled_at:
             scheduled_at = now_iso()
 
+        assignee = str(args.assignee or "").strip() or self.dispatcher_agent()
+        task_type = str(args.task_type or "workflow").strip()
+        if needs_clarification:
+            assignee = self.clarification_assignee()
+            pool = "todo"
+            if priority == "low":
+                priority = "medium"
+            if task_type == "workflow":
+                task_type = "clarification_required"
+
         payload = {
             "task_id": args.task_id,
             "pool": pool,
-            "task_type": args.task_type,
+            "task_type": task_type,
             "reason": args.reason,
             "source": args.source,
+            "request_source": request_source,
             "priority": priority,
             "risk_level": risk_level,
-            "assignee": args.assignee or self.dispatcher_agent(),
+            "assignee": assignee,
             "status": "pending",
+            "needs_clarification": needs_clarification,
+            "clarification_reason": clarification_reason,
             "need_human_confirm": need_human_confirm,
             "human_confirmed": parse_bool(args.human_confirmed, False),
+            "context_completeness": float(context_eval.get("context_completeness", 0.0) or 0.0),
+            "context_fields_missing": context_eval.get("missing_fields", []),
+            "context_payload": context_payload,
             "requirement": args.requirement,
             "result_output": args.result_output,
             "acceptance": args.acceptance,
@@ -420,6 +674,18 @@ class PolicyEnforcer:
 
         created = self.db.create_task(payload, actor=args.actor)
         self.assert_required_fields(created)
+        self.db.add_event(
+            task_id=created["task_id"],
+            actor=args.actor,
+            event_type="context_gate_evaluated",
+            stage="intake",
+            details={
+                "request_source": request_source,
+                "needs_clarification": bool(created.get("needs_clarification")),
+                "context_completeness": created.get("context_completeness"),
+                "missing_fields": created.get("context_fields_missing", []),
+            },
+        )
         if entry_agent:
             self.db.add_event(
                 task_id=created["task_id"],
@@ -459,9 +725,54 @@ class PolicyEnforcer:
     def confirm_risk(self, args: argparse.Namespace) -> dict[str, Any]:
         return self.db.confirm_human(task_id=args.task_id, actor=args.actor, confirmed=parse_bool(args.confirmed, True))
 
+    def resolve_clarification(self, args: argparse.Namespace) -> dict[str, Any]:
+        task = self.db.get_task(args.task_id)
+        request_source = self.normalize_request_source(str(task.get("request_source", "")), str(task.get("source", "")))
+        current_context = task.get("context_payload", {})
+        if not isinstance(current_context, dict):
+            current_context = {}
+
+        patch_context = self.parse_context_payload(
+            getattr(args, "context_json", ""),
+            getattr(args, "context_file", ""),
+        )
+        if not patch_context:
+            raise PolicyError("resolve-clarification requires --context-json or --context-file")
+        merged_context = dict(current_context)
+        merged_context.update(patch_context)
+
+        context_eval = self.evaluate_context_gate(request_source, merged_context)
+        if bool(context_eval.get("needs_clarification")):
+            return self.db.update_clarification(
+                task_id=args.task_id,
+                actor=args.actor,
+                needs_clarification=True,
+                clarification_reason=str(context_eval.get("clarification_reason", "")).strip() or "context_incomplete",
+                context_payload=merged_context,
+                context_completeness=float(context_eval.get("context_completeness", 0.0) or 0.0),
+                context_fields_missing=list(context_eval.get("missing_fields", [])),
+            )
+
+        return self.db.update_clarification(
+            task_id=args.task_id,
+            actor=args.actor,
+            needs_clarification=False,
+            clarification_reason="",
+            context_payload=merged_context,
+            context_completeness=float(context_eval.get("context_completeness", 100.0) or 100.0),
+            context_fields_missing=[],
+        )
+
     def pre_stage(self, args: argparse.Namespace) -> dict[str, Any]:
         task = self.db.get_task(args.task_id)
         self.assert_required_fields(task)
+        if bool(task.get("needs_clarification")):
+            missing = task.get("context_fields_missing", [])
+            reason = str(task.get("clarification_reason", "")).strip() or "context_incomplete"
+            raise PolicyError(
+                f"task requires clarification before execution: task_id={args.task_id}, "
+                f"reason={reason}, missing={','.join(missing)}"
+            )
         self.assert_model_allowed(args.model)
         self.assert_agent_stage_allowed(args.agent_id, args.stage)
         self.assert_risk_confirmed(task)
@@ -681,7 +992,10 @@ class PolicyEnforcer:
         text = args.description.strip()
         if not text:
             raise PolicyError("description cannot be empty")
-        norm = text.lower()
+        request_source = self.normalize_request_source(
+            getattr(args, "request_source", ""),
+            getattr(args, "source", ""),
+        )
 
         def try_direct_project_route(raw_text: str) -> tuple[dict[str, Any] | None, str]:
             route_rules = self.routing.get("direct_route_prefixes", [])
@@ -784,6 +1098,35 @@ class PolicyEnforcer:
         else:
             pool = "jobs" if priority == "high" else "todo"
 
+        project_requirement = False
+        project_hits: list[str] = []
+        if request_source == "human":
+            project_requirement, project_hits = self.is_human_project_requirement(effective_text)
+            if project_requirement and not direct_route:
+                entry_agent = "project-agent"
+                assignee = "project-agent"
+                bypass_dispatcher = True
+                pool = "todo"
+                if priority == "low":
+                    priority = "medium"
+
+        context_payload = self.extract_context_from_text(effective_text)
+        context_patch = self.parse_context_payload(
+            getattr(args, "context_json", ""),
+            getattr(args, "context_file", ""),
+        )
+        context_payload.update(context_patch)
+        context_eval = self.evaluate_context_gate(request_source, context_payload)
+        needs_clarification = bool(context_eval.get("needs_clarification"))
+        clarification_reason = str(context_eval.get("clarification_reason", "")).strip()
+        if needs_clarification:
+            entry_agent = "project-agent"
+            assignee = self.clarification_assignee()
+            bypass_dispatcher = True
+            pool = "todo"
+            if priority == "low":
+                priority = "medium"
+
         need_human_confirm = risk_level == "high" and parse_bool(
             self.policy.get("high_risk_requires_human_confirm", True),
             True,
@@ -793,6 +1136,7 @@ class PolicyEnforcer:
             "description": effective_text,
             "raw_description": text,
             "source": args.source,
+            "request_source": request_source,
             "entry_agent": entry_agent,
             "dispatcher_agent": self.dispatcher_agent(),
             "bypass_dispatcher": bypass_dispatcher,
@@ -801,12 +1145,19 @@ class PolicyEnforcer:
             "pool": pool,
             "assignee": assignee,
             "need_human_confirm": need_human_confirm,
+            "needs_clarification": needs_clarification,
+            "clarification_reason": clarification_reason,
+            "context_completeness": float(context_eval.get("context_completeness", 100.0) or 100.0),
+            "context_fields_missing": list(context_eval.get("missing_fields", [])),
+            "context_payload": context_payload,
             "hits": {
                 "high_risk": high_risk_hits,
                 "low_risk": low_risk_hits,
                 "priority_high": high_priority_hits,
                 "priority_low": low_priority_hits,
                 "assignee_hit": assignee_hit,
+                "project_requirement": project_requirement,
+                "project_hits": project_hits,
                 "direct_route_prefix": str(direct_route.get("alias_prefix", "")) if direct_route else "",
             },
         }
@@ -957,6 +1308,17 @@ class PolicyEnforcer:
             self.dispatcher_fallback_self_execute(),
             f"dispatcher_fallback_self_execute={self.dispatcher_fallback_self_execute()}",
         )
+        ctx = self.context_policy()
+        add_check(
+            "context_policy_enabled",
+            parse_bool(ctx.get("enabled", True), True),
+            f"enabled={parse_bool(ctx.get('enabled', True), True)}",
+        )
+        add_check(
+            "context_policy_clarification_assignee",
+            bool(str(ctx.get("clarification_assignee", "")).strip()),
+            f"clarification_assignee={ctx.get('clarification_assignee', '')}",
+        )
 
         pricing = load_pricing(self.paths.pricing_file)
         pricing_models = pricing.get("models", {})
@@ -1102,6 +1464,7 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--task-type", default="workflow")
     create.add_argument("--reason", required=True)
     create.add_argument("--source", default="openclaw")
+    create.add_argument("--request-source", default="")
     create.add_argument("--priority", default="low")
     create.add_argument("--risk-level", default="low")
     create.add_argument("--pool", default="")
@@ -1114,6 +1477,10 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--acceptance", required=True)
     create.add_argument("--observable-outputs", required=True)
     create.add_argument("--acceptance-thresholds", required=True)
+    create.add_argument("--context-json", default="")
+    create.add_argument("--context-file", default="")
+    create.add_argument("--force-needs-clarification", default="false")
+    create.add_argument("--clarification-reason", default="")
     create.add_argument("--scheduled-at", default="")
     create.add_argument("--actor", default="policy-enforcer")
 
@@ -1127,6 +1494,12 @@ def build_parser() -> argparse.ArgumentParser:
     confirm.add_argument("--task-id", required=True)
     confirm.add_argument("--confirmed", default="true")
     confirm.add_argument("--actor", default="human")
+
+    resolve = sub.add_parser("resolve-clarification", help="append context and resolve clarification gate")
+    resolve.add_argument("--task-id", required=True)
+    resolve.add_argument("--context-json", default="")
+    resolve.add_argument("--context-file", default="")
+    resolve.add_argument("--actor", default="project-agent")
 
     pre_stage = sub.add_parser("pre-stage", help="policy check before stage")
     pre_stage.add_argument("--task-id", required=True)
@@ -1173,6 +1546,9 @@ def build_parser() -> argparse.ArgumentParser:
     route = sub.add_parser("route-task", help="route task by routing rules")
     route.add_argument("--description", required=True)
     route.add_argument("--source", default="openclaw")
+    route.add_argument("--request-source", default="")
+    route.add_argument("--context-json", default="")
+    route.add_argument("--context-file", default="")
 
     next_todo = sub.add_parser("next-todo", help="get FIFO todo batch by policy limit")
     next_todo.add_argument("--limit", default="0")
@@ -1252,6 +1628,8 @@ def main() -> int:
                 emit_json({"ok": True, "task": enforcer.assign_task(args)})
             elif args.command == "confirm-risk":
                 emit_json({"ok": True, "task": enforcer.confirm_risk(args)})
+            elif args.command == "resolve-clarification":
+                emit_json({"ok": True, "task": enforcer.resolve_clarification(args)})
             elif args.command == "pre-stage":
                 emit_json({"ok": True, "task": enforcer.pre_stage(args)})
             elif args.command == "post-stage":

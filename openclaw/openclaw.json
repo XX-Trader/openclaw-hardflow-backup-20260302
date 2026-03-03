@@ -111,6 +111,7 @@
             "frontend-dev",
             "main",
             "ops-agent",
+            "optimization-agent",
             "optimize-agent",
             "project-agent",
             "reviewer",
@@ -133,6 +134,7 @@
             "frontend-dev",
             "main",
             "ops-agent",
+            "optimization-agent",
             "optimize-agent",
             "project-agent",
             "reviewer",
@@ -183,6 +185,7 @@
         "model": "kimicode/Doubao-Seed-2.0-Code",
         "subagents": {
           "allowAgents": [
+            "optimization-agent",
             "optimize-agent",
             "project-agent"
           ]
@@ -196,7 +199,20 @@
         "model": "kimicode/Doubao-Seed-2.0-Code",
         "subagents": {
           "allowAgents": [
+            "optimization-agent",
             "optimize-agent",
+            "project-agent"
+          ]
+        }
+      },
+      {
+        "id": "optimization-agent",
+        "name": "optimization-agent",
+        "workspace": "/home/ubuntu/.openclaw/workspace-optimize-agent",
+        "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
+        "model": "kimicode/Doubao-Seed-2.0-Code",
+        "subagents": {
+          "allowAgents": [
             "project-agent"
           ]
         }
@@ -237,6 +253,7 @@
         "doc-writer",
         "frontend-dev",
         "main",
+        "optimization-agent",
         "project-agent",
         "reviewer",
         "tester"

@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""
-TODO patrol script (15-minute cycle).
-
-Main behavior:
-1. Read coordinator TODO.md and detect unfinished items.
-2. De-duplicate alerts by item + status.
-3. Check execution ownership/status from TODO-EXECUTION-BOARD.md.
-4. Only ask coordinator assignment for UNASSIGNED items.
-5. Merge tester failures into TODO.md (de-duplicated append).
-"""
+"""TODO patrol with source-aware routing and context gate."""
 
 from __future__ import annotations
 
@@ -17,395 +8,685 @@ import hashlib
 import json
 import os
 import re
+import sys
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 TZ = timezone(timedelta(hours=8))
 
-STATUS_UNASSIGNED = "UNASSIGNED"
-STATUS_IN_PROGRESS = "IN_PROGRESS"
-STATUS_BLOCKED = "BLOCKED"
-STATUS_DONE = "DONE"
+DEFAULT_AI_SOURCE_KEYWORDS = [
+    "[ai]",
+    "ai:",
+    "自动巡检",
+    "自动审计",
+    "巡检发现",
+    "审计发现",
+    "监控发现",
+    "ops汇总",
+    "bot",
+]
+
+DEFAULT_HUMAN_SOURCE_KEYWORDS = [
+    "[human]",
+    "human:",
+    "[manual]",
+    "manual:",
+]
+
+DEFAULT_PROJECT_KEYWORDS = [
+    "项目",
+    "项目索引",
+    "项目规划",
+    "项目说明",
+    "模块",
+    "架构",
+    "workflow",
+    "readme",
+    "api文档",
+    "接口文档",
+    "产品经理",
+    "项目经理",
+]
+
+AI_REQUIRED_CONTEXT_FIELDS = [
+    "problem",
+    "location",
+    "first_seen_at",
+    "duration",
+    "impact",
+    "evidence",
+    "target_state",
+    "scope",
+]
 
 
 def now_tz() -> datetime:
     return datetime.now(TZ)
 
 
+def now_iso() -> str:
+    return now_tz().isoformat(timespec="seconds")
+
+
 def sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
-def parse_todo_items(content: str) -> list[dict]:
-    items: list[dict] = []
-    lines = content.split("\n")
-    current_section = ""
-    current_priority = ""
+def norm_text(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
-    for i, line in enumerate(lines):
+
+@dataclass(slots=True)
+class TodoItem:
+    item_id: str
+    text: str
+    section: str
+    priority_tag: str
+    line_num: int
+    raw_line: str
+
+
+def parse_todo_items(content: str) -> list[TodoItem]:
+    items: list[TodoItem] = []
+    current_section = ""
+    lines = content.splitlines()
+    checkbox_re = re.compile(r"^\s*-\s*\[\s\]\s*(.+?)\s*$")
+
+    for idx, line in enumerate(lines, start=1):
         if line.startswith("## "):
             current_section = line[3:].strip()
             continue
 
-        if "P0" in line:
-            current_priority = "P0"
-        elif "P1" in line:
-            current_priority = "P1"
-        elif "P2" in line:
-            current_priority = "P2"
+        m = checkbox_re.match(line)
+        if not m:
+            continue
 
-        if line.strip().startswith("- [ ]"):
-            item_text = line.strip()[6:].strip()
-            if item_text:
-                items.append(
-                    {
-                        "id": sha256(item_text),
-                        "text": item_text,
-                        "section": current_section,
-                        "priority": current_priority,
-                        "line_num": i + 1,
-                        "raw_line": line.strip(),
-                    }
-                )
+        text = m.group(1).strip()
+        if not text:
+            continue
+
+        pm = re.search(r"\b(P0|P1|P2)\b", text, flags=re.IGNORECASE)
+        priority_tag = (pm.group(1).upper() if pm else "")
+        item_id = sha256(f"{current_section}|{norm_text(text)}")
+        items.append(
+            TodoItem(
+                item_id=item_id,
+                text=text,
+                section=current_section,
+                priority_tag=priority_tag,
+                line_num=idx,
+                raw_line=line,
+            )
+        )
     return items
 
 
-def parse_exec_board(content: str) -> dict[str, dict]:
-    assignments: dict[str, dict] = {}
-    pattern = r"#### 工单：([^\n]+)\n((?:(?!####)[\s\S])*)"
-    matches = re.findall(pattern, content)
-
-    for title, body in matches:
-        role_match = re.search(r"^### (\S+)", body, re.MULTILINE)
-        role = role_match.group(1) if role_match else "unknown"
-
-        status = STATUS_UNASSIGNED
-        if "进行中" in body or "执行中" in body or "IN_PROGRESS" in body.upper():
-            status = STATUS_IN_PROGRESS
-        elif "阻塞" in body or "BLOCKED" in body.upper():
-            status = STATUS_BLOCKED
-        elif "完成" in body or "DONE" in body.upper() or "已修复" in body:
-            status = STATUS_DONE
-
-        schedule_match = re.search(r"\*\*排期[^：]*：*\*?\*?([^*\n]+)", body)
-        schedule = schedule_match.group(1).strip() if schedule_match else ""
-
-        assignments[title] = {
-            "role": role,
-            "status": status,
-            "schedule": schedule,
-            "title": title,
-        }
-    return assignments
+def load_json(path: Path, default: Any) -> Any:
+    if not path.exists():
+        return default
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return default
 
 
-def match_todo_to_exec(todo_item: dict, exec_board: dict[str, dict]) -> dict | None:
-    todo_text = todo_item["text"].lower()
-
-    for title, info in exec_board.items():
-        title_lower = title.lower()
-        keywords = []
-        for word in todo_text.split():
-            if len(word) > 2 and word not in ["后端", "前端", "确认", "接口", "字段"]:
-                keywords.append(word.lower())
-
-        match_count = sum(1 for kw in keywords if kw in title_lower)
-        if match_count >= 2 or (len(keywords) <= 2 and match_count >= 1):
-            return info
-    return None
+def save_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def get_tester_failures(tester_reports_dir: Path) -> list[dict]:
-    failures: list[dict] = []
-    if not tester_reports_dir.exists():
-        return failures
+def load_routing(path: Path) -> dict[str, Any]:
+    default = {
+        "high_risk_keywords": [],
+        "priority_keywords": {"high": [], "low": []},
+        "assignee_rules": [],
+        "default_assignee": "coordinator",
+        "clarification_assignee": "project-agent",
+        "project_keywords": DEFAULT_PROJECT_KEYWORDS,
+        "ai_source_keywords": DEFAULT_AI_SOURCE_KEYWORDS,
+        "human_source_keywords": DEFAULT_HUMAN_SOURCE_KEYWORDS,
+    }
+    data = load_json(path, default)
+    if not isinstance(data, dict):
+        return default
+    out = dict(default)
+    out.update(data)
+    return out
 
-    recent_reports = sorted(
-        tester_reports_dir.glob("tester_*.md"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )[:3]
 
-    table_pattern = (
-        r"\| ([^|]+) \| ([^|]+) \| ([^|]+) \| ([^|]+) \| "
-        r"([^|]+) \| (\d+) \| ([^|]+) \| ([^|]+) \| (OPEN[^|]*) \|"
-    )
+def calc_due_hours(priority: str) -> int:
+    if priority == "high":
+        return 4
+    if priority == "medium":
+        return 24
+    return 72
 
-    for report_path in recent_reports:
-        try:
-            content = report_path.read_text(encoding="utf-8")
-            if "FAIL" not in content and "OPEN/P0" not in content and "OPEN/P1" not in content:
-                continue
 
-            matches = re.findall(table_pattern, content)
-            for match in matches:
-                failures.append(
-                    {
-                        "sender": match[0].strip(),
-                        "finder": match[1].strip(),
-                        "category": match[2].strip(),
-                        "location": match[3].strip(),
-                        "time": match[4].strip(),
-                        "count": int(match[5]),
-                        "root_cause": match[6].strip(),
-                        "solution": match[7].strip(),
-                        "status": match[8].strip(),
-                        "source_file": str(report_path),
-                    }
-                )
-        except Exception:
+def normalize_keywords(values: list[Any] | None, fallback: list[str]) -> list[str]:
+    if not isinstance(values, list):
+        values = []
+    out = [str(x).strip().lower() for x in values if str(x).strip()]
+    return out or [x.lower() for x in fallback]
+
+
+def infer_request_source(item: TodoItem, routing: dict[str, Any], default_source: str) -> str:
+    text = norm_text(item.text)
+    ai_keywords = normalize_keywords(routing.get("ai_source_keywords"), DEFAULT_AI_SOURCE_KEYWORDS)
+    human_keywords = normalize_keywords(routing.get("human_source_keywords"), DEFAULT_HUMAN_SOURCE_KEYWORDS)
+
+    for keyword in human_keywords:
+        if keyword in text:
+            return "human"
+    for keyword in ai_keywords:
+        if keyword in text:
+            return "ai"
+
+    source = str(default_source or "").strip().lower()
+    if source in {"human", "ai"}:
+        return source
+    return "human"
+
+
+def detect_project_hits(text: str, routing: dict[str, Any]) -> list[str]:
+    keywords = normalize_keywords(routing.get("project_keywords"), DEFAULT_PROJECT_KEYWORDS)
+    text_norm = norm_text(text)
+    return [k for k in keywords if k in text_norm]
+
+
+def route_item(item: TodoItem, routing: dict[str, Any], request_source: str) -> dict[str, Any]:
+    text_norm = norm_text(item.text)
+    high_risk_keywords = [str(x).strip().lower() for x in routing.get("high_risk_keywords", []) if str(x).strip()]
+    high_priority_keywords = [
+        str(x).strip().lower()
+        for x in (routing.get("priority_keywords", {}) or {}).get("high", [])
+        if str(x).strip()
+    ]
+    low_priority_keywords = [
+        str(x).strip().lower()
+        for x in (routing.get("priority_keywords", {}) or {}).get("low", [])
+        if str(x).strip()
+    ]
+
+    high_risk_hits = [k for k in high_risk_keywords if k in text_norm]
+    high_priority_hits = [k for k in high_priority_keywords if k in text_norm]
+    low_priority_hits = [k for k in low_priority_keywords if k in text_norm]
+
+    if item.priority_tag == "P0" or high_priority_hits:
+        priority = "high"
+    elif item.priority_tag == "P1":
+        priority = "high"
+    elif item.priority_tag == "P2":
+        priority = "medium"
+    elif low_priority_hits:
+        priority = "low"
+    else:
+        priority = "medium"
+
+    risk_level = "high" if (item.priority_tag in {"P0", "P1"} or high_risk_hits) else "low"
+
+    assignee = str(routing.get("default_assignee", "coordinator")).strip() or "coordinator"
+    assignee_hit = ""
+    for rule in routing.get("assignee_rules", []):
+        if not isinstance(rule, dict):
             continue
-    return failures
+        candidate = str(rule.get("assignee", "")).strip()
+        keywords = [str(x).strip().lower() for x in rule.get("keywords", []) if str(x).strip()]
+        if not candidate or not keywords:
+            continue
+        for keyword in keywords:
+            if keyword and keyword in text_norm:
+                assignee = candidate
+                assignee_hit = keyword
+                break
+        if assignee_hit:
+            break
 
+    project_hits = detect_project_hits(item.text, routing)
+    if request_source == "human" and project_hits:
+        assignee = "project-agent"
+        if priority == "low":
+            priority = "medium"
 
-def load_state(state_file: Path) -> dict:
-    if state_file.exists():
-        try:
-            return json.loads(state_file.read_text(encoding="utf-8"))
-        except Exception:
-            pass
+    pool = "jobs" if priority == "high" else "todo"
+    due_hours = calc_due_hours(priority)
+    due_at = (now_tz() + timedelta(hours=due_hours)).isoformat(timespec="seconds")
+
     return {
-        "updated_at": "",
-        "todo_items": {},
-        "alerted_items": {},
-        "last_tester_check": "",
+        "priority": priority,
+        "risk_level": risk_level,
+        "assignee": assignee,
+        "assignee_hit": assignee_hit,
+        "pool": pool,
+        "due_hours": due_hours,
+        "due_at": due_at,
+        "high_risk_hits": high_risk_hits,
+        "high_priority_hits": high_priority_hits,
+        "low_priority_hits": low_priority_hits,
+        "project_hits": project_hits,
     }
 
 
-def save_state(state_file: Path, state: dict, now: datetime) -> None:
-    state["updated_at"] = now.isoformat()
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+def extract_context(item: TodoItem) -> dict[str, str]:
+    text = str(item.text or "").strip()
+    location = ""
+    first_seen = ""
+    duration = ""
+    impact = ""
+    evidence = ""
+    target_state = ""
+
+    location_match = re.search(
+        r"(https?://\S+|/[A-Za-z0-9._/\-]+(?:\?[^\s]+)?|[A-Za-z]:\\[^\s]+|[\w./-]+\.(?:py|js|ts|tsx|json|ya?ml|md|sql|sh|log))",
+        text,
+    )
+    if location_match:
+        location = location_match.group(1)
+
+    first_seen_match = re.search(r"\d{4}-\d{1,2}-\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?)?", text)
+    if first_seen_match:
+        first_seen = first_seen_match.group(0)
+
+    duration_match = re.search(r"(持续[^，。；;\s]{1,24}|[0-9]+(?:分钟|小时|天|周))", text)
+    if duration_match:
+        duration = duration_match.group(1)
+
+    impact_keywords = ["影响", "阻塞", "不可用", "失败", "报错", "错误", "超时", "404", "500", "延迟"]
+    for keyword in impact_keywords:
+        if keyword in text:
+            impact = f"contains:{keyword}"
+            break
+
+    evidence_match = re.search(
+        r"(证据路径[:：]?\s*[^\s，。；;]+|/home/[^\s，。；;]+|[A-Za-z]:\\[^\s，。；;]+|[\w./-]+\.(?:json|log|txt))",
+        text,
+    )
+    if evidence_match:
+        evidence = evidence_match.group(1)
+
+    target_match = re.search(r"(修复[^，。；;\n]{1,40}|恢复[^，。；;\n]{1,40}|目标[^，。；;\n]{1,40}|需要[^，。；;\n]{1,40})", text)
+    if target_match:
+        target_state = target_match.group(1)
+
+    return {
+        "problem": text,
+        "location": location,
+        "first_seen_at": first_seen,
+        "duration": duration,
+        "impact": impact,
+        "evidence": evidence,
+        "target_state": target_state,
+        "scope": f"todo_section={item.section or '-'};line={item.line_num}",
+    }
 
 
-def should_alert(item_id: str, status: str, state: dict, now: datetime) -> bool:
-    alerted = state.get("alerted_items", {})
-    key = f"{item_id}:{status}"
-    if key not in alerted:
-        return True
-
-    last_alert = alerted.get(key, "")
-    if last_alert:
-        try:
-            last_time = datetime.fromisoformat(last_alert)
-            if (now - last_time) < timedelta(hours=1):
-                return False
-        except Exception:
-            pass
-    return True
+def evaluate_ai_context(context_payload: dict[str, Any], min_pct: float) -> dict[str, Any]:
+    missing = [field for field in AI_REQUIRED_CONTEXT_FIELDS if not str(context_payload.get(field, "")).strip()]
+    completeness = round(((len(AI_REQUIRED_CONTEXT_FIELDS) - len(missing)) / len(AI_REQUIRED_CONTEXT_FIELDS)) * 100.0, 2)
+    needs_clarification = completeness < min_pct or bool(missing)
+    reason = ""
+    if needs_clarification:
+        reason = f"ai_context_incomplete: completeness={completeness:.2f}, missing={','.join(missing)}"
+    return {
+        "needs_clarification": needs_clarification,
+        "clarification_reason": reason,
+        "context_completeness": completeness,
+        "context_fields_missing": missing,
+    }
 
 
-def mark_alerted(item_id: str, status: str, state: dict, now: datetime) -> None:
-    key = f"{item_id}:{status}"
-    if "alerted_items" not in state:
-        state["alerted_items"] = {}
-    state["alerted_items"][key] = now.isoformat()
+def build_task_payload(
+    item: TodoItem,
+    route: dict[str, Any],
+    request_source: str,
+    context_eval: dict[str, Any],
+    context_payload: dict[str, Any],
+    clarification_assignee: str,
+) -> dict[str, Any]:
+    task_id = f"todo-{item.item_id}"
+    needs_clarification = bool(context_eval.get("needs_clarification"))
 
+    assignee = route["assignee"]
+    priority = route["priority"]
+    pool = route["pool"]
+    task_type = "todo_dispatch"
+    requirement = f"处理 TODO 项并给出可复现修复方案: {item.text}"
+    result_output = "输出变更文件、验证命令、验证结果、影响范围。"
+    acceptance = "关键检查通过，相关接口/流程可用，无新增高风险回归。"
+    observable_outputs = "TaskCenter 状态、代码/配置变更、测试或运行日志。"
+    acceptance_thresholds = "失败重试次数 < 3；关键验收项全部通过。"
 
-def merge_tester_failures_to_todo(
-    failures: list[dict],
-    todo_content: str,
-    state: dict,
-    now: datetime,
-) -> tuple[str, list[str]]:
-    if not failures:
-        return todo_content, []
-
-    added_items: list[str] = []
-    existing_text = todo_content.lower()
-    lines = todo_content.split("\n")
-
-    has_tester_section = any("测试失败/阻塞项" in line for line in lines)
-    new_lines: list[str] = []
-    if not has_tester_section and failures:
-        new_lines.append("")
-        new_lines.append("## 测试失败/阻塞项（自动并入）")
-        new_lines.append(f'> 更新时间：{now.strftime("%Y-%m-%d %H:%M")} UTC+8')
-        new_lines.append("")
-
-    for item in failures:
-        item_text = f'{item["category"]}：{item["location"]} - {item["root_cause"][:50]}'
-        item_hash = sha256(item_text)
-
-        if item_hash in state.get("todo_items", {}):
-            continue
-        if item["location"] and item["location"].lower() in existing_text:
-            continue
-
-        priority = "P0" if "P0" in item["status"] else ("P1" if "P1" in item["status"] else "P2")
-        line = (
-            f'- [ ] {priority} {item_text}'
-            f'（来源：tester 报告 {Path(item["source_file"]).name}）'
+    if request_source == "ai" and needs_clarification:
+        assignee = clarification_assignee
+        pool = "todo"
+        task_type = "clarification_required"
+        if priority == "low":
+            priority = "medium"
+        requirement = (
+            "当前任务来源为 AI 且上下文不完整，先补全任务上下文再进入执行。"
+            f"\n原始问题: {item.text}"
+            "\n请补齐: problem/location/first_seen_at/duration/impact/evidence/target_state/scope"
         )
-        new_lines.append(line)
-        added_items.append(item_text)
+        result_output = "输出补全后的任务包（需求、目标、验收、证据）并关闭 clarification 标记。"
+        acceptance = "上下文字段完整，能直接分配执行，且可观测证据路径明确。"
+        observable_outputs = "补全后的 context_payload、证据路径、任务分配建议。"
+        acceptance_thresholds = "AI 上下文完整度达到 100%，缺失字段为 0。"
 
-        if "todo_items" not in state:
-            state["todo_items"] = {}
-        state["todo_items"][item_hash] = {
-            "added_at": now.isoformat(),
-            "source": "tester",
-            "status": STATUS_BLOCKED,
-        }
+    return {
+        "task_id": task_id,
+        "pool": pool,
+        "task_type": task_type,
+        "reason": item.text,
+        "source": "todo_patrol",
+        "request_source": request_source,
+        "priority": priority,
+        "risk_level": route["risk_level"],
+        "assignee": assignee,
+        "status": "pending",
+        "needs_clarification": needs_clarification,
+        "clarification_reason": str(context_eval.get("clarification_reason", "")).strip(),
+        "need_human_confirm": route["risk_level"] == "high" and not needs_clarification,
+        "human_confirmed": False,
+        "context_completeness": float(context_eval.get("context_completeness", 100.0) or 100.0),
+        "context_fields_missing": list(context_eval.get("context_fields_missing", [])),
+        "context_payload": context_payload,
+        "requirement": requirement,
+        "result_output": result_output,
+        "acceptance": acceptance,
+        "observable_outputs": observable_outputs,
+        "acceptance_thresholds": acceptance_thresholds,
+        "scheduled_at": now_iso(),
+        "action": "dispatch",
+    }
 
-    if new_lines:
-        return todo_content.rstrip() + "\n" + "\n".join(new_lines) + "\n", added_items
-    return todo_content, []
+
+def mark_item_processed(line: str, task_id: str, payload: dict[str, Any], route: dict[str, Any]) -> str:
+    cleaned = re.sub(r"^\s*-\s*\[\s\]\s*", "", line).strip()
+    status_tag = "AUTO_CLARIFY_REQUIRED" if payload.get("needs_clarification") else "AUTO_DISPATCHED"
+    return (
+        f"- [x] [{status_tag}] task_id={task_id} assignee={payload.get('assignee')} "
+        f"priority={payload.get('priority')} risk={payload.get('risk_level')} "
+        f"source={payload.get('request_source')} "
+        f"context={payload.get('context_completeness')}% eta={route['due_hours']}h | {cleaned}"
+    )
 
 
-def format_message(
-    todo_items: list[dict],
-    exec_board: dict[str, dict],
-    added_items: list[str],
-    now: datetime,
+def format_dispatch_message(
     task: str,
+    todo_file: Path,
+    dispatched: list[dict[str, Any]],
+    skipped_count: int,
+    db_path: Path,
+    state_file: Path,
 ) -> str:
-    lines: list[str] = []
-    unassigned = []
-    in_progress = []
-    blocked = []
-
-    for item in todo_items:
-        exec_info = match_todo_to_exec(item, exec_board)
-        if exec_info:
-            item["owner"] = exec_info["role"]
-            item["status"] = exec_info["status"]
-            item["schedule"] = exec_info.get("schedule", "")
-        else:
-            item["owner"] = "-"
-            item["status"] = STATUS_UNASSIGNED
-            item["schedule"] = ""
-
-        if item["status"] == STATUS_UNASSIGNED:
-            unassigned.append(item)
-        elif item["status"] == STATUS_IN_PROGRESS:
-            in_progress.append(item)
-        elif item["status"] == STATUS_BLOCKED:
-            blocked.append(item)
-
-    if not unassigned and not blocked and not added_items:
+    if not dispatched and skipped_count == 0:
         return "NO_REPLY"
 
-    lines.append("发送人：ops-agent")
-    lines.append("发现者：todo-patrol")
-    lines.append(f"任务：{task}")
-    lines.append("来源类别：workflow|TODO")
-    lines.append(f"时间区间：{now.strftime('%Y-%m-%d %H:%M:%S')}（UTC+8）")
+    lines: list[str] = []
+    lines.append("sender_identity: ops-agent/todo-patrol")
+    lines.append(f"task: {task}")
+    lines.append(f"time: {now_tz().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
+    lines.append(f"todo_file: {todo_file}")
+    lines.append(f"task_center_db: {db_path}")
+    lines.append(f"state_file: {state_file}")
+    lines.append("")
+    lines.append(f"dispatch_result: new={len(dispatched)} skipped={skipped_count}")
     lines.append("")
 
-    if unassigned:
-        lines.append("## 待分配任务（请求 coordinator 分配执行人）")
-        for item in unassigned[:5]:
-            lines.append(f"- [{item['priority']}] {item['text'][:60]}...")
-            lines.append(f"  - owner: {item['owner']}")
-            lines.append(f"  - status: {item['status']}")
-        lines.append("")
+    if dispatched:
+        lines.append("new_tasks:")
+        for idx, item in enumerate(dispatched, start=1):
+            task_row = item["task"]
+            route = item["route"]
+            lines.append(
+                f"{idx}. task_id={task_row.get('task_id')} assignee={task_row.get('assignee') or 'unassigned'} "
+                f"priority={task_row.get('priority')} risk={task_row.get('risk_level')} "
+                f"source={task_row.get('request_source')} "
+                f"clarification={task_row.get('needs_clarification')} "
+                f"context={task_row.get('context_completeness')}% "
+                f"status={task_row.get('status')} retry={task_row.get('retry_count')} failure={task_row.get('failure_count')}"
+            )
+            lines.append(f"   reason: {task_row.get('reason')}")
+            lines.append(f"   requirement: {task_row.get('requirement')}")
+            lines.append(f"   target_result: {task_row.get('result_output')}")
+            lines.append(f"   acceptance: {task_row.get('acceptance')}")
+            lines.append(f"   observable_outputs: {task_row.get('observable_outputs')}")
+            lines.append(f"   acceptance_thresholds: {task_row.get('acceptance_thresholds')}")
+            lines.append(f"   context_missing: {task_row.get('context_fields_missing')}")
+            lines.append(f"   eta_hours: {route.get('due_hours')} (due_at={route.get('due_at')})")
+            lines.append("")
 
-    if in_progress:
-        lines.append(f"## 进行中任务（{len(in_progress)}项，无需分配）")
-        for item in in_progress[:3]:
-            lines.append(f"- [{item['priority']}] {item['text'][:50]}... | owner: {item['owner']}")
-        if len(in_progress) > 3:
-            lines.append(f"  - ... 及其他 {len(in_progress) - 3} 项")
-        lines.append("")
+    if skipped_count > 0:
+        lines.append(f"skipped_reason: max-dispatch reached, remaining={skipped_count}")
 
-    if blocked:
-        lines.append(f"## 阻塞项（{len(blocked)}项）")
-        for item in blocked[:3]:
-            lines.append(f"- [{item['priority']}] {item['text'][:50]}...")
-        lines.append("")
-
-    if added_items:
-        lines.append(f"## 新并入测试失败项（{len(added_items)}项）")
-        for item in added_items[:3]:
-            lines.append(f"- {item[:60]}...")
-        lines.append("")
-
-    if unassigned:
-        lines.append("## 需用户确认")
-        lines.append("> 以上未分配项是否需要 coordinator 立即分配执行人？")
-        lines.append("> 回复 \"分配\" 或指定执行人即可触发分配流程")
-
-    return "\n".join(lines)
+    return "\n".join(lines).strip()
 
 
-def main() -> None:
+def main() -> int:
     home = Path(os.path.expanduser("~"))
-    default_ops_root = Path(
-        os.environ.get("WORKSPACE_OPS_ROOT", str(home / ".openclaw/workspace-ops-agent"))
-    ).expanduser()
-    default_ops_dir = Path(
-        os.environ.get("OPENCLAW_OPS_DIR", str(default_ops_root / "ops"))
-    ).expanduser()
+    default_openclaw_home = Path(os.environ.get("OPENCLAW_HOME", str(home / ".openclaw"))).expanduser()
+    default_ops_dir = Path(os.environ.get("OPENCLAW_OPS_DIR", str(default_openclaw_home / "ops"))).expanduser()
     default_coordinator_ws = Path(
-        os.environ.get("COORDINATOR_WORKSPACE", str(home / ".openclaw/workspace-coordinator"))
-    ).expanduser()
-    default_tester_ws = Path(
-        os.environ.get("TESTER_WORKSPACE", str(home / ".openclaw/workspace-tester"))
+        os.environ.get("COORDINATOR_WORKSPACE", str(default_openclaw_home / "workspace-coordinator"))
     ).expanduser()
 
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="TODO patrol with source-aware auto dispatch")
     parser.add_argument("--task", default="cron:todo-patrol")
-    parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--ops-dir", default=str(default_ops_dir))
-    parser.add_argument("--coordinator-ws", default=str(default_coordinator_ws))
-    parser.add_argument("--tester-ws", default=str(default_tester_ws))
-    parser.add_argument("--state-file", default="")
-    parser.add_argument("--todo-file", default="")
-    parser.add_argument("--exec-board-file", default="")
+    parser.add_argument("--todo-file", default=str(default_coordinator_ws / "TODO.md"))
+    parser.add_argument("--state-file", default=str(default_ops_dir / "todo-patrol-state.json"))
+    parser.add_argument("--task-db", default=str(default_ops_dir / "task-center/task_center.db"))
+    parser.add_argument("--routing-file", default=str(default_ops_dir / "policy/routing-rules.json"))
+    parser.add_argument("--actor", default="coordinator")
+    parser.add_argument("--max-dispatch", type=int, default=5)
+    parser.add_argument("--default-request-source", default="human", choices=["human", "ai"])
+    parser.add_argument("--ai-context-min-pct", type=float, default=100.0)
+    parser.add_argument("--clarification-assignee", default="")
+    parser.add_argument("--no-auto-assign", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    now = now_tz()
+    script_dir = Path(__file__).resolve().parent
+    policy_dir = script_dir / "policy"
+    if str(policy_dir) not in sys.path:
+        sys.path.insert(0, str(policy_dir))
+    try:
+        from task_center import TaskCenter, TaskCenterError
+    except Exception as exc:  # pragma: no cover - runtime bootstrapping
+        print(f"NO_REPLY\n# todo-patrol error: cannot import task_center: {exc}")
+        return 0
+
     ops_dir = Path(args.ops_dir).expanduser()
-    coordinator_ws = Path(args.coordinator_ws).expanduser()
-    tester_ws = Path(args.tester_ws).expanduser()
-
-    state_file = Path(args.state_file).expanduser() if args.state_file else ops_dir / "todo-patrol-state.json"
-    todo_file = Path(args.todo_file).expanduser() if args.todo_file else coordinator_ws / "TODO.md"
-    exec_board_file = (
-        Path(args.exec_board_file).expanduser()
-        if args.exec_board_file
-        else coordinator_ws / "TODO-EXECUTION-BOARD.md"
-    )
-    tester_reports_dir = tester_ws / "reports"
-
-    ops_dir.mkdir(parents=True, exist_ok=True)
-    state = load_state(state_file)
+    todo_file = Path(args.todo_file).expanduser()
+    state_file = Path(args.state_file).expanduser()
+    task_db = Path(args.task_db).expanduser()
+    routing_file = Path(args.routing_file).expanduser()
+    max_dispatch = max(1, int(args.max_dispatch or 1))
 
     if not todo_file.exists():
         print("NO_REPLY")
-        return
+        return 0
 
-    todo_content = todo_file.read_text(encoding="utf-8")
+    routing = load_routing(routing_file)
+    state = load_json(state_file, {"updated_at": "", "items": {}})
+    if not isinstance(state, dict):
+        state = {"updated_at": "", "items": {}}
+    if not isinstance(state.get("items"), dict):
+        state["items"] = {}
+
+    clarification_assignee = (
+        str(args.clarification_assignee or "").strip()
+        or str(routing.get("clarification_assignee", "project-agent")).strip()
+        or "project-agent"
+    )
+
+    todo_content = todo_file.read_text(encoding="utf-8-sig")
     todo_items = parse_todo_items(todo_content)
+    if not todo_items:
+        print("NO_REPLY")
+        return 0
 
-    exec_board: dict[str, dict] = {}
-    if exec_board_file.exists():
-        exec_content = exec_board_file.read_text(encoding="utf-8")
-        exec_board = parse_exec_board(exec_content)
+    dispatch_candidates = todo_items[:max_dispatch]
+    skipped_count = max(0, len(todo_items) - len(dispatch_candidates))
 
-    tester_failures = get_tester_failures(tester_reports_dir)
+    if args.no_auto_assign:
+        msg = format_dispatch_message(
+            task=args.task,
+            todo_file=todo_file,
+            dispatched=[],
+            skipped_count=len(todo_items),
+            db_path=task_db,
+            state_file=state_file,
+        )
+        print(msg)
+        return 0
 
-    added_items: list[str] = []
-    if tester_failures and not args.dry_run:
-        todo_content, added_items = merge_tester_failures_to_todo(tester_failures, todo_content, state, now)
-        if added_items:
-            todo_file.write_text(todo_content, encoding="utf-8")
+    lines = todo_content.splitlines()
+    dispatched: list[dict[str, Any]] = []
 
-    alert_items: list[dict] = []
-    for item in todo_items:
-        exec_info = match_todo_to_exec(item, exec_board)
-        status = exec_info["status"] if exec_info else STATUS_UNASSIGNED
-        if should_alert(item["id"], status, state, now):
-            alert_items.append(item)
-            mark_alerted(item["id"], status, state, now)
+    def make_task_row(payload: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "task_id": payload["task_id"],
+            "assignee": payload["assignee"],
+            "priority": payload["priority"],
+            "risk_level": payload["risk_level"],
+            "status": "pending",
+            "retry_count": 0,
+            "failure_count": 0,
+            "request_source": payload.get("request_source", "human"),
+            "needs_clarification": bool(payload.get("needs_clarification")),
+            "clarification_reason": payload.get("clarification_reason", ""),
+            "context_completeness": payload.get("context_completeness", 100.0),
+            "context_fields_missing": payload.get("context_fields_missing", []),
+            "reason": payload["reason"],
+            "requirement": payload["requirement"],
+            "result_output": payload["result_output"],
+            "acceptance": payload["acceptance"],
+            "observable_outputs": payload["observable_outputs"],
+            "acceptance_thresholds": payload["acceptance_thresholds"],
+        }
 
-    save_state(state_file, state, now)
+    if args.dry_run:
+        for item in dispatch_candidates:
+            request_source = infer_request_source(item, routing, args.default_request_source)
+            route = route_item(item, routing, request_source)
+            context_payload = extract_context(item)
+            if request_source == "ai":
+                context_eval = evaluate_ai_context(context_payload, float(args.ai_context_min_pct))
+            else:
+                context_eval = {
+                    "needs_clarification": False,
+                    "clarification_reason": "",
+                    "context_completeness": 100.0,
+                    "context_fields_missing": [],
+                }
+            payload = build_task_payload(
+                item=item,
+                route=route,
+                request_source=request_source,
+                context_eval=context_eval,
+                context_payload=context_payload,
+                clarification_assignee=clarification_assignee,
+            )
+            dispatched.append({"item": item, "task": make_task_row(payload), "route": route, "payload": payload})
+    else:
+        task_db.parent.mkdir(parents=True, exist_ok=True)
+        tc = TaskCenter(task_db)
+        tc.init_schema()
+        try:
+            for item in dispatch_candidates:
+                request_source = infer_request_source(item, routing, args.default_request_source)
+                route = route_item(item, routing, request_source)
+                context_payload = extract_context(item)
+                if request_source == "ai":
+                    context_eval = evaluate_ai_context(context_payload, float(args.ai_context_min_pct))
+                else:
+                    context_eval = {
+                        "needs_clarification": False,
+                        "clarification_reason": "",
+                        "context_completeness": 100.0,
+                        "context_fields_missing": [],
+                    }
+                payload = build_task_payload(
+                    item=item,
+                    route=route,
+                    request_source=request_source,
+                    context_eval=context_eval,
+                    context_payload=context_payload,
+                    clarification_assignee=clarification_assignee,
+                )
+                task_id = payload["task_id"]
+                created_new = False
+                try:
+                    task_row = tc.create_task(payload, actor=args.actor)
+                    created_new = True
+                except TaskCenterError as exc:
+                    if "task_id already exists" not in str(exc):
+                        raise
+                    task_row = tc.get_task(task_id)
 
-    msg = format_message(alert_items if alert_items else todo_items, exec_board, added_items, now, args.task)
+                if (task_row.get("assignee") or "").strip() != payload["assignee"]:
+                    task_row = tc.assign_task(task_id=task_id, assignee=payload["assignee"], actor=args.actor)
+
+                tc.add_event(
+                    task_id=task_id,
+                    actor=args.actor,
+                    event_type="todo_auto_dispatched",
+                    stage="dispatch",
+                    details={
+                        "todo_item_id": item.item_id,
+                        "todo_section": item.section,
+                        "todo_file": str(todo_file),
+                        "line_num": item.line_num,
+                        "created_new": created_new,
+                        "request_source": request_source,
+                        "route": route,
+                        "context_eval": context_eval,
+                    },
+                )
+
+                item_state = state["items"].setdefault(item.item_id, {})
+                item_state.update(
+                    {
+                        "task_id": task_id,
+                        "last_text": item.text,
+                        "last_dispatched_at": now_iso(),
+                        "dispatch_count": int(item_state.get("dispatch_count", 0) or 0) + 1,
+                        "request_source": request_source,
+                        "priority": payload["priority"],
+                        "risk_level": payload["risk_level"],
+                        "assignee": payload["assignee"],
+                        "needs_clarification": bool(payload["needs_clarification"]),
+                        "context_completeness": payload["context_completeness"],
+                        "context_fields_missing": payload["context_fields_missing"],
+                    }
+                )
+
+                if 0 < item.line_num <= len(lines):
+                    lines[item.line_num - 1] = mark_item_processed(lines[item.line_num - 1], task_id, payload, route)
+
+                dispatched.append({"item": item, "task": task_row, "route": route, "payload": payload})
+        finally:
+            tc.close()
+
+    if dispatched and not args.dry_run:
+        todo_file.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    if not args.dry_run:
+        state["updated_at"] = now_iso()
+        save_json(state_file, state)
+
+    msg = format_dispatch_message(
+        task=args.task,
+        todo_file=todo_file,
+        dispatched=dispatched,
+        skipped_count=skipped_count,
+        db_path=task_db,
+        state_file=state_file,
+    )
     print(msg)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())

@@ -60,6 +60,7 @@ Each agent gets:
 - **Specific scope:** One test file or subsystem
 - **Clear goal:** Make these tests pass
 - **Constraints:** Don't change other code
+- **Evidence-first requirement:** Do not guess; first collect and cite real logs, concrete error outputs, and reproducible failure steps
 - **Expected output:** Summary of what you found and fixed
 
 ### 3. Dispatch in Parallel
@@ -97,8 +98,9 @@ Fix the 3 failing tests in src/agents/agent-tool-abort.test.ts:
 These are timing/race condition issues. Your task:
 
 1. Read the test file and understand what each test verifies
-2. Identify root cause - timing issues or actual bugs?
-3. Fix by:
+2. Collect real failing evidence first (test logs, stack traces, exact error outputs, repro steps)
+3. Identify root cause - timing issues or actual bugs?
+4. Fix by:
    - Replacing arbitrary timeouts with event-based waiting
    - Fixing bugs in abort implementation if found
    - Adjusting test expectations if testing changed behavior

@@ -25,6 +25,7 @@ TASK_STATUSES = {
 TASK_POOLS = {"todo", "jobs"}
 TASK_PRIORITIES = {"low", "medium", "high"}
 TASK_RISK_LEVELS = {"low", "high"}
+TASK_REQUEST_SOURCES = {"human", "ai"}
 STAGE_RUN_STATUSES = {"running", "passed", "failed"}
 
 
@@ -63,6 +64,39 @@ def to_bool(value: Any) -> bool:
         "true",
         "yes",
     }
+
+
+def normalize_request_source(value: Any, default: str = "human") -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"human", "user", "manual", "chat"}:
+        return "human"
+    if raw in {"ai", "agent", "bot", "cron", "system", "automation", "auto"}:
+        return "ai"
+    if any(token in raw for token in {"human", "manual", "user", "chat"}):
+        return "human"
+    if any(token in raw for token in {"agent", "bot", "cron", "auto", "automation", "patrol", "audit", "ops"}):
+        return "ai"
+    return default if default in TASK_REQUEST_SOURCES else "human"
+
+
+def normalize_context_missing_fields(value: Any) -> str:
+    fields: list[str] = []
+    if isinstance(value, str):
+        fields = [x.strip() for x in value.split(",") if x.strip()]
+    elif isinstance(value, list):
+        fields = [str(x).strip() for x in value if str(x).strip()]
+    elif isinstance(value, tuple):
+        fields = [str(x).strip() for x in value if str(x).strip()]
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in fields:
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return ",".join(unique)
 
 
 def ensure_json(data: Any) -> str:
@@ -135,14 +169,20 @@ class TaskCenter:
                 task_type TEXT NOT NULL,
                 reason TEXT NOT NULL,
                 source TEXT NOT NULL,
+                request_source TEXT NOT NULL DEFAULT 'human',
                 priority TEXT NOT NULL,
                 risk_level TEXT NOT NULL,
                 assignee TEXT,
                 status TEXT NOT NULL,
                 retry_count INTEGER NOT NULL DEFAULT 0,
                 failure_count INTEGER NOT NULL DEFAULT 0,
+                needs_clarification INTEGER NOT NULL DEFAULT 0,
+                clarification_reason TEXT NOT NULL DEFAULT '',
                 need_human_confirm INTEGER NOT NULL DEFAULT 0,
                 human_confirmed INTEGER NOT NULL DEFAULT 0,
+                context_completeness REAL NOT NULL DEFAULT 0,
+                context_fields_missing TEXT NOT NULL DEFAULT '',
+                context_payload TEXT NOT NULL DEFAULT '{}',
                 requirement TEXT NOT NULL,
                 result_output TEXT NOT NULL,
                 acceptance TEXT NOT NULL,
@@ -216,6 +256,12 @@ class TaskCenter:
 
     def _ensure_task_columns(self) -> None:
         required_columns = {
+            "request_source": "TEXT NOT NULL DEFAULT 'human'",
+            "needs_clarification": "INTEGER NOT NULL DEFAULT 0",
+            "clarification_reason": "TEXT NOT NULL DEFAULT ''",
+            "context_completeness": "REAL NOT NULL DEFAULT 0",
+            "context_fields_missing": "TEXT NOT NULL DEFAULT ''",
+            "context_payload": "TEXT NOT NULL DEFAULT '{}'",
             "observable_outputs": "TEXT NOT NULL DEFAULT ''",
             "acceptance_thresholds": "TEXT NOT NULL DEFAULT ''",
             "score_payload": "TEXT NOT NULL DEFAULT '{}'",
@@ -231,6 +277,27 @@ class TaskCenter:
 
     def _normalize_task(self, task: dict[str, Any]) -> dict[str, Any]:
         now = utc_now_iso()
+        source_hint = normalize_request_source(task.get("source"), default="human")
+        request_source = normalize_request_source(task.get("request_source"), default=source_hint)
+        needs_clarification = 1 if to_bool(task.get("needs_clarification", False)) else 0
+        clarification_reason = str(task.get("clarification_reason", "")).strip()
+        if needs_clarification and not clarification_reason:
+            clarification_reason = "context_incomplete"
+
+        context_payload_raw = task.get("context_payload") or {}
+        if isinstance(context_payload_raw, str):
+            parsed = parse_json(context_payload_raw)
+            context_payload_raw = parsed if parsed else {"raw": context_payload_raw}
+        if not isinstance(context_payload_raw, dict):
+            context_payload_raw = {"raw": str(context_payload_raw)}
+
+        try:
+            context_completeness = float(task.get("context_completeness", 0) or 0)
+        except (TypeError, ValueError):
+            context_completeness = 0.0
+        context_completeness = max(0.0, min(100.0, context_completeness))
+        context_fields_missing = normalize_context_missing_fields(task.get("context_fields_missing"))
+
         normalized = {
             "task_id": task.get("task_id")
             or f"task-{datetime.now(tz=UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}",
@@ -238,14 +305,20 @@ class TaskCenter:
             "task_type": str(task.get("task_type", "workflow")).strip(),
             "reason": str(task.get("reason", "")).strip(),
             "source": str(task.get("source", "openclaw")).strip(),
+            "request_source": request_source,
             "priority": str(task.get("priority", "medium")).lower(),
             "risk_level": str(task.get("risk_level", "low")).lower(),
             "assignee": str(task.get("assignee", "")).strip() or None,
             "status": str(task.get("status", "pending")).lower(),
             "retry_count": int(task.get("retry_count", 0) or 0),
             "failure_count": int(task.get("failure_count", 0) or 0),
+            "needs_clarification": needs_clarification,
+            "clarification_reason": clarification_reason,
             "need_human_confirm": 1 if to_bool(task.get("need_human_confirm", False)) else 0,
             "human_confirmed": 1 if to_bool(task.get("human_confirmed", False)) else 0,
+            "context_completeness": context_completeness,
+            "context_fields_missing": context_fields_missing,
+            "context_payload": ensure_json(context_payload_raw),
             "requirement": str(task.get("requirement", "")).strip(),
             "result_output": str(task.get("result_output", "")).strip(),
             "acceptance": str(task.get("acceptance", "")).strip(),
@@ -268,6 +341,8 @@ class TaskCenter:
             raise TaskCenterError(f"invalid priority: {normalized['priority']}")
         if normalized["risk_level"] not in TASK_RISK_LEVELS:
             raise TaskCenterError(f"invalid risk_level: {normalized['risk_level']}")
+        if normalized["request_source"] not in TASK_REQUEST_SOURCES:
+            raise TaskCenterError(f"invalid request_source: {normalized['request_source']}")
         if normalized["status"] not in TASK_STATUSES:
             raise TaskCenterError(f"invalid status: {normalized['status']}")
 
@@ -301,18 +376,22 @@ class TaskCenter:
             self.conn.execute(
                 """
                 INSERT INTO tasks (
-                    task_id, pool, task_type, reason, source, priority, risk_level,
+                    task_id, pool, task_type, reason, source, request_source, priority, risk_level,
                     assignee, status, retry_count, failure_count,
+                    needs_clarification, clarification_reason,
                     need_human_confirm, human_confirmed,
+                    context_completeness, context_fields_missing, context_payload,
                     requirement, result_output, acceptance,
                     observable_outputs, acceptance_thresholds,
                     score_raw, score_normalized, score_payload,
                     token_usage_summary, cost_estimate_total, action,
                     scheduled_at, created_at, updated_at
                 ) VALUES (
-                    :task_id, :pool, :task_type, :reason, :source, :priority, :risk_level,
+                    :task_id, :pool, :task_type, :reason, :source, :request_source, :priority, :risk_level,
                     :assignee, :status, :retry_count, :failure_count,
+                    :needs_clarification, :clarification_reason,
                     :need_human_confirm, :human_confirmed,
+                    :context_completeness, :context_fields_missing, :context_payload,
                     :requirement, :result_output, :acceptance,
                     :observable_outputs, :acceptance_thresholds,
                     :score_raw, :score_normalized, :score_payload,
@@ -327,7 +406,13 @@ class TaskCenter:
                 actor=actor,
                 event_type="task_created",
                 stage="create",
-                details={"pool": payload["pool"], "priority": payload["priority"], "risk_level": payload["risk_level"]},
+                details={
+                    "pool": payload["pool"],
+                    "priority": payload["priority"],
+                    "risk_level": payload["risk_level"],
+                    "request_source": payload["request_source"],
+                    "needs_clarification": bool(payload["needs_clarification"]),
+                },
             )
 
         return self.get_task(payload["task_id"])
@@ -340,8 +425,13 @@ class TaskCenter:
         data = dict(row)
         data["need_human_confirm"] = bool(data["need_human_confirm"])
         data["human_confirmed"] = bool(data["human_confirmed"])
+        data["needs_clarification"] = bool(data.get("needs_clarification"))
+        data["context_payload"] = parse_json(str(data.get("context_payload") or ""))
+        missing_fields = str(data.get("context_fields_missing") or "").strip()
+        data["context_fields_missing"] = [x for x in missing_fields.split(",") if x]
         data["score_payload"] = parse_json(str(data.get("score_payload") or ""))
         data["token_usage_summary"] = parse_json(str(data.get("token_usage_summary") or ""))
+        data["context_completeness"] = round(float(data.get("context_completeness") or 0.0), 2)
         data["cost_estimate_total"] = round(float(data.get("cost_estimate_total") or 0.0), 6)
         return data
 
@@ -649,6 +739,76 @@ class TaskCenter:
                     "score_normalized": normalized_score,
                     "action": action,
                     "score_payload": payload,
+                },
+            )
+
+        return self.get_task(task_id)
+
+    def update_clarification(
+        self,
+        task_id: str,
+        actor: str,
+        *,
+        needs_clarification: bool,
+        clarification_reason: str = "",
+        context_payload: dict[str, Any] | None = None,
+        context_completeness: float | None = None,
+        context_fields_missing: list[str] | None = None,
+    ) -> dict[str, Any]:
+        current = self.get_task(task_id)
+        payload = context_payload if isinstance(context_payload, dict) else current.get("context_payload", {})
+        if not isinstance(payload, dict):
+            payload = {}
+
+        completeness = (
+            float(context_completeness)
+            if context_completeness is not None
+            else float(current.get("context_completeness") or 0.0)
+        )
+        completeness = max(0.0, min(100.0, completeness))
+
+        missing = (
+            context_fields_missing
+            if isinstance(context_fields_missing, list)
+            else list(current.get("context_fields_missing") or [])
+        )
+        missing_text = normalize_context_missing_fields(missing)
+        reason = str(clarification_reason or "").strip()
+        if needs_clarification and not reason:
+            reason = "context_incomplete"
+
+        with self.conn:
+            self.conn.execute(
+                """
+                UPDATE tasks
+                SET needs_clarification = ?,
+                    clarification_reason = ?,
+                    context_payload = ?,
+                    context_completeness = ?,
+                    context_fields_missing = ?,
+                    updated_at = ?
+                WHERE task_id = ?
+                """,
+                (
+                    1 if needs_clarification else 0,
+                    reason,
+                    ensure_json(payload),
+                    completeness,
+                    missing_text,
+                    utc_now_iso(),
+                    task_id,
+                ),
+            )
+            self.add_event(
+                task_id=task_id,
+                actor=actor,
+                event_type="clarification_updated",
+                stage="intake",
+                details={
+                    "needs_clarification": bool(needs_clarification),
+                    "clarification_reason": reason,
+                    "context_completeness": completeness,
+                    "context_fields_missing": [x for x in missing_text.split(",") if x],
                 },
             )
 

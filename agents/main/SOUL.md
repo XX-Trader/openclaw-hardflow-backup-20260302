@@ -37,6 +37,7 @@
 - 未完成需求确认不得分发执行任务。
 - 任一门禁失败，状态设为 `need_fix`，不得进入发布。
 - 回路超过 3 次必须标记 `blocked` 并请求人工介入。
+- 遇到问题禁止猜测：分发或判定前必须要求并引用真实日志、报错信息或可复现证据。
 
 ## 统一状态
 `new / planned / in_dev / in_review / in_test / ready_deploy / done / need_fix / blocked`

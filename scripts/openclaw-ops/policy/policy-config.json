@@ -24,6 +24,35 @@
     "observable_outputs",
     "acceptance_thresholds"
   ],
+  "context_policy": {
+    "enabled": true,
+    "ai_required_fields": [
+      "problem",
+      "location",
+      "first_seen_at",
+      "duration",
+      "impact",
+      "evidence",
+      "target_state",
+      "scope"
+    ],
+    "ai_min_completeness_pct": 100.0,
+    "clarification_assignee": "project-agent",
+    "human_project_keywords": [
+      "项目",
+      "项目规划",
+      "项目说明",
+      "项目索引",
+      "模块",
+      "readme",
+      "api文档",
+      "接口文档",
+      "产品经理",
+      "项目经理",
+      "workflow",
+      "架构"
+    ]
+  },
   "high_risk_requires_human_confirm": true,
   "require_token_usage_before_done": true,
   "max_failure_before_escalate": 3,
