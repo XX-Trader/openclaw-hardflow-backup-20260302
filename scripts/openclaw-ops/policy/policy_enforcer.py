@@ -27,8 +27,18 @@ UTC = timezone.utc
 DEFAULT_POLICY: dict[str, Any] = {
     "schema_version": "2026-03-02",
     "primary_model": "kimicode/Doubao-Seed-2.0-Code",
-    "fallback_models": ["glmcode/glm-5"],
-    "allowed_models": ["kimicode/Doubao-Seed-2.0-Code", "glmcode/glm-5", "glmcode/glm-4.7"],
+    "fallback_models": [
+        "glmcode/glm-5",
+        "glmcode/glm-4.7",
+        "openai-codex/gpt-5.3-codex-spark",
+    ],
+    "allowed_models": [
+        "kimicode/Doubao-Seed-2.0-Code",
+        "glmcode/glm-5",
+        "openai-codex/gpt-5.3-codex",
+        "openai-codex/gpt-5.3-codex-spark",
+        "glmcode/glm-4.7",
+    ],
     "allowed_entry_agents": ["coordinator"],
     "allow_project_agent_alias_entry": True,
     "project_agent_alias_prefixes": ["产品经理", "项目经理", "pm", "PM"],
@@ -169,6 +179,7 @@ DEFAULT_ROUTING_RULES: dict[str, Any] = {
         {
             "assignee": "optimization-agent",
             "keywords": [
+                "增量审查", "增量巡检", "workflow审查", "技能审查", "hooks审查", "agent审查",
                 "优化agent", "agent优化", "工作流优化", "workflow优化", "技能优化", "技能治理",
                 "skill治理", "路由优化", "cron策略", "hooks优化", "policy优化", "流程优化", "经验维护", "频率策略", "全量校准",
             ],
@@ -187,6 +198,8 @@ DEFAULT_TOKEN_PRICING: dict[str, Any] = {
     "models": {
         "glmcode/glm-5": {"input": 0, "output": 0},
         "kimicode/Doubao-Seed-2.0-Code": {"input": 0, "output": 0},
+        "openai-codex/gpt-5.3-codex": {"input": 0, "output": 0},
+        "openai-codex/gpt-5.3-codex-spark": {"input": 0, "output": 0},
         "glmcode/glm-4.7": {"input": 0, "output": 0},
     },
 }

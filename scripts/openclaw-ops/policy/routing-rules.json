@@ -155,11 +155,17 @@
                                             ]
                            },
                            {
-                               "assignee":  "optimization-agent",
-                               "keywords":  [
-                                                "优化agent",
-                                                "agent优化",
-                                                "工作流优化",
+            "assignee":  "optimization-agent",
+            "keywords":  [
+                             "增量审查",
+                             "增量巡检",
+                             "workflow审查",
+                             "技能审查",
+                             "hooks审查",
+                             "agent审查",
+                             "优化agent",
+                             "agent优化",
+                             "工作流优化",
                                                 "workflow优化",
                                                 "技能优化",
                                                 "技能治理",

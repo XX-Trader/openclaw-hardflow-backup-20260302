@@ -20,6 +20,7 @@ PROFILE_SNAPSHOT_ROOT = REPO_ROOT / ".tmp" / "model-switch-profiles"
 
 MODEL_ALIAS_MAP: dict[str, str] = {
     "openai-codex/gpt-5.3-codex": "codex",
+    "openai-codex/gpt-5.3-codex-spark": "codexspark",
     "kimicode/Doubao-Seed-2.0-Code": "doubao",
     "glmcode/glm-5": "glm",
     "glmcode/glm-4.7": "glm47",
@@ -118,11 +119,22 @@ def ensure_profile(profile: dict[str, Any], tier: str) -> dict[str, Any]:
     if not isinstance(fallbacks_raw, list):
         raise ValueError(f"档位 {tier} 的 fallback_models 必须是数组")
     fallbacks = ordered_unique([str(x).strip() for x in fallbacks_raw if str(x).strip()])
+    agent_overrides_raw = profile.get("agent_model_overrides", {})
+    if not isinstance(agent_overrides_raw, dict):
+        raise ValueError(f"档位 {tier} 的 agent_model_overrides 必须是对象")
+    agent_model_overrides: dict[str, str] = {}
+    for agent_id, model_id in agent_overrides_raw.items():
+        agent = str(agent_id).strip()
+        model = str(model_id).strip()
+        if not agent or not model:
+            continue
+        agent_model_overrides[agent] = model
     thinking_default = str(profile.get("thinking_default", "")).strip() or "high"
     return {
         "name": str(profile.get("name", tier)).strip() or tier,
         "primary_model": primary,
         "fallback_models": fallbacks,
+        "agent_model_overrides": agent_model_overrides,
         "thinking_default": thinking_default,
     }
 
@@ -145,6 +157,7 @@ def apply_openclaw_config(data: dict[str, Any], profile: dict[str, Any]) -> tupl
     changed = False
     primary = profile["primary_model"]
     fallbacks = profile["fallback_models"]
+    agent_model_overrides = profile["agent_model_overrides"]
     thinking_default = profile["thinking_default"]
 
     agents_obj = data.setdefault("agents", {})
@@ -166,7 +179,7 @@ def apply_openclaw_config(data: dict[str, Any], profile: dict[str, Any]) -> tupl
     existing_models = defaults.get("models", {})
     if not isinstance(existing_models, dict):
         existing_models = {}
-    chain = ordered_unique([primary, *fallbacks])
+    chain = ordered_unique([primary, *fallbacks, *agent_model_overrides.values()])
     expected_alias_map = build_default_model_aliases(chain=chain, existing=existing_models)
     if defaults.get("models") != expected_alias_map:
         defaults["models"] = expected_alias_map
@@ -186,14 +199,20 @@ def apply_openclaw_config(data: dict[str, Any], profile: dict[str, Any]) -> tupl
             if not agent_id:
                 continue
             managed_agent_ids.append(agent_id)
-            if item.get("model") != primary:
-                item["model"] = primary
+            target_model = agent_model_overrides.get(agent_id, primary)
+            if item.get("model") != target_model:
+                item["model"] = target_model
                 changed = True
 
     return changed, managed_agent_ids
 
 
-def apply_agent_index_json(data: dict[str, Any], primary_model: str, managed_agent_ids: set[str]) -> tuple[bool, list[dict[str, Any]]]:
+def apply_agent_index_json(
+    data: list[dict[str, Any]],
+    primary_model: str,
+    managed_agent_ids: set[str],
+    agent_model_overrides: dict[str, str],
+) -> tuple[bool, list[dict[str, Any]]]:
     changed = False
     if not isinstance(data, list):
         raise ValueError("agents/agent_index.json 必须是数组")
@@ -204,8 +223,9 @@ def apply_agent_index_json(data: dict[str, Any], primary_model: str, managed_age
         agent_id = str(item.get("id", "")).strip()
         if managed_agent_ids and agent_id not in managed_agent_ids:
             continue
-        if item.get("model") != primary_model:
-            item["model"] = primary_model
+        target_model = agent_model_overrides.get(agent_id, primary_model)
+        if item.get("model") != target_model:
+            item["model"] = target_model
             changed = True
 
     return changed, data
@@ -241,7 +261,8 @@ def apply_policy_config(data: dict[str, Any], profile: dict[str, Any]) -> bool:
     changed = False
     primary = profile["primary_model"]
     fallbacks = profile["fallback_models"]
-    allowed = ordered_unique([primary, *fallbacks])
+    agent_model_overrides = profile["agent_model_overrides"]
+    allowed = ordered_unique([primary, *fallbacks, *agent_model_overrides.values()])
 
     if data.get("primary_model") != primary:
         data["primary_model"] = primary
@@ -359,6 +380,7 @@ def main() -> int:
         data=agent_index_data_raw,
         primary_model=profile["primary_model"],
         managed_agent_ids=managed_id_set,
+        agent_model_overrides=profile["agent_model_overrides"],
     )
     rendered_agent_index_md = render_agent_index_md(agent_index_items)
     old_agent_index_md = agent_index_md_path.read_text(encoding="utf-8-sig") if agent_index_md_path.exists() else ""
@@ -389,6 +411,7 @@ def main() -> int:
     print(f"tier={tier_key}")
     print(f"primary={profile['primary_model']}")
     print(f"fallbacks={','.join(profile['fallback_models']) if profile['fallback_models'] else '-'}")
+    print(f"agent_overrides={len(profile['agent_model_overrides'])}")
     print(f"thinking_default={profile['thinking_default']}")
     print(f"managed_agents={len(managed_id_set)}")
     print(f"dry_run={str(bool(args.dry_run)).lower()}")

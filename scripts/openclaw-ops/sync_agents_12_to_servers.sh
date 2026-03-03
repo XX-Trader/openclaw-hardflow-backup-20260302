@@ -93,9 +93,8 @@ def desired_agent(agent_id: str, allow_agents=None):
     return payload
 
 desired = [
-    desired_agent("ops-agent", ["optimization-agent", "optimize-agent", "secretary-agent"]),
+    desired_agent("ops-agent", ["optimization-agent", "secretary-agent"]),
     desired_agent("optimization-agent", ["secretary-agent"]),
-    desired_agent("optimize-agent", ["secretary-agent"]),
     desired_agent("secretary-agent"),
 ]
 
@@ -117,7 +116,7 @@ if isinstance(main_cfg, dict):
         allow = []
         subagents["allowAgents"] = allow
         changed = True
-    for aid in ("ops-agent", "optimization-agent", "optimize-agent", "secretary-agent"):
+    for aid in ("ops-agent", "optimization-agent", "secretary-agent"):
         if aid not in allow:
             allow.append(aid)
             changed = True
@@ -128,12 +127,12 @@ if isinstance(tools, dict):
     if isinstance(a2a, dict):
         allow = a2a.get("allow")
         if isinstance(allow, list):
-            for aid in ("ops-agent", "optimization-agent", "optimize-agent", "secretary-agent"):
+            for aid in ("ops-agent", "optimization-agent", "secretary-agent"):
                 if aid not in allow:
                     allow.append(aid)
                     changed = True
 
-for aid in ("ops-agent", "optimization-agent", "optimize-agent", "secretary-agent"):
+for aid in ("ops-agent", "optimization-agent", "secretary-agent"):
     (home / ".openclaw" / f"workspace-{aid}").mkdir(parents=True, exist_ok=True)
     (home / ".openclaw" / "agents" / aid / "agent").mkdir(parents=True, exist_ok=True)
     (home / ".openclaw" / "agents" / aid / "sessions").mkdir(parents=True, exist_ok=True)

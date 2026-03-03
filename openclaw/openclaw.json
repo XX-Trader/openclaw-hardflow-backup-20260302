@@ -55,7 +55,9 @@
       "model": {
         "primary": "kimicode/Doubao-Seed-2.0-Code",
         "fallbacks": [
-          "glmcode/glm-5"
+          "glmcode/glm-5",
+          "glmcode/glm-4.7",
+          "openai-codex/gpt-5.3-codex-spark"
         ]
       },
       "models": {
@@ -67,6 +69,12 @@
         },
         "glmcode/glm-4.7": {
           "alias": "glm47"
+        },
+        "openai-codex/gpt-5.3-codex": {
+          "alias": "codex"
+        },
+        "openai-codex/gpt-5.3-codex-spark": {
+          "alias": "codexspark"
         }
       },
       "memorySearch": {
@@ -112,7 +120,6 @@
             "main",
             "ops-agent",
             "optimization-agent",
-            "optimize-agent",
             "project-agent",
             "reviewer",
             "tester"
@@ -135,7 +142,6 @@
             "main",
             "ops-agent",
             "optimization-agent",
-            "optimize-agent",
             "project-agent",
             "reviewer",
             "tester"
@@ -164,7 +170,7 @@
         "id": "reviewer",
         "name": "代码审核",
         "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
-        "model": "kimicode/Doubao-Seed-2.0-Code"
+        "model": "openai-codex/gpt-5.3-codex"
       },
       {
         "id": "tester",
@@ -186,7 +192,6 @@
         "subagents": {
           "allowAgents": [
             "optimization-agent",
-            "optimize-agent",
             "project-agent"
           ]
         }
@@ -200,7 +205,6 @@
         "subagents": {
           "allowAgents": [
             "optimization-agent",
-            "optimize-agent",
             "project-agent"
           ]
         }
@@ -208,21 +212,9 @@
       {
         "id": "optimization-agent",
         "name": "optimization-agent",
-        "workspace": "/home/ubuntu/.openclaw/workspace-optimize-agent",
+        "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-        "model": "kimicode/Doubao-Seed-2.0-Code",
-        "subagents": {
-          "allowAgents": [
-            "project-agent"
-          ]
-        }
-      },
-      {
-        "id": "optimize-agent",
-        "name": "optimize-agent",
-        "workspace": "/home/ubuntu/.openclaw/workspace-optimize-agent",
-        "agentDir": "/home/ubuntu/.openclaw/agents/optimize-agent/agent",
-        "model": "kimicode/Doubao-Seed-2.0-Code",
+        "model": "openai-codex/gpt-5.3-codex",
         "subagents": {
           "allowAgents": [
             "project-agent"
