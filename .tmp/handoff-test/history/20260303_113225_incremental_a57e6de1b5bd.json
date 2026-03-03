@@ -1,0 +1,110 @@
+{
+  "run_id": "a57e6de1b5bd",
+  "sender_identity": "ops-agent/ops-cron-runner:incremental",
+  "task_id": "cron:ops-incremental-monitor",
+  "mode": "incremental",
+  "time": "2026-03-03T11:32:25+08:00",
+  "notify": true,
+  "normal_log_mode": "chat",
+  "risk_reasons": [
+    "new_high_issue=1"
+  ],
+  "change_reasons": [
+    "new_issue=1",
+    "todo_handoff_new=1"
+  ],
+  "major_reasons": [
+    "new_high_issue=1",
+    "new_issue=1",
+    "todo_handoff_new=1"
+  ],
+  "job_name": "ops-incremental-monitor",
+  "risk_level": "high",
+  "priority": "high",
+  "run_duration_ms": 7,
+  "risk_signature": "27b887e33717981800aaf3c8308fdedaf4b85b9b",
+  "risk_notify_suppressed": false,
+  "risk_notify_suppressed_reason": "",
+  "full_mode": false,
+  "fallback_used": false,
+  "fallback_reasons": [
+    "checkpoint_reset:demo.log"
+  ],
+  "logs_scanned": 1,
+  "bytes_read": 49,
+  "findings": 1,
+  "scan_errors": [],
+  "issue_stats": {
+    "new": 1,
+    "new_high": 1,
+    "reopened": 0,
+    "reopened_high": 0,
+    "resolved": 0,
+    "open_total": 1,
+    "open_high_total": 1
+  },
+  "service_delta": {
+    "added": [],
+    "removed": [],
+    "changed": [],
+    "service_error": ""
+  },
+  "metrics": {
+    "anomalies": []
+  },
+  "workflow_health": {
+    "enabled": false,
+    "jobs_file": "",
+    "jobs_total": 0,
+    "jobs_enabled": 0,
+    "failed_count": 0,
+    "stale_failed_count": 0,
+    "new_failed_count": 0,
+    "recovered_count": 0,
+    "failed_jobs": [],
+    "errors": []
+  },
+  "token_usage": {
+    "enabled": false,
+    "db_path": "",
+    "window_hours": 0,
+    "rows": 0,
+    "total_tokens": 0,
+    "total_tokens_m": 0.0,
+    "cost_estimate": 0.0,
+    "by_agent": [],
+    "errors": []
+  },
+  "handoff_summary": {
+    "enabled": true,
+    "mode": "todo_only",
+    "todo_file": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\handoff-test\\TODO.md",
+    "todo_new": 1,
+    "todo_items": [
+      {
+        "handoff_key": "issue:918d50836687b4dcc2b2",
+        "entity": "issue",
+        "priority": "P0",
+        "risk_level": "high",
+        "assignee": "ops-agent"
+      }
+    ],
+    "active_high_risk_items": 1,
+    "errors": []
+  },
+  "top_open_issues": [
+    {
+      "key": "918d50836687b4dcc2b2",
+      "title": "2026-03-03 11:30:00 fatal gateway timeout error",
+      "source": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\handoff-test\\logs\\demo.log",
+      "severity": "high",
+      "first_seen": "2026-03-03T11:32:25+08:00",
+      "last_seen": "2026-03-03T11:32:25+08:00",
+      "status": "open",
+      "occurrences": 1,
+      "missed_runs": 0,
+      "resolved_at": ""
+    }
+  ],
+  "cost_estimate": 0.0
+}

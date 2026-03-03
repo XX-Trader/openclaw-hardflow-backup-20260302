@@ -55,7 +55,9 @@ def build_message(command: str) -> str:
     return (
         "You are reviewer scheduled runner. Run command only:\n"
         f"{command}\n"
-        "Reply only command output; if output is NO_REPLY, reply NO_REPLY."
+        "Return EXACTLY raw stdout/stderr text from the command; "
+        "do not add explanation, greeting, or prefix text. "
+        "If output is NO_REPLY, reply NO_REPLY."
     )
 
 

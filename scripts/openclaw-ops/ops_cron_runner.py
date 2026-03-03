@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Unified OpenClaw ops cron runner with hard constraints.
 
 Modes:
@@ -21,7 +21,6 @@ import re
 import sqlite3
 import shutil
 import subprocess
-import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -43,7 +42,7 @@ ERROR_KEYWORDS = (
     "失败",
     "超时",
 )
-HIGH_KEYWORDS = ("fatal", "panic", "segfault", "oom", "critical", "数据库", "数据丢失")
+HIGH_KEYWORDS = ("fatal", "panic", "segfault", "oom", "critical", "database", "data_loss", "corruption")
 VOLATILE_PATTERNS = (
     r"\b\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?\b",
     r"\b0x[0-9a-fA-F]+\b",
@@ -77,6 +76,41 @@ def parse_bool(value: Any, default: bool = False) -> bool:
     if text in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def compact_reason(reason: str) -> str:
+    text = str(reason or "").strip()
+    if "=" in text:
+        return text.split("=", 1)[0].strip()
+    return text
+
+
+def safe_slug(value: str, max_len: int = 32) -> str:
+    out = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(value or "").strip())
+    out = out.strip("-._")
+    if not out:
+        return "unknown"
+    return out[:max_len]
+
+
+def parse_iso(value: Any) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=TZ)
+    return dt
+
+
+def iso_to_local_text(value: Any) -> str:
+    dt = parse_iso(value)
+    if not dt:
+        return "-"
+    return dt.astimezone(TZ).strftime("%Y-%m-%d %H:%M:%S UTC+8")
 
 
 def resolve_log_mode(mode: str, cfg: dict[str, Any], override: str) -> str:
@@ -188,6 +222,21 @@ def default_config() -> dict[str, Any]:
             "daily_silent_notify_on_change": False,
             "daily_chat_notify_on_change": False,
             "daily_chat_notify_on_no_change": False,
+            # Avoid repeated spam for unchanged high-risk incidents.
+            "risk_repeat_cooldown_minutes": 60,
+        },
+        "incident_handoff": {
+            "enabled": True,
+            "mode": "todo_only",
+            "todo_file": str(home / ".openclaw" / "workspace-coordinator" / "TODO.md"),
+            "routing_file": str(home / ".openclaw" / "ops" / "policy" / "routing-rules.json"),
+            "source": "ops-cron-runner",
+            "default_assignee": "coordinator",
+            "max_handoff_per_run": 6,
+            "max_issue_items_per_run": 4,
+            "max_workflow_jobs_per_run": 2,
+            "high_risk_direct_human": True,
+            "write_medium_risk_to_todo": False,
         },
     }
 
@@ -912,6 +961,272 @@ def collect_token_usage_summary(cfg: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
+def sorted_open_issues(state: dict[str, Any], limit: int = 8) -> list[dict[str, Any]]:
+    issues = state.get("issues", {})
+    if not isinstance(issues, dict):
+        return []
+    rows = [x for x in issues.values() if isinstance(x, dict) and str(x.get("status", "")).strip() == "open"]
+    rows.sort(
+        key=lambda x: (
+            0 if str(x.get("severity", "")).strip() == "high" else 1,
+            -int(x.get("occurrences", 0) or 0),
+            str(x.get("first_seen", "")),
+        )
+    )
+    return rows[: max(1, int(limit))]
+
+
+def route_assignee(text: str, dispatch_cfg: dict[str, Any], routing_rules: dict[str, Any]) -> tuple[str, str]:
+    norm = str(text or "").strip().lower()
+    rules = routing_rules.get("assignee_rules", [])
+    if isinstance(rules, list):
+        for item in rules:
+            if not isinstance(item, dict):
+                continue
+            assignee = str(item.get("assignee", "")).strip()
+            keywords = item.get("keywords", [])
+            if not assignee or not isinstance(keywords, list):
+                continue
+            for kw in keywords:
+                key = str(kw).strip().lower()
+                if key and key in norm:
+                    return assignee, key
+    fallback = (
+        str(dispatch_cfg.get("default_assignee", "")).strip()
+        or str(routing_rules.get("default_assignee", "")).strip()
+        or "coordinator"
+    )
+    return fallback, ""
+
+
+def build_risk_signature(
+    *,
+    state: dict[str, Any],
+    workflow_health: dict[str, Any],
+    risk_reasons: list[str],
+) -> str:
+    issues = state.get("issues", {})
+    open_high_keys: list[str] = []
+    if isinstance(issues, dict):
+        for key, rec in issues.items():
+            if not isinstance(rec, dict):
+                continue
+            if str(rec.get("status", "")) != "open":
+                continue
+            if str(rec.get("severity", "")) != "high":
+                continue
+            open_high_keys.append(str(key))
+    open_high_keys = sorted(set(open_high_keys))[:16]
+    failed_jobs = workflow_health.get("failed_jobs", [])
+    failed_job_ids: list[str] = []
+    if isinstance(failed_jobs, list):
+        for row in failed_jobs:
+            if not isinstance(row, dict):
+                continue
+            jid = str(row.get("id", "")).strip()
+            if jid:
+                failed_job_ids.append(jid)
+    payload = {
+        "risk_labels": sorted({compact_reason(x) for x in risk_reasons if str(x).strip()}),
+        "open_high_keys": open_high_keys,
+        "workflow_failed_jobs": sorted(set(failed_job_ids))[:16],
+    }
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha1(raw.encode("utf-8")).hexdigest()
+
+
+def load_routing_rules(dispatch_cfg: dict[str, Any]) -> dict[str, Any]:
+    routing_file = Path(str(dispatch_cfg.get("routing_file", "")).strip()).expanduser()
+    data = load_json(routing_file, {})
+    if not isinstance(data, dict):
+        data = {}
+    return data
+
+
+def build_issue_todo_item(
+    *,
+    issue: dict[str, Any],
+    mode: str,
+    assignee: str,
+    route_hit: str,
+) -> dict[str, Any]:
+    issue_key = str(issue.get("key", "")).strip() or hashlib.sha1(
+        f"{issue.get('source', '')}|{issue.get('title', '')}".encode("utf-8")
+    ).hexdigest()[:20]
+    severity = str(issue.get("severity", "medium")).strip().lower()
+    priority = "P0" if severity == "high" else "P2"
+    risk = "high" if severity == "high" else "low"
+    first_seen = iso_to_local_text(issue.get("first_seen"))
+    last_seen = iso_to_local_text(issue.get("last_seen"))
+    line = (
+        f"- [ ] [OPS][{priority}][risk={risk}] key=issue:{issue_key} assignee={assignee} "
+        f"mode={mode} occurrences={int(issue.get('occurrences', 0) or 0)} "
+        f"first_seen={first_seen} last_seen={last_seen} "
+        f"source={str(issue.get('source', '')).strip()} "
+        f"evidence={str(issue.get('title', '')).strip()[:160]}"
+    )
+    return {
+        "handoff_key": f"issue:{issue_key}",
+        "entity": "issue",
+        "priority": priority,
+        "risk_level": risk,
+        "assignee": assignee,
+        "route_hit": route_hit,
+        "line": line,
+    }
+
+
+def build_workflow_todo_item(
+    *,
+    job: dict[str, Any],
+    mode: str,
+    assignee: str,
+    route_hit: str,
+) -> dict[str, Any]:
+    job_id = str(job.get("id", "")).strip() or "unknown"
+    line = (
+        f"- [ ] [OPS][P0][risk=high] key=workflow_job:{job_id} assignee={assignee} mode={mode} "
+        f"job_name={str(job.get('name', '')).strip()} status={str(job.get('last_status', '')).strip()} "
+        f"consecutive={int(job.get('consecutive_errors', 0) or 0)} "
+        f"stale_min={float(job.get('stale_minutes', 0.0) or 0.0)} "
+        f"last_error={str(job.get('last_error', '')).strip()[:160]}"
+    )
+    return {
+        "handoff_key": f"workflow_job:{job_id}",
+        "entity": "workflow_job",
+        "priority": "P0",
+        "risk_level": "high",
+        "assignee": assignee,
+        "route_hit": route_hit,
+        "line": line,
+    }
+
+
+def handoff_incidents_to_todo(
+    *,
+    cfg: dict[str, Any],
+    state: dict[str, Any],
+    mode: str,
+    workflow_health: dict[str, Any],
+) -> dict[str, Any]:
+    summary = {
+        "enabled": False,
+        "mode": "todo_only",
+        "todo_file": "",
+        "high_risk_direct_human": False,
+        "todo_new": 0,
+        "todo_items": [],
+        "active_high_risk_items": 0,
+        "errors": [],
+    }
+    handoff_cfg = cfg.get("incident_handoff")
+    if not isinstance(handoff_cfg, dict):
+        handoff_cfg = {}
+    if not bool(handoff_cfg.get("enabled", False)):
+        return summary
+    summary["enabled"] = True
+    summary["mode"] = str(handoff_cfg.get("mode", "todo_only")).strip() or "todo_only"
+    if summary["mode"] != "todo_only":
+        summary["errors"].append(f"unsupported_handoff_mode:{summary['mode']}")
+        return summary
+
+    todo_file = Path(
+        str(handoff_cfg.get("todo_file", "")).strip()
+        or str(Path.home() / ".openclaw" / "workspace-coordinator" / "TODO.md")
+    ).expanduser()
+    summary["todo_file"] = str(todo_file)
+    routing_rules = load_routing_rules(handoff_cfg)
+    write_medium = parse_bool(handoff_cfg.get("write_medium_risk_to_todo"), False)
+    high_risk_direct_human = parse_bool(handoff_cfg.get("high_risk_direct_human"), True)
+    summary["high_risk_direct_human"] = high_risk_direct_human
+
+    max_total = max(1, int(handoff_cfg.get("max_handoff_per_run", 6) or 6))
+    issue_limit = max(1, int(handoff_cfg.get("max_issue_items_per_run", 4) or 4))
+    job_limit = max(0, int(handoff_cfg.get("max_workflow_jobs_per_run", 2) or 2))
+
+    candidates: list[dict[str, Any]] = []
+    open_items = sorted_open_issues(state, limit=issue_limit)
+    for issue in open_items:
+        severity = str(issue.get("severity", "")).strip().lower()
+        if severity != "high" and not write_medium:
+            continue
+        text = f"{issue.get('title', '')}\n{issue.get('source', '')}"
+        assignee, route_hit = route_assignee(text, handoff_cfg, routing_rules)
+        if high_risk_direct_human and severity == "high":
+            assignee = "coordinator"
+            route_hit = "high_risk_direct_human"
+        candidates.append(build_issue_todo_item(issue=issue, mode=mode, assignee=assignee, route_hit=route_hit))
+
+    failed_jobs = workflow_health.get("failed_jobs", [])
+    if isinstance(failed_jobs, list):
+        for job in failed_jobs[:job_limit]:
+            if not isinstance(job, dict):
+                continue
+            text = f"{job.get('name', '')}\n{job.get('last_error', '')}\n{job.get('id', '')}"
+            assignee, route_hit = route_assignee(text, handoff_cfg, routing_rules)
+            if high_risk_direct_human:
+                assignee = "coordinator"
+                route_hit = "high_risk_direct_human"
+            candidates.append(build_workflow_todo_item(job=job, mode=mode, assignee=assignee, route_hit=route_hit))
+
+    active_keys = {str(x.get("handoff_key", "")).strip() for x in candidates if str(x.get("handoff_key", "")).strip()}
+    handoff_state = state.setdefault("incident_handoff", {})
+    if not isinstance(handoff_state, dict):
+        handoff_state = {}
+        state["incident_handoff"] = handoff_state
+    sent_keys = handoff_state.get("sent_keys")
+    if not isinstance(sent_keys, dict):
+        sent_keys = {}
+    sent_keys = {str(k): str(v) for k, v in sent_keys.items() if str(k) in active_keys}
+
+    pending_keys: list[str] = []
+    new_lines: list[str] = []
+    now_text = now().strftime("%Y-%m-%d %H:%M:%S UTC+8")
+    for item in candidates[:max_total]:
+        key = str(item.get("handoff_key", "")).strip()
+        if not key:
+            continue
+        pending_keys.append(key)
+        if key in sent_keys:
+            continue
+        new_lines.append(f"{item.get('line')} | detected_at={now_text}")
+        sent_keys[key] = now_iso()
+        summary["todo_items"].append(
+            {
+                "handoff_key": key,
+                "entity": item.get("entity"),
+                "priority": item.get("priority"),
+                "risk_level": item.get("risk_level"),
+                "assignee": item.get("assignee") or "coordinator",
+            }
+        )
+
+    if new_lines:
+        try:
+            todo_file.parent.mkdir(parents=True, exist_ok=True)
+            if not todo_file.exists():
+                todo_file.write_text("# TODO\n\n", encoding="utf-8")
+            with todo_file.open("a", encoding="utf-8") as fp:
+                fp.write("\n## OPS Incident Inbox\n")
+                for line in new_lines:
+                    fp.write(line.rstrip() + "\n")
+        except Exception as exc:
+            summary["errors"].append(f"todo_write_failed:{todo_file}:{exc}")
+            for item in summary["todo_items"]:
+                sent_keys.pop(str(item.get("handoff_key", "")), None)
+            summary["todo_items"] = []
+        else:
+            summary["todo_new"] = len(new_lines)
+
+    summary["active_high_risk_items"] = sum(
+        1 for item in candidates if str(item.get("risk_level", "")).strip().lower() == "high"
+    )
+    handoff_state["sent_keys"] = sent_keys
+    handoff_state["updated_at"] = now_iso()
+    handoff_state["pending_keys"] = pending_keys[:100]
+    return summary
+
+
 @dataclass(slots=True)
 class RunResult:
     notify: bool
@@ -932,6 +1247,7 @@ def run_scan(
     force_fallback: bool,
     normal_log_mode_override: str,
 ) -> RunResult:
+    run_started_at = now()
     state.setdefault("runs", {"incremental": 0, "full": 0, "daily": 0})
     state["runs"][mode] = int(state["runs"].get(mode, 0)) + 1
     run_id = uuid.uuid4().hex[:12]
@@ -1051,6 +1367,17 @@ def run_scan(
     if int(workflow_health.get("recovered_count", 0) or 0) > 0:
         change_reasons.append(f"workflow_recovered={int(workflow_health.get('recovered_count', 0) or 0)}")
 
+    handoff_summary = handoff_incidents_to_todo(
+        cfg=cfg,
+        state=state,
+        mode=mode,
+        workflow_health=workflow_health,
+    )
+    if int(handoff_summary.get("todo_new", 0) or 0) > 0:
+        change_reasons.append(f"todo_handoff_new={int(handoff_summary.get('todo_new', 0) or 0)}")
+    if handoff_summary.get("errors"):
+        risk_reasons.append(f"handoff_error={len(handoff_summary.get('errors') or [])}")
+
     major_reasons = [*risk_reasons, *change_reasons]
     notify_policy = cfg.get("notify_policy")
     if not isinstance(notify_policy, dict):
@@ -1058,8 +1385,35 @@ def run_scan(
     silent_notify_on_change = parse_bool(notify_policy.get("silent_notify_on_change"), False)
     chat_notify_on_change = parse_bool(notify_policy.get("chat_notify_on_change"), False)
     chat_notify_on_no_change = parse_bool(notify_policy.get("chat_notify_on_no_change"), False)
+    risk_repeat_cooldown_minutes = max(1, int(notify_policy.get("risk_repeat_cooldown_minutes", 60) or 60))
 
-    notify = bool(risk_reasons)
+    risk_signature = ""
+    risk_notify_suppressed = False
+    risk_notify_suppressed_reason = ""
+    if risk_reasons:
+        risk_signature = build_risk_signature(
+            state=state,
+            workflow_health=workflow_health,
+            risk_reasons=risk_reasons,
+        )
+        notify_state = state.get("notify_state", {})
+        if not isinstance(notify_state, dict):
+            notify_state = {}
+        last_signature = str(notify_state.get(f"risk_signature_{mode}", "")).strip()
+        last_notified = parse_iso(notify_state.get(f"risk_notified_at_{mode}"))
+        if last_signature and risk_signature == last_signature and last_notified:
+            elapsed = now() - last_notified.astimezone(TZ)
+            if elapsed < timedelta(minutes=risk_repeat_cooldown_minutes):
+                risk_notify_suppressed = True
+                risk_notify_suppressed_reason = (
+                    f"risk_repeat_within_cooldown:{risk_repeat_cooldown_minutes}m"
+                )
+        if not risk_notify_suppressed:
+            notify_state[f"risk_signature_{mode}"] = risk_signature
+            notify_state[f"risk_notified_at_{mode}"] = now_iso()
+            state["notify_state"] = notify_state
+
+    notify = bool(risk_reasons) and (not risk_notify_suppressed)
     if not notify and change_reasons:
         if log_mode == "chat":
             notify = chat_notify_on_change
@@ -1068,54 +1422,94 @@ def run_scan(
     elif not notify and log_mode == "chat":
         notify = chat_notify_on_no_change
 
+    run_duration_ms = max(0, int((now() - run_started_at).total_seconds() * 1000))
+    job_name = str(task_id or "").split(":", 1)[-1] if ":" in str(task_id or "") else f"ops_{mode}"
+    risk_level = "high" if risk_reasons else "low"
+    priority = "high" if risk_reasons else ("medium" if change_reasons else "low")
+    open_issue_rows = sorted_open_issues(state, limit=3)
+    workflow_failed_rows = list(workflow_health.get("failed_jobs", [])) if isinstance(workflow_health.get("failed_jobs"), list) else []
+
     output = "NO_REPLY"
     if notify:
         lines: list[str] = []
-        lines.append(f"# ops-cron {mode}")
-        lines.append(f"- sender_identity: {sender_identity}")
-        lines.append(f"- task: {task_id or '-'}")
-        lines.append(f"- time: {now_iso()}")
-        lines.append(f"- normal_log_mode: {log_mode}")
+        lines.append(f"# ops-cron/{mode}")
+        lines.append(f"agent: {sender_identity}")
+        lines.append(f"job: {job_name}")
+        lines.append(f"task_id: {task_id or '-'}")
+        lines.append(f"run_id: {run_id}")
+        lines.append(f"time: {now().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
+        lines.append(f"run_duration_ms: {run_duration_ms}")
+        lines.append(f"priority: {priority}")
+        lines.append(f"risk_level: {risk_level}")
+        lines.append(f"normal_log_mode: {log_mode}")
         if risk_reasons:
-            lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
+            lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
         if change_reasons:
-            lines.append(f"- change_reasons: {', '.join(change_reasons)}")
-        lines.append(
-            f"- issue: new={issue_stats['new']}, reopened={issue_stats['reopened']}, "
-            f"resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, "
-            f"open_high={issue_stats['open_high_total']}"
-        )
-        lines.append(f"- logs_scanned: {len(log_files)}, bytes_read={read_bytes}, findings={len(findings)}")
+            lines.append(f"change_reasons: {', '.join(change_reasons)}")
+        lines.append(f"issue_summary: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}")
+        lines.append(f"scan_summary: logs={len(log_files)}, bytes_read={read_bytes}, findings={len(findings)}")
         if fallback_used:
-            lines.append(f"- fallback: true ({', '.join(sorted(set(fallback_reasons)))})")
+            lines.append(f"fallback: true ({', '.join(sorted(set(fallback_reasons)))})")
         if added or removed or changed:
-            lines.append(f"- service_delta: added={len(added)}, removed={len(removed)}, changed={len(changed)}")
+            lines.append(f"service_delta: added={len(added)}, removed={len(removed)}, changed={len(changed)}")
         if metrics.get("anomalies"):
-            lines.append(f"- anomalies: {'; '.join(metrics['anomalies'][:5])}")
+            lines.append(f"system_anomalies: {'; '.join(metrics['anomalies'][:4])}")
         if int(workflow_health.get("failed_count", 0) or 0) > 0:
-            lines.append(
-                f"- workflow_health: failed={workflow_health.get('failed_count', 0)}, "
-                f"stale_failed={workflow_health.get('stale_failed_count', 0)}, "
-                f"recovered={workflow_health.get('recovered_count', 0)}"
-            )
-            for item in list(workflow_health.get("failed_jobs", []))[:3]:
-                lines.append(
-                    f"  - job[{item.get('id')}|{item.get('name')}]: status={item.get('last_status')} "
-                    f"stale_min={item.get('stale_minutes')} consecutive={item.get('consecutive_errors')}"
-                )
-        lines.append(
-            f"- token_24h: total_tokens={token_usage_summary.get('total_tokens', 0)}, "
-            f"total_m={token_usage_summary.get('total_tokens_m', 0)}, "
-            f"cost={token_usage_summary.get('cost_estimate', 0)} "
-            f"(rows={token_usage_summary.get('rows', 0)})"
-        )
+            lines.append(f"workflow_health: failed={workflow_health.get('failed_count', 0)}, stale_failed={workflow_health.get('stale_failed_count', 0)}, recovered={workflow_health.get('recovered_count', 0)}")
+        lines.append(f"token_24h: total={token_usage_summary.get('total_tokens', 0)}, total_m={token_usage_summary.get('total_tokens_m', 0)}, cost={token_usage_summary.get('cost_estimate', 0)}, rows={token_usage_summary.get('rows', 0)}")
         top_agents = token_usage_summary.get("by_agent") or []
         if isinstance(top_agents, list) and top_agents:
             top = top_agents[0]
-            lines.append(
-                f"- token_top_agent: {top.get('agent_id')} "
-                f"tokens={top.get('total_tokens', 0)} cost={top.get('cost_estimate', 0)}"
-            )
+            lines.append(f"token_top_agent: {top.get('agent_id')} tokens={top.get('total_tokens', 0)} cost={top.get('cost_estimate', 0)}")
+        if open_issue_rows:
+            lines.append("key_incidents:")
+            for idx, item in enumerate(open_issue_rows, start=1):
+                lines.append(
+                    f"{idx}. severity={item.get('severity')} occurrences={item.get('occurrences', 0)} "
+                    f"first_seen={iso_to_local_text(item.get('first_seen'))} "
+                    f"last_seen={iso_to_local_text(item.get('last_seen'))}"
+                )
+                lines.append(f"   cause_evidence: {str(item.get('title', ''))[:150]}")
+                lines.append(f"   source: {str(item.get('source', ''))[:180]}")
+                lines.append(f"   issue_key: {item.get('key')}")
+        if workflow_failed_rows:
+            lines.append("failed_jobs:")
+            for idx, item in enumerate(workflow_failed_rows[:2], start=1):
+                lines.append(
+                    f"{idx}. job_id={item.get('id')} name={item.get('name')} status={item.get('last_status')} "
+                    f"consecutive={item.get('consecutive_errors')} stale_min={item.get('stale_minutes')}"
+                )
+                if str(item.get("last_error", "")).strip():
+                    lines.append(f"   last_error_evidence: {str(item.get('last_error', ''))[:160]}")
+        handoff_target = "coordinator" if bool(handoff_summary.get("high_risk_direct_human", False)) else "route_based"
+        lines.append(
+            "handoff: "
+            + f"mode={handoff_summary.get('mode', 'todo_only')} "
+            + f"todo_new={handoff_summary.get('todo_new', 0)} "
+            + f"active_high_risk={handoff_summary.get('active_high_risk_items', 0)} "
+            + f"high_risk_direct_human={str(bool(handoff_summary.get('high_risk_direct_human', False))).lower()} "
+            + f"target={handoff_target}"
+        )
+        lines.append(f"handoff_to_agent: {handoff_target}")
+        if str(handoff_summary.get("todo_file", "")).strip():
+            lines.append(f"handoff_todo_file: {handoff_summary.get('todo_file')}")
+        if handoff_summary.get("todo_items"):
+            lines.append("handoff_items:")
+            for idx, row in enumerate(handoff_summary.get("todo_items", [])[:3], start=1):
+                lines.append(
+                    f"{idx}. key={row.get('handoff_key')} assignee={row.get('assignee')} "
+                    f"priority={row.get('priority')} risk={row.get('risk_level')} entity={row.get('entity')}"
+                )
+        if handoff_summary.get("errors"):
+            lines.append("handoff_errors:")
+            for idx, err in enumerate(handoff_summary.get("errors", [])[:3], start=1):
+                lines.append(f"{idx}. {err}")
+        manual_required = bool(risk_reasons)
+        lines.append(f"manual_action_required: {str(manual_required).lower()}")
+        if manual_required:
+            lines.append("manual_action: coordinator 需人工确认高风险并通过 agent-to-agent 分配执行。")
+        if risk_notify_suppressed:
+            lines.append(f"notify_suppressed: {risk_notify_suppressed_reason}")
         output = "\n".join(lines)
 
     record = {
@@ -1129,6 +1523,13 @@ def run_scan(
         "risk_reasons": risk_reasons,
         "change_reasons": change_reasons,
         "major_reasons": major_reasons,
+        "job_name": job_name,
+        "risk_level": risk_level,
+        "priority": priority,
+        "run_duration_ms": run_duration_ms,
+        "risk_signature": risk_signature,
+        "risk_notify_suppressed": risk_notify_suppressed,
+        "risk_notify_suppressed_reason": risk_notify_suppressed_reason,
         "full_mode": full_mode,
         "fallback_used": fallback_used,
         "fallback_reasons": sorted(set(fallback_reasons)),
@@ -1146,6 +1547,8 @@ def run_scan(
         "metrics": metrics,
         "workflow_health": workflow_health,
         "token_usage": token_usage_summary,
+        "handoff_summary": handoff_summary,
+        "top_open_issues": open_issue_rows,
         "cost_estimate": float(token_usage_summary.get("cost_estimate", 0.0) or 0.0),
     }
     return RunResult(notify=notify, output=output, record=record)
@@ -1159,6 +1562,7 @@ def build_daily_report(
     task_id: str,
     normal_log_mode: str,
 ) -> RunResult:
+    run_started_at = now()
     window_start = now() - timedelta(hours=24)
     records: list[dict[str, Any]] = []
     for path in sorted(history_dir.glob("*.json")):
@@ -1178,10 +1582,7 @@ def build_daily_report(
     total = len(records)
     major = sum(1 for x in records if bool(x.get("notify")))
     failed = sum(1 for x in records if x.get("scan_errors"))
-    open_issues = [
-        item for item in (state.get("issues") or {}).values() if isinstance(item, dict) and item.get("status") == "open"
-    ]
-    open_issues.sort(key=lambda x: (0 if x.get("severity") == "high" else 1, -int(x.get("occurrences", 0))))
+    open_issues = sorted_open_issues(state, limit=100)
     top = open_issues[:8]
     open_high = [x for x in open_issues if str(x.get("severity")) == "high"]
     workflow_health = collect_workflow_health(cfg, state)
@@ -1252,6 +1653,7 @@ def build_daily_report(
                 "risk_reasons": [],
                 "change_reasons": [],
                 "major_reasons": [],
+                "run_duration_ms": max(0, int((now() - run_started_at).total_seconds() * 1000)),
                 "daily": {"total_runs_24h": total, "major_runs_24h": major, "failed_runs_24h": failed},
                 "workflow_health": workflow_health,
                 "token_usage": token_usage_summary,
@@ -1259,57 +1661,86 @@ def build_daily_report(
         )
 
     sender_identity = sender_identity_for_mode("daily")
+    run_id = uuid.uuid4().hex[:12]
+    run_duration_ms = max(0, int((now() - run_started_at).total_seconds() * 1000))
+    risk_level = "high" if risk_reasons else "low"
+    priority = "high" if risk_reasons else ("medium" if change_reasons else "low")
+    todo_new_24h = sum(int((x.get("handoff_summary") or {}).get("todo_new", 0) or 0) for x in records if isinstance(x, dict))
+    active_high_risk_24h = sum(
+        int((x.get("handoff_summary") or {}).get("active_high_risk_items", 0) or 0) for x in records if isinstance(x, dict)
+    )
+
     lines: list[str] = []
-    lines.append("# ops-cron daily")
-    lines.append(f"- sender_identity: {sender_identity}")
-    lines.append(f"- task: {task_id or '-'}")
-    lines.append(f"- window: last 24h")
-    lines.append(f"- normal_log_mode: {normal_log_mode}")
+    lines.append("# ops-cron/daily")
+    lines.append(f"agent: {sender_identity}")
+    lines.append("job: ops_daily_summary")
+    lines.append(f"task_id: {task_id or '-'}")
+    lines.append(f"run_id: {run_id}")
+    lines.append(f"time: {now().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
+    lines.append(f"window: last 24h")
+    lines.append(f"run_duration_ms: {run_duration_ms}")
+    lines.append(f"priority: {priority}")
+    lines.append(f"risk_level: {risk_level}")
+    lines.append(f"normal_log_mode: {normal_log_mode}")
     if risk_reasons:
-        lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
+        lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
     if change_reasons:
-        lines.append(f"- change_reasons: {', '.join(change_reasons)}")
-    lines.append(f"- runs: total={total}, major={major}, failed={failed}")
-    lines.append(f"- open_issues: {len(open_issues)}")
+        lines.append(f"change_reasons: {', '.join(change_reasons)}")
+    lines.append(f"runs_24h: total={total}, major={major}, failed={failed}")
+    lines.append(f"open_issues: {len(open_issues)}")
     lines.append(
-        f"- token_24h: total_tokens={token_usage_summary.get('total_tokens', 0)}, "
+        f"token_24h: total_tokens={token_usage_summary.get('total_tokens', 0)}, "
         f"total_m={token_usage_summary.get('total_tokens_m', 0)}, "
         f"cost={token_usage_summary.get('cost_estimate', 0)} "
         f"(rows={token_usage_summary.get('rows', 0)})"
     )
+    lines.append(f"handoff_24h: todo_new={todo_new_24h}, active_high_risk={active_high_risk_24h}, target=coordinator")
     if int(workflow_health.get("failed_count", 0) or 0) > 0:
         lines.append(
-            f"- workflow_health: failed={workflow_health.get('failed_count', 0)}, "
+            f"workflow_health: failed={workflow_health.get('failed_count', 0)}, "
             f"stale_failed={workflow_health.get('stale_failed_count', 0)}, "
             f"recovered={workflow_health.get('recovered_count', 0)}"
         )
         for item in list(workflow_health.get("failed_jobs", []))[:3]:
             lines.append(
-                f"- workflow_job[{item.get('id')}|{item.get('name')}]: "
+                f"workflow_job[{item.get('id')}|{item.get('name')}]: "
                 f"status={item.get('last_status')} stale_min={item.get('stale_minutes')} "
                 f"consecutive={item.get('consecutive_errors')}"
             )
+            if str(item.get("last_error", "")).strip():
+                lines.append(f"  last_error_evidence: {str(item.get('last_error', ''))[:160]}")
     for item in top[:5]:
         lines.append(
-            f"- issue[{item.get('severity')}|{item.get('occurrences', 0)}]: "
-            f"{item.get('title', '')[:120]} @ {item.get('source', '')[:80]}"
+            f"issue[{item.get('severity')}|{item.get('occurrences', 0)}]: "
+            f"{item.get('title', '')[:120]}"
         )
+        lines.append(f"  source: {item.get('source', '')[:120]}")
+        lines.append(f"  first_seen: {iso_to_local_text(item.get('first_seen'))}")
+        lines.append(f"  last_seen: {iso_to_local_text(item.get('last_seen'))}")
+    manual_required = bool(risk_reasons) or int(workflow_health.get("failed_count", 0) or 0) > 0
+    lines.append(f"manual_action_required: {str(manual_required).lower()}")
+    if manual_required:
+        lines.append("manual_action: coordinator 需确认高风险待办并明确 assignee/截止时间/验收标准。")
     return RunResult(
         notify=True,
         output="\n".join(lines),
         record={
-            "run_id": uuid.uuid4().hex[:12],
+            "run_id": run_id,
             "sender_identity": sender_identity,
             "task_id": task_id,
             "mode": "daily",
             "time": now_iso(),
             "notify": True,
             "normal_log_mode": normal_log_mode,
+            "priority": priority,
+            "risk_level": risk_level,
+            "run_duration_ms": run_duration_ms,
             "risk_reasons": risk_reasons,
             "change_reasons": change_reasons,
             "major_reasons": [*risk_reasons, *change_reasons] or ["daily_summary"],
             "daily": {"total_runs_24h": total, "major_runs_24h": major, "failed_runs_24h": failed},
             "open_issue_count": len(open_issues),
+            "handoff_24h": {"todo_new": todo_new_24h, "active_high_risk_items": active_high_risk_24h},
             "workflow_health": workflow_health,
             "token_usage": token_usage_summary,
             "cost_estimate": float(token_usage_summary.get("cost_estimate", 0.0) or 0.0),
@@ -1387,3 +1818,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

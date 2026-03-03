@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Policy-Enforcer: fail-close policy checks for OpenClaw workflows."""
 
 from __future__ import annotations
@@ -50,11 +50,25 @@ DEFAULT_POLICY: dict[str, Any] = {
             "problem",
             "location",
             "first_seen_at",
-            "duration",
             "impact",
             "evidence",
-            "target_state",
+            "current_state",
+            "expected_state",
+            "operation_path",
+            "reproduction_steps",
             "scope",
+            "constraints",
+            "acceptance_criteria",
+            "full_background",
+        ],
+        "ai_recommended_fields": [
+            "duration",
+            "trigger_conditions",
+            "dependencies",
+            "history_changes",
+            "deliverables",
+            "owner",
+            "change_id",
         ],
         "ai_min_completeness_pct": 100.0,
         "clarification_assignee": "project-agent",
@@ -106,48 +120,13 @@ DEFAULT_POLICY: dict[str, Any] = {
 DEFAULT_ROUTING_RULES: dict[str, Any] = {
     "version": "2026-03-03",
     "high_risk_keywords": [
-        "生产",
-        "部署",
-        "支付",
-        "安全",
-        "密钥",
-        "权限",
-        "数据库",
-        "迁移",
-        "删除",
-        "回滚",
-        "api变更",
-        "接口变更",
-        "参数变更",
-        "逻辑变更",
-        "流程变更",
-        "结构变更",
-        "schema变更",
-        "cron异常",
-        "事故",
-        "中断",
-        "outage",
-        "security",
-        "payment",
-        "rollback",
+        "生产", "部署", "支付", "安全", "密钥", "权限", "数据库", "迁移", "删除", "回滚",
+        "api变更", "接口变更", "参数变更", "逻辑变更", "流程变更", "结构变更", "schema变更",
+        "cron异常", "事故", "中断", "outage", "security", "payment", "rollback",
     ],
     "low_risk_keywords": [
-        "代码bug",
-        "bug修复",
-        "配置错误",
-        "网络失败",
-        "网络抖动",
-        "cpu过高",
-        "资源使用率高",
-        "磁盘不足",
-        "内存不足",
-        "重复进程",
-        "文档",
-        "索引",
-        "注释",
-        "整理",
-        "readme",
-        "index",
+        "代码bug", "bug修复", "配置错误", "网络失败", "网络抖动", "cpu过高", "资源使用率高",
+        "磁盘不足", "内存不足", "重复进程", "文档", "索引", "注释", "整理", "readme", "index",
     ],
     "priority_keywords": {
         "high": ["紧急", "立刻", "故障", "异常", "失败", "告警", "中断", "不可用", "urgent", "p0", "p1"],
@@ -183,41 +162,15 @@ DEFAULT_ROUTING_RULES: dict[str, Any] = {
         {
             "assignee": "project-agent",
             "keywords": [
-                "项目",
-                "项目优化",
-                "功能优化",
-                "项目耦合",
-                "代码耦合",
-                "项目配置规范",
-                "业务配置规范",
-                "可维护性优化",
-                "重复实现治理",
-                "模块解耦",
-                "项目结构优化",
-                "项目重构",
-                "项目索引",
-                "项目规划",
-                "需求沟通",
+                "项目", "项目优化", "功能优化", "项目耦合", "代码耦合", "项目配置规范", "业务配置规范",
+                "可维护性优化", "重复实现治理", "模块解耦", "项目结构优化", "项目重构", "项目索引", "项目规划", "需求沟通",
             ],
         },
         {
             "assignee": "optimization-agent",
             "keywords": [
-                "优化agent",
-                "agent优化",
-                "工作流优化",
-                "workflow优化",
-                "技能优化",
-                "技能治理",
-                "skill治理",
-                "路由优化",
-                "cron策略",
-                "hooks优化",
-                "policy优化",
-                "流程优化",
-                "经验维护",
-                "频率策略",
-                "全量校准",
+                "优化agent", "agent优化", "工作流优化", "workflow优化", "技能优化", "技能治理",
+                "skill治理", "路由优化", "cron策略", "hooks优化", "policy优化", "流程优化", "经验维护", "频率策略", "全量校准",
             ],
         },
         {
@@ -264,6 +217,18 @@ def parse_bool(value: str | bool | None, default: bool = False) -> bool:
     if norm == "":
         return default
     return norm in {"1", "true", "yes", "y", "on"}
+
+
+def has_context_value(value: Any) -> bool:
+    if isinstance(value, list):
+        return any(has_context_value(v) for v in value)
+    text = str(value or "").strip()
+    if not text:
+        return False
+    lowered = text.lower()
+    if lowered in {"none", "n/a", "na", "unknown", "-", "未提供", "待补充"}:
+        return False
+    return True
 
 
 def emit_json(payload: dict[str, Any]) -> None:
@@ -383,7 +348,7 @@ class PolicyEnforcer:
         if not isinstance(raw, list):
             return []
         out = [str(x).strip() for x in raw if str(x).strip()]
-        return out or ["产品经理", "项目经理", "pm", "PM"]
+        return out or ["浜у搧缁忕悊", "椤圭洰缁忕悊", "pm", "PM"]
 
     def dispatcher_fallback_self_execute(self) -> bool:
         return parse_bool(self.policy.get("dispatcher_fallback_self_execute", True), True)
@@ -506,7 +471,7 @@ class PolicyEnforcer:
         if first_seen_match:
             first_seen = first_seen_match.group(0)
 
-        duration_match = re.search(r"(持续[^，。；;\s]{1,24}|[0-9]+(?:分钟|小时|天|周))", raw)
+        duration_match = re.search(r"(持续[^，。；;\s]{1,24}|[0-9]+(?:分钟|小时|天|day|hour|min))", raw, flags=re.IGNORECASE)
         if duration_match:
             duration = duration_match.group(1)
 
@@ -517,7 +482,7 @@ class PolicyEnforcer:
                 break
 
         evidence_match = re.search(
-            r"(证据路径[:：]?\s*[^\s，。；;]+|/home/[^\s，。；;]+|[A-Za-z]:\\[^\s，。；;]+|[\w./-]+\.(?:json|log|txt))",
+            r"(evidence[:：]?\s*[^\s，。；;]+|证据路径[:：]?\s*[^\s，。；;]+|/home/[^\s，。；;]+|[A-Za-z]:\\[^\s，。；;]+|[\w./-]+\.(?:json|log|txt))",
             raw,
         )
         if evidence_match:
@@ -535,7 +500,16 @@ class PolicyEnforcer:
             "impact": impact,
             "evidence": evidence,
             "target_state": target_state,
+            "current_state": raw,
+            "expected_state": target_state,
+            "operation_path": location,
+            "reproduction_steps": raw,
             "scope": "task_description",
+            "constraints": "",
+            "acceptance_criteria": "",
+            "full_background": raw,
+            "owner": "",
+            "change_id": "",
         }
 
     def evaluate_context_gate(
@@ -550,7 +524,9 @@ class PolicyEnforcer:
                 "clarification_reason": "",
                 "context_completeness": 100.0,
                 "missing_fields": [],
+                "missing_recommended_fields": [],
                 "required_fields": [],
+                "recommended_fields": [],
             }
 
         if request_source != "ai":
@@ -559,23 +535,34 @@ class PolicyEnforcer:
                 "clarification_reason": "",
                 "context_completeness": 100.0,
                 "missing_fields": [],
+                "missing_recommended_fields": [],
                 "required_fields": [],
+                "recommended_fields": [],
             }
 
         required_raw = cfg.get("ai_required_fields", [])
         if not isinstance(required_raw, list):
             raise PolicyError("context_policy.ai_required_fields must be a list")
         required_fields = [str(x).strip() for x in required_raw if str(x).strip()]
+
+        recommended_raw = cfg.get("ai_recommended_fields", [])
+        if not isinstance(recommended_raw, list):
+            raise PolicyError("context_policy.ai_recommended_fields must be a list")
+        recommended_fields = [str(x).strip() for x in recommended_raw if str(x).strip()]
+
         if not required_fields:
             return {
                 "needs_clarification": False,
                 "clarification_reason": "",
                 "context_completeness": 100.0,
                 "missing_fields": [],
+                "missing_recommended_fields": [],
                 "required_fields": [],
+                "recommended_fields": recommended_fields,
             }
 
-        missing_fields = [field for field in required_fields if not str(context_payload.get(field, "")).strip()]
+        missing_fields = [field for field in required_fields if not has_context_value(context_payload.get(field))]
+        missing_recommended_fields = [field for field in recommended_fields if not has_context_value(context_payload.get(field))]
         completeness = round(((len(required_fields) - len(missing_fields)) / len(required_fields)) * 100.0, 2)
         min_pct = float(cfg.get("ai_min_completeness_pct", 100.0) or 100.0)
         needs_clarification = completeness < min_pct or bool(missing_fields)
@@ -590,7 +577,9 @@ class PolicyEnforcer:
             "clarification_reason": reason,
             "context_completeness": completeness,
             "missing_fields": missing_fields,
+            "missing_recommended_fields": missing_recommended_fields,
             "required_fields": required_fields,
+            "recommended_fields": recommended_fields,
         }
 
     def clarification_assignee(self) -> str:
@@ -692,14 +681,36 @@ class PolicyEnforcer:
             context_payload["problem"] = str(args.reason).strip()
         if not str(context_payload.get("target_state", "")).strip():
             context_payload["target_state"] = str(args.result_output).strip()
+        if not str(context_payload.get("current_state", "")).strip():
+            context_payload["current_state"] = str(context_payload.get("problem", "")).strip()
+        if not str(context_payload.get("expected_state", "")).strip():
+            context_payload["expected_state"] = str(context_payload.get("target_state", "")).strip()
+        if not str(context_payload.get("operation_path", "")).strip():
+            context_payload["operation_path"] = str(context_payload.get("location", "")).strip()
+        if not str(context_payload.get("reproduction_steps", "")).strip():
+            context_payload["reproduction_steps"] = str(context_payload.get("problem", "")).strip()
         if not str(context_payload.get("scope", "")).strip():
             context_payload["scope"] = str(args.requirement).strip()
+        if not str(context_payload.get("constraints", "")).strip():
+            context_payload["constraints"] = ""
+        if not str(context_payload.get("acceptance_criteria", "")).strip():
+            context_payload["acceptance_criteria"] = str(args.acceptance).strip()
+        if not str(context_payload.get("full_background", "")).strip():
+            context_payload["full_background"] = str(context_payload.get("problem", "")).strip()
         if not str(context_payload.get("acceptance", "")).strip():
             context_payload["acceptance"] = str(args.acceptance).strip()
         if not str(context_payload.get("evidence", "")).strip():
             context_payload["evidence"] = str(args.observable_outputs).strip()
 
+        owner = str(getattr(args, "owner", "") or context_payload.get("owner", "")).strip()
+        change_id = str(getattr(args, "change_id", "") or context_payload.get("change_id", "")).strip()
+        context_payload["owner"] = owner
+        context_payload["change_id"] = change_id
         context_eval = self.evaluate_context_gate(request_source, context_payload)
+        context_payload["context_contract"] = {
+            "required_fields": list(context_eval.get("required_fields", [])),
+            "recommended_fields": list(context_eval.get("recommended_fields", [])),
+        }
         force_needs_clarification = parse_bool(getattr(args, "force_needs_clarification", ""), False)
         needs_clarification = force_needs_clarification or bool(context_eval["needs_clarification"])
         clarification_reason = str(getattr(args, "clarification_reason", "") or "").strip()
@@ -731,6 +742,8 @@ class PolicyEnforcer:
             "priority": priority,
             "risk_level": risk_level,
             "assignee": assignee,
+            "owner": owner,
+            "change_id": change_id,
             "status": "pending",
             "needs_clarification": needs_clarification,
             "clarification_reason": clarification_reason,
@@ -738,6 +751,7 @@ class PolicyEnforcer:
             "human_confirmed": parse_bool(args.human_confirmed, False),
             "context_completeness": float(context_eval.get("context_completeness", 0.0) or 0.0),
             "context_fields_missing": context_eval.get("missing_fields", []),
+            "context_fields_recommended_missing": context_eval.get("missing_recommended_fields", []),
             "context_payload": context_payload,
             "requirement": args.requirement,
             "result_output": args.result_output,
@@ -759,6 +773,9 @@ class PolicyEnforcer:
                 "needs_clarification": bool(created.get("needs_clarification")),
                 "context_completeness": created.get("context_completeness"),
                 "missing_fields": created.get("context_fields_missing", []),
+                "missing_recommended_fields": created.get("context_fields_recommended_missing", []),
+                "owner": created.get("owner", ""),
+                "change_id": created.get("change_id", ""),
             },
         )
         if entry_agent:
@@ -826,6 +843,7 @@ class PolicyEnforcer:
                 context_payload=merged_context,
                 context_completeness=float(context_eval.get("context_completeness", 0.0) or 0.0),
                 context_fields_missing=list(context_eval.get("missing_fields", [])),
+                context_fields_recommended_missing=list(context_eval.get("missing_recommended_fields", [])),
             )
 
         return self.db.update_clarification(
@@ -836,6 +854,7 @@ class PolicyEnforcer:
             context_payload=merged_context,
             context_completeness=float(context_eval.get("context_completeness", 100.0) or 100.0),
             context_fields_missing=[],
+            context_fields_recommended_missing=list(context_eval.get("missing_recommended_fields", [])),
         )
 
     def pre_stage(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -1099,7 +1118,7 @@ class PolicyEnforcer:
                     prefix_text = str(prefix).strip()
                     if not prefix_text:
                         continue
-                    pattern = rf"^\s*{re.escape(prefix_text)}(?:[\s:：,\-，]+)?(?P<body>.*)$"
+                    pattern = rf"^\s*{re.escape(prefix_text)}(?:[\s:\-]+)?(?P<body>.*)$"
                     m = re.match(pattern, raw_text, flags=re.IGNORECASE)
                     if not m:
                         continue
@@ -1192,6 +1211,8 @@ class PolicyEnforcer:
         )
         context_payload.update(context_patch)
         context_eval = self.evaluate_context_gate(request_source, context_payload)
+        owner = str(context_payload.get("owner", "")).strip()
+        change_id = str(context_payload.get("change_id", "")).strip()
         needs_clarification = bool(context_eval.get("needs_clarification"))
         clarification_reason = str(context_eval.get("clarification_reason", "")).strip()
         if needs_clarification:
@@ -1219,11 +1240,14 @@ class PolicyEnforcer:
             "risk_level": risk_level,
             "pool": pool,
             "assignee": assignee,
+            "owner": owner,
+            "change_id": change_id,
             "need_human_confirm": need_human_confirm,
             "needs_clarification": needs_clarification,
             "clarification_reason": clarification_reason,
             "context_completeness": float(context_eval.get("context_completeness", 100.0) or 100.0),
             "context_fields_missing": list(context_eval.get("missing_fields", [])),
+            "context_fields_recommended_missing": list(context_eval.get("missing_recommended_fields", [])),
             "context_payload": context_payload,
             "hits": {
                 "high_risk": high_risk_hits,
@@ -1394,6 +1418,18 @@ class PolicyEnforcer:
             bool(str(ctx.get("clarification_assignee", "")).strip()),
             f"clarification_assignee={ctx.get('clarification_assignee', '')}",
         )
+        required_ctx = ctx.get("ai_required_fields", [])
+        recommended_ctx = ctx.get("ai_recommended_fields", [])
+        add_check(
+            "context_policy_required_fields_configured",
+            isinstance(required_ctx, list) and bool([x for x in required_ctx if str(x).strip()]),
+            f"required_fields_count={len(required_ctx) if isinstance(required_ctx, list) else 0}",
+        )
+        add_check(
+            "context_policy_recommended_fields_parseable",
+            isinstance(recommended_ctx, list),
+            f"recommended_fields_count={len(recommended_ctx) if isinstance(recommended_ctx, list) else 0}",
+        )
 
         pricing = load_pricing(self.paths.pricing_file)
         pricing_models = pricing.get("models", {})
@@ -1544,6 +1580,8 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--risk-level", default="low")
     create.add_argument("--pool", default="")
     create.add_argument("--assignee", default="")
+    create.add_argument("--owner", default="")
+    create.add_argument("--change-id", default="")
     create.add_argument("--entry-agent", default="")
     create.add_argument("--need-human-confirm", default="")
     create.add_argument("--human-confirmed", default="false")
@@ -1743,4 +1781,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
 

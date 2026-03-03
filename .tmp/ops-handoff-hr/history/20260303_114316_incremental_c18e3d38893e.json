@@ -1,0 +1,111 @@
+{
+  "run_id": "c18e3d38893e",
+  "sender_identity": "ops-agent/ops-cron-runner:incremental",
+  "task_id": "test:ops-handoff",
+  "mode": "incremental",
+  "time": "2026-03-03T11:43:16+08:00",
+  "notify": true,
+  "normal_log_mode": "chat",
+  "risk_reasons": [
+    "new_high_issue=1"
+  ],
+  "change_reasons": [
+    "new_issue=1",
+    "todo_handoff_new=1"
+  ],
+  "major_reasons": [
+    "new_high_issue=1",
+    "new_issue=1",
+    "todo_handoff_new=1"
+  ],
+  "job_name": "ops-handoff",
+  "risk_level": "high",
+  "priority": "high",
+  "run_duration_ms": 5,
+  "risk_signature": "21bd5784d85719b515e56b0fa6fc41fc84647240",
+  "risk_notify_suppressed": false,
+  "risk_notify_suppressed_reason": "",
+  "full_mode": false,
+  "fallback_used": false,
+  "fallback_reasons": [
+    "checkpoint_reset:app.log"
+  ],
+  "logs_scanned": 1,
+  "bytes_read": 58,
+  "findings": 1,
+  "scan_errors": [],
+  "issue_stats": {
+    "new": 1,
+    "new_high": 1,
+    "reopened": 0,
+    "reopened_high": 0,
+    "resolved": 0,
+    "open_total": 1,
+    "open_high_total": 1
+  },
+  "service_delta": {
+    "added": [],
+    "removed": [],
+    "changed": [],
+    "service_error": ""
+  },
+  "metrics": {
+    "anomalies": []
+  },
+  "workflow_health": {
+    "enabled": false,
+    "jobs_file": "",
+    "jobs_total": 0,
+    "jobs_enabled": 0,
+    "failed_count": 0,
+    "stale_failed_count": 0,
+    "new_failed_count": 0,
+    "recovered_count": 0,
+    "failed_jobs": [],
+    "errors": []
+  },
+  "token_usage": {
+    "enabled": false,
+    "db_path": "",
+    "window_hours": 0,
+    "rows": 0,
+    "total_tokens": 0,
+    "total_tokens_m": 0.0,
+    "cost_estimate": 0.0,
+    "by_agent": [],
+    "errors": []
+  },
+  "handoff_summary": {
+    "enabled": true,
+    "mode": "todo_only",
+    "todo_file": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\ops-handoff-hr\\TODO.md",
+    "high_risk_direct_human": true,
+    "todo_new": 1,
+    "todo_items": [
+      {
+        "handoff_key": "issue:cc235c928d4afc449c07",
+        "entity": "issue",
+        "priority": "P0",
+        "risk_level": "high",
+        "assignee": "coordinator"
+      }
+    ],
+    "active_high_risk_items": 1,
+    "errors": []
+  },
+  "top_open_issues": [
+    {
+      "key": "cc235c928d4afc449c07",
+      "title": "﻿2026-03-03 11:00:00 fatal database connection failed",
+      "source": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\ops-handoff-hr\\logs\\app.log",
+      "severity": "high",
+      "first_seen": "2026-03-03T11:43:16+08:00",
+      "last_seen": "2026-03-03T11:43:16+08:00",
+      "status": "open",
+      "occurrences": 1,
+      "missed_runs": 0,
+      "resolved_at": ""
+    }
+  ],
+  "cost_estimate": 0.0
+}

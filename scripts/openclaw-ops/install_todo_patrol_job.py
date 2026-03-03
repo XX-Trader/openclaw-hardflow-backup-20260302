@@ -51,15 +51,22 @@ def build_message(
     max_dispatch: int,
     default_request_source: str,
     ai_context_min_pct: float,
+    skip_ops_incidents: bool,
 ) -> str:
     command = (
         f"python3 {ops_script} --task cron:todo-patrol --max-dispatch {int(max_dispatch)} "
         f"--default-request-source {default_request_source} --ai-context-min-pct {float(ai_context_min_pct)}"
     )
+    if skip_ops_incidents:
+        command += " --skip-ops-incidents"
+    else:
+        command += " --allow-ops-incidents"
     return (
         "You are ops-agent scheduled runner. Run command only:\n"
         f"{command}\n"
-        "Reply only command output; if output is empty, reply NO_REPLY."
+        "Return EXACTLY raw stdout/stderr text from the command; "
+        "do not add explanation, greeting, or prefix text. "
+        "If output is empty, reply NO_REPLY."
     )
 
 
@@ -71,6 +78,7 @@ def upsert_job(
     max_dispatch: int,
     default_request_source: str,
     ai_context_min_pct: float,
+    skip_ops_incidents: bool,
     channel: str,
     target: str,
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -92,7 +100,7 @@ def upsert_job(
         "id": job_id,
         "agentId": "ops-agent",
         "name": "todo_patrol_15m",
-        "description": "Read coordinator TODO and auto-dispatch into task-center every 15 minutes",
+        "description": "Read coordinator TODO and dispatch non-OPS items (OPS incidents stay manual via coordinator)",
         "enabled": True,
         "createdAtMs": created_ms,
         "updatedAtMs": timestamp,
@@ -106,6 +114,7 @@ def upsert_job(
                 max_dispatch=max_dispatch,
                 default_request_source=default_request_source,
                 ai_context_min_pct=ai_context_min_pct,
+                skip_ops_incidents=skip_ops_incidents,
             ),
             "timeoutSeconds": 1200,
         },
@@ -140,6 +149,8 @@ def main() -> None:
     parser.add_argument("--max-dispatch", type=int, default=5)
     parser.add_argument("--default-request-source", default="human", choices=["human", "ai"])
     parser.add_argument("--ai-context-min-pct", type=float, default=100.0)
+    parser.add_argument("--skip-ops-incidents", dest="skip_ops_incidents", action="store_true", default=True)
+    parser.add_argument("--allow-ops-incidents", dest="skip_ops_incidents", action="store_false")
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
     args = parser.parse_args()
@@ -173,6 +184,7 @@ def main() -> None:
         max_dispatch=int(args.max_dispatch),
         default_request_source=str(args.default_request_source),
         ai_context_min_pct=float(args.ai_context_min_pct),
+        skip_ops_incidents=bool(args.skip_ops_incidents),
         channel=channel,
         target=target,
     )
@@ -185,6 +197,7 @@ def main() -> None:
     print(f"ops_script={ops_script}")
     print(f"default_request_source={args.default_request_source}")
     print(f"ai_context_min_pct={float(args.ai_context_min_pct)}")
+    print(f"skip_ops_incidents={str(bool(args.skip_ops_incidents)).lower()}")
     print(f"delivery={channel}:{target}")
 
 

@@ -182,7 +182,10 @@ class TaskCenter:
                 human_confirmed INTEGER NOT NULL DEFAULT 0,
                 context_completeness REAL NOT NULL DEFAULT 0,
                 context_fields_missing TEXT NOT NULL DEFAULT '',
+                context_fields_recommended_missing TEXT NOT NULL DEFAULT '',
                 context_payload TEXT NOT NULL DEFAULT '{}',
+                owner TEXT NOT NULL DEFAULT '',
+                change_id TEXT NOT NULL DEFAULT '',
                 requirement TEXT NOT NULL,
                 result_output TEXT NOT NULL,
                 acceptance TEXT NOT NULL,
@@ -261,7 +264,10 @@ class TaskCenter:
             "clarification_reason": "TEXT NOT NULL DEFAULT ''",
             "context_completeness": "REAL NOT NULL DEFAULT 0",
             "context_fields_missing": "TEXT NOT NULL DEFAULT ''",
+            "context_fields_recommended_missing": "TEXT NOT NULL DEFAULT ''",
             "context_payload": "TEXT NOT NULL DEFAULT '{}'",
+            "owner": "TEXT NOT NULL DEFAULT ''",
+            "change_id": "TEXT NOT NULL DEFAULT ''",
             "observable_outputs": "TEXT NOT NULL DEFAULT ''",
             "acceptance_thresholds": "TEXT NOT NULL DEFAULT ''",
             "score_payload": "TEXT NOT NULL DEFAULT '{}'",
@@ -297,6 +303,11 @@ class TaskCenter:
             context_completeness = 0.0
         context_completeness = max(0.0, min(100.0, context_completeness))
         context_fields_missing = normalize_context_missing_fields(task.get("context_fields_missing"))
+        context_fields_recommended_missing = normalize_context_missing_fields(
+            task.get("context_fields_recommended_missing")
+        )
+        owner = str(task.get("owner", "")).strip()
+        change_id = str(task.get("change_id", "")).strip()
 
         normalized = {
             "task_id": task.get("task_id")
@@ -318,7 +329,10 @@ class TaskCenter:
             "human_confirmed": 1 if to_bool(task.get("human_confirmed", False)) else 0,
             "context_completeness": context_completeness,
             "context_fields_missing": context_fields_missing,
+            "context_fields_recommended_missing": context_fields_recommended_missing,
             "context_payload": ensure_json(context_payload_raw),
+            "owner": owner,
+            "change_id": change_id,
             "requirement": str(task.get("requirement", "")).strip(),
             "result_output": str(task.get("result_output", "")).strip(),
             "acceptance": str(task.get("acceptance", "")).strip(),
@@ -380,7 +394,8 @@ class TaskCenter:
                     assignee, status, retry_count, failure_count,
                     needs_clarification, clarification_reason,
                     need_human_confirm, human_confirmed,
-                    context_completeness, context_fields_missing, context_payload,
+                    context_completeness, context_fields_missing, context_fields_recommended_missing, context_payload,
+                    owner, change_id,
                     requirement, result_output, acceptance,
                     observable_outputs, acceptance_thresholds,
                     score_raw, score_normalized, score_payload,
@@ -391,7 +406,8 @@ class TaskCenter:
                     :assignee, :status, :retry_count, :failure_count,
                     :needs_clarification, :clarification_reason,
                     :need_human_confirm, :human_confirmed,
-                    :context_completeness, :context_fields_missing, :context_payload,
+                    :context_completeness, :context_fields_missing, :context_fields_recommended_missing, :context_payload,
+                    :owner, :change_id,
                     :requirement, :result_output, :acceptance,
                     :observable_outputs, :acceptance_thresholds,
                     :score_raw, :score_normalized, :score_payload,
@@ -412,6 +428,8 @@ class TaskCenter:
                     "risk_level": payload["risk_level"],
                     "request_source": payload["request_source"],
                     "needs_clarification": bool(payload["needs_clarification"]),
+                    "owner": payload.get("owner", ""),
+                    "change_id": payload.get("change_id", ""),
                 },
             )
 
@@ -429,6 +447,8 @@ class TaskCenter:
         data["context_payload"] = parse_json(str(data.get("context_payload") or ""))
         missing_fields = str(data.get("context_fields_missing") or "").strip()
         data["context_fields_missing"] = [x for x in missing_fields.split(",") if x]
+        recommended_missing_fields = str(data.get("context_fields_recommended_missing") or "").strip()
+        data["context_fields_recommended_missing"] = [x for x in recommended_missing_fields.split(",") if x]
         data["score_payload"] = parse_json(str(data.get("score_payload") or ""))
         data["token_usage_summary"] = parse_json(str(data.get("token_usage_summary") or ""))
         data["context_completeness"] = round(float(data.get("context_completeness") or 0.0), 2)
@@ -754,6 +774,7 @@ class TaskCenter:
         context_payload: dict[str, Any] | None = None,
         context_completeness: float | None = None,
         context_fields_missing: list[str] | None = None,
+        context_fields_recommended_missing: list[str] | None = None,
     ) -> dict[str, Any]:
         current = self.get_task(task_id)
         payload = context_payload if isinstance(context_payload, dict) else current.get("context_payload", {})
@@ -773,6 +794,12 @@ class TaskCenter:
             else list(current.get("context_fields_missing") or [])
         )
         missing_text = normalize_context_missing_fields(missing)
+        recommended_missing = (
+            context_fields_recommended_missing
+            if isinstance(context_fields_recommended_missing, list)
+            else list(current.get("context_fields_recommended_missing") or [])
+        )
+        recommended_missing_text = normalize_context_missing_fields(recommended_missing)
         reason = str(clarification_reason or "").strip()
         if needs_clarification and not reason:
             reason = "context_incomplete"
@@ -786,6 +813,7 @@ class TaskCenter:
                     context_payload = ?,
                     context_completeness = ?,
                     context_fields_missing = ?,
+                    context_fields_recommended_missing = ?,
                     updated_at = ?
                 WHERE task_id = ?
                 """,
@@ -795,6 +823,7 @@ class TaskCenter:
                     ensure_json(payload),
                     completeness,
                     missing_text,
+                    recommended_missing_text,
                     utc_now_iso(),
                     task_id,
                 ),
@@ -809,6 +838,7 @@ class TaskCenter:
                     "clarification_reason": reason,
                     "context_completeness": completeness,
                     "context_fields_missing": [x for x in missing_text.split(",") if x],
+                    "context_fields_recommended_missing": [x for x in recommended_missing_text.split(",") if x],
                 },
             )
 

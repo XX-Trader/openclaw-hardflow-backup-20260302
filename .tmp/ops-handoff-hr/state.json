@@ -1,0 +1,52 @@
+{
+  "schema_version": "2026-03-02",
+  "updated_at": "2026-03-03T11:43:27+08:00",
+  "runs": {
+    "incremental": 2,
+    "full": 0,
+    "daily": 0
+  },
+  "checkpoints": {
+    "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\ops-handoff-hr\\logs\\app.log": {
+      "inode": "271341877550715554",
+      "size": 58,
+      "offset": 58,
+      "mtime": 1772509396,
+      "last_mode": "incremental",
+      "bytes_read": 0
+    }
+  },
+  "issues": {
+    "cc235c928d4afc449c07": {
+      "key": "cc235c928d4afc449c07",
+      "title": "﻿2026-03-03 11:00:00 fatal database connection failed",
+      "source": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\ops-handoff-hr\\logs\\app.log",
+      "severity": "high",
+      "first_seen": "2026-03-03T11:43:16+08:00",
+      "last_seen": "2026-03-03T11:43:16+08:00",
+      "status": "open",
+      "occurrences": 1,
+      "missed_runs": 1,
+      "resolved_at": ""
+    }
+  },
+  "services": {},
+  "known_logs": [
+    "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\ops-handoff-hr\\logs\\app.log"
+  ],
+  "last_full_scan_at": "",
+  "last_run_record": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\ops-handoff-hr\\history\\20260303_114327_incremental_d2e3d3b5ba5a.json",
+  "incident_handoff": {
+    "sent_keys": {
+      "issue:cc235c928d4afc449c07": "2026-03-03T11:43:16+08:00"
+    },
+    "updated_at": "2026-03-03T11:43:27+08:00",
+    "pending_keys": [
+      "issue:cc235c928d4afc449c07"
+    ]
+  },
+  "notify_state": {
+    "risk_signature_incremental": "21bd5784d85719b515e56b0fa6fc41fc84647240",
+    "risk_notified_at_incremental": "2026-03-03T11:43:16+08:00"
+  }
+}

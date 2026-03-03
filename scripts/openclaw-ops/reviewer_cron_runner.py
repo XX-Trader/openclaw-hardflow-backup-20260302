@@ -647,6 +647,7 @@ def update_issues(state: dict[str, Any], *, findings: list[dict[str, Any]], mode
     }
 
 def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_mode: str) -> RunResult:
+    run_started_at = datetime.now(TZ)
     repos = discover_git_repos(Path(args.workspace).expanduser())
     repo_state = state.setdefault("repos", {})
     findings: list[dict[str, Any]] = []
@@ -720,29 +721,47 @@ def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_m
     if not notify and normal_log_mode == "chat" and change_reasons:
         notify = True
 
+    run_duration_ms = max(0, int((datetime.now(TZ) - run_started_at).total_seconds() * 1000))
+    run_id = uuid.uuid4().hex[:12]
+    job_name = str(args.task_id or "").split(":", 1)[-1] if ":" in str(args.task_id or "") else "reviewer_hourly_git"
+    risk_level = "high" if risk_reasons else "low"
+    priority = "high" if risk_reasons else ("medium" if change_reasons else "low")
     lines = ["NO_REPLY"]
     if notify:
         lines = [
-            "# reviewer-cron hourly_git",
-            f"- sender_identity: {DEFAULT_SENDER_PREFIX}:hourly_git",
-            f"- task: {args.task_id or '-'}",
-            f"- time: {now_iso()}",
-            f"- normal_log_mode: {normal_log_mode}",
-            f"- repos: total={len(repos)}, head_changed={total_changed_repos}, dirty={total_dirty}",
-            f"- branches_behind: {total_behind_branches}",
-            f"- prs_open: {pr_open_total}",
-            f"- issue: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}",
-            f"- approvals: allow_merge={bool(args.allow_merge)}, approval_file={args.merge_approval_file}",
+            "# reviewer-cron/hourly_git",
+            f"agent: {DEFAULT_SENDER_PREFIX}:hourly_git",
+            f"job: {job_name}",
+            f"task_id: {args.task_id or '-'}",
+            f"run_id: {run_id}",
+            f"time: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
+            f"run_duration_ms: {run_duration_ms}",
+            f"priority: {priority}",
+            f"risk_level: {risk_level}",
+            f"normal_log_mode: {normal_log_mode}",
+            f"repos: total={len(repos)}, head_changed={total_changed_repos}, dirty={total_dirty}",
+            f"branches_behind: {total_behind_branches}",
+            f"prs_open: {pr_open_total}",
+            f"issue_summary: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}",
+            f"approvals: allow_merge={bool(args.allow_merge)}, approval_file={args.merge_approval_file}",
         ]
         if risk_reasons:
-            lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
+            lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
         if change_reasons:
-            lines.append(f"- change_reasons: {', '.join(change_reasons)}")
+            lines.append(f"change_reasons: {', '.join(change_reasons)}")
+        manual_required = bool(risk_reasons)
+        lines.append(f"manual_action_required: {str(manual_required).lower()}")
+        if manual_required:
+            lines.append("manual_action: coordinator 需确认分支同步/合并风险后再继续自动执行。")
 
     record = {
-        "run_id": uuid.uuid4().hex[:12],
+        "run_id": run_id,
         "sender_identity": f"{DEFAULT_SENDER_PREFIX}:hourly_git",
         "task_id": args.task_id,
+        "job_name": job_name,
+        "priority": priority,
+        "risk_level": risk_level,
+        "run_duration_ms": run_duration_ms,
         "mode": "hourly_git",
         "time": now_iso(),
         "notify": notify,
@@ -768,6 +787,7 @@ def run_quality_scan(
     full_scan_skip_unchanged: bool,
     run_fix_command: bool,
 ) -> RunResult:
+    run_started_at = datetime.now(TZ)
     repos = discover_git_repos(Path(args.workspace).expanduser())
     repo_state = state.setdefault("repos", {})
     findings: list[dict[str, Any]] = []
@@ -839,30 +859,48 @@ def run_quality_scan(
     if not notify and normal_log_mode == "chat" and change_reasons:
         notify = True
 
+    run_duration_ms = max(0, int((datetime.now(TZ) - run_started_at).total_seconds() * 1000))
+    run_id = uuid.uuid4().hex[:12]
+    job_name = str(args.task_id or "").split(":", 1)[-1] if ":" in str(args.task_id or "") else f"reviewer_{mode}"
+    risk_level = "high" if risk_reasons else "low"
+    priority = "high" if risk_reasons else ("medium" if change_reasons else "low")
     lines = ["NO_REPLY"]
     if notify:
         lines = [
-            f"# reviewer-cron {mode}",
-            f"- sender_identity: {DEFAULT_SENDER_PREFIX}:{mode}",
-            f"- task: {args.task_id or '-'}",
-            f"- time: {now_iso()}",
-            f"- normal_log_mode: {normal_log_mode}",
-            f"- repos: {len(repos)}",
-            f"- files: scanned={total_files_scanned}, skipped={total_files_skipped}",
-            f"- issue: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}, recurring_open={issue_stats['recurring_open_total']}",
-            f"- io_contract_missing: {total_io_missing} (planner should create TODO/request info before edits)",
+            f"# reviewer-cron/{mode}",
+            f"agent: {DEFAULT_SENDER_PREFIX}:{mode}",
+            f"job: {job_name}",
+            f"task_id: {args.task_id or '-'}",
+            f"run_id: {run_id}",
+            f"time: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
+            f"run_duration_ms: {run_duration_ms}",
+            f"priority: {priority}",
+            f"risk_level: {risk_level}",
+            f"normal_log_mode: {normal_log_mode}",
+            f"repos: {len(repos)}",
+            f"files: scanned={total_files_scanned}, skipped={total_files_skipped}",
+            f"issue_summary: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}, recurring_open={issue_stats['recurring_open_total']}",
+            f"io_contract_missing: {total_io_missing} (planner should create TODO/request info before edits)",
         ]
         if risk_reasons:
-            lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
+            lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
         if change_reasons:
-            lines.append(f"- change_reasons: {', '.join(change_reasons)}")
+            lines.append(f"change_reasons: {', '.join(change_reasons)}")
         if fix_result.get("ran"):
-            lines.append(f"- fix_command: ok={fix_result.get('ok')}, exit_code={fix_result.get('exit_code')}")
+            lines.append(f"fix_command: ok={fix_result.get('ok')}, exit_code={fix_result.get('exit_code')}")
+        manual_required = bool(risk_reasons)
+        lines.append(f"manual_action_required: {str(manual_required).lower()}")
+        if manual_required:
+            lines.append("manual_action: coordinator 需确认高风险代码质量问题后再下发修复。")
 
     record = {
-        "run_id": uuid.uuid4().hex[:12],
+        "run_id": run_id,
         "sender_identity": f"{DEFAULT_SENDER_PREFIX}:{mode}",
         "task_id": args.task_id,
+        "job_name": job_name,
+        "priority": priority,
+        "risk_level": risk_level,
+        "run_duration_ms": run_duration_ms,
         "mode": mode,
         "time": now_iso(),
         "notify": notify,

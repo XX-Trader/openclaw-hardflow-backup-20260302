@@ -88,7 +88,9 @@ def upsert_job(
             "message": (
                 "You are project-index maintainer. Run command only:\n"
                 f"python3 {maintainer_py} --registry {registry} --git-pull --emit-json\n"
-                "Reply only command output; if output is NO_REPLY, reply NO_REPLY."
+                "Return EXACTLY raw stdout/stderr text from the command; "
+                "do not add explanation, greeting, or prefix text. "
+                "If output is NO_REPLY, reply NO_REPLY."
             ),
             "timeoutSeconds": 1800,
         },

@@ -114,10 +114,32 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
         "daily_silent_notify_on_change": False,
         "daily_chat_notify_on_change": False,
         "daily_chat_notify_on_no_change": False,
+        "risk_repeat_cooldown_minutes": 60,
     }
     for key, value in quiet_defaults.items():
         notify_policy.setdefault(key, value)
     data["notify_policy"] = notify_policy
+
+    incident_handoff = data.get("incident_handoff")
+    if not isinstance(incident_handoff, dict):
+        incident_handoff = {}
+    home = Path(os.path.expanduser("~"))
+    handoff_defaults = {
+        "enabled": True,
+        "mode": "todo_only",
+        "todo_file": str(home / ".openclaw" / "workspace-coordinator" / "TODO.md"),
+        "routing_file": str(home / ".openclaw" / "ops" / "policy" / "routing-rules.json"),
+        "source": "ops-cron-runner",
+        "default_assignee": "coordinator",
+        "max_handoff_per_run": 6,
+        "max_issue_items_per_run": 4,
+        "max_workflow_jobs_per_run": 2,
+        "high_risk_direct_human": True,
+        "write_medium_risk_to_todo": False,
+    }
+    for key, value in handoff_defaults.items():
+        incident_handoff.setdefault(key, value)
+    data["incident_handoff"] = incident_handoff
 
     config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -131,7 +153,9 @@ def build_message(command: str) -> str:
         f"{cmd}\n"
         "Do not write, edit, create, move, or delete any file. "
         "Do not execute any other command.\n"
-        "Reply only command stdout/stderr text. If output is empty, reply NO_REPLY."
+        "Return EXACTLY raw stdout/stderr text from the command. "
+        "Do not add explanation, greeting, or prefix text. "
+        "If output is empty, reply NO_REPLY."
     )
 
 

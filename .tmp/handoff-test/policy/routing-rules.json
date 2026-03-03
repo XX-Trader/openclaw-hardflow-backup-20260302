@@ -1,0 +1,13 @@
+{
+  "default_assignee": "coordinator",
+  "assignee_rules": [
+    {
+      "assignee": "ops-agent",
+      "keywords": [
+        "gateway",
+        "timeout",
+        "cron"
+      ]
+    }
+  ]
+}
