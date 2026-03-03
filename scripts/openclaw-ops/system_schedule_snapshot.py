@@ -222,8 +222,7 @@ def build_output(
     change_reasons = compare.get("change_reasons", [])
 
     notify = bool(risk_reasons)
-    if not notify and normal_log_mode == "chat":
-        notify = True
+    # Chat mode can announce schedule drift, but stays quiet when there is no change.
     if not notify and change_reasons and normal_log_mode == "chat":
         notify = True
     if not notify:

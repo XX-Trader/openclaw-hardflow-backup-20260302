@@ -715,8 +715,9 @@ def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_m
         ok_merges = sum(1 for x in merge_actions if x.get("ok", False))
         change_reasons.append(f"merge_actions={len(merge_actions)},ok={ok_merges}")
 
-    notify = bool(risk_reasons or change_reasons)
-    if not notify and normal_log_mode == "chat":
+    # Noise control: silent mode only notifies on risks.
+    notify = bool(risk_reasons)
+    if not notify and normal_log_mode == "chat" and change_reasons:
         notify = True
 
     lines = ["NO_REPLY"]
@@ -833,8 +834,9 @@ def run_quality_scan(
     if mode == "bi_daily_recurring" and issue_stats["recurring_open_total"] > 0:
         change_reasons.append(f"recurring_open={issue_stats['recurring_open_total']}")
 
-    notify = bool(risk_reasons or change_reasons)
-    if not notify and normal_log_mode == "chat":
+    # Noise control: silent mode only notifies on risks.
+    notify = bool(risk_reasons)
+    if not notify and normal_log_mode == "chat" and change_reasons:
         notify = True
 
     lines = ["NO_REPLY"]

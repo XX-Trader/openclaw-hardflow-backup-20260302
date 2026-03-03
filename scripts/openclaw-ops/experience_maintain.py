@@ -136,7 +136,8 @@ def main() -> int:
     save_json(state_path, state)
 
     normal_log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
-    notify = normal_log_mode == "chat"
+    # Only announce when there are concrete maintenance actions.
+    notify = bool(actions)
     output = "NO_REPLY"
     if notify:
         output = (
@@ -144,6 +145,7 @@ def main() -> int:
             f"- sender_identity: {report['sender_identity']}\n"
             f"- task: {args.task_id or '-'}\n"
             f"- time: {report['time']}\n"
+            f"- normal_log_mode: {normal_log_mode}\n"
             f"- actions: {len(actions)}\n"
             f"- evidence: {report_file}"
         )
@@ -157,4 +159,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

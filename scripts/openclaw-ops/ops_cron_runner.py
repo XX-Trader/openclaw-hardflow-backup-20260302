@@ -68,6 +68,17 @@ def normalize_log_mode(value: str, default: str = "silent") -> str:
     return default
 
 
+def parse_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = str(value or "").strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def resolve_log_mode(mode: str, cfg: dict[str, Any], override: str) -> str:
     override_mode = normalize_log_mode(override, default="")
     if override_mode:
@@ -165,6 +176,18 @@ def default_config() -> dict[str, Any]:
             "incremental": {"normal_log_mode": "silent", "risk_always_notify": True},
             "full": {"normal_log_mode": "silent", "risk_always_notify": True},
             "daily": {"normal_log_mode": "silent", "risk_always_notify": True},
+        },
+        "notify_policy": {
+            # In silent mode, only risk notifications should be sent.
+            "silent_notify_on_change": False,
+            # Chat mode can be enabled for change-only notifications when needed.
+            "chat_notify_on_change": False,
+            # Keep chat quiet by default when there is no risk/no change.
+            "chat_notify_on_no_change": False,
+            # Daily mode follows dedicated toggles.
+            "daily_silent_notify_on_change": False,
+            "daily_chat_notify_on_change": False,
+            "daily_chat_notify_on_no_change": False,
         },
     }
 
@@ -1029,9 +1052,21 @@ def run_scan(
         change_reasons.append(f"workflow_recovered={int(workflow_health.get('recovered_count', 0) or 0)}")
 
     major_reasons = [*risk_reasons, *change_reasons]
+    notify_policy = cfg.get("notify_policy")
+    if not isinstance(notify_policy, dict):
+        notify_policy = {}
+    silent_notify_on_change = parse_bool(notify_policy.get("silent_notify_on_change"), False)
+    chat_notify_on_change = parse_bool(notify_policy.get("chat_notify_on_change"), False)
+    chat_notify_on_no_change = parse_bool(notify_policy.get("chat_notify_on_no_change"), False)
+
     notify = bool(risk_reasons)
-    if not notify and log_mode == "chat":
-        notify = True
+    if not notify and change_reasons:
+        if log_mode == "chat":
+            notify = chat_notify_on_change
+        else:
+            notify = silent_notify_on_change
+    elif not notify and log_mode == "chat":
+        notify = chat_notify_on_no_change
 
     output = "NO_REPLY"
     if notify:
@@ -1176,13 +1211,30 @@ def build_daily_report(
     if int(workflow_health.get("recovered_count", 0) or 0) > 0:
         change_reasons.append(f"workflow_recovered={int(workflow_health.get('recovered_count', 0) or 0)}")
 
+    notify_policy = cfg.get("notify_policy")
+    if not isinstance(notify_policy, dict):
+        notify_policy = {}
+    daily_silent_notify_on_change = parse_bool(
+        notify_policy.get("daily_silent_notify_on_change", notify_policy.get("silent_notify_on_change")),
+        False,
+    )
+    daily_chat_notify_on_change = parse_bool(
+        notify_policy.get("daily_chat_notify_on_change", notify_policy.get("chat_notify_on_change")),
+        False,
+    )
+    daily_chat_notify_on_no_change = parse_bool(
+        notify_policy.get("daily_chat_notify_on_no_change", notify_policy.get("chat_notify_on_no_change")),
+        False,
+    )
+
     notify = bool(risk_reasons)
-    if not notify and major_only:
-        notify = bool(change_reasons)
+    if not notify and change_reasons:
+        if normal_log_mode == "chat":
+            notify = daily_chat_notify_on_change
+        else:
+            notify = daily_silent_notify_on_change
     elif not notify and normal_log_mode == "chat":
-        notify = True
-    elif not notify:
-        notify = bool(change_reasons)
+        notify = daily_chat_notify_on_no_change
 
     if not notify:
         sender_identity = sender_identity_for_mode("daily")

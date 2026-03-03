@@ -573,9 +573,8 @@ def main() -> int:
     if high_issues:
         risk_reasons.append(f"high_issues={len(high_issues)}")
 
+    # Keep scheduled audit quiet by default: only notify on high-risk findings.
     notify = bool(risk_reasons)
-    if not notify and normal_log_mode == "chat":
-        notify = True
 
     run_record = {
         "run_id": uuid.uuid4().hex[:12],

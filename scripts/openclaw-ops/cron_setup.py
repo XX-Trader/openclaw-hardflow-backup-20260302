@@ -104,6 +104,21 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
         current[skill] = node
     data["skill_log_switches"] = current
 
+    notify_policy = data.get("notify_policy")
+    if not isinstance(notify_policy, dict):
+        notify_policy = {}
+    quiet_defaults = {
+        "silent_notify_on_change": False,
+        "chat_notify_on_change": False,
+        "chat_notify_on_no_change": False,
+        "daily_silent_notify_on_change": False,
+        "daily_chat_notify_on_change": False,
+        "daily_chat_notify_on_no_change": False,
+    }
+    for key, value in quiet_defaults.items():
+        notify_policy.setdefault(key, value)
+    data["notify_policy"] = notify_policy
+
     config_file.parent.mkdir(parents=True, exist_ok=True)
     config_file.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return data
