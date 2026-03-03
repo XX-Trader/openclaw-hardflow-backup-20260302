@@ -1,0 +1,37 @@
+{
+  "projects": [
+    {
+      "id": "project-a",
+      "name": "project-a",
+      "path": "/srv/project-a",
+      "index_dir": ".workflow/project-index",
+      "auto_pull": true,
+      "git_remote": "origin",
+      "git_branch": "main",
+      "module_globs": [
+        "src/**/*.py",
+        "backend/**/*.py",
+        "frontend/src/**/*"
+      ],
+      "api_globs": [
+        "**/*api*.py",
+        "**/openapi*.yaml",
+        "**/routes*.py"
+      ],
+      "script_globs": [
+        "scripts/**/*",
+        ".workflow/**/*.sh"
+      ]
+    },
+    {
+      "id": "project-b",
+      "name": "project-b",
+      "path": "/srv/project-b",
+      "index_dir": ".workflow/project-index",
+      "auto_pull": true,
+      "git_remote": "origin",
+      "git_branch": "master"
+    }
+  ]
+}
+

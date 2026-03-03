@@ -1,0 +1,17 @@
+{
+  "schema_version": "2026-03-03",
+  "runs": 1,
+  "updated_at": "2026-03-03T14:05:29+00:00",
+  "last_scan_at": "2026-03-03T14:05:29+00:00",
+  "last_scan_head": "691b1babe0a16c8a1d482e4cdeb1d73477de40df",
+  "last_report_file": ".tmp\\gov-reports\\20260303_140529_546a78b7e4ee.json",
+  "fingerprints": {
+    "6911dba7ae478e11": {
+      "time": "2026-03-03T14:05:29+00:00",
+      "changes_count": 1,
+      "report_file": ".tmp\\gov-reports\\20260303_140529_546a78b7e4ee.json"
+    }
+  },
+  "last_pr_url": "",
+  "last_pr_number": 0
+}

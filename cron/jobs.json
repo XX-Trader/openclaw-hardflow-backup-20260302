@@ -57,7 +57,7 @@
         "message": "你是 agent-factory 自动模式。每次运行：1) 执行 python3 $HOME/.openclaw/workflows/openclaw-ops/agent_gap_queue.py --window-days 7 --ops-dir $HOME/.openclaw/workspace-agent-factory/ops --queue-file $HOME/.openclaw/workspace-agent-factory/ops/agent-gap-queue.json --report-file $HOME/.openclaw/workspace-agent-factory/ops/agent-gap-report.md。2) 先做 plan：python3 $HOME/.openclaw/workflows/openclaw-ops/create_agent_from_gap.py --mode plan --queue-file $HOME/.openclaw/workspace-agent-factory/ops/agent-gap-queue.json --config-file $HOME/.openclaw/openclaw.json --output-dir $HOME/.openclaw/workspace-agent-factory/ops/agent-factory --emit-json。3) 仅当 plan 结果 selectedAgentIds 非空且队列存在 open+P1/P2 时，才执行 apply：bash $HOME/.openclaw/workflows/openclaw-ops/run_agent_gap_workflow.sh apply 5 --review-ok --test-ok。4) 若 selectedAgentIds 为空（含“手动已创建过/已存在”场景）或只有P3/空队列，则 NO_REPLY，且不执行 apply。5) 若本次创建/更新了agent，按统一字段汇报：发送人=agent-factory；发现者=agent-gap-scan；任务=cron:57acbf75-0b04-461d-a888-ca02c70fc5d1；来源类别=agent/workflow；位置=...；时间区间=...（UTC+8）；次数=...；根因=...；方案=...；状态=已修复/待确认/观察中；证据=$HOME/.openclaw/workspace-agent-factory/ops/agent-factory/workflow-runs/...。6) 不做高风险操作。"
       },
       "delivery": {
-        "mode": "announce",
+        "mode": "none",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -70,6 +70,12 @@
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0,
         "nextRunAtMs": 1772442375795
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 1800000,
+        "channel": "telegram",
+        "to": "-1003333097130"
       }
     },
     {
@@ -127,7 +133,7 @@
         "message": "你是 optimization-agent 治理巡检。仅用命令执行：python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_incremental_scan.py --mode governance --task cron:optimize-governance --actor optimization-agent。要求：读取脚本输出原样回复；若输出 NO_REPLY，则只回复 NO_REPLY。禁止全量扫描历史记录，按脚本的增量清单（mtime/size/md5）执行。"
       },
       "delivery": {
-        "mode": "announce",
+        "mode": "none",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -140,6 +146,12 @@
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 1800000,
+        "channel": "telegram",
+        "to": "-1003333097130"
       }
     },
     {
@@ -162,7 +174,7 @@
         "message": "你是 optimization-agent 自我进化总结。仅用命令执行：python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_incremental_scan.py --mode evolution --task cron:self-evolution --actor optimization-agent。要求：读取脚本输出原样回复；若输出 NO_REPLY，则只回复 NO_REPLY。禁止全量扫描历史记录，按脚本的增量清单（mtime/size/md5）执行。"
       },
       "delivery": {
-        "mode": "announce",
+        "mode": "none",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -175,6 +187,12 @@
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 1800000,
+        "channel": "telegram",
+        "to": "-1003333097130"
       }
     },
     {
@@ -260,7 +278,7 @@
         "message": "你是 todo-patrol 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/todo_patrol.py --task cron:todo-patrol。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。"
       },
       "delivery": {
-        "mode": "announce",
+        "mode": "none",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -273,6 +291,12 @@
         "lastDelivered": true,
         "lastDeliveryStatus": "delivered",
         "consecutiveErrors": 0
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 1800000,
+        "channel": "telegram",
+        "to": "-1003333097130"
       }
     },
     {

@@ -75,12 +75,20 @@ def build_jobs(
     hourly_allow_merge: bool,
     hourly_push_after_merge: bool,
     hourly_merge_approval_file: str,
+    project_context_gate: bool,
+    project_context_db: str,
+    project_context_assignee: str,
 ) -> list[dict[str, Any]]:
     ts = now_ms()
     cmd_base = (
         f"python3 {runner_py} --workspace {workspace} "
-        f"--state-file {state_file} --history-dir {history_dir} --normal-log-mode {normal_log_mode}"
+        f"--state-file {state_file} --history-dir {history_dir} --normal-log-mode {normal_log_mode} "
+        f"--project-context-db {project_context_db} --project-context-assignee {project_context_assignee}"
     )
+    if project_context_gate:
+        cmd_base += " --project-context-gate"
+    else:
+        cmd_base += " --no-project-context-gate"
 
     cmd_hourly = f"{cmd_base} --mode hourly_git --task-id cron:reviewer-hourly-git"
     if hourly_git_fetch:
@@ -217,6 +225,9 @@ def main() -> None:
     parser.add_argument("--hourly-allow-merge", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--hourly-push-after-merge", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--hourly-merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"))
+    parser.add_argument("--project-context-gate", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--project-context-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--project-context-assignee", default="project-agent")
 
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
@@ -252,6 +263,9 @@ def main() -> None:
         hourly_allow_merge=bool(args.hourly_allow_merge),
         hourly_push_after_merge=bool(args.hourly_push_after_merge),
         hourly_merge_approval_file=str(Path(args.hourly_merge_approval_file).expanduser()),
+        project_context_gate=bool(args.project_context_gate),
+        project_context_db=str(Path(args.project_context_db).expanduser()),
+        project_context_assignee=str(args.project_context_assignee).strip() or "project-agent",
     )
 
     if jobs_path.exists():
@@ -274,6 +288,9 @@ def main() -> None:
     print(f"hourly_allow_merge={bool(args.hourly_allow_merge)}")
     print(f"hourly_merge_approval_file={Path(args.hourly_merge_approval_file).expanduser()}")
     print(f"hourly_push_after_merge={bool(args.hourly_push_after_merge)}")
+    print(f"project_context_gate={bool(args.project_context_gate)}")
+    print(f"project_context_db={Path(args.project_context_db).expanduser()}")
+    print(f"project_context_assignee={str(args.project_context_assignee).strip() or 'project-agent'}")
     for jid in [HOURLY_JOB_ID, DAILY_JOB_ID, BI_DAILY_JOB_ID, WEEKLY_JOB_ID]:
         print(f"{jid}={status.get(jid, 'unknown')}")
 

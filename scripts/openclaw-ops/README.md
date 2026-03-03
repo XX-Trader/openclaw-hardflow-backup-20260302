@@ -50,6 +50,15 @@
   - 只产出“建议与任务包”，禁止自动修改工作流与技能。
   - 任务统一写入 TODO（低优先级、高风险、需人工确认），并带 `scheduled_at`。
   - 按 FIFO 时间顺序入队，且每次运行限制最大产出数量，避免批量风险。
+- `governance_evolution_runner.py`
+  - 工作流仓库增量扫描（默认关注 `scripts/openclaw-ops/`、`hooks/`、`openclaw/`、`setup.py`）。
+  - 支持通过 `openclaw.json + project-registry` 自动定位本地 git 仓库（`--repo-path` 可选）。
+  - 扫描前可自动执行本地 git 更新（`--auto-git-update` + `--git-update-strategy`）。
+  - 支持任务清晰度分流（`--task-clarity auto/clear/ambiguous`）。
+  - 需求不明确时可启用 `project-agent` 前置上下文门（`--project-context-gate`）。
+  - 自动创建 `optimization-agent` 优化任务，支持可选创建 `reviewer` 审查任务。
+  - 可选自动 PR（需要 `gh auth` 与干净工作区），并输出报告与状态。
+  - 默认排除记忆/会话文件（`openclaw-memory/`、`.workflow/experience/`、`.workflow/sessions/`、`memory/`、`MEMORY.md`）。
 - `reviewer_cron_runner.py`
   - Reviewer 定时审查执行器，支持 `hourly_git / daily_incremental / bi_daily_recurring / weekly_structure` 四种模式。
   - 内置问题去重与生命周期：`open / resolved / reopened`。
@@ -85,6 +94,22 @@ python3 scripts/openclaw-ops/cron_setup.py \
   --self-evolution-expr "30 3 * * 1" \
   --self-evolution-min-interval-days 7 \
   --self-evolution-max-tasks-per-run 3 \
+  --install-governance-evolution-job \
+  --governance-evolution-openclaw-config ~/.openclaw/openclaw.json \
+  --governance-evolution-project-registry ~/.openclaw/ops/task-center/project-registry.json \
+  --governance-evolution-repo-id openclaw-hardflow-backup-20260302 \
+  --governance-evolution-auto-git-update \
+  --governance-evolution-git-update-strategy fetch \
+  --governance-evolution-git-fetch-timeout 120 \
+  --governance-evolution-every-ms 21600000 \
+  --governance-evolution-log-mode silent \
+  --governance-evolution-max-files 120 \
+  --governance-evolution-min-interval-minutes 180 \
+  --governance-evolution-task-clarity ambiguous \
+  --governance-evolution-project-context-gate \
+  --governance-evolution-project-context-assignee project-agent \
+  --governance-evolution-create-review-task \
+  --no-governance-evolution-auto-pr \
   --dingtalk-webhook-env DINGTALK_WEBHOOK_URL \
   --dingtalk-secret-env DINGTALK_SECRET \
   --incremental-log-mode silent \
@@ -120,6 +145,23 @@ python3 scripts/openclaw-ops/self_evolution_todo.py \
   --db ~/.openclaw/ops/task-center/task_center.db \
   --min-review-interval-days 7 \
   --max-tasks-per-run 3 \
+  --normal-log-mode silent
+
+# 手动执行一次治理进化增量扫描（可选创建 reviewer 任务）
+python3 scripts/openclaw-ops/governance_evolution_runner.py \
+  --openclaw-config ~/.openclaw/openclaw.json \
+  --project-registry ~/.openclaw/ops/task-center/project-registry.json \
+  --repo-id openclaw-hardflow-backup-20260302 \
+  --auto-git-update \
+  --git-update-strategy fetch \
+  --git-fetch-timeout 120 \
+  --db ~/.openclaw/ops/task-center/task_center.db \
+  --state-file ~/.openclaw/ops/governance-evolution/state.json \
+  --report-dir ~/.openclaw/ops/governance-evolution/reports \
+  --task-clarity ambiguous \
+  --project-context-gate \
+  --project-context-assignee project-agent \
+  --create-review-task \
   --normal-log-mode silent
 
 # 手动执行一次系统定时快照审计
@@ -210,4 +252,86 @@ python3 scripts/openclaw-ops/restore_openclaw_memory.py \
   --project-root /path/to/project \
   --openclaw-home ~/.openclaw \
   --emit-json
+```
+
+## Cron Global Switch (2026-03-03)
+
+- 新增脚本：`scripts/openclaw-ops/cron_switch.py`
+- 用途：运行期一键暂停/恢复定时任务，减少 token 消耗与消息推送。
+
+```bash
+# 查看状态
+python3 scripts/openclaw-ops/cron_switch.py status --emit-json
+
+# 关闭全部定时任务
+python3 scripts/openclaw-ops/cron_switch.py off --scope all --emit-json
+
+# 恢复定时任务（默认只恢复由 switch 关闭的任务）
+python3 scripts/openclaw-ops/cron_switch.py on --scope all --emit-json
+```
+
+## Reviewer Scan Scope (2026-03-03)
+
+- `reviewer_cron_runner.py` 已排除记忆相关路径，不再审查这些文件：
+  - `.workflow/experience/`
+  - `.workflow/sessions/`
+  - `openclaw-memory/`
+  - `MEMORY.md`
+
+## Reviewer Context Gate (2026-03-03)
+
+- `reviewer_cron_runner.py` 在 `daily_incremental / bi_daily_recurring / weekly_structure` 模式下默认开启项目上下文门：
+  - 审查前会先创建 `project-agent` 上下文任务（`reviewer_project_context_preflight`）。
+  - 上下文未就绪时，reviewer 全量审查会被阻断并提示人工处理。
+- 可通过参数关闭（不推荐）：`--no-project-context-gate`
+
+## Conversation Evolution Channel (2026-03-03)
+
+新增脚本：`scripts/openclaw-ops/conversation_evolution_runner.py`
+
+作用：定时扫描近期对话/会话/记忆记录，提炼以下信号并打包为 TODO 任务：
+- bug / 异常 / 失败线索
+- 工作流与路由问题
+- 未闭环事项（pending/todo/blocked）
+- 优化机会（稳定性/成本/token）
+
+`cron_setup.py` 新增参数：
+- `--install-conversation-evolution-job`
+- `--conversation-evolution-openclaw-home`
+- `--conversation-evolution-every-ms`
+- `--conversation-evolution-log-mode`
+- `--conversation-evolution-lookback-hours`
+- `--conversation-evolution-min-interval-minutes`
+- `--conversation-evolution-max-files`
+- `--conversation-evolution-max-tasks-per-run`
+- `--conversation-evolution-schedule-gap-minutes`
+- `--conversation-evolution-assignee`
+
+示例（安装时开启该通道）：
+```bash
+python3 scripts/openclaw-ops/cron_setup.py \
+  --install-conversation-evolution-job \
+  --conversation-evolution-openclaw-home ~/.openclaw \
+  --conversation-evolution-every-ms 21600000 \
+  --conversation-evolution-lookback-hours 72 \
+  --conversation-evolution-min-interval-minutes 180 \
+  --conversation-evolution-max-files 120 \
+  --conversation-evolution-max-tasks-per-run 3 \
+  --conversation-evolution-schedule-gap-minutes 90 \
+  --conversation-evolution-assignee optimization-agent
+```
+
+示例（手动执行一次）：
+```bash
+python3 scripts/openclaw-ops/conversation_evolution_runner.py \
+  --db ~/.openclaw/ops/task-center/task_center.db \
+  --openclaw-home ~/.openclaw \
+  --state-file ~/.openclaw/ops/conversation-evolution/state.json \
+  --report-dir ~/.openclaw/ops/conversation-evolution/reports \
+  --lookback-hours 72 \
+  --min-interval-minutes 180 \
+  --max-files 120 \
+  --max-tasks-per-run 3 \
+  --assignee optimization-agent \
+  --normal-log-mode silent
 ```

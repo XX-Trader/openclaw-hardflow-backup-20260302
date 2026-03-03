@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -29,10 +30,26 @@ from typing import Any
 
 TZ = timezone(timedelta(hours=8))
 DEFAULT_SENDER_PREFIX = "reviewer/reviewer-cron-runner"
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+try:
+    from task_center import TaskCenter  # type: ignore
+except Exception:  # pragma: no cover
+    TaskCenter = None
+
+CONTEXT_GATE_BLOCK_MODES = {"daily_incremental", "bi_daily_recurring", "weekly_structure"}
 SKIP_DIR_NAMES = {
     ".git", ".hg", ".svn", "__pycache__", ".venv", "venv", "node_modules", "dist", "build", ".next", ".idea", ".vscode"
 }
 SCANNED_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg"}
+REVIEW_SKIP_PREFIXES = (
+    ".workflow/experience/",
+    ".workflow/sessions/",
+    "openclaw-memory/",
+)
+REVIEW_SKIP_NAME_SET = {"memory.md", "experience_recall.md"}
 DATA_FUNC_HINTS = ("process", "transform", "compute", "calculate", "parse", "normalize", "aggregate", "clean")
 JS_DATA_FUNC_HINTS = DATA_FUNC_HINTS
 COMMON_DUP_NAMES = {"main", "run", "handler", "init", "setup", "test", "render", "create", "update", "delete"}
@@ -136,6 +153,20 @@ def rel_to(root: Path, path: Path) -> str:
         return str(path.resolve().relative_to(root.resolve())).replace("\\", "/")
     except Exception:
         return str(path.resolve()).replace("\\", "/")
+
+
+def should_skip_review_path(repo: Path, path: Path) -> bool:
+    rel = rel_to(repo, path).strip().replace("\\", "/")
+    if not rel:
+        return False
+    low = rel.lower()
+    name_low = Path(low).name
+    if name_low in REVIEW_SKIP_NAME_SET:
+        return True
+    for prefix in REVIEW_SKIP_PREFIXES:
+        if low.startswith(prefix):
+            return True
+    return False
 
 
 def is_git_repo(path: Path) -> bool:
@@ -246,6 +277,161 @@ def collect_git_snapshot(repo: Path, *, git_fetch: bool, previous_head: str) -> 
     data["dirty_count"] = len([x for x in out.splitlines() if x.strip()]) if rc == 0 else 0
     data["branch_sync"] = collect_branch_sync(repo)
     return data
+
+
+def current_head(repo: Path) -> str:
+    rc, head, _err = run_git(repo, ["rev-parse", "HEAD"], timeout=20)
+    return head.strip() if rc == 0 else ""
+
+
+def load_project_index_summary(repo: Path) -> dict[str, Any]:
+    index_file = repo / ".workflow" / "project-index" / "project-index.json"
+    if not index_file.exists():
+        return {"exists": False, "index_file": str(index_file)}
+    payload = load_json(index_file, {})
+    if not isinstance(payload, dict):
+        return {"exists": True, "valid": False, "index_file": str(index_file)}
+    modules = payload.get("modules", [])
+    apis = payload.get("apis", [])
+    scripts = payload.get("scripts", [])
+    return {
+        "exists": True,
+        "valid": True,
+        "index_file": str(index_file),
+        "generated_at": str(payload.get("generated_at", "")).strip(),
+        "modules_count": len(modules) if isinstance(modules, list) else 0,
+        "apis_count": len(apis) if isinstance(apis, list) else 0,
+        "scripts_count": len(scripts) if isinstance(scripts, list) else 0,
+    }
+
+
+def query_context_task(tc: Any, change_id: str) -> dict[str, Any]:
+    row = tc.conn.execute(
+        """
+        SELECT task_id, status, updated_at
+        FROM tasks
+        WHERE source = 'reviewer-cron-runner'
+          AND task_type = 'reviewer_project_context_preflight'
+          AND change_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (change_id,),
+    ).fetchone()
+    if row is None:
+        return {"exists": False, "task_id": "", "status": ""}
+    return {
+        "exists": True,
+        "task_id": str(row["task_id"] or "").strip(),
+        "status": str(row["status"] or "").strip().lower(),
+        "updated_at": str(row["updated_at"] or "").strip(),
+    }
+
+
+def ensure_project_context_gate(args: argparse.Namespace, mode: str, repos: list[Path]) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "enabled": bool(args.project_context_gate),
+        "mode": mode,
+        "ok": True,
+        "blocked": 0,
+        "created": 0,
+        "pending": 0,
+        "ready": 0,
+        "items": [],
+        "error": "",
+    }
+    if mode not in CONTEXT_GATE_BLOCK_MODES or (not bool(args.project_context_gate)):
+        return result
+    if TaskCenter is None:
+        result["ok"] = False
+        result["blocked"] = len(repos)
+        result["error"] = "task_center_unavailable"
+        return result
+
+    db = TaskCenter(Path(args.project_context_db).expanduser())
+    db.init_schema()
+    try:
+        for repo in repos:
+            key = repo_key(repo)
+            head = current_head(repo)
+            index_summary = load_project_index_summary(repo)
+            change_id = sha1_text(f"reviewer_context|{mode}|{key}|{head}", limit=16)
+            state = query_context_task(db, change_id)
+            item = {
+                "repo": key,
+                "head": head,
+                "change_id": change_id,
+                "index_summary": index_summary,
+                "status": str(state.get("status", "")),
+                "task_id": str(state.get("task_id", "")),
+                "created": False,
+            }
+            status = str(state.get("status", "")).lower()
+            if status == "passed":
+                result["ready"] += 1
+                result["items"].append(item)
+                continue
+            if status in {"pending", "running", "failed", "escalated"}:
+                result["ok"] = False
+                result["blocked"] += 1
+                result["pending"] += 1
+                result["items"].append(item)
+                continue
+
+            requirement = "\n".join(
+                [
+                    f"审查模式: {mode}",
+                    f"目标仓库: {key}",
+                    f"当前HEAD: {head or '-'}",
+                    "请 project-agent 先输出审查上下文包：",
+                    "- 项目简介（目标、关键模块、禁改边界）",
+                    "- 本轮审查应重点覆盖的文件/目录",
+                    "- 已知风险点与建议验证命令",
+                    "- 与项目索引不一致处（如有）",
+                ]
+            )
+            task = db.create_task(
+                {
+                    "task_id": f"todo-reviewer-context-{datetime.now(TZ).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}",
+                    "pool": "todo",
+                    "task_type": "reviewer_project_context_preflight",
+                    "reason": "[REVIEWER_CONTEXT_GATE] project context preflight required",
+                    "source": "reviewer-cron-runner",
+                    "request_source": "ai",
+                    "priority": "medium",
+                    "risk_level": "high",
+                    "assignee": str(args.project_context_assignee or "project-agent").strip() or "project-agent",
+                    "status": "pending",
+                    "need_human_confirm": False,
+                    "human_confirmed": False,
+                    "change_id": change_id,
+                    "requirement": requirement,
+                    "result_output": "输出项目上下文包（简介/索引/重点范围/验证命令）。",
+                    "acceptance": "上下文包可直接支撑 reviewer 全量审查。",
+                    "observable_outputs": "project overview, target paths, validation commands",
+                    "acceptance_thresholds": "包含重点文件范围和至少1条验证命令",
+                    "scheduled_at": (datetime.now(TZ) + timedelta(minutes=1)).isoformat(timespec="seconds"),
+                    "context_payload": {
+                        "mode": mode,
+                        "repo": key,
+                        "head": head,
+                        "index_summary": index_summary,
+                        "gate": "reviewer_project_context_preflight",
+                    },
+                },
+                actor="reviewer-cron-runner",
+            )
+            task_id = str(task.get("task_id", "")).strip()
+            item["created"] = True
+            item["status"] = "pending"
+            item["task_id"] = task_id
+            result["ok"] = False
+            result["blocked"] += 1
+            result["created"] += 1
+            result["items"].append(item)
+    finally:
+        db.close()
+    return result
 
 
 def collect_prs(repo: Path, *, enabled: bool) -> dict[str, Any]:
@@ -564,6 +750,8 @@ def iter_code_files(repo: Path, max_files: int = 3000) -> list[Path]:
             continue
         for name in names:
             path = current_path / name
+            if should_skip_review_path(repo, path):
+                continue
             if path.suffix.lower() in SCANNED_SUFFIXES:
                 files.append(path)
                 if len(files) >= max_files:
@@ -862,6 +1050,72 @@ def run_quality_scan(
 ) -> RunResult:
     run_started_at = datetime.now(TZ)
     repos = discover_git_repos(Path(args.workspace).expanduser())
+    context_gate = ensure_project_context_gate(args, mode, repos)
+    if not bool(context_gate.get("ok", True)):
+        run_duration_ms = max(0, int((datetime.now(TZ) - run_started_at).total_seconds() * 1000))
+        run_id = uuid.uuid4().hex[:12]
+        job_name = (
+            str(args.task_id or "").split(":", 1)[-1]
+            if ":" in str(args.task_id or "")
+            else f"reviewer_{mode}"
+        )
+        lines = [
+            f"# reviewer-cron/{mode}",
+            f"agent: {DEFAULT_SENDER_PREFIX}:{mode}",
+            f"job: {job_name}",
+            f"task_id: {args.task_id or '-'}",
+            f"run_id: {run_id}",
+            f"time: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
+            f"run_duration_ms: {run_duration_ms}",
+            "priority: high",
+            "risk_level: high",
+            f"normal_log_mode: {normal_log_mode}",
+            "context_gate: blocked",
+            f"context_gate_summary: blocked={context_gate.get('blocked', 0)}, created={context_gate.get('created', 0)}, pending={context_gate.get('pending', 0)}, ready={context_gate.get('ready', 0)}",
+            "manual_action_required: true",
+            "manual_action: project-agent 需先产出上下文包，reviewer 再执行全量审查。",
+        ]
+        err = str(context_gate.get("error", "")).strip()
+        if err:
+            lines.append(f"context_gate_error: {err}")
+        for item in context_gate.get("items", [])[:12]:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"- context_repo: {item.get('repo', '')} | status={item.get('status', '-')}"
+                f" | task={item.get('task_id', '-')}"
+            )
+        record = {
+            "run_id": run_id,
+            "sender_identity": f"{DEFAULT_SENDER_PREFIX}:{mode}",
+            "task_id": args.task_id,
+            "job_name": job_name,
+            "priority": "high",
+            "risk_level": "high",
+            "run_duration_ms": run_duration_ms,
+            "mode": mode,
+            "time": now_iso(),
+            "notify": True,
+            "normal_log_mode": normal_log_mode,
+            "risk_reasons": ["project_context_gate_blocked"],
+            "change_reasons": [],
+            "issue_stats": {
+                "new": 0,
+                "new_high": 0,
+                "reopened": 0,
+                "reopened_high": 0,
+                "resolved": 0,
+                "open_total": 0,
+                "open_high_total": 0,
+                "recurring_open_total": 0,
+            },
+            "summary": [],
+            "context_gate": context_gate,
+            "token_usage": {"input_tokens": 0, "output_tokens": 0},
+            "cost_estimate": 0.0,
+        }
+        return RunResult(notify=True, output="\n".join(lines), record=record)
+
     repo_state = state.setdefault("repos", {})
     findings: list[dict[str, Any]] = []
     summary: list[dict[str, Any]] = []
@@ -886,6 +1140,8 @@ def run_quality_scan(
             for rel in changed[:400]:
                 path = repo / rel
                 if path.exists() and path.is_file() and path.suffix.lower() in SCANNED_SUFFIXES:
+                    if should_skip_review_path(repo, path):
+                        continue
                     paths.append(path)
             rec["last_daily_head"] = head
             rec["last_daily_at"] = now_iso()
@@ -982,6 +1238,7 @@ def run_quality_scan(
         "change_reasons": change_reasons,
         "issue_stats": issue_stats,
         "summary": summary[:80],
+        "context_gate": context_gate,
         "fix_result": fix_result,
         "token_usage": {"input_tokens": 0, "output_tokens": 0},
         "cost_estimate": 0.0,
@@ -1032,6 +1289,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-merge", action="store_true")
     parser.add_argument("--push-after-merge", action="store_true")
     parser.add_argument("--merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"), help="json file with approved_prs/approved_branches")
+    parser.add_argument("--project-context-gate", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--project-context-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--project-context-assignee", default="project-agent")
     return parser
 
 

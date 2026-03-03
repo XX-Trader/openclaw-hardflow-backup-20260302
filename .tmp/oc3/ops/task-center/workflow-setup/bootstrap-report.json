@@ -1,0 +1,46 @@
+{
+  "ok": true,
+  "generated_at": "2026-03-03T14:43:40+00:00",
+  "openclaw_home": ".tmp\\oc3",
+  "shared_policy_dir": ".tmp\\oc3\\ops\\policy",
+  "environment": {
+    "python": "D:\\Programs\\anaconda3\\python.exe",
+    "git_found": true,
+    "git_path": "C:\\Program Files\\Git\\cmd\\git.EXE",
+    "git_info": "git version 2.43.0.windows.1",
+    "openclaw_home": ".tmp\\oc3",
+    "openclaw_home_writable": true,
+    "shared_policy_dir_writable": true
+  },
+  "copied_files": [
+    ".tmp\\oc3\\ops\\policy\\policy_enforcer.py",
+    ".tmp\\oc3\\ops\\policy\\task_center.py",
+    ".tmp\\oc3\\ops\\policy\\project_index_maintainer.py",
+    ".tmp\\oc3\\ops\\policy\\policy-config.json",
+    ".tmp\\oc3\\ops\\policy\\routing-rules.json",
+    ".tmp\\oc3\\ops\\policy\\token-pricing.json",
+    ".tmp\\oc3\\ops\\policy\\runtime.env.example",
+    ".tmp\\oc3\\ops\\policy\\project-registry.example.json",
+    ".tmp\\oc3\\ops\\policy\\README.md"
+  ],
+  "projects": [
+    {
+      "name": "openclaw-hardflow-backup-20260302",
+      "project_id": "openclaw-hardflow-backup-20260302",
+      "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+      "ok": true,
+      "writable": true,
+      "git_repo": true,
+      "git_root": "D:/瀛︿範璧勬枡/閲忓寲浜ゆ槗/openclaw-hardflow-backup-20260302",
+      "remote_name": "origin",
+      "git_remote": "https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git",
+      "git_remote_ok": false,
+      "policy_env": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.workflow\\policy.env",
+      "task_db": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.workflow\\task-center\\task_center.db",
+      "errors": [],
+      "notes": [
+        "skip git remote connectivity check"
+      ]
+    }
+  ]
+}

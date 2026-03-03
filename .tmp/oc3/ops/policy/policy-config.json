@@ -1,0 +1,134 @@
+{
+  "schema_version": "2026-03-02",
+  "primary_model": "kimicode/Doubao-Seed-2.0-Code",
+  "fallback_models": [
+    "glmcode/glm-5",
+    "glmcode/glm-4.7",
+    "openai-codex/gpt-5.3-codex-spark"
+  ],
+  "allowed_models": [
+    "kimicode/Doubao-Seed-2.0-Code",
+    "glmcode/glm-5",
+    "glmcode/glm-4.7",
+    "openai-codex/gpt-5.3-codex-spark",
+    "openai-codex/gpt-5.3-codex"
+  ],
+  "allowed_entry_agents": [
+    "coordinator"
+  ],
+  "allow_project_agent_alias_entry": true,
+  "project_agent_alias_prefixes": [
+    "产品经理",
+    "项目经理",
+    "pm",
+    "PM"
+  ],
+  "dispatcher_agent": "coordinator",
+  "dispatcher_fallback_self_execute": true,
+  "blocked_direct_code_agents": [
+    "coordinator",
+    "project-agent"
+  ],
+  "code_execution_stages": [
+    "implement",
+    "fix",
+    "deploy"
+  ],
+  "required_task_fields": [
+    "reason",
+    "requirement",
+    "result_output",
+    "acceptance",
+    "observable_outputs",
+    "acceptance_thresholds"
+  ],
+  "context_policy": {
+    "enabled": true,
+    "ai_required_fields": [
+      "problem",
+      "location",
+      "first_seen_at",
+      "impact",
+      "evidence",
+      "current_state",
+      "expected_state",
+      "operation_path",
+      "reproduction_steps",
+      "scope",
+      "constraints",
+      "acceptance_criteria",
+      "full_background"
+    ],
+    "ai_recommended_fields": [
+      "duration",
+      "trigger_conditions",
+      "dependencies",
+      "history_changes",
+      "deliverables",
+      "owner",
+      "change_id"
+    ],
+    "ai_min_completeness_pct": 100,
+    "clarification_assignee": "project-agent",
+    "human_project_keywords": [
+      "项目",
+      "项目规划",
+      "项目说明",
+      "项目索引",
+      "模块",
+      "readme",
+      "api文档",
+      "接口文档",
+      "产品经理",
+      "项目经理",
+      "workflow",
+      "架构"
+    ]
+  },
+  "high_risk_requires_human_confirm": true,
+  "require_token_usage_before_done": true,
+  "max_failure_before_escalate": 3,
+  "pass_line_raw": 75,
+  "todo_queue_policy": {
+    "require_scheduled_at": true,
+    "fifo": true,
+    "max_dispatch_per_run": 3
+  },
+  "self_evolution_policy": {
+    "enabled": true,
+    "weekly_full_review": true,
+    "min_review_interval_days": 7,
+    "default_pool": "todo",
+    "default_priority": "low",
+    "default_risk_level": "high",
+    "require_human_confirm": true,
+    "max_tasks_per_run": 3,
+    "schedule_gap_minutes": 120
+  },
+  "status_flow": {
+    "pending": [
+      "running",
+      "cancelled",
+      "escalated"
+    ],
+    "running": [
+      "running",
+      "passed",
+      "failed",
+      "escalated",
+      "cancelled"
+    ],
+    "failed": [
+      "running",
+      "escalated",
+      "cancelled"
+    ],
+    "escalated": [
+      "running",
+      "cancelled",
+      "passed"
+    ],
+    "passed": [],
+    "cancelled": []
+  }
+}

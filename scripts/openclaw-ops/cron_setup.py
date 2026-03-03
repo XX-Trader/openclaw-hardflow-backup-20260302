@@ -464,6 +464,135 @@ def build_self_evolution_job(
     }
 
 
+def build_conversation_evolution_job(
+    *,
+    script_py: str,
+    db_file: str,
+    openclaw_home: str,
+    state_file: str,
+    report_dir: str,
+    every_ms: int,
+    log_mode: str,
+    lookback_hours: int,
+    min_interval_minutes: int,
+    max_files: int,
+    max_tasks_per_run: int,
+    schedule_gap_minutes: int,
+    assignee: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+    cmd = (
+        f"python3 \"{script_py}\" --db \"{db_file}\" --openclaw-home \"{openclaw_home}\" "
+        f"--state-file \"{state_file}\" --report-dir \"{report_dir}\" "
+        f"--task-id cron:ops-conversation-evolution "
+        f"--normal-log-mode {normalize_log_mode(log_mode)} "
+        f"--lookback-hours {max(1, int(lookback_hours))} "
+        f"--min-interval-minutes {max(1, int(min_interval_minutes))} "
+        f"--max-files {max(10, int(max_files))} "
+        f"--max-tasks-per-run {max(1, int(max_tasks_per_run))} "
+        f"--schedule-gap-minutes {max(1, int(schedule_gap_minutes))} "
+        f"--assignee \"{str(assignee or 'optimization-agent').strip() or 'optimization-agent'}\""
+    )
+    return {
+        "id": "2f7a6a53-95d3-4cc6-9d12-a4e2f55379c1",
+        "agentId": "ops-agent",
+        "name": "ops_conversation_evolution_incremental",
+        "description": "近期对话复盘增量扫描：提炼 bug/流程问题/未闭环项，生成TODO任务包",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {"kind": "every", "everyMs": int(every_ms), "anchorMs": ts},
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1800},
+    }
+
+
+def build_governance_evolution_job(
+    *,
+    script_py: str,
+    db_file: str,
+    state_file: str,
+    report_dir: str,
+    repo_path: str,
+    openclaw_config: str,
+    project_registry: str,
+    repo_id: str,
+    repo_name: str,
+    auto_git_update: bool,
+    git_update_strategy: str,
+    git_fetch_timeout: int,
+    every_ms: int,
+    log_mode: str,
+    max_files: int,
+    min_interval_minutes: int,
+    task_clarity: str,
+    project_context_gate: bool,
+    project_context_assignee: str,
+    create_review_task: bool,
+    auto_pr: bool,
+    pr_base: str,
+    reviewer_gh_user: str,
+    push_before_pr: bool,
+) -> dict[str, Any]:
+    ts = now_ms()
+    cmd = (
+        f"python3 \"{script_py}\" --db \"{db_file}\" "
+        f"--state-file \"{state_file}\" --report-dir \"{report_dir}\" --mode incremental "
+        f"--task-id cron:ops-governance-evolution "
+        f"--normal-log-mode {normalize_log_mode(log_mode)} "
+        f"--max-files {max(10, int(max_files))} "
+        f"--min-interval-minutes {max(1, int(min_interval_minutes))} "
+        f"--task-clarity {str(task_clarity).strip() or 'ambiguous'} "
+        f"--git-update-strategy {str(git_update_strategy).strip() or 'fetch'} "
+        f"--git-fetch-timeout {max(30, int(git_fetch_timeout))}"
+    )
+    if str(repo_path).strip():
+        cmd += f" --repo-path \"{str(repo_path).strip()}\""
+    if str(openclaw_config).strip():
+        cmd += f" --openclaw-config \"{str(openclaw_config).strip()}\""
+    if str(project_registry).strip():
+        cmd += f" --project-registry \"{str(project_registry).strip()}\""
+    if str(repo_id).strip():
+        cmd += f" --repo-id \"{str(repo_id).strip()}\""
+    if str(repo_name).strip():
+        cmd += f" --repo-name \"{str(repo_name).strip()}\""
+    if auto_git_update:
+        cmd += " --auto-git-update"
+    else:
+        cmd += " --no-auto-git-update"
+    if project_context_gate:
+        cmd += " --project-context-gate"
+    else:
+        cmd += " --no-project-context-gate"
+    if str(project_context_assignee).strip():
+        cmd += f" --project-context-assignee \"{str(project_context_assignee).strip()}\""
+    if create_review_task:
+        cmd += " --create-review-task"
+    if auto_pr:
+        cmd += (
+            " --auto-pr"
+            f" --pr-base \"{str(pr_base).strip() or 'main'}\""
+        )
+        if str(reviewer_gh_user).strip():
+            cmd += f" --reviewer-gh-user \"{str(reviewer_gh_user).strip()}\""
+        if push_before_pr:
+            cmd += " --push-before-pr"
+    return {
+        "id": "4f53f7b7-2c3e-4bb1-9aab-6a62f34d4b71",
+        "agentId": "optimization-agent",
+        "name": "ops_governance_evolution_incremental",
+        "description": "治理进化增量扫描：产出优化/审查任务，可选自动PR",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {"kind": "every", "everyMs": int(every_ms), "anchorMs": ts},
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
+    }
+
+
 def int_or_default(value: Any, default: int = 0) -> int:
     try:
         return int(value)
@@ -690,6 +819,27 @@ def validate_runtime_paths(args: argparse.Namespace) -> dict[str, Any]:
         add_check("daily_work_env_file", str(args.daily_work_env_file), required=False, expect="file")
     if bool(args.install_self_evolution_job):
         add_check("self_evolution_py", str(args.self_evolution_py), required=True, expect="file")
+    if bool(args.install_conversation_evolution_job):
+        add_check("conversation_evolution_py", str(args.conversation_evolution_py), required=True, expect="file")
+        add_check("conversation_evolution_openclaw_home", str(args.conversation_evolution_openclaw_home), required=True, expect="dir")
+    if bool(args.install_governance_evolution_job):
+        add_check("governance_evolution_py", str(args.governance_evolution_py), required=True, expect="file")
+        add_check("governance_evolution_openclaw_config", str(args.governance_evolution_openclaw_config), required=False, expect="file")
+        add_check("governance_evolution_project_registry", str(args.governance_evolution_project_registry), required=False, expect="file")
+        if str(args.governance_evolution_repo_path).strip():
+            add_check(
+                "governance_evolution_repo_path",
+                str(args.governance_evolution_repo_path),
+                required=True,
+                expect="dir",
+            )
+            repo = Path(str(args.governance_evolution_repo_path)).expanduser()
+            if not (repo / ".git").exists():
+                errors.append(f"governance_evolution_repo_not_git:{repo}")
+        else:
+            registry = Path(str(args.governance_evolution_project_registry or "")).expanduser()
+            if not registry.exists():
+                errors.append("governance_evolution_repo_resolve_missing:repo_path_or_project_registry")
 
     return {"ok": len(errors) == 0, "errors": errors, "checks": checks}
 
@@ -792,6 +942,62 @@ def main() -> int:
     parser.add_argument("--self-evolution-min-interval-days", type=int, default=7)
     parser.add_argument("--self-evolution-max-tasks-per-run", type=int, default=3)
 
+    parser.add_argument("--install-conversation-evolution-job", action="store_true")
+    parser.add_argument("--conversation-evolution-py", default=str(home / ".openclaw/ops/conversation_evolution_runner.py"))
+    parser.add_argument("--conversation-evolution-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument(
+        "--conversation-evolution-openclaw-home",
+        default=str(home / ".openclaw"),
+    )
+    parser.add_argument(
+        "--conversation-evolution-state",
+        default=str(home / ".openclaw/ops/conversation-evolution/state.json"),
+    )
+    parser.add_argument(
+        "--conversation-evolution-report-dir",
+        default=str(home / ".openclaw/ops/conversation-evolution/reports"),
+    )
+    parser.add_argument("--conversation-evolution-every-ms", type=int, default=21600000)
+    parser.add_argument("--conversation-evolution-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--conversation-evolution-lookback-hours", type=int, default=72)
+    parser.add_argument("--conversation-evolution-min-interval-minutes", type=int, default=180)
+    parser.add_argument("--conversation-evolution-max-files", type=int, default=120)
+    parser.add_argument("--conversation-evolution-max-tasks-per-run", type=int, default=3)
+    parser.add_argument("--conversation-evolution-schedule-gap-minutes", type=int, default=90)
+    parser.add_argument("--conversation-evolution-assignee", default="optimization-agent")
+
+    parser.add_argument("--install-governance-evolution-job", action="store_true")
+    parser.add_argument("--governance-evolution-py", default=str(home / ".openclaw/ops/governance_evolution_runner.py"))
+    parser.add_argument("--governance-evolution-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument(
+        "--governance-evolution-state",
+        default=str(home / ".openclaw/ops/governance-evolution/state.json"),
+    )
+    parser.add_argument(
+        "--governance-evolution-report-dir",
+        default=str(home / ".openclaw/ops/governance-evolution/reports"),
+    )
+    parser.add_argument("--governance-evolution-repo-path", default="")
+    parser.add_argument("--governance-evolution-openclaw-config", default=str(home / ".openclaw/openclaw.json"))
+    parser.add_argument("--governance-evolution-project-registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
+    parser.add_argument("--governance-evolution-repo-id", default="")
+    parser.add_argument("--governance-evolution-repo-name", default="")
+    parser.add_argument("--governance-evolution-auto-git-update", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--governance-evolution-git-update-strategy", default="fetch", choices=["fetch", "pull-ff-only"])
+    parser.add_argument("--governance-evolution-git-fetch-timeout", type=int, default=120)
+    parser.add_argument("--governance-evolution-every-ms", type=int, default=21600000)
+    parser.add_argument("--governance-evolution-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--governance-evolution-max-files", type=int, default=120)
+    parser.add_argument("--governance-evolution-min-interval-minutes", type=int, default=180)
+    parser.add_argument("--governance-evolution-task-clarity", default="ambiguous", choices=["auto", "clear", "ambiguous"])
+    parser.add_argument("--governance-evolution-project-context-gate", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--governance-evolution-project-context-assignee", default="project-agent")
+    parser.add_argument("--governance-evolution-create-review-task", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--governance-evolution-auto-pr", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--governance-evolution-pr-base", default="main")
+    parser.add_argument("--governance-evolution-reviewer-gh-user", default="")
+    parser.add_argument("--governance-evolution-push-before-pr", action=argparse.BooleanOptionalAction, default=False)
+
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
     parser.add_argument("--keep-name-conflicts", action="store_true")
@@ -811,7 +1017,7 @@ def main() -> int:
     channel = str(args.channel or "").strip()
     target = str(args.to or "").strip()
     if not channel or not target:
-        got_channel, got_target = infer_delivery(jobs, ["ops-agent", "coordinator", "project-agent"])
+        got_channel, got_target = infer_delivery(jobs, ["ops-agent", "optimization-agent", "coordinator", "project-agent"])
         channel = channel or got_channel
         target = target or got_target
     if not target:
@@ -836,6 +1042,8 @@ def main() -> int:
             "system_schedule": args.system_log_mode,
             "daily_work": args.daily_work_log_mode,
             "self_evolution": args.self_evolution_log_mode,
+            "conversation_evolution": args.conversation_evolution_log_mode,
+            "governance_evolution": args.governance_evolution_log_mode,
         },
     )
 
@@ -905,6 +1113,55 @@ def main() -> int:
                 max_tasks_per_run=int(args.self_evolution_max_tasks_per_run),
             )
         )
+    if bool(args.install_conversation_evolution_job):
+        fresh_jobs.append(
+            build_conversation_evolution_job(
+                script_py=str(Path(args.conversation_evolution_py).expanduser()),
+                db_file=str(Path(args.conversation_evolution_db).expanduser()),
+                openclaw_home=str(Path(args.conversation_evolution_openclaw_home).expanduser()),
+                state_file=str(Path(args.conversation_evolution_state).expanduser()),
+                report_dir=str(Path(args.conversation_evolution_report_dir).expanduser()),
+                every_ms=max(600000, int(args.conversation_evolution_every_ms)),
+                log_mode=args.conversation_evolution_log_mode,
+                lookback_hours=max(1, int(args.conversation_evolution_lookback_hours)),
+                min_interval_minutes=max(1, int(args.conversation_evolution_min_interval_minutes)),
+                max_files=max(10, int(args.conversation_evolution_max_files)),
+                max_tasks_per_run=max(1, int(args.conversation_evolution_max_tasks_per_run)),
+                schedule_gap_minutes=max(1, int(args.conversation_evolution_schedule_gap_minutes)),
+                assignee=str(args.conversation_evolution_assignee).strip() or "optimization-agent",
+            )
+        )
+    if bool(args.install_governance_evolution_job):
+        raw_repo_path = str(args.governance_evolution_repo_path or "").strip()
+        repo_path = str(Path(raw_repo_path).expanduser()) if raw_repo_path else ""
+        fresh_jobs.append(
+            build_governance_evolution_job(
+                script_py=str(Path(args.governance_evolution_py).expanduser()),
+                db_file=str(Path(args.governance_evolution_db).expanduser()),
+                state_file=str(Path(args.governance_evolution_state).expanduser()),
+                report_dir=str(Path(args.governance_evolution_report_dir).expanduser()),
+                repo_path=repo_path,
+                openclaw_config=str(Path(args.governance_evolution_openclaw_config).expanduser()),
+                project_registry=str(Path(args.governance_evolution_project_registry).expanduser()),
+                repo_id=str(args.governance_evolution_repo_id).strip(),
+                repo_name=str(args.governance_evolution_repo_name).strip(),
+                auto_git_update=bool(args.governance_evolution_auto_git_update),
+                git_update_strategy=str(args.governance_evolution_git_update_strategy).strip() or "fetch",
+                git_fetch_timeout=max(30, int(args.governance_evolution_git_fetch_timeout)),
+                every_ms=max(600000, int(args.governance_evolution_every_ms)),
+                log_mode=args.governance_evolution_log_mode,
+                max_files=max(10, int(args.governance_evolution_max_files)),
+                min_interval_minutes=max(1, int(args.governance_evolution_min_interval_minutes)),
+                task_clarity=str(args.governance_evolution_task_clarity).strip() or "ambiguous",
+                project_context_gate=bool(args.governance_evolution_project_context_gate),
+                project_context_assignee=str(args.governance_evolution_project_context_assignee).strip() or "project-agent",
+                create_review_task=bool(args.governance_evolution_create_review_task),
+                auto_pr=bool(args.governance_evolution_auto_pr),
+                pr_base=str(args.governance_evolution_pr_base).strip() or "main",
+                reviewer_gh_user=str(args.governance_evolution_reviewer_gh_user).strip(),
+                push_before_pr=bool(args.governance_evolution_push_before_pr),
+            )
+        )
 
     openclaw_home = infer_openclaw_home_from_jobs_file(jobs_file)
     audit_before = audit_jobs(jobs=jobs, expected_jobs=fresh_jobs, channel=channel, target=target)
@@ -957,6 +1214,8 @@ def main() -> int:
             "api_test_job": bool(args.install_api_test_job),
             "daily_work_job": bool(args.install_daily_work_job),
             "self_evolution_job": bool(args.install_self_evolution_job),
+            "conversation_evolution_job": bool(args.install_conversation_evolution_job),
+            "governance_evolution_job": bool(args.install_governance_evolution_job),
         },
     }
     if args.emit_json:

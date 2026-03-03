@@ -17,6 +17,7 @@ from typing import Any
 
 UTC = timezone.utc
 API_ENGINES = {"http", "playwright", "selenium"}
+GIT_UPDATE_STRATEGIES = {"fetch", "pull-ff-only"}
 
 
 def now_iso() -> str:
@@ -348,6 +349,13 @@ def normalize_api_engine(text: str, default: str = "playwright") -> str:
     engine = text.strip().lower()
     if engine in API_ENGINES:
         return engine
+    return default
+
+
+def normalize_git_update_strategy(text: str, default: str = "fetch") -> str:
+    strategy = text.strip().lower()
+    if strategy in GIT_UPDATE_STRATEGIES:
+        return strategy
     return default
 
 
@@ -913,6 +921,37 @@ def run_cron_setup(
     self_evolution_log_mode: str,
     self_evolution_min_interval_days: int,
     self_evolution_max_tasks_per_run: int,
+    install_conversation_evolution_job: bool,
+    conversation_evolution_openclaw_home: str,
+    conversation_evolution_every_ms: int,
+    conversation_evolution_log_mode: str,
+    conversation_evolution_lookback_hours: int,
+    conversation_evolution_min_interval_minutes: int,
+    conversation_evolution_max_files: int,
+    conversation_evolution_max_tasks_per_run: int,
+    conversation_evolution_schedule_gap_minutes: int,
+    conversation_evolution_assignee: str,
+    install_governance_evolution_job: bool,
+    governance_evolution_repo_path: str,
+    governance_evolution_openclaw_config: str,
+    governance_evolution_project_registry: str,
+    governance_evolution_repo_id: str,
+    governance_evolution_repo_name: str,
+    governance_evolution_auto_git_update: bool,
+    governance_evolution_git_update_strategy: str,
+    governance_evolution_git_fetch_timeout: int,
+    governance_evolution_every_ms: int,
+    governance_evolution_log_mode: str,
+    governance_evolution_max_files: int,
+    governance_evolution_min_interval_minutes: int,
+    governance_evolution_task_clarity: str,
+    governance_evolution_project_context_gate: bool,
+    governance_evolution_project_context_assignee: str,
+    governance_evolution_create_review_task: bool,
+    governance_evolution_auto_pr: bool,
+    governance_evolution_pr_base: str,
+    governance_evolution_reviewer_gh_user: str,
+    governance_evolution_push_before_pr: bool,
 ) -> tuple[bool, dict[str, Any]]:
     cmd = [
         sys.executable,
@@ -987,6 +1026,93 @@ def run_cron_setup(
                 str(max(1, int(self_evolution_max_tasks_per_run))),
             ]
         )
+    if install_conversation_evolution_job:
+        cmd.append("--install-conversation-evolution-job")
+        cmd.extend(
+            [
+                "--conversation-evolution-py",
+                str(openclaw_home / "ops" / "conversation_evolution_runner.py"),
+                "--conversation-evolution-openclaw-home",
+                str(conversation_evolution_openclaw_home).strip(),
+                "--conversation-evolution-every-ms",
+                str(max(600000, int(conversation_evolution_every_ms))),
+                "--conversation-evolution-log-mode",
+                conversation_evolution_log_mode,
+                "--conversation-evolution-lookback-hours",
+                str(max(1, int(conversation_evolution_lookback_hours))),
+                "--conversation-evolution-min-interval-minutes",
+                str(max(1, int(conversation_evolution_min_interval_minutes))),
+                "--conversation-evolution-max-files",
+                str(max(10, int(conversation_evolution_max_files))),
+                "--conversation-evolution-max-tasks-per-run",
+                str(max(1, int(conversation_evolution_max_tasks_per_run))),
+                "--conversation-evolution-schedule-gap-minutes",
+                str(max(1, int(conversation_evolution_schedule_gap_minutes))),
+                "--conversation-evolution-assignee",
+                str(conversation_evolution_assignee).strip() or "optimization-agent",
+            ]
+        )
+    if install_governance_evolution_job:
+        cmd.append("--install-governance-evolution-job")
+        if str(governance_evolution_repo_path).strip():
+            cmd.extend(["--governance-evolution-repo-path", str(governance_evolution_repo_path).strip()])
+        cmd.extend(
+            [
+                "--governance-evolution-openclaw-config",
+                str(governance_evolution_openclaw_config).strip(),
+                "--governance-evolution-project-registry",
+                str(governance_evolution_project_registry).strip(),
+                "--governance-evolution-every-ms",
+                str(max(600000, int(governance_evolution_every_ms))),
+                "--governance-evolution-log-mode",
+                governance_evolution_log_mode,
+                "--governance-evolution-max-files",
+                str(max(10, int(governance_evolution_max_files))),
+                "--governance-evolution-min-interval-minutes",
+                str(max(1, int(governance_evolution_min_interval_minutes))),
+                "--governance-evolution-task-clarity",
+                str(governance_evolution_task_clarity or "ambiguous"),
+                "--governance-evolution-git-update-strategy",
+                normalize_git_update_strategy(governance_evolution_git_update_strategy),
+                "--governance-evolution-git-fetch-timeout",
+                str(max(30, int(governance_evolution_git_fetch_timeout))),
+                "--governance-evolution-pr-base",
+                governance_evolution_pr_base,
+            ]
+        )
+        if str(governance_evolution_repo_id).strip():
+            cmd.extend(["--governance-evolution-repo-id", str(governance_evolution_repo_id).strip()])
+        if str(governance_evolution_repo_name).strip():
+            cmd.extend(["--governance-evolution-repo-name", str(governance_evolution_repo_name).strip()])
+        if governance_evolution_auto_git_update:
+            cmd.append("--governance-evolution-auto-git-update")
+        else:
+            cmd.append("--no-governance-evolution-auto-git-update")
+        if governance_evolution_project_context_gate:
+            cmd.append("--governance-evolution-project-context-gate")
+        else:
+            cmd.append("--no-governance-evolution-project-context-gate")
+        if str(governance_evolution_project_context_assignee).strip():
+            cmd.extend(
+                [
+                    "--governance-evolution-project-context-assignee",
+                    str(governance_evolution_project_context_assignee).strip(),
+                ]
+            )
+        if governance_evolution_create_review_task:
+            cmd.append("--governance-evolution-create-review-task")
+        else:
+            cmd.append("--no-governance-evolution-create-review-task")
+        if governance_evolution_auto_pr:
+            cmd.append("--governance-evolution-auto-pr")
+        else:
+            cmd.append("--no-governance-evolution-auto-pr")
+        if governance_evolution_push_before_pr:
+            cmd.append("--governance-evolution-push-before-pr")
+        else:
+            cmd.append("--no-governance-evolution-push-before-pr")
+        if str(governance_evolution_reviewer_gh_user).strip():
+            cmd.extend(["--governance-evolution-reviewer-gh-user", governance_evolution_reviewer_gh_user.strip()])
     if channel:
         cmd.extend(["--channel", channel])
     if target:
@@ -1046,6 +1172,41 @@ def main() -> int:
     parser.add_argument("--cron-self-evolution-log-mode", default="silent", choices=["silent", "chat"])
     parser.add_argument("--cron-self-evolution-min-interval-days", type=int, default=7)
     parser.add_argument("--cron-self-evolution-max-tasks-per-run", type=int, default=3)
+    parser.add_argument("--cron-install-conversation-evolution-job", action="store_true")
+    parser.add_argument("--cron-conversation-evolution-openclaw-home", default="")
+    parser.add_argument("--cron-conversation-evolution-every-ms", type=int, default=21600000)
+    parser.add_argument("--cron-conversation-evolution-log-mode", default="silent", choices=["silent", "chat"])
+    parser.add_argument("--cron-conversation-evolution-lookback-hours", type=int, default=72)
+    parser.add_argument("--cron-conversation-evolution-min-interval-minutes", type=int, default=180)
+    parser.add_argument("--cron-conversation-evolution-max-files", type=int, default=120)
+    parser.add_argument("--cron-conversation-evolution-max-tasks-per-run", type=int, default=3)
+    parser.add_argument("--cron-conversation-evolution-schedule-gap-minutes", type=int, default=90)
+    parser.add_argument("--cron-conversation-evolution-assignee", default="optimization-agent")
+    parser.add_argument("--cron-install-governance-evolution-job", action="store_true")
+    parser.add_argument("--cron-governance-evolution-repo-path", default="")
+    parser.add_argument("--cron-governance-evolution-openclaw-config", default="")
+    parser.add_argument("--cron-governance-evolution-project-registry", default="")
+    parser.add_argument("--cron-governance-evolution-repo-id", default="")
+    parser.add_argument("--cron-governance-evolution-repo-name", default="")
+    parser.add_argument("--cron-governance-evolution-auto-git-update", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--cron-governance-evolution-git-update-strategy",
+        default="fetch",
+        choices=sorted(GIT_UPDATE_STRATEGIES),
+    )
+    parser.add_argument("--cron-governance-evolution-git-fetch-timeout", type=int, default=120)
+    parser.add_argument("--cron-governance-evolution-every-ms", type=int, default=21600000)
+    parser.add_argument("--cron-governance-evolution-log-mode", default="silent", choices=["silent", "chat"])
+    parser.add_argument("--cron-governance-evolution-max-files", type=int, default=120)
+    parser.add_argument("--cron-governance-evolution-min-interval-minutes", type=int, default=180)
+    parser.add_argument("--cron-governance-evolution-task-clarity", default="ambiguous", choices=["auto", "clear", "ambiguous"])
+    parser.add_argument("--cron-governance-evolution-project-context-gate", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--cron-governance-evolution-project-context-assignee", default="project-agent")
+    parser.add_argument("--cron-governance-evolution-create-review-task", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--cron-governance-evolution-auto-pr", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--cron-governance-evolution-pr-base", default="main")
+    parser.add_argument("--cron-governance-evolution-reviewer-gh-user", default="")
+    parser.add_argument("--cron-governance-evolution-push-before-pr", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--skip-ops-sync", action="store_true")
     parser.add_argument("--sync-source-dir", default="")
     parser.add_argument("--sync-manifest-file", default="")
@@ -1141,6 +1302,12 @@ def main() -> int:
     setup_dir = task_center_dir / "workflow-setup"
     ensure_dir(setup_dir)
     ensure_dir(task_center_dir)
+    if not str(args.cron_conversation_evolution_openclaw_home or "").strip():
+        args.cron_conversation_evolution_openclaw_home = str(openclaw_home)
+    if not str(args.cron_governance_evolution_openclaw_config or "").strip():
+        args.cron_governance_evolution_openclaw_config = str(openclaw_home / "openclaw.json")
+    if not str(args.cron_governance_evolution_project_registry or "").strip():
+        args.cron_governance_evolution_project_registry = str(task_center_dir / "project-registry.json")
 
     git_bin = shutil.which("git") or ""
     if not git_bin:
@@ -1165,6 +1332,8 @@ def main() -> int:
     install_api_test_job = bool(args.cron_install_api_test_job)
     install_daily_work_job = bool(args.cron_install_daily_work_job)
     install_self_evolution_job = bool(args.cron_install_self_evolution_job)
+    install_conversation_evolution_job = bool(args.cron_install_conversation_evolution_job)
+    install_governance_evolution_job = bool(args.cron_install_governance_evolution_job)
     sync_ops_enabled = not bool(args.skip_ops_sync)
     memory_restore_enabled = not bool(args.skip_memory_restore)
     configure_runtime_env_enabled = bool(args.configure_runtime_env)
@@ -1249,6 +1418,13 @@ def main() -> int:
                 install_self_evolution_job = prompt_yes_no(
                     "Install weekly self-evolution TODO packager job", default=install_self_evolution_job or True
                 )
+                install_conversation_evolution_job = prompt_yes_no(
+                    "Install conversation evolution incremental job",
+                    default=install_conversation_evolution_job or True,
+                )
+                install_governance_evolution_job = prompt_yes_no(
+                    "Install governance evolution incremental job", default=install_governance_evolution_job or True
+                )
                 args.cron_incremental_log_mode = normalize_log_mode(
                     prompt_text("Incremental log mode (silent/chat)", args.cron_incremental_log_mode or "silent"),
                     default="silent",
@@ -1319,6 +1495,167 @@ def main() -> int:
                         )
                         or "3"
                     )
+                if install_conversation_evolution_job:
+                    args.cron_conversation_evolution_openclaw_home = (
+                        prompt_text(
+                            "Conversation evolution openclaw home",
+                            str(args.cron_conversation_evolution_openclaw_home or openclaw_home),
+                        ).strip()
+                        or str(openclaw_home)
+                    )
+                    args.cron_conversation_evolution_every_ms = int(
+                        prompt_text(
+                            "Conversation evolution interval minutes",
+                            str(max(10, int(args.cron_conversation_evolution_every_ms or 21600000) // 60000)),
+                        )
+                        or "360"
+                    ) * 60000
+                    args.cron_conversation_evolution_log_mode = normalize_log_mode(
+                        prompt_text(
+                            "Conversation evolution log mode (silent/chat)",
+                            args.cron_conversation_evolution_log_mode or "silent",
+                        ),
+                        default="silent",
+                    )
+                    args.cron_conversation_evolution_lookback_hours = int(
+                        prompt_text(
+                            "Conversation evolution lookback hours",
+                            str(args.cron_conversation_evolution_lookback_hours or 72),
+                        )
+                        or "72"
+                    )
+                    args.cron_conversation_evolution_min_interval_minutes = int(
+                        prompt_text(
+                            "Conversation evolution min interval minutes",
+                            str(args.cron_conversation_evolution_min_interval_minutes or 180),
+                        )
+                        or "180"
+                    )
+                    args.cron_conversation_evolution_max_files = int(
+                        prompt_text(
+                            "Conversation evolution max files",
+                            str(args.cron_conversation_evolution_max_files or 120),
+                        )
+                        or "120"
+                    )
+                    args.cron_conversation_evolution_max_tasks_per_run = int(
+                        prompt_text(
+                            "Conversation evolution max tasks per run",
+                            str(args.cron_conversation_evolution_max_tasks_per_run or 3),
+                        )
+                        or "3"
+                    )
+                    args.cron_conversation_evolution_schedule_gap_minutes = int(
+                        prompt_text(
+                            "Conversation evolution schedule gap minutes",
+                            str(args.cron_conversation_evolution_schedule_gap_minutes or 90),
+                        )
+                        or "90"
+                    )
+                    args.cron_conversation_evolution_assignee = (
+                        prompt_text(
+                            "Conversation evolution assignee",
+                            str(args.cron_conversation_evolution_assignee or "optimization-agent"),
+                        ).strip()
+                        or "optimization-agent"
+                    )
+                if install_governance_evolution_job:
+                    args.cron_governance_evolution_repo_path = prompt_text(
+                        "Governance evolution repo path (optional, empty=resolve by registry)",
+                        str(args.cron_governance_evolution_repo_path or ""),
+                    ).strip()
+                    args.cron_governance_evolution_openclaw_config = (
+                        prompt_text(
+                            "Governance evolution openclaw config",
+                            str(args.cron_governance_evolution_openclaw_config or (openclaw_home / "openclaw.json")),
+                        ).strip()
+                        or str(openclaw_home / "openclaw.json")
+                    )
+                    args.cron_governance_evolution_project_registry = (
+                        prompt_text(
+                            "Governance evolution project registry",
+                            str(
+                                args.cron_governance_evolution_project_registry
+                                or (task_center_dir / "project-registry.json")
+                            ),
+                        ).strip()
+                        or str(task_center_dir / "project-registry.json")
+                    )
+                    args.cron_governance_evolution_repo_id = prompt_text(
+                        "Governance evolution repo id (optional)",
+                        str(args.cron_governance_evolution_repo_id or ""),
+                    ).strip()
+                    args.cron_governance_evolution_repo_name = prompt_text(
+                        "Governance evolution repo name (optional)",
+                        str(args.cron_governance_evolution_repo_name or ""),
+                    ).strip()
+                    args.cron_governance_evolution_auto_git_update = prompt_yes_no(
+                        "Governance evolution auto git update before scan",
+                        default=bool(args.cron_governance_evolution_auto_git_update),
+                    )
+                    if bool(args.cron_governance_evolution_auto_git_update):
+                        args.cron_governance_evolution_git_update_strategy = normalize_git_update_strategy(
+                            prompt_text(
+                                "Governance evolution git update strategy (fetch/pull-ff-only)",
+                                str(args.cron_governance_evolution_git_update_strategy or "fetch"),
+                            ),
+                            default="fetch",
+                        )
+                        args.cron_governance_evolution_git_fetch_timeout = int(
+                            prompt_text(
+                                "Governance evolution git fetch timeout seconds",
+                                str(args.cron_governance_evolution_git_fetch_timeout or 120),
+                            )
+                            or "120"
+                        )
+                    args.cron_governance_evolution_every_ms = int(
+                        prompt_text(
+                            "Governance evolution interval minutes",
+                            str(max(10, int(args.cron_governance_evolution_every_ms or 21600000) // 60000)),
+                        )
+                        or "360"
+                    ) * 60000
+                    args.cron_governance_evolution_log_mode = normalize_log_mode(
+                        prompt_text(
+                            "Governance evolution log mode (silent/chat)",
+                            args.cron_governance_evolution_log_mode or "silent",
+                        ),
+                        default="silent",
+                    )
+                    args.cron_governance_evolution_task_clarity = prompt_text(
+                        "Governance evolution task clarity (auto/clear/ambiguous)",
+                        str(args.cron_governance_evolution_task_clarity or "ambiguous"),
+                    ).strip().lower() or "ambiguous"
+                    args.cron_governance_evolution_project_context_gate = prompt_yes_no(
+                        "Governance evolution require project-agent context gate",
+                        default=bool(args.cron_governance_evolution_project_context_gate),
+                    )
+                    if bool(args.cron_governance_evolution_project_context_gate):
+                        args.cron_governance_evolution_project_context_assignee = prompt_text(
+                            "Governance evolution context assignee",
+                            str(args.cron_governance_evolution_project_context_assignee or "project-agent"),
+                        ).strip() or "project-agent"
+                    args.cron_governance_evolution_create_review_task = prompt_yes_no(
+                        "Governance evolution create reviewer task",
+                        default=bool(args.cron_governance_evolution_create_review_task),
+                    )
+                    args.cron_governance_evolution_auto_pr = prompt_yes_no(
+                        "Governance evolution auto create/update PR",
+                        default=bool(args.cron_governance_evolution_auto_pr),
+                    )
+                    if bool(args.cron_governance_evolution_auto_pr):
+                        args.cron_governance_evolution_pr_base = prompt_text(
+                            "Governance evolution PR base branch",
+                            str(args.cron_governance_evolution_pr_base or "main"),
+                        )
+                        args.cron_governance_evolution_reviewer_gh_user = prompt_text(
+                            "Governance evolution PR reviewer (GitHub user, optional)",
+                            str(args.cron_governance_evolution_reviewer_gh_user or ""),
+                        )
+                        args.cron_governance_evolution_push_before_pr = prompt_yes_no(
+                            "Governance evolution push branch before PR",
+                            default=bool(args.cron_governance_evolution_push_before_pr),
+                        )
 
     args.cron_incremental_log_mode = normalize_log_mode(args.cron_incremental_log_mode or "silent", default="silent")
     args.cron_full_log_mode = normalize_log_mode(args.cron_full_log_mode or "silent", default="silent")
@@ -1329,9 +1666,77 @@ def main() -> int:
     args.cron_self_evolution_log_mode = normalize_log_mode(
         args.cron_self_evolution_log_mode or "silent", default="silent"
     )
+    args.cron_conversation_evolution_log_mode = normalize_log_mode(
+        args.cron_conversation_evolution_log_mode or "silent", default="silent"
+    )
+    args.cron_governance_evolution_log_mode = normalize_log_mode(
+        args.cron_governance_evolution_log_mode or "silent", default="silent"
+    )
     args.cron_api_test_engine = normalize_api_engine(args.cron_api_test_engine or "playwright", default="playwright")
     args.cron_self_evolution_min_interval_days = max(1, int(args.cron_self_evolution_min_interval_days or 7))
     args.cron_self_evolution_max_tasks_per_run = max(1, int(args.cron_self_evolution_max_tasks_per_run or 3))
+    args.cron_conversation_evolution_every_ms = max(
+        600000, int(args.cron_conversation_evolution_every_ms or 21600000)
+    )
+    args.cron_conversation_evolution_lookback_hours = max(
+        1, int(args.cron_conversation_evolution_lookback_hours or 72)
+    )
+    args.cron_conversation_evolution_min_interval_minutes = max(
+        1, int(args.cron_conversation_evolution_min_interval_minutes or 180)
+    )
+    args.cron_conversation_evolution_max_files = max(
+        10, int(args.cron_conversation_evolution_max_files or 120)
+    )
+    args.cron_conversation_evolution_max_tasks_per_run = max(
+        1, int(args.cron_conversation_evolution_max_tasks_per_run or 3)
+    )
+    args.cron_conversation_evolution_schedule_gap_minutes = max(
+        1, int(args.cron_conversation_evolution_schedule_gap_minutes or 90)
+    )
+    raw_conversation_home = str(args.cron_conversation_evolution_openclaw_home or "").strip()
+    args.cron_conversation_evolution_openclaw_home = str(
+        Path(raw_conversation_home).expanduser() if raw_conversation_home else openclaw_home
+    )
+    args.cron_conversation_evolution_assignee = (
+        str(args.cron_conversation_evolution_assignee or "optimization-agent").strip() or "optimization-agent"
+    )
+    args.cron_governance_evolution_every_ms = max(600000, int(args.cron_governance_evolution_every_ms or 21600000))
+    args.cron_governance_evolution_max_files = max(10, int(args.cron_governance_evolution_max_files or 120))
+    args.cron_governance_evolution_min_interval_minutes = max(
+        1, int(args.cron_governance_evolution_min_interval_minutes or 180)
+    )
+    raw_governance_repo_path = str(args.cron_governance_evolution_repo_path or "").strip()
+    args.cron_governance_evolution_repo_path = (
+        str(Path(raw_governance_repo_path).expanduser()) if raw_governance_repo_path else ""
+    )
+    raw_governance_cfg = str(args.cron_governance_evolution_openclaw_config or "").strip()
+    args.cron_governance_evolution_openclaw_config = str(
+        Path(raw_governance_cfg).expanduser()
+        if raw_governance_cfg
+        else (openclaw_home / "openclaw.json")
+    )
+    raw_governance_registry = str(args.cron_governance_evolution_project_registry or "").strip()
+    args.cron_governance_evolution_project_registry = str(
+        Path(raw_governance_registry).expanduser()
+        if raw_governance_registry
+        else (task_center_dir / "project-registry.json")
+    )
+    args.cron_governance_evolution_repo_id = str(args.cron_governance_evolution_repo_id or "").strip()
+    args.cron_governance_evolution_repo_name = str(args.cron_governance_evolution_repo_name or "").strip()
+    args.cron_governance_evolution_git_update_strategy = normalize_git_update_strategy(
+        str(args.cron_governance_evolution_git_update_strategy or "fetch"),
+        default="fetch",
+    )
+    args.cron_governance_evolution_git_fetch_timeout = max(
+        30, int(args.cron_governance_evolution_git_fetch_timeout or 120)
+    )
+    raw_clarity = str(args.cron_governance_evolution_task_clarity or "ambiguous").strip().lower()
+    if raw_clarity not in {"auto", "clear", "ambiguous"}:
+        raw_clarity = "ambiguous"
+    args.cron_governance_evolution_task_clarity = raw_clarity
+    args.cron_governance_evolution_project_context_assignee = (
+        str(args.cron_governance_evolution_project_context_assignee or "project-agent").strip() or "project-agent"
+    )
 
     api_test_config_file = (
         Path(args.api_test_config_file).expanduser()
@@ -1525,6 +1930,42 @@ def main() -> int:
                 self_evolution_log_mode=args.cron_self_evolution_log_mode,
                 self_evolution_min_interval_days=int(args.cron_self_evolution_min_interval_days),
                 self_evolution_max_tasks_per_run=int(args.cron_self_evolution_max_tasks_per_run),
+                install_conversation_evolution_job=bool(install_conversation_evolution_job),
+                conversation_evolution_openclaw_home=str(args.cron_conversation_evolution_openclaw_home).strip(),
+                conversation_evolution_every_ms=int(args.cron_conversation_evolution_every_ms),
+                conversation_evolution_log_mode=args.cron_conversation_evolution_log_mode,
+                conversation_evolution_lookback_hours=int(args.cron_conversation_evolution_lookback_hours),
+                conversation_evolution_min_interval_minutes=int(args.cron_conversation_evolution_min_interval_minutes),
+                conversation_evolution_max_files=int(args.cron_conversation_evolution_max_files),
+                conversation_evolution_max_tasks_per_run=int(args.cron_conversation_evolution_max_tasks_per_run),
+                conversation_evolution_schedule_gap_minutes=int(args.cron_conversation_evolution_schedule_gap_minutes),
+                conversation_evolution_assignee=str(args.cron_conversation_evolution_assignee).strip()
+                or "optimization-agent",
+                install_governance_evolution_job=bool(install_governance_evolution_job),
+                governance_evolution_repo_path=str(args.cron_governance_evolution_repo_path).strip(),
+                governance_evolution_openclaw_config=str(args.cron_governance_evolution_openclaw_config).strip(),
+                governance_evolution_project_registry=str(args.cron_governance_evolution_project_registry).strip(),
+                governance_evolution_repo_id=str(args.cron_governance_evolution_repo_id).strip(),
+                governance_evolution_repo_name=str(args.cron_governance_evolution_repo_name).strip(),
+                governance_evolution_auto_git_update=bool(args.cron_governance_evolution_auto_git_update),
+                governance_evolution_git_update_strategy=str(args.cron_governance_evolution_git_update_strategy).strip()
+                or "fetch",
+                governance_evolution_git_fetch_timeout=int(args.cron_governance_evolution_git_fetch_timeout),
+                governance_evolution_every_ms=int(args.cron_governance_evolution_every_ms),
+                governance_evolution_log_mode=args.cron_governance_evolution_log_mode,
+                governance_evolution_max_files=int(args.cron_governance_evolution_max_files),
+                governance_evolution_min_interval_minutes=int(args.cron_governance_evolution_min_interval_minutes),
+                governance_evolution_task_clarity=str(args.cron_governance_evolution_task_clarity or "ambiguous"),
+                governance_evolution_project_context_gate=bool(args.cron_governance_evolution_project_context_gate),
+                governance_evolution_project_context_assignee=str(
+                    args.cron_governance_evolution_project_context_assignee or "project-agent"
+                ).strip()
+                or "project-agent",
+                governance_evolution_create_review_task=bool(args.cron_governance_evolution_create_review_task),
+                governance_evolution_auto_pr=bool(args.cron_governance_evolution_auto_pr),
+                governance_evolution_pr_base=str(args.cron_governance_evolution_pr_base).strip() or "main",
+                governance_evolution_reviewer_gh_user=str(args.cron_governance_evolution_reviewer_gh_user).strip(),
+                governance_evolution_push_before_pr=bool(args.cron_governance_evolution_push_before_pr),
             )
             cron_setup_result = {
                 "ok": cron_ok,
@@ -1546,6 +1987,10 @@ def main() -> int:
                     verify_names.append("ops_daily_work_report_dingtalk")
                 if bool(install_self_evolution_job):
                     verify_names.append("ops_self_evolution_weekly_todo")
+                if bool(install_conversation_evolution_job):
+                    verify_names.append("ops_conversation_evolution_incremental")
+                if bool(install_governance_evolution_job):
+                    verify_names.append("ops_governance_evolution_incremental")
                 verify_ok, verify_payload = run_verify_job_payload_paths(
                     script_path=verify_job_paths_py,
                     jobs_file=openclaw_home / "cron" / "jobs.json",
@@ -1604,6 +2049,8 @@ def main() -> int:
             "install_api_test_job": bool(install_api_test_job),
             "install_daily_work_job": bool(install_daily_work_job),
             "install_self_evolution_job": bool(install_self_evolution_job),
+            "install_conversation_evolution_job": bool(install_conversation_evolution_job),
+            "install_governance_evolution_job": bool(install_governance_evolution_job),
             "incremental_log_mode": args.cron_incremental_log_mode,
             "full_log_mode": args.cron_full_log_mode,
             "daily_log_mode": args.cron_daily_log_mode,
@@ -1620,6 +2067,42 @@ def main() -> int:
             "self_evolution_log_mode": args.cron_self_evolution_log_mode,
             "self_evolution_min_interval_days": int(args.cron_self_evolution_min_interval_days),
             "self_evolution_max_tasks_per_run": int(args.cron_self_evolution_max_tasks_per_run),
+            "conversation_evolution_openclaw_home": str(args.cron_conversation_evolution_openclaw_home).strip(),
+            "conversation_evolution_every_ms": int(args.cron_conversation_evolution_every_ms),
+            "conversation_evolution_log_mode": args.cron_conversation_evolution_log_mode,
+            "conversation_evolution_lookback_hours": int(args.cron_conversation_evolution_lookback_hours),
+            "conversation_evolution_min_interval_minutes": int(args.cron_conversation_evolution_min_interval_minutes),
+            "conversation_evolution_max_files": int(args.cron_conversation_evolution_max_files),
+            "conversation_evolution_max_tasks_per_run": int(args.cron_conversation_evolution_max_tasks_per_run),
+            "conversation_evolution_schedule_gap_minutes": int(args.cron_conversation_evolution_schedule_gap_minutes),
+            "conversation_evolution_assignee": str(args.cron_conversation_evolution_assignee).strip()
+            or "optimization-agent",
+            "governance_evolution_repo_path": str(args.cron_governance_evolution_repo_path).strip(),
+            "governance_evolution_openclaw_config": str(args.cron_governance_evolution_openclaw_config).strip(),
+            "governance_evolution_project_registry": str(args.cron_governance_evolution_project_registry).strip(),
+            "governance_evolution_repo_id": str(args.cron_governance_evolution_repo_id).strip(),
+            "governance_evolution_repo_name": str(args.cron_governance_evolution_repo_name).strip(),
+            "governance_evolution_auto_git_update": bool(args.cron_governance_evolution_auto_git_update),
+            "governance_evolution_git_update_strategy": str(
+                args.cron_governance_evolution_git_update_strategy or "fetch"
+            ).strip()
+            or "fetch",
+            "governance_evolution_git_fetch_timeout": int(args.cron_governance_evolution_git_fetch_timeout),
+            "governance_evolution_every_ms": int(args.cron_governance_evolution_every_ms),
+            "governance_evolution_log_mode": args.cron_governance_evolution_log_mode,
+            "governance_evolution_max_files": int(args.cron_governance_evolution_max_files),
+            "governance_evolution_min_interval_minutes": int(args.cron_governance_evolution_min_interval_minutes),
+            "governance_evolution_task_clarity": str(args.cron_governance_evolution_task_clarity or "ambiguous"),
+            "governance_evolution_project_context_gate": bool(args.cron_governance_evolution_project_context_gate),
+            "governance_evolution_project_context_assignee": str(
+                args.cron_governance_evolution_project_context_assignee or "project-agent"
+            ).strip()
+            or "project-agent",
+            "governance_evolution_create_review_task": bool(args.cron_governance_evolution_create_review_task),
+            "governance_evolution_auto_pr": bool(args.cron_governance_evolution_auto_pr),
+            "governance_evolution_pr_base": str(args.cron_governance_evolution_pr_base).strip() or "main",
+            "governance_evolution_reviewer_gh_user": str(args.cron_governance_evolution_reviewer_gh_user).strip(),
+            "governance_evolution_push_before_pr": bool(args.cron_governance_evolution_push_before_pr),
             "sync_ops_enabled": bool(sync_ops_enabled),
             "sync_source_dir": str(sync_source_dir),
             "sync_manifest_file": str(sync_manifest_file) if sync_manifest_file is not None else "",

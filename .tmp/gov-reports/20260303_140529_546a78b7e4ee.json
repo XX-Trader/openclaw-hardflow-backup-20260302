@@ -1,0 +1,114 @@
+{
+  "run_id": "546a78b7e4ee",
+  "time": "2026-03-03T14:05:29+00:00",
+  "sender_identity": "optimization-agent/governance-evolution",
+  "task_id": "",
+  "normal_log_mode": "silent",
+  "repo_resolve": {
+    "source": "project_registry",
+    "openclaw_config": "C:\\Users\\superma\\.openclaw\\openclaw.json",
+    "project_registry": ".tmp\\project-registry.json",
+    "repo_id": "demo-repo",
+    "repo_name": "",
+    "matches": [
+      {
+        "id": "demo-repo",
+        "name": "Demo Repo",
+        "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\evo-repo"
+      }
+    ],
+    "error": "",
+    "resolved_repo_path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\evo-repo"
+  },
+  "git_update": {
+    "enabled": true,
+    "strategy": "fetch",
+    "ok": true,
+    "fetch_ok": true,
+    "pull_attempted": false,
+    "pull_ok": false,
+    "skipped_reason": "fetch_only",
+    "before_head": "691b1babe0a16c8a1d482e4cdeb1d73477de40df",
+    "after_head": "691b1babe0a16c8a1d482e4cdeb1d73477de40df",
+    "head_changed": false,
+    "dirty": false,
+    "ahead": 0,
+    "behind": 0,
+    "upstream": ""
+  },
+  "repo_path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\.tmp\\evo-repo",
+  "run_allowed": true,
+  "mode": "incremental",
+  "watch_prefixes": [
+    "scripts/openclaw-ops/",
+    "hooks/",
+    "openclaw/",
+    "setup.py"
+  ],
+  "exclude_prefixes": [
+    "openclaw-memory/",
+    ".workflow/experience/",
+    ".workflow/sessions/",
+    "memory/"
+  ],
+  "task_clarity": "ambiguous",
+  "require_project_context": true,
+  "scan_meta": {
+    "mode": "incremental",
+    "diff_base": "HEAD",
+    "head": "691b1babe0a16c8a1d482e4cdeb1d73477de40df",
+    "fallback": "show_head"
+  },
+  "changes_all_count": 1,
+  "changes_all_stats": {
+    "added": 1,
+    "modified": 0,
+    "deleted": 0,
+    "renamed": 0,
+    "other": 0
+  },
+  "changes_scoped_count": 1,
+  "changes_scoped_stats": {
+    "added": 1,
+    "modified": 0,
+    "deleted": 0,
+    "renamed": 0,
+    "other": 0
+  },
+  "changes_scoped": [
+    {
+      "status": "A",
+      "path": "scripts/openclaw-ops/test.txt"
+    }
+  ],
+  "fingerprint": "6911dba7ae478e11",
+  "task_packaging": {
+    "created": [
+      {
+        "task_id": "todo-governance-context-20260303140529-75bc31",
+        "assignee": "project-agent",
+        "type": "governance_evolution_context_preflight"
+      }
+    ],
+    "skipped": [
+      {
+        "fingerprint": "6911dba7ae478e11",
+        "reason": "project_context_required",
+        "task_id": "todo-governance-context-20260303140529-75bc31"
+      }
+    ],
+    "context_gate": {
+      "required": true,
+      "ready": false,
+      "blocked": true,
+      "created_task_id": "todo-governance-context-20260303140529-75bc31",
+      "existing_task_id": "",
+      "status": "created"
+    }
+  },
+  "auto_pr": {
+    "attempted": false,
+    "ok": false,
+    "reason": "not_run"
+  }
+}

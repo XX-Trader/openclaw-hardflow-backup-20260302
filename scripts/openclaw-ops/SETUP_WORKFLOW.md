@@ -96,6 +96,27 @@ python scripts/openclaw-ops/verify_job_payload_paths.py \
 - `--memory-source-dirname`
 - `--memory-workspace`
 - `--disable-memory-legacy-source`
+- `--cron-install-governance-evolution-job`
+- `--cron-governance-evolution-repo-path`
+- `--cron-governance-evolution-openclaw-config`
+- `--cron-governance-evolution-project-registry`
+- `--cron-governance-evolution-repo-id`
+- `--cron-governance-evolution-repo-name`
+- `--cron-governance-evolution-auto-git-update / --no-cron-governance-evolution-auto-git-update`
+- `--cron-governance-evolution-git-update-strategy`
+- `--cron-governance-evolution-git-fetch-timeout`
+- `--cron-governance-evolution-every-ms`
+- `--cron-governance-evolution-log-mode`
+- `--cron-governance-evolution-max-files`
+- `--cron-governance-evolution-min-interval-minutes`
+- `--cron-governance-evolution-task-clarity`
+- `--cron-governance-evolution-project-context-gate / --no-cron-governance-evolution-project-context-gate`
+- `--cron-governance-evolution-project-context-assignee`
+- `--cron-governance-evolution-create-review-task / --no-cron-governance-evolution-create-review-task`
+- `--cron-governance-evolution-auto-pr / --no-cron-governance-evolution-auto-pr`
+- `--cron-governance-evolution-pr-base`
+- `--cron-governance-evolution-reviewer-gh-user`
+- `--cron-governance-evolution-push-before-pr / --no-cron-governance-evolution-push-before-pr`
 
 ## 4. 关键输出字段
 
@@ -111,3 +132,38 @@ python scripts/openclaw-ops/verify_job_payload_paths.py \
 - 兼容旧目录：`<project>/.workflow/openclaw-memory/`（可通过 `--disable-memory-legacy-source` 关闭）。
 - setup 输出新增 `memory_restore` 字段：
   - `warning_projects > 0` 代表存在“项目未同步记忆源目录”等待补齐。
+
+## 6. Governance Evolution（2026-03-03）
+
+- 新增可选 job：`ops_governance_evolution_incremental`（agent: `optimization-agent`）。
+- 能力：
+  - 增量扫描工作流仓库代码变更；
+  - 自动创建 `optimization-agent` 优化任务；
+  - 可选创建 `reviewer` 审查任务；
+  - 可选自动 PR（需要 `gh auth`、本地工作区干净）。
+- 默认排除记忆/会话路径，不会把记忆文件纳入进化审查。
+
+## 7. Governance Git Sync（2026-03-03）
+- 支持按 `openclaw.json + project-registry` 自动解析治理进化目标仓库（`repo-path` 可不填）。
+- 支持扫描前自动更新本地 git：`--cron-governance-evolution-auto-git-update`。
+- 支持更新策略：`--cron-governance-evolution-git-update-strategy fetch|pull-ff-only`。
+- 支持 git 超时配置：`--cron-governance-evolution-git-fetch-timeout`（秒）。
+- 治理报告会输出增量变更统计（added/modified/deleted/renamed）用于更精准自我进化。
+
+## 8. Conversation Evolution（2026-03-03）
+- 新增 job：`ops_conversation_evolution_incremental`（agent: `ops-agent`）。
+- 用途：定时扫描近期对话/会话/记忆记录，识别 bug/流程问题/未闭环项/优化机会，打包 TODO。
+- 该通道只产出任务包，不直接执行高风险改动。
+
+`workflow_setup.py` / `cron_setup.py` 相关参数：
+- `--cron-install-conversation-evolution-job`
+- `--cron-conversation-evolution-openclaw-home`
+- `--cron-conversation-evolution-every-ms`
+- `--cron-conversation-evolution-log-mode`
+- `--cron-conversation-evolution-lookback-hours`
+- `--cron-conversation-evolution-min-interval-minutes`
+- `--cron-conversation-evolution-max-files`
+- `--cron-conversation-evolution-max-tasks-per-run`
+- `--cron-conversation-evolution-schedule-gap-minutes`
+- `--cron-conversation-evolution-assignee`
+- --cron-conversation-evolution-assignee 默认建议值：optimization-agent。

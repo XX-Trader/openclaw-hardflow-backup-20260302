@@ -1,0 +1,145 @@
+{
+  "ok": true,
+  "mode": "init",
+  "generated_at": "2026-03-03T14:43:42+00:00",
+  "openclaw_home": ".tmp\\oc3",
+  "openclaw_selection": "cli-arg",
+  "openclaw_detection": null,
+  "task_center_dir": ".tmp\\oc3\\ops\\task-center",
+  "strict_git_remote": false,
+  "dry_run": false,
+  "scan_roots": [
+    "."
+  ],
+  "openclaw_detect_scan_roots": [
+    "."
+  ],
+  "selected_projects": [
+    {
+      "name": "openclaw-hardflow-backup-20260302",
+      "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+      "writable": true,
+      "git_repo": true,
+      "remote_url": "https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git",
+      "remote_read_ok": true,
+      "remote_push_ok": true,
+      "deployment": {
+        "strategy": "manual",
+        "reason": "no standard deployment marker detected",
+        "commands": [
+          "add project-specific deploy command",
+          "verify health and rollback strategy",
+          "bash scripts/hardflow/hardflow-run.sh deploy"
+        ],
+        "detected_signals": [
+          "hardflow"
+        ],
+        "project_path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302"
+      },
+      "hints": []
+    }
+  ],
+  "generated_projects_file": ".tmp\\oc3\\ops\\task-center\\workflow-setup\\projects.generated.json",
+  "project_registry": ".tmp\\oc3\\ops\\task-center\\project-registry.json",
+  "bootstrap": {
+    "ok": true,
+    "note": "{\"ok\": true, \"generated_at\": \"2026-03-03T14:43:40+00:00\", \"openclaw_home\": \".tmp\\\\oc3\", \"shared_policy_dir\": \".tmp\\\\oc3\\\\ops\\\\policy\", \"environment\": {\"python\": \"D:\\\\Programs\\\\anaconda3\\\\python.exe\", \"git_found\": true, \"git_path\": \"C:\\\\Program Files\\\\Git\\\\cmd\\\\git.EXE\", \"git_info\": \"git version 2.43.0.windows.1\", \"openclaw_home\": \".tmp\\\\oc3\", \"openclaw_home_writable\": true, \"shared_policy_dir_writable\": true}, \"copied_files\": [\".tmp\\\\oc3\\\\ops\\\\policy\\\\policy_enforcer.py\", \".tmp\\\\oc3\\\\ops\\\\policy\\\\task_center.py\", \".tmp\\\\oc3\\\\ops\\\\policy\\\\project_index_maintainer.py\", \".tmp\\\\oc3\\\\ops\\\\policy\\\\policy-config.json\", \".tmp\\\\oc3\\\\ops\\\\policy\\\\routing-rules.json\", \".tmp\\\\oc3\\\\ops\\\\policy\\\\token-pricing.json\", \".tmp\\\\oc3\\\\ops\\\\policy\\\\runtime.env.example\", \".tmp\\\\oc3\\\\ops\\\\policy\\\\project-registry.example.json\", \".tmp\\\\oc3\\\\ops\\\\policy\\\\README.md\"], \"projects\": [{\"name\": \"openclaw-hardflow-backup-20260302\", \"project_id\": \"openclaw-hardflow-backup-20260302\", \"path\": \"D:\\\\学习资料\\\\量化交易\\\\openclaw-hardflow-backup-20260302\", \"ok\": true, \"writable\": true, \"git_repo\": true, \"git_root\": \"D:/瀛︿範璧勬枡/閲忓寲浜ゆ槗/openclaw-hardflow-backup-20260302\", \"remote_name\": \"origin\", \"git_remote\": \"https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git\", \"git_remote_ok\": false, \"policy_env\": \"D:\\\\学习资料\\\\量化交易\\\\openclaw-hardflow-backup-20260302\\\\.workflow\\\\policy.env\", \"task_db\": \"D:\\\\学习资料\\\\量化交易\\\\openclaw-hardflow-backup-20260302\\\\.workflow\\\\task-center\\\\task_center.db\", \"errors\": [], \"notes\": [\"skip git remote connectivity check\"]}]}",
+    "report_json": ".tmp\\oc3\\ops\\task-center\\workflow-setup\\bootstrap-report.json",
+    "report_md": ".tmp\\oc3\\ops\\task-center\\workflow-setup\\bootstrap-report.md"
+  },
+  "install_project_index_job": null,
+  "install_cron_setup": {
+    "ok": false,
+    "note": "script/path validation failed: runner_py_missing:.tmp\\oc3\\ops\\ops_cron_runner.py, conversation_evolution_py_missing:C:\\Users\\superma\\.openclaw\\ops\\conversation_evolution_runner.py; fix paths or pass --skip-script-path-check",
+    "detail": {
+      "ok": false,
+      "error": "script/path validation failed: runner_py_missing:.tmp\\oc3\\ops\\ops_cron_runner.py, conversation_evolution_py_missing:C:\\Users\\superma\\.openclaw\\ops\\conversation_evolution_runner.py; fix paths or pass --skip-script-path-check"
+    }
+  },
+  "ops_sync": null,
+  "memory_restore": null,
+  "sync_source_check": {
+    "source_dir": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops",
+    "nonstandard_layout": false,
+    "allow_nonstandard": false,
+    "missing_required_files": [],
+    "ok": true
+  },
+  "runtime_env": null,
+  "api_test_config_file": ".tmp\\oc3\\ops\\api-test-config.json",
+  "api_test_config_init": null,
+  "job_payload_path_check": null,
+  "cron_setup_options": {
+    "install_system_schedule_job": false,
+    "install_api_test_job": false,
+    "install_daily_work_job": false,
+    "install_self_evolution_job": false,
+    "install_conversation_evolution_job": true,
+    "install_governance_evolution_job": false,
+    "incremental_log_mode": "silent",
+    "full_log_mode": "silent",
+    "daily_log_mode": "silent",
+    "system_log_mode": "silent",
+    "api_test_expr": "*/15 * * * *",
+    "api_test_engine": "playwright",
+    "api_test_log_mode": "silent",
+    "daily_work_expr": "15 0 * * *",
+    "daily_work_log_mode": "silent",
+    "daily_work_env_file": ".tmp\\oc3\\ops\\runtime.env",
+    "dingtalk_webhook_env": "DINGTALK_WEBHOOK_URL",
+    "dingtalk_secret_env": "DINGTALK_SECRET",
+    "self_evolution_expr": "30 3 * * 1",
+    "self_evolution_log_mode": "silent",
+    "self_evolution_min_interval_days": 7,
+    "self_evolution_max_tasks_per_run": 3,
+    "conversation_evolution_openclaw_home": ".tmp\\oc3",
+    "conversation_evolution_every_ms": 21600000,
+    "conversation_evolution_log_mode": "silent",
+    "conversation_evolution_lookback_hours": 72,
+    "conversation_evolution_min_interval_minutes": 180,
+    "conversation_evolution_max_files": 120,
+    "conversation_evolution_max_tasks_per_run": 3,
+    "conversation_evolution_schedule_gap_minutes": 90,
+    "conversation_evolution_assignee": "coordinator",
+    "governance_evolution_repo_path": "",
+    "governance_evolution_openclaw_config": ".tmp\\oc3\\openclaw.json",
+    "governance_evolution_project_registry": ".tmp\\oc3\\ops\\task-center\\project-registry.json",
+    "governance_evolution_repo_id": "",
+    "governance_evolution_repo_name": "",
+    "governance_evolution_auto_git_update": true,
+    "governance_evolution_git_update_strategy": "fetch",
+    "governance_evolution_git_fetch_timeout": 120,
+    "governance_evolution_every_ms": 21600000,
+    "governance_evolution_log_mode": "silent",
+    "governance_evolution_max_files": 120,
+    "governance_evolution_min_interval_minutes": 180,
+    "governance_evolution_task_clarity": "ambiguous",
+    "governance_evolution_project_context_gate": true,
+    "governance_evolution_project_context_assignee": "project-agent",
+    "governance_evolution_create_review_task": true,
+    "governance_evolution_auto_pr": false,
+    "governance_evolution_pr_base": "main",
+    "governance_evolution_reviewer_gh_user": "",
+    "governance_evolution_push_before_pr": false,
+    "sync_ops_enabled": false,
+    "sync_source_dir": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops",
+    "sync_manifest_file": "",
+    "sync_keep_stale_files": false,
+    "allow_nonstandard_sync_source": false,
+    "memory_restore_enabled": false,
+    "memory_restore_check_only": false,
+    "memory_source_dirname": "openclaw-memory",
+    "memory_workspace": "",
+    "memory_legacy_source_enabled": true,
+    "configure_runtime_env": false,
+    "runtime_env_file": ".tmp\\oc3\\ops\\runtime.env",
+    "verify_job_paths_enabled": false,
+    "init_api_test_config_enabled": false
+  },
+  "reports": {
+    "setup_json": ".tmp\\oc3\\ops\\task-center\\workflow-setup\\setup-latest.json",
+    "setup_md": ".tmp\\oc3\\ops\\task-center\\workflow-setup\\setup-latest.md",
+    "bootstrap_json": ".tmp\\oc3\\ops\\task-center\\workflow-setup\\bootstrap-report.json",
+    "bootstrap_md": ".tmp\\oc3\\ops\\task-center\\workflow-setup\\bootstrap-report.md"
+  }
+}
