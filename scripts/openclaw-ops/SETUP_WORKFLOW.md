@@ -91,6 +91,11 @@ python scripts/openclaw-ops/verify_job_payload_paths.py \
 - `--dingtalk-secret`
 - `--set-runtime-env`
 - `--skip-job-path-verify`
+- `--skip-memory-restore`
+- `--memory-restore-check-only`
+- `--memory-source-dirname`
+- `--memory-workspace`
+- `--disable-memory-legacy-source`
 
 ## 4. 关键输出字段
 
@@ -98,3 +103,11 @@ python scripts/openclaw-ops/verify_job_payload_paths.py \
 - `openclaw_detection`: 探测结果原始结构
 - `ops_sync`: 文件同步结果（含新增、删除、移动）
 - `install_cron_setup.detail.audit`: cron 审计前后对比
+
+## 5. Memory Restore（2026-03-03）
+
+- `workflow_setup.py` 现在默认执行项目记忆恢复（copy 模式）。
+- 默认源目录：`<project>/openclaw-memory/`。
+- 兼容旧目录：`<project>/.workflow/openclaw-memory/`（可通过 `--disable-memory-legacy-source` 关闭）。
+- setup 输出新增 `memory_restore` 字段：
+  - `warning_projects > 0` 代表存在“项目未同步记忆源目录”等待补齐。

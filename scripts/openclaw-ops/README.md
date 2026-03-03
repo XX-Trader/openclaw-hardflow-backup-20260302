@@ -101,7 +101,7 @@ python3 scripts/openclaw-ops/ops_cron_runner.py --mode incremental
 # 手动执行一次接口单次全量巡检
 python3 scripts/openclaw-ops/api_test_audit.py \
   --config-file ~/.openclaw/ops/api-test-config.json \
-  --engine playwright \
+  --engine playwright-real \
   --normal-log-mode silent
 
 # 动态调整风险规则（示例）
@@ -198,3 +198,16 @@ python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
    - `history/devtools/<run>/check-id.json` includes console/network/xhr-fetch response excerpts
    - scoring fields: `min_score`, `require_api_output`, `api_expectations`, `expect_selectors`
    - high-risk output includes screenshot path + devtools log path for manual F12-style audit
+
+## Memory Restore (2026-03-03)
+
+- 新增脚本：`scripts/openclaw-ops/restore_openclaw_memory.py`
+- 作用：把项目内记忆目录（默认 `openclaw-memory/`）复制恢复到 OpenClaw workspace。
+- source 缺失不会直接失败，会在输出里给 warning（用于提醒“memory 尚未同步”）。
+
+```bash
+python3 scripts/openclaw-ops/restore_openclaw_memory.py \
+  --project-root /path/to/project \
+  --openclaw-home ~/.openclaw \
+  --emit-json
+```

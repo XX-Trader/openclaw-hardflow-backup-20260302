@@ -165,6 +165,47 @@ def run_ops_sync(
     return False, payload or {"ok": False, "error": err or out or f"sync ops files exit={rc}"}
 
 
+def run_memory_restore(
+    script_path: Path,
+    project_roots: list[Path],
+    openclaw_home: Path,
+    workspace: Path | None,
+    source_dirname: str,
+    disable_legacy_source: bool,
+    dry_run: bool,
+    check_only: bool,
+) -> tuple[bool, dict[str, Any]]:
+    if not script_path.exists():
+        return False, {"ok": False, "error": f"memory restore script missing: {script_path}"}
+
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--openclaw-home",
+        str(openclaw_home),
+        "--source-dirname",
+        str(source_dirname or "openclaw-memory"),
+        "--emit-json",
+    ]
+    if workspace is not None:
+        cmd.extend(["--workspace", str(workspace)])
+    if disable_legacy_source:
+        cmd.append("--disable-legacy-source")
+    if dry_run:
+        cmd.append("--dry-run")
+    if check_only:
+        cmd.append("--check-only")
+    for root in project_roots:
+        cmd.extend(["--project-root", str(root)])
+
+    rc, out, err, _ = run_cmd(cmd, timeout=240)
+    payload = parse_json_output(out)
+    if rc == 0 and isinstance(payload, dict):
+        payload.setdefault("ok", True)
+        return True, payload
+    return False, payload or {"ok": False, "error": err or out or f"memory restore exit={rc}"}
+
+
 def validate_sync_source_layout(source_dir: Path, allow_nonstandard: bool) -> tuple[bool, dict[str, Any]]:
     required = [
         source_dir / "cron_setup.py",
@@ -642,6 +683,7 @@ def write_markdown_report(
     openclaw_detection: dict[str, Any] | None,
     openclaw_selection: str,
     sync_result: dict[str, Any] | None,
+    memory_restore_result: dict[str, Any] | None,
     selected: list[ProjectAssessment],
     bootstrap_result: dict[str, Any] | None,
     install_job_result: dict[str, Any] | None,
@@ -668,6 +710,16 @@ def write_markdown_report(
             lines.append(f"- sync_added: {counts.get('added', 0)}")
             lines.append(f"- sync_updated: {counts.get('updated', 0)}")
             lines.append(f"- sync_deleted: {counts.get('deleted', 0)}")
+    if isinstance(memory_restore_result, dict):
+        lines.append(f"- memory_restore_ok: {memory_restore_result.get('ok')}")
+        lines.append(f"- memory_restore_dry_run: {memory_restore_result.get('dry_run')}")
+        lines.append(f"- memory_workspace: {memory_restore_result.get('target_workspace', '-')}")
+        totals = memory_restore_result.get("totals", {})
+        if isinstance(totals, dict):
+            lines.append(f"- memory_warning_projects: {totals.get('warning_projects', 0)}")
+            lines.append(f"- memory_restored_projects: {totals.get('restored_projects', 0)}")
+            lines.append(f"- memory_copied_files: {totals.get('copied_files', 0)}")
+            lines.append(f"- memory_updated_files: {totals.get('updated_files', 0)}")
     lines.append("")
 
     for item in selected:
@@ -727,6 +779,16 @@ def write_markdown_report(
                     )
     else:
         lines.append("- cron_setup: skipped")
+    if isinstance(memory_restore_result, dict):
+        warnings = memory_restore_result.get("warnings", [])
+        if isinstance(warnings, list) and warnings:
+            lines.append("- memory_restore_warnings:")
+            for warn in warnings[:20]:
+                lines.append(f"  - {warn}")
+            if len(warnings) > 20:
+                lines.append(f"  - ... ({len(warnings) - 20} more)")
+    else:
+        lines.append("- memory_restore: skipped")
     lines.append("")
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -989,6 +1051,11 @@ def main() -> int:
     parser.add_argument("--sync-manifest-file", default="")
     parser.add_argument("--sync-keep-stale-files", action="store_true")
     parser.add_argument("--allow-nonstandard-sync-source", action="store_true")
+    parser.add_argument("--skip-memory-restore", action="store_true")
+    parser.add_argument("--memory-restore-check-only", action="store_true")
+    parser.add_argument("--memory-source-dirname", default="openclaw-memory")
+    parser.add_argument("--memory-workspace", default="")
+    parser.add_argument("--disable-memory-legacy-source", action="store_true")
     parser.add_argument("--skip-init-api-test-config", action="store_true")
     parser.add_argument("--api-test-config-file", default="")
     parser.add_argument("--api-test-base-url", default="http://127.0.0.1:8845")
@@ -1010,6 +1077,7 @@ def main() -> int:
     cron_setup_py = policy_dir.parent / "cron_setup.py"
     detect_openclaw_py = policy_dir.parent / "detect_openclaw_installations.py"
     sync_ops_py = policy_dir.parent / "sync_openclaw_ops_files.py"
+    restore_memory_py = policy_dir.parent / "restore_openclaw_memory.py"
     init_api_cfg_py = policy_dir.parent / "init_api_test_config.py"
     configure_runtime_env_py = policy_dir.parent / "configure_runtime_env.py"
     verify_job_paths_py = policy_dir.parent / "verify_job_payload_paths.py"
@@ -1098,6 +1166,7 @@ def main() -> int:
     install_daily_work_job = bool(args.cron_install_daily_work_job)
     install_self_evolution_job = bool(args.cron_install_self_evolution_job)
     sync_ops_enabled = not bool(args.skip_ops_sync)
+    memory_restore_enabled = not bool(args.skip_memory_restore)
     configure_runtime_env_enabled = bool(args.configure_runtime_env)
     init_api_test_config_enabled = not bool(args.skip_init_api_test_config)
     verify_job_paths_enabled = not bool(args.skip_job_path_verify)
@@ -1293,6 +1362,7 @@ def main() -> int:
         return 2
 
     sync_result: dict[str, Any] | None = None
+    memory_restore_result: dict[str, Any] | None = None
     runtime_env_result: dict[str, Any] | None = None
     api_test_config_init_result: dict[str, Any] | None = None
     job_payload_path_check_result: dict[str, Any] | None = None
@@ -1346,6 +1416,29 @@ def main() -> int:
                 payload = {"ok": False, "error": "configure runtime env failed", "runtime_env": env_payload}
                 print(json.dumps(payload, ensure_ascii=False))
                 return 2
+
+    memory_workspace = Path(args.memory_workspace).expanduser() if str(args.memory_workspace).strip() else None
+    if memory_restore_enabled:
+        memory_ok, memory_payload = run_memory_restore(
+            script_path=restore_memory_py,
+            project_roots=[x.path for x in assessments],
+            openclaw_home=openclaw_home,
+            workspace=memory_workspace,
+            source_dirname=str(args.memory_source_dirname or "openclaw-memory").strip() or "openclaw-memory",
+            disable_legacy_source=bool(args.disable_memory_legacy_source),
+            dry_run=dry_run,
+            check_only=bool(args.memory_restore_check_only),
+        )
+        memory_restore_result = memory_payload
+        if (not memory_ok) and (not dry_run):
+            payload = {
+                "ok": False,
+                "error": "memory restore failed",
+                "openclaw_home": str(openclaw_home),
+                "memory_restore": memory_payload,
+            }
+            print(json.dumps(payload, ensure_ascii=False))
+            return 2
 
     generated_projects_file = setup_dir / "projects.generated.json"
     projects_payload = {"projects": [x.to_bootstrap_item(strict_remote=strict_remote) for x in assessments]}
@@ -1500,6 +1593,7 @@ def main() -> int:
         "install_project_index_job": install_result,
         "install_cron_setup": cron_setup_result,
         "ops_sync": sync_result,
+        "memory_restore": memory_restore_result,
         "sync_source_check": sync_layout_detail,
         "runtime_env": runtime_env_result,
         "api_test_config_file": str(api_test_config_file),
@@ -1531,6 +1625,12 @@ def main() -> int:
             "sync_manifest_file": str(sync_manifest_file) if sync_manifest_file is not None else "",
             "sync_keep_stale_files": bool(args.sync_keep_stale_files),
             "allow_nonstandard_sync_source": bool(args.allow_nonstandard_sync_source),
+            "memory_restore_enabled": bool(memory_restore_enabled),
+            "memory_restore_check_only": bool(args.memory_restore_check_only),
+            "memory_source_dirname": str(args.memory_source_dirname or "openclaw-memory").strip()
+            or "openclaw-memory",
+            "memory_workspace": str(memory_workspace) if memory_workspace is not None else "",
+            "memory_legacy_source_enabled": not bool(args.disable_memory_legacy_source),
             "configure_runtime_env": bool(configure_runtime_env_enabled),
             "runtime_env_file": str(runtime_env_file),
             "verify_job_paths_enabled": bool(verify_job_paths_enabled),
@@ -1553,6 +1653,7 @@ def main() -> int:
         openclaw_detection=openclaw_detection_result,
         openclaw_selection=openclaw_selection,
         sync_result=sync_result,
+        memory_restore_result=memory_restore_result,
         selected=assessments,
         bootstrap_result=bootstrap_result,
         install_job_result=install_result,
@@ -1573,6 +1674,15 @@ def main() -> int:
                 f"added={sync_counts.get('added', 0)}, "
                 f"updated={sync_counts.get('updated', 0)}, "
                 f"deleted={sync_counts.get('deleted', 0)}"
+            )
+        if memory_restore_result:
+            mem_totals = memory_restore_result.get("totals", {}) if isinstance(memory_restore_result, dict) else {}
+            print(
+                "Memory restore: "
+                f"restored_projects={mem_totals.get('restored_projects', 0)}, "
+                f"warning_projects={mem_totals.get('warning_projects', 0)}, "
+                f"copied_files={mem_totals.get('copied_files', 0)}, "
+                f"updated_files={mem_totals.get('updated_files', 0)}"
             )
         if bootstrap_result:
             print(f"Bootstrap: {'ok' if bootstrap_result.get('ok') else 'failed'}")
