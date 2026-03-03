@@ -21,12 +21,27 @@ def default_config(base_url: str) -> dict[str, Any]:
     root = base_url.rstrip("/")
     return {
         "engine": "playwright-real",
+        "endpoint_engine": "http",
         "forbid_http_engine": True,
         "require_browser_checks": True,
+        "freshness_auto_detect": True,
+        "freshness_candidate_fields": [
+            "timestamp",
+            "ts",
+            "time",
+            "updated_at",
+            "update_time",
+            "server_time",
+            "data.timestamp",
+            "data.ts",
+            "data.updated_at",
+            "meta.timestamp",
+            "meta.ts",
+        ],
         "real_browser": {
             "user_data_dir": os.environ.get("OPENCLAW_CHROME_USER_DATA_DIR", ""),
             "profile_directory": os.environ.get("OPENCLAW_CHROME_PROFILE", "Default"),
-            "channel": os.environ.get("OPENCLAW_CHROME_CHANNEL", "chrome"),
+            "channel": os.environ.get("OPENCLAW_CHROME_CHANNEL", ""),
             "headless": False,
         },
         "default_timeout_seconds": 12,
@@ -49,6 +64,7 @@ def default_config(base_url: str) -> dict[str, Any]:
                 "require_non_empty": True,
                 "freshness_field": "data.ts",
                 "freshness_max_age_seconds": 120,
+                "freshness_required": True,
             },
         ],
         "browser_checks": [
@@ -92,11 +108,14 @@ def merge_existing(existing: dict[str, Any], generated: dict[str, Any]) -> dict[
     out = dict(generated)
     for key in (
         "engine",
+        "endpoint_engine",
         "forbid_http_engine",
         "require_browser_checks",
         "real_browser",
         "default_timeout_seconds",
         "freshness_default_max_age_seconds",
+        "freshness_auto_detect",
+        "freshness_candidate_fields",
     ):
         if key in existing:
             out[key] = existing[key]
@@ -175,4 +194,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

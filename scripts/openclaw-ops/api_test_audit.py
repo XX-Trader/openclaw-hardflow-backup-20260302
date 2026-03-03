@@ -19,6 +19,19 @@ TZ = timezone(timedelta(hours=8))
 LOG_MODES = {"silent", "chat"}
 ENGINES = {"http", "playwright", "playwright-real", "selenium"}
 DEFAULT_SENDER_IDENTITY = "ops-agent/api-test-audit"
+DEFAULT_FRESHNESS_CANDIDATES = [
+    "timestamp",
+    "ts",
+    "time",
+    "updated_at",
+    "update_time",
+    "server_time",
+    "data.timestamp",
+    "data.ts",
+    "data.updated_at",
+    "meta.timestamp",
+    "meta.ts",
+]
 
 
 def now() -> datetime:
@@ -71,17 +84,20 @@ def default_config() -> dict[str, Any]:
     return {
         "schema_version": "2026-03-02",
         "engine": "playwright-real",
+        "endpoint_engine": "http",
         "forbid_http_engine": True,
         "require_browser_checks": True,
         "real_browser": {
             "user_data_dir": os.environ.get("OPENCLAW_CHROME_USER_DATA_DIR", ""),
             "profile_directory": os.environ.get("OPENCLAW_CHROME_PROFILE", "Default"),
-            "channel": os.environ.get("OPENCLAW_CHROME_CHANNEL", "chrome"),
+            "channel": os.environ.get("OPENCLAW_CHROME_CHANNEL", ""),
             "headless": False,
         },
         "default_timeout_seconds": 12,
         "base_headers": {},
         "freshness_default_max_age_seconds": 300,
+        "freshness_auto_detect": True,
+        "freshness_candidate_fields": list(DEFAULT_FRESHNESS_CANDIDATES),
         "endpoints": [
             {
                 "id": "example-market",
@@ -91,6 +107,7 @@ def default_config() -> dict[str, Any]:
                 "require_non_empty": True,
                 "freshness_field": "data.ts",
                 "freshness_max_age_seconds": 60,
+                "freshness_required": True,
                 "required_fields": ["code", "data"],
             }
         ],
@@ -648,10 +665,12 @@ def update_issue_state(state: dict[str, Any], high_issues: list[dict[str, Any]])
 def evaluate_endpoint(
     endpoint: dict[str, Any],
     *,
-    engine: str,
+    endpoint_engine: str,
     headers_base: dict[str, str],
     timeout_default: int,
     freshness_default: int,
+    freshness_auto_detect: bool,
+    freshness_candidates_default: list[str],
 ) -> dict[str, Any]:
     endpoint_id = str(endpoint.get("id", "")).strip() or f"endpoint-{uuid.uuid4().hex[:8]}"
     url = str(endpoint.get("url", "")).strip()
@@ -675,7 +694,9 @@ def evaluate_endpoint(
         result.update({"risk_level": "high", "status": "failed", "reasons": ["missing_url"]})
         return result
 
-    if engine in {"playwright", "playwright-real"}:
+    probe_engine = normalize_engine(str(endpoint.get("engine", endpoint_engine)), default=endpoint_engine)
+    result["probe_engine"] = probe_engine
+    if probe_engine in {"playwright", "playwright-real"}:
         status_code, content_type, text = playwright_call(method, url, headers, body, timeout_seconds)
     else:
         status_code, content_type, text = http_call(method, url, headers, body, timeout_seconds)
@@ -728,7 +749,21 @@ def evaluate_endpoint(
             result["reasons"].append("empty_payload")
 
     freshness_field = str(endpoint.get("freshness_field", "")).strip()
+    freshness_required = parse_bool(endpoint.get("freshness_required"), bool(freshness_field))
+    auto_detect = parse_bool(endpoint.get("freshness_auto_detect"), freshness_auto_detect)
+    candidates_raw = endpoint.get("freshness_candidate_fields")
+    if isinstance(candidates_raw, list) and candidates_raw:
+        candidates = [str(x).strip() for x in candidates_raw if str(x).strip()]
+    else:
+        candidates = list(freshness_candidates_default)
+    max_age = int(endpoint.get("freshness_max_age_seconds") or freshness_default or 300)
+    probed_fields: list[str] = []
+    freshness_selected_field = ""
+    freshness_selected_ts = ""
+    freshness_selected_dt: datetime | None = None
+
     if freshness_field:
+        probed_fields.append(freshness_field)
         raw_ts = extract_by_path(parsed, freshness_field)
         dt = parse_dt(raw_ts)
         if dt is None:
@@ -736,13 +771,49 @@ def evaluate_endpoint(
             result["status"] = "failed"
             result["reasons"].append("freshness_field_invalid")
         else:
-            age_seconds = int((now() - dt).total_seconds())
-            result["freshness_age_seconds"] = age_seconds
-            max_age = int(endpoint.get("freshness_max_age_seconds") or freshness_default or 300)
-            if age_seconds > max(1, max_age):
-                result["risk_level"] = "high"
-                result["status"] = "failed"
-                result["reasons"].append(f"stale_data:{age_seconds}s>{max_age}s")
+            freshness_selected_field = freshness_field
+            freshness_selected_ts = str(raw_ts)
+            freshness_selected_dt = dt
+    elif auto_detect:
+        parsed_hits: list[tuple[str, str, datetime]] = []
+        for field in candidates:
+            if not field:
+                continue
+            probed_fields.append(field)
+            raw_ts = extract_by_path(parsed, field)
+            dt = parse_dt(raw_ts)
+            if dt is None:
+                continue
+            parsed_hits.append((field, str(raw_ts), dt))
+        if parsed_hits:
+            field, ts_raw, dt = max(parsed_hits, key=lambda x: x[2])
+            freshness_selected_field = field
+            freshness_selected_ts = ts_raw
+            freshness_selected_dt = dt
+        elif freshness_required:
+            result["risk_level"] = "high"
+            result["status"] = "failed"
+            result["reasons"].append("freshness_field_missing")
+    elif freshness_required:
+        result["risk_level"] = "high"
+        result["status"] = "failed"
+        result["reasons"].append("freshness_field_missing")
+
+    if freshness_selected_dt is not None:
+        age_seconds = int((now() - freshness_selected_dt).total_seconds())
+        result["freshness_field"] = freshness_selected_field
+        result["freshness_raw_value"] = freshness_selected_ts
+        result["freshness_age_seconds"] = age_seconds
+        result["freshness_max_age_seconds"] = max(1, max_age)
+        if age_seconds > max(1, max_age):
+            result["risk_level"] = "high"
+            result["status"] = "failed"
+            result["reasons"].append(f"stale_data:{age_seconds}s>{max_age}s")
+
+    if probed_fields:
+        result["freshness_probed_fields"] = probed_fields[:60]
+    result["freshness_required"] = freshness_required
+    result["freshness_auto_detect"] = auto_detect
 
     if result["risk_level"] == "high":
         reason = result["reasons"][0] if result["reasons"] else "unknown"
@@ -782,8 +853,8 @@ def run_browser_checks(
             "reasons": [],
             "visual_review_required": True,
             "visual_review_mode": "native_ai_vision",
-            "screenshot": str(screenshot_file),
-            "devtools_log": str(devtools_file),
+            "screenshot": "",
+            "devtools_log": "",
             "steps_count": len(steps),
             "score": 100,
             "min_score": min_score,
@@ -827,8 +898,10 @@ def run_browser_checks(
         else:
             ok, note, screenshot_path, details = False, "browser_checks_require_playwright_or_selenium", "", {}
 
-        if screenshot_path:
+        if screenshot_path and Path(screenshot_path).exists():
             row["screenshot"] = screenshot_path
+        if devtools_file.exists():
+            row["devtools_log"] = str(devtools_file)
         if isinstance(details, dict):
             console_rows = details.get("console", []) if isinstance(details.get("console"), list) else []
             request_failed_rows = details.get("request_failed", []) if isinstance(details.get("request_failed"), list) else []
@@ -972,6 +1045,7 @@ def main() -> int:
         state = default_state()
 
     engine = normalize_engine(args.engine or config.get("engine", "playwright-real"), default="playwright-real")
+    endpoint_engine = normalize_engine(config.get("endpoint_engine", "http"), default="http")
     forbid_http_engine = parse_bool(config.get("forbid_http_engine", True), True)
     require_browser_checks = parse_bool(config.get("require_browser_checks", True), True)
     real_browser_raw = config.get("real_browser")
@@ -982,13 +1056,21 @@ def main() -> int:
         )
     if not str(real_browser.get("profile_directory", "")).strip():
         real_browser["profile_directory"] = os.environ.get("OPENCLAW_CHROME_PROFILE", "Default").strip() or "Default"
-    if not str(real_browser.get("channel", "")).strip():
-        real_browser["channel"] = os.environ.get("OPENCLAW_CHROME_CHANNEL", "chrome").strip() or "chrome"
+    if "channel" not in real_browser:
+        real_browser["channel"] = os.environ.get("OPENCLAW_CHROME_CHANNEL", "").strip()
+    elif str(real_browser.get("channel", "")).strip().lower() in {"none", "null"}:
+        real_browser["channel"] = ""
     if "headless" not in real_browser:
         real_browser["headless"] = False
 
     timeout_default = int(config.get("default_timeout_seconds") or 12)
     freshness_default = int(config.get("freshness_default_max_age_seconds") or 300)
+    freshness_auto_detect = parse_bool(config.get("freshness_auto_detect"), True)
+    freshness_candidates_raw = config.get("freshness_candidate_fields")
+    if isinstance(freshness_candidates_raw, list) and freshness_candidates_raw:
+        freshness_candidates_default = [str(x).strip() for x in freshness_candidates_raw if str(x).strip()]
+    else:
+        freshness_candidates_default = list(DEFAULT_FRESHNESS_CANDIDATES)
     headers_base = config.get("base_headers") if isinstance(config.get("base_headers"), dict) else {}
     headers_base = {str(k): str(v) for k, v in headers_base.items()}
 
@@ -1000,10 +1082,12 @@ def main() -> int:
     endpoint_results = [
         evaluate_endpoint(
             x if isinstance(x, dict) else {},
-            engine=engine,
+            endpoint_engine=endpoint_engine,
             headers_base=headers_base,
             timeout_default=timeout_default,
             freshness_default=freshness_default,
+            freshness_auto_detect=freshness_auto_detect,
+            freshness_candidates_default=freshness_candidates_default,
         )
         for x in endpoint_items
     ]
@@ -1091,6 +1175,9 @@ def main() -> int:
         "sender_identity": sender_identity,
         "task_id": str(args.task_id or ""),
         "engine": engine,
+        "endpoint_engine": endpoint_engine,
+        "freshness_auto_detect": freshness_auto_detect,
+        "freshness_candidate_fields_count": len(freshness_candidates_default),
         "forbid_http_engine": forbid_http_engine,
         "require_browser_checks": require_browser_checks,
         "visual_review_mode": "native_ai_vision",
@@ -1124,6 +1211,8 @@ def main() -> int:
         lines.append(f"- task: {args.task_id or '-'}")
         lines.append(f"- time: {now_iso()}")
         lines.append(f"- engine: {engine}")
+        lines.append(f"- endpoint_engine: {endpoint_engine}")
+        lines.append(f"- freshness_auto_detect: {freshness_auto_detect}")
         lines.append(f"- normal_log_mode: {normal_log_mode}")
         if risk_reasons:
             lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
@@ -1155,4 +1244,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

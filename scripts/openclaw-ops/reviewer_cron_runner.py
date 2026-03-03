@@ -36,6 +36,33 @@ SCANNED_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".json", ".yaml", ".yml
 DATA_FUNC_HINTS = ("process", "transform", "compute", "calculate", "parse", "normalize", "aggregate", "clean")
 JS_DATA_FUNC_HINTS = DATA_FUNC_HINTS
 COMMON_DUP_NAMES = {"main", "run", "handler", "init", "setup", "test", "render", "create", "update", "delete"}
+SECRET_ASSIGN_PATTERN = re.compile(
+    r"(?i)\b(?:api[_-]?key|secret|token|password|passwd|access[_-]?key)\b\s*[:=]\s*['\"][^'\"]{8,}['\"]"
+)
+PY_SECURITY_LINE_RULES: list[tuple[str, re.Pattern[str], str, str]] = [
+    ("security.exec_eval", re.compile(r"\b(?:eval|exec)\s*\("), "high", "avoid eval/exec with untrusted input"),
+    (
+        "security.subprocess_shell_true",
+        re.compile(r"subprocess\.(?:run|Popen|call|check_output|check_call)\s*\([^#\n]*\bshell\s*=\s*True"),
+        "high",
+        "shell=True may lead to command injection",
+    ),
+    ("security.os_system_call", re.compile(r"\bos\.system\s*\("), "high", "os.system may execute unsafe shell commands"),
+    ("security.tls_verify_disabled", re.compile(r"\bverify\s*=\s*False\b"), "medium", "TLS certificate verification disabled"),
+    ("security.pickle_deserialize", re.compile(r"\bpickle\.(?:load|loads)\s*\("), "medium", "pickle deserialization may execute code"),
+]
+JS_SECURITY_LINE_RULES: list[tuple[str, re.Pattern[str], str, str]] = [
+    ("security.eval", re.compile(r"\beval\s*\("), "high", "avoid eval with untrusted input"),
+    ("security.new_function", re.compile(r"\bnew\s+Function\s*\("), "high", "Function constructor may enable code injection"),
+    ("security.child_process_exec", re.compile(r"\bchild_process\.(?:exec|execSync)\s*\("), "high", "child_process exec may execute unsafe commands"),
+    ("security.dom_innerhtml", re.compile(r"\.innerHTML\s*="), "medium", "innerHTML writes may introduce XSS"),
+    (
+        "security.tls_verify_disabled",
+        re.compile(r"NODE_TLS_REJECT_UNAUTHORIZED\s*=\s*['\"]0['\"]"),
+        "high",
+        "TLS verification disabled in Node runtime",
+    ),
+]
 
 
 @dataclass(slots=True)
@@ -432,6 +459,29 @@ def scan_python_file(path: Path, repo_root: Path) -> tuple[list[dict[str, Any]],
             findings.append({"key": issue_key("coupling.deep_relative_import", rel, str(idx), line.strip()), "category": "coupling.deep_relative_import", "severity": "high", "path": rel, "title": f"Deep relative import at {rel}:{idx}", "detail": line.strip()[:180]})
         if "sys.path.append(" in line:
             findings.append({"key": issue_key("coupling.dynamic_path_import", rel, str(idx), line.strip()), "category": "coupling.dynamic_path_import", "severity": "high", "path": rel, "title": f"Dynamic import path at {rel}:{idx}", "detail": line.strip()[:180]})
+        if SECRET_ASSIGN_PATTERN.search(line):
+            findings.append(
+                {
+                    "key": issue_key("security.hardcoded_secret", rel, str(idx), line.strip()),
+                    "category": "security.hardcoded_secret",
+                    "severity": "high",
+                    "path": rel,
+                    "title": f"Potential hardcoded secret at {rel}:{idx}",
+                    "detail": "sensitive key/token/password literal found",
+                }
+            )
+        for category, pattern, severity, detail in PY_SECURITY_LINE_RULES:
+            if pattern.search(line):
+                findings.append(
+                    {
+                        "key": issue_key(category, rel, str(idx), line.strip()),
+                        "category": category,
+                        "severity": severity,
+                        "path": rel,
+                        "title": f"Security risky pattern at {rel}:{idx} ({category})",
+                        "detail": detail,
+                    }
+                )
 
     pattern = re.compile(r"^\s*def\s+([A-Za-z_]\w*)\(([^)]*)\)\s*(?:->\s*([^:]+))?:")
     for idx, line in enumerate(lines, start=1):
@@ -460,6 +510,29 @@ def scan_js_ts_file(path: Path, repo_root: Path) -> tuple[list[dict[str, Any]], 
     for idx, line in enumerate(lines, start=1):
         if import_pattern.search(line):
             findings.append({"key": issue_key("coupling.deep_relative_import", rel, str(idx), line.strip()), "category": "coupling.deep_relative_import", "severity": "high", "path": rel, "title": f"Deep relative import at {rel}:{idx}", "detail": line.strip()[:180]})
+        if SECRET_ASSIGN_PATTERN.search(line):
+            findings.append(
+                {
+                    "key": issue_key("security.hardcoded_secret", rel, str(idx), line.strip()),
+                    "category": "security.hardcoded_secret",
+                    "severity": "high",
+                    "path": rel,
+                    "title": f"Potential hardcoded secret at {rel}:{idx}",
+                    "detail": "sensitive key/token/password literal found",
+                }
+            )
+        for category, pattern, severity, detail in JS_SECURITY_LINE_RULES:
+            if pattern.search(line):
+                findings.append(
+                    {
+                        "key": issue_key(category, rel, str(idx), line.strip()),
+                        "category": category,
+                        "severity": severity,
+                        "path": rel,
+                        "title": f"Security risky pattern at {rel}:{idx} ({category})",
+                        "detail": detail,
+                    }
+                )
 
     fn_patterns = [
         re.compile(r"^\s*function\s+([A-Za-z_]\w*)\s*\("),
