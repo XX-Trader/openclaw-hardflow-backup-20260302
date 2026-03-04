@@ -6,9 +6,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import atomic_write_text
 
 UTC = timezone.utc
 
@@ -61,8 +69,14 @@ def write_env_file(path: Path, envs: dict[str, str]) -> None:
     for key in sorted(envs):
         value = envs[key]
         lines.append(f"{key}={value}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+    atomic_write_text(
+        path,
+        "\n".join(lines).rstrip() + "\n",
+        encoding="utf-8",
+        newline="\n",
+        file_mode=0o600,
+        dir_mode=0o700,
+    )
     try:
         os.chmod(path, 0o600)
     except Exception:

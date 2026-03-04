@@ -15,6 +15,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import FileWriteError, write_json_atomic
+
 TZ = timezone(timedelta(hours=8))
 CRITICAL_TIMER_UNITS = {
     "certbot.timer",
@@ -54,8 +61,17 @@ def load_json(path: Path, default: Any) -> Any:
 
 
 def save_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        write_json_atomic(
+            path,
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
+    except FileWriteError as exc:
+        raise RuntimeError(f"save_json_failed:{exc.code}:{path}:{exc.detail or exc}") from exc
 
 
 def normalize_log_mode(value: str) -> str:

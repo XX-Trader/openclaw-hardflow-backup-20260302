@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from io_write_gateway import write_json_atomic
+
 UTC = timezone.utc
 
 
@@ -185,8 +187,14 @@ def main() -> int:
     reference_projects = load_registry(ref_registry)
 
     payload, summary = make_output(local_projects=local_projects, reference_projects=reference_projects)
-    output_registry.parent.mkdir(parents=True, exist_ok=True)
-    output_registry.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        output_registry,
+        payload,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
 
     result = {
         "ok": (len(payload.get("projects", [])) > 0) or not bool(args.require_non_empty),

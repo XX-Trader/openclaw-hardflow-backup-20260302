@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Stable experience maintenance runner for daily/weekly/monthly cron jobs."""
 
 from __future__ import annotations
@@ -13,6 +13,13 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic
 
 TZ = timezone(timedelta(hours=8))
 LOG_MODES = {"silent", "chat"}
@@ -175,8 +182,17 @@ def load_json(path: Path, default: Any) -> Any:
 
 
 def save_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        write_json_atomic(
+            path,
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
+    except FileWriteError as exc:
+        raise RuntimeError(f"save_json_failed:{exc.code}:{path}:{exc.detail or exc}") from exc
 
 
 def ensure_memory_files(workspace: Path) -> list[str]:
@@ -193,7 +209,8 @@ def ensure_memory_files(workspace: Path) -> list[str]:
 
     memory_md = workspace / "MEMORY.md"
     if not memory_md.exists():
-        memory_md.write_text(
+        atomic_write_text(
+            memory_md,
             "# MEMORY.md\n\n"
             "## Purpose\n"
             "- Keep durable context for recurring tasks and operational decisions.\n\n"
@@ -201,12 +218,20 @@ def ensure_memory_files(workspace: Path) -> list[str]:
             "- Prefer concise records in memory/YYYY-MM-DD.md.\n"
             "- Keep only actionable conclusions and verified outcomes.\n",
             encoding="utf-8",
+            file_mode=0o640,
+            dir_mode=0o750,
         )
         actions.append(f"create_file:{memory_md}")
 
     today_md = memory_dir / f"{now().strftime('%Y-%m-%d')}.md"
     if not today_md.exists():
-        today_md.write_text(f"# {now().strftime('%Y-%m-%d')} 维护记录\n\n", encoding="utf-8")
+        atomic_write_text(
+            today_md,
+            f"# {now().strftime('%Y-%m-%d')} 缁存姢璁板綍\n\n",
+            encoding="utf-8",
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
         actions.append(f"create_file:{today_md}")
     return actions
 
@@ -530,3 +555,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

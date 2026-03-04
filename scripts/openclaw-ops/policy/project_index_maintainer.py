@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from io_write_gateway import atomic_write_text, write_json_atomic
+
 try:
     from task_center import TaskCenter
 except Exception:  # pragma: no cover
@@ -501,7 +503,13 @@ def build_doc_knowledge(
             excerpt_status = str(fetched.get("status", "0"))
             excerpt_error = str(fetched.get("error", "") or "").strip()
             if excerpt:
-                cache_file.write_text(excerpt + "\n", encoding="utf-8")
+                atomic_write_text(
+                    cache_file,
+                    excerpt + "\n",
+                    encoding="utf-8",
+                    file_mode=0o640,
+                    dir_mode=0o750,
+                )
                 keywords = build_excerpt_keywords(excerpt, max_keywords=80)
                 changed = True
         elif cache_file.exists():
@@ -667,8 +675,14 @@ def write_if_changed(path: Path, content: str) -> bool:
     old = path.read_text(encoding="utf-8") if path.exists() else ""
     if old == content:
         return False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content, encoding="utf-8", newline="\n")
+    atomic_write_text(
+        path,
+        content,
+        encoding="utf-8",
+        newline="\n",
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
     return True
 
 
@@ -1245,8 +1259,14 @@ def main() -> int:
 
     if args.output:
         out = Path(args.output).expanduser()
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json_atomic(
+            out,
+            report,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o644,
+            dir_mode=0o755,
+        )
 
     if args.emit_json:
         print(json.dumps(report, ensure_ascii=False))

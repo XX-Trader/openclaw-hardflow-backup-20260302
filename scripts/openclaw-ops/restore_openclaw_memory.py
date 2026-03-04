@@ -8,9 +8,17 @@ import hashlib
 import json
 import os
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import write_json_atomic
 
 UTC = timezone.utc
 SKIP_DIRS = {".git", "__pycache__", ".pytest_cache", ".mypy_cache", "node_modules", ".venv", "venv"}
@@ -349,8 +357,14 @@ def main() -> int:
         else (openclaw_home / "ops" / "memory-restore" / "last-restore.json")
     )
     if not dry_run and not check_only:
-        manifest_file.parent.mkdir(parents=True, exist_ok=True)
-        manifest_file.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json_atomic(
+            manifest_file,
+            result,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
     result["manifest_file"] = str(manifest_file)
 
     if args.emit_json:

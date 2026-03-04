@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic
 from task_center import (
     TASK_STATUSES,
     TaskCenter,
@@ -325,8 +326,14 @@ def read_json(path: Path, default: dict[str, Any] | None = None, write_if_missin
 
     data = json.loads(json.dumps(default))
     if write_if_missing:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json_atomic(
+            path,
+            data,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
     return data
 
 
@@ -1780,8 +1787,12 @@ class PolicyEnforcer:
 
         if args.output:
             out = Path(args.output).expanduser()
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(format_daily_summary_markdown(summary), encoding="utf-8")
+            atomic_write_text(
+                out,
+                format_daily_summary_markdown(summary),
+                file_mode=0o644,
+                dir_mode=0o755,
+            )
 
         return summary
 
@@ -1789,8 +1800,14 @@ class PolicyEnforcer:
         report = self.db.task_report(task_id=args.task_id, event_limit=int(args.event_limit))
         if args.output:
             out = Path(args.output).expanduser()
-            out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            write_json_atomic(
+                out,
+                report,
+                ensure_ascii=False,
+                indent=2,
+                file_mode=0o644,
+                dir_mode=0o755,
+            )
         return report
 
     def assert_entry(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -2175,9 +2192,13 @@ class PolicyEnforcer:
         if args.default_assignee:
             routing["default_assignee"] = args.default_assignee
 
-        self.paths.routing_file.write_text(
-            json.dumps(routing, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+        write_json_atomic(
+            self.paths.routing_file,
+            routing,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
         )
         self.routing = routing
         return {"routing_file": str(self.paths.routing_file), "updated": True}
@@ -2612,11 +2633,14 @@ def cmd_init(paths: RuntimePaths, force: bool) -> dict[str, Any]:
         (paths.routing_file, DEFAULT_ROUTING_RULES),
         (paths.pricing_file, DEFAULT_TOKEN_PRICING),
     ]:
-        file_path.parent.mkdir(parents=True, exist_ok=True)
         if force or not file_path.exists():
-            file_path.write_text(
-                json.dumps(defaults, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
+            write_json_atomic(
+                file_path,
+                defaults,
+                ensure_ascii=False,
+                indent=2,
+                file_mode=0o640,
+                dir_mode=0o750,
             )
 
     db = TaskCenter(paths.db)
@@ -2701,7 +2725,7 @@ def main() -> int:
             return 0
         finally:
             enforcer.close()
-    except (PolicyError, TaskCenterError, ValueError) as exc:
+    except (PolicyError, TaskCenterError, FileWriteError, ValueError) as exc:
         emit_json({"ok": False, "error": str(exc)})
         return 2
 

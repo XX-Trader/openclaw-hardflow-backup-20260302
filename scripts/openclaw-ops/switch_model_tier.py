@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+POLICY_DIR = SCRIPT_DIR / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import atomic_write_text, write_json_atomic
+
 REPO_ROOT = SCRIPT_DIR.parent.parent
 PROFILE_FILE = SCRIPT_DIR / "model_tier_profiles.json"
 BACKUP_ROOT = REPO_ROOT / ".tmp" / "model-switch-backups"
@@ -56,7 +62,14 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        path,
+        payload,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
 
 
 def load_profiles(path: Path) -> dict[str, Any]:
@@ -441,16 +454,32 @@ def main() -> int:
     if changed_openclaw:
         write_json(openclaw_path, openclaw_data)
     if changed_index_json:
-        agent_index_json_path.write_text(
-            json.dumps(agent_index_items, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
+        write_json_atomic(
+            agent_index_json_path,
+            agent_index_items,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
         )
     if changed_index_md:
-        agent_index_md_path.write_text(rendered_agent_index_md, encoding="utf-8")
+        atomic_write_text(
+            agent_index_md_path,
+            rendered_agent_index_md,
+            encoding="utf-8",
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
     if changed_policy:
         write_json(policy_config_path, policy_config_data)
     if changed_hardflow:
-        hardflow_path.write_text(updated_hardflow_text, encoding="utf-8")
+        atomic_write_text(
+            hardflow_path,
+            updated_hardflow_text,
+            encoding="utf-8",
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
 
     profile_snapshot = write_profile_snapshot(tier_key=tier_key, profile=profile)
     print(f"backup_dir={backup_dir}")

@@ -7,9 +7,17 @@ import argparse
 import json
 import os
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import write_json_atomic
 
 HOURLY_JOB_ID = "d3859fd5-3ea2-4ee5-ab1d-7fd526f26722"
 DAILY_JOB_ID = "0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a"
@@ -275,7 +283,14 @@ def main() -> None:
 
     merged, status = upsert_jobs(jobs=jobs, fresh_jobs=fresh_jobs, channel=channel, target=target)
     data["jobs"] = merged
-    jobs_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        jobs_path,
+        data,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
 
     print(f"jobs_file={jobs_path}")
     print(f"runner_py={args.runner_py}")

@@ -7,9 +7,17 @@ import argparse
 import json
 import os
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import write_json_atomic
 
 
 def now_ms() -> int:
@@ -189,7 +197,14 @@ def main() -> None:
         target=target,
     )
     data["jobs"] = updated_jobs
-    jobs_path.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        jobs_path,
+        data,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
 
     print(f"job_id={args.job_id}")
     print(f"status={'updated' if existed else 'created'}")

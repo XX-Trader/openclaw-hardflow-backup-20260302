@@ -36,6 +36,7 @@ if policy_dir in sys.path:
 sys.path.insert(0, policy_dir)
 
 from task_center import TaskCenter  # type: ignore
+from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
@@ -254,13 +255,30 @@ def load_json(path: Path, default: Any) -> Any:
 
 
 def save_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        write_json_atomic(
+            path,
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
+    except FileWriteError as exc:
+        raise RuntimeError(f"save_json_failed:{exc.code}:{path}:{exc.detail or exc}") from exc
 
 
 def save_text(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(str(content or ""), encoding="utf-8")
+    try:
+        atomic_write_text(
+            path,
+            str(content or ""),
+            encoding="utf-8",
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
+    except FileWriteError as exc:
+        raise RuntimeError(f"save_text_failed:{exc.code}:{path}:{exc.detail or exc}") from exc
 
 
 def state_default() -> dict[str, Any]:

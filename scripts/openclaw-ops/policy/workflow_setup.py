@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from io_write_gateway import atomic_write_text, write_json_atomic
+
 UTC = timezone.utc
 API_ENGINES = {"http", "playwright", "selenium"}
 GIT_UPDATE_STRATEGIES = {"fetch", "pull-ff-only"}
@@ -315,7 +317,13 @@ def is_writable_dir(path: Path) -> tuple[bool, str]:
         return False, f"path not found: {path}"
     probe = path / ".openclaw_setup_probe"
     try:
-        probe.write_text("ok\n", encoding="utf-8")
+        atomic_write_text(
+            probe,
+            "ok\n",
+            encoding="utf-8",
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
         probe.unlink(missing_ok=True)
         return True, "ok"
     except Exception as exc:
@@ -799,8 +807,14 @@ def write_markdown_report(
         lines.append("- memory_restore: skipped")
     lines.append("")
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+    atomic_write_text(
+        path,
+        "\n".join(lines).rstrip() + "\n",
+        encoding="utf-8",
+        newline="\n",
+        file_mode=0o644,
+        dir_mode=0o755,
+    )
 
 
 def parse_index_selection(raw: str, max_index: int) -> list[int]:
@@ -2153,12 +2167,26 @@ def main() -> int:
 
     generated_projects_file = setup_dir / "projects.generated.json"
     projects_payload = {"projects": [x.to_bootstrap_item(strict_remote=strict_remote) for x in assessments]}
-    generated_projects_file.write_text(json.dumps(projects_payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        generated_projects_file,
+        projects_payload,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
 
     registry_file = task_center_dir / "project-registry.json"
     existing_registry = read_json_object(registry_file, {"projects": []})
     merged_registry = merge_registry(existing_registry, [x.to_registry_item() for x in assessments])
-    registry_file.write_text(json.dumps(merged_registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        registry_file,
+        merged_registry,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
 
     bootstrap_report_json = setup_dir / "bootstrap-report.json"
     bootstrap_report_md = setup_dir / "bootstrap-report.md"
@@ -2486,7 +2514,14 @@ def main() -> int:
             "bootstrap_md": str(bootstrap_report_md),
         },
     }
-    setup_latest_json.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        setup_latest_json,
+        result,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
     write_markdown_report(
         path=setup_latest_md,
         mode=args.mode,

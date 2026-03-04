@@ -6,9 +6,17 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import write_json_atomic
 
 UTC = timezone.utc
 
@@ -171,7 +179,14 @@ def main() -> int:
     elif existed and bool(args.force):
         action = "overwritten"
 
-    output_file.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        output_file,
+        payload,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
     result = {
         "ok": True,
         "output_file": str(output_file),

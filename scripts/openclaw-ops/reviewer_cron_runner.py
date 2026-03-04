@@ -37,8 +37,11 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 try:
     from task_center import TaskCenter  # type: ignore
+    from io_write_gateway import FileWriteError, write_json_atomic  # type: ignore
 except Exception:  # pragma: no cover
     TaskCenter = None
+    FileWriteError = RuntimeError  # type: ignore
+    write_json_atomic = None  # type: ignore
 
 CONTEXT_GATE_BLOCK_MODES = {"daily_incremental", "bi_daily_recurring", "weekly_structure"}
 SKIP_DIR_NAMES = {
@@ -113,8 +116,19 @@ def load_json(path: Path, default: Any) -> Any:
 
 
 def save_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if write_json_atomic is None:
+        raise RuntimeError("save_json_failed:io_write_gateway_not_available")
+    try:
+        write_json_atomic(
+            path,
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
+    except FileWriteError as exc:  # type: ignore[misc]
+        raise RuntimeError(f"save_json_failed:{getattr(exc, 'code', 'error')}:{path}:{exc}") from exc
 
 
 def sha1_text(text: str, limit: int = 20) -> str:

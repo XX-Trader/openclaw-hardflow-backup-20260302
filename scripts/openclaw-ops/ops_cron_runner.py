@@ -28,6 +28,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+POLICY_DIR = Path(__file__).resolve().parent / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import FileWriteError, append_text_atomic, write_json_atomic
+
 TZ = timezone(timedelta(hours=8))
 UTC = timezone.utc
 ERROR_KEYWORDS = (
@@ -138,8 +144,17 @@ def load_json(path: Path, default: Any) -> Any:
 
 
 def save_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        write_json_atomic(
+            path,
+            payload,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
+    except FileWriteError as exc:
+        raise RuntimeError(f"save_json_failed:{exc.code}:{path}:{exc.detail or exc}") from exc
 
 
 def default_config() -> dict[str, Any]:
@@ -1333,13 +1348,14 @@ def handoff_incidents_to_todo(
 
     if new_lines:
         try:
-            todo_file.parent.mkdir(parents=True, exist_ok=True)
-            if not todo_file.exists():
-                todo_file.write_text("# TODO\n\n", encoding="utf-8")
-            with todo_file.open("a", encoding="utf-8") as fp:
-                fp.write("\n## OPS Incident Inbox\n")
-                for line in new_lines:
-                    fp.write(line.rstrip() + "\n")
+            append_payload = "\n## OPS Incident Inbox\n" + "".join(f"{line.rstrip()}\n" for line in new_lines)
+            append_text_atomic(
+                todo_file,
+                append_payload,
+                create_with="# TODO\n\n",
+                file_mode=0o640,
+                dir_mode=0o750,
+            )
         except Exception as exc:
             summary["errors"].append(f"todo_write_failed:{todo_file}:{exc}")
             for item in summary["todo_items"]:

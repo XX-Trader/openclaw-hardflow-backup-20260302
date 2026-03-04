@@ -7,9 +7,17 @@ import argparse
 import json
 import os
 import shutil
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+POLICY_DIR = ROOT / "policy"
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
+from io_write_gateway import write_json_atomic
 
 try:
     from ops_cron_runner import default_config as runner_default_config
@@ -141,8 +149,14 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
         incident_handoff.setdefault(key, value)
     data["incident_handoff"] = incident_handoff
 
-    config_file.parent.mkdir(parents=True, exist_ok=True)
-    config_file.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        config_file,
+        data,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
     return data
 
 
@@ -1364,7 +1378,14 @@ def main() -> int:
         shutil.copy2(jobs_file, backup)
         backup_file = str(backup)
     if not args.dry_run:
-        jobs_file.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        write_json_atomic(
+            jobs_file,
+            data,
+            ensure_ascii=False,
+            indent=2,
+            file_mode=0o640,
+            dir_mode=0o750,
+        )
 
     result = {
         "ok": True,

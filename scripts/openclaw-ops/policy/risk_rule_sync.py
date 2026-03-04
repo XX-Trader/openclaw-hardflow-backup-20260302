@@ -9,6 +9,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from io_write_gateway import write_json_atomic
+
 
 def load_routing(path: Path) -> dict[str, Any]:
     if not path.exists():
@@ -26,8 +28,14 @@ def load_routing(path: Path) -> dict[str, Any]:
 
 
 def save_routing(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(
+        path,
+        payload,
+        ensure_ascii=False,
+        indent=2,
+        file_mode=0o640,
+        dir_mode=0o750,
+    )
 
 
 def norm(text: str) -> str:
