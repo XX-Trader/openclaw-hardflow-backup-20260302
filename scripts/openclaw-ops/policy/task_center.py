@@ -333,6 +333,24 @@ class TaskCenter:
                 UNIQUE(task_id, agent_id, planner_id)
             );
 
+            CREATE TABLE IF NOT EXISTS agent_points_ledger (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                actor_type TEXT NOT NULL,
+                actor_id TEXT NOT NULL,
+                planner_id TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT '',
+                solved INTEGER NOT NULL DEFAULT 0,
+                points REAL NOT NULL DEFAULT 0,
+                base_points REAL NOT NULL DEFAULT 0,
+                quality_factor REAL NOT NULL DEFAULT 0,
+                timeliness_factor REAL NOT NULL DEFAULT 0,
+                details_json TEXT NOT NULL DEFAULT '{}',
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE,
+                UNIQUE(task_id, actor_type, actor_id, planner_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
             CREATE INDEX IF NOT EXISTS idx_task_events_task_id ON task_events(task_id);
@@ -347,6 +365,8 @@ class TaskCenter:
                 ON module_communications(from_module, to_module, ts);
             CREATE INDEX IF NOT EXISTS idx_agent_task_reports_task_id ON agent_task_reports(task_id);
             CREATE INDEX IF NOT EXISTS idx_agent_task_reports_planner_ts ON agent_task_reports(planner_id, ts);
+            CREATE INDEX IF NOT EXISTS idx_agent_points_actor_ts ON agent_points_ledger(actor_type, actor_id, ts);
+            CREATE INDEX IF NOT EXISTS idx_agent_points_task_id ON agent_points_ledger(task_id);
             """
         )
         self._ensure_task_columns()
@@ -1232,6 +1252,211 @@ class TaskCenter:
             item["details"] = parse_json(item.pop("details_json", ""))
             out.append(item)
         return out
+
+    def get_agent_points_record(self, record_id: int) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM agent_points_ledger WHERE id = ?", (int(record_id),)).fetchone()
+        if not row:
+            raise TaskCenterError(f"agent_points_ledger not found: {record_id}")
+        item = dict(row)
+        item["solved"] = bool(item.get("solved"))
+        item["details"] = parse_json(item.pop("details_json", ""))
+        return item
+
+    def upsert_agent_points(
+        self,
+        *,
+        task_id: str,
+        actor_type: str,
+        actor_id: str,
+        planner_id: str = "",
+        status: str = "",
+        solved: bool = False,
+        points: float = 0.0,
+        base_points: float = 0.0,
+        quality_factor: float = 0.0,
+        timeliness_factor: float = 0.0,
+        details: dict[str, Any] | None = None,
+        event_actor: str = "",
+    ) -> dict[str, Any]:
+        if not self._task_exists(task_id):
+            raise TaskCenterError(f"task not found: {task_id}")
+
+        actor_type_norm = str(actor_type or "").strip().lower()
+        if actor_type_norm not in {"agent", "planner"}:
+            raise TaskCenterError(f"invalid actor_type: {actor_type}")
+        actor_id_norm = str(actor_id or "").strip()
+        if not actor_id_norm:
+            raise TaskCenterError("actor_id cannot be empty")
+        planner_id_norm = str(planner_id or "").strip()
+        status_norm = str(status or "").strip().lower()
+        ts = utc_now_iso()
+        payload = {
+            "task_id": task_id,
+            "ts": ts,
+            "actor_type": actor_type_norm,
+            "actor_id": actor_id_norm,
+            "planner_id": planner_id_norm,
+            "status": status_norm,
+            "solved": 1 if solved else 0,
+            "points": round(float(points or 0.0), 6),
+            "base_points": round(float(base_points or 0.0), 6),
+            "quality_factor": round(float(quality_factor or 0.0), 6),
+            "timeliness_factor": round(float(timeliness_factor or 0.0), 6),
+            "details_json": ensure_json(details),
+        }
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO agent_points_ledger (
+                    task_id, ts, actor_type, actor_id, planner_id, status, solved,
+                    points, base_points, quality_factor, timeliness_factor, details_json
+                ) VALUES (
+                    :task_id, :ts, :actor_type, :actor_id, :planner_id, :status, :solved,
+                    :points, :base_points, :quality_factor, :timeliness_factor, :details_json
+                )
+                ON CONFLICT(task_id, actor_type, actor_id, planner_id) DO UPDATE SET
+                    ts = excluded.ts,
+                    status = excluded.status,
+                    solved = excluded.solved,
+                    points = excluded.points,
+                    base_points = excluded.base_points,
+                    quality_factor = excluded.quality_factor,
+                    timeliness_factor = excluded.timeliness_factor,
+                    details_json = excluded.details_json
+                """,
+                payload,
+            )
+            row = self.conn.execute(
+                """
+                SELECT id
+                FROM agent_points_ledger
+                WHERE task_id = ? AND actor_type = ? AND actor_id = ? AND planner_id = ?
+                """,
+                (task_id, actor_type_norm, actor_id_norm, planner_id_norm),
+            ).fetchone()
+            if not row:
+                raise TaskCenterError("failed to locate upserted agent points record")
+            record_id = int(row["id"])
+            self.add_event(
+                task_id=task_id,
+                actor=(str(event_actor or "").strip() or actor_id_norm),
+                event_type="agent_points_recorded",
+                stage="score",
+                details={
+                    "record_id": record_id,
+                    "actor_type": actor_type_norm,
+                    "actor_id": actor_id_norm,
+                    "planner_id": planner_id_norm,
+                    "status": status_norm,
+                    "solved": bool(solved),
+                    "points": payload["points"],
+                    "base_points": payload["base_points"],
+                    "quality_factor": payload["quality_factor"],
+                    "timeliness_factor": payload["timeliness_factor"],
+                },
+            )
+        return self.get_agent_points_record(record_id)
+
+    def list_agent_points(
+        self,
+        *,
+        actor_type: str = "",
+        actor_id: str = "",
+        since: str = "",
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit or 200), 5000))
+        clauses: list[str] = []
+        params: list[Any] = []
+        actor_type_norm = str(actor_type or "").strip().lower()
+        if actor_type_norm:
+            if actor_type_norm not in {"agent", "planner"}:
+                raise TaskCenterError(f"invalid actor_type: {actor_type}")
+            clauses.append("actor_type = ?")
+            params.append(actor_type_norm)
+        actor_id_norm = str(actor_id or "").strip()
+        if actor_id_norm:
+            clauses.append("actor_id = ?")
+            params.append(actor_id_norm)
+        since_norm = str(since or "").strip()
+        if since_norm:
+            parsed = parse_utc_iso(since_norm)
+            if parsed is None:
+                raise TaskCenterError(f"invalid since datetime: {since_norm}")
+            clauses.append("ts >= ?")
+            params.append(parsed.isoformat())
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT *
+            FROM agent_points_ledger
+            {where_sql}
+            ORDER BY ts DESC, id DESC
+            LIMIT ?
+            """,
+            [*params, limit],
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["solved"] = bool(item.get("solved"))
+            item["details"] = parse_json(item.pop("details_json", ""))
+            out.append(item)
+        return out
+
+    def points_summary(
+        self,
+        *,
+        actor_type: str = "agent",
+        since: str = "",
+        limit: int = 200,
+    ) -> dict[str, Any]:
+        actor_type_norm = str(actor_type or "agent").strip().lower()
+        if actor_type_norm not in {"agent", "planner"}:
+            raise TaskCenterError(f"invalid actor_type: {actor_type}")
+        since_norm = str(since or "").strip()
+        params: list[Any] = [actor_type_norm]
+        where_sql = "WHERE actor_type = ?"
+        if since_norm:
+            parsed = parse_utc_iso(since_norm)
+            if parsed is None:
+                raise TaskCenterError(f"invalid since datetime: {since_norm}")
+            since_norm = parsed.isoformat()
+            where_sql += " AND ts >= ?"
+            params.append(since_norm)
+        rows = self.conn.execute(
+            f"""
+            SELECT
+                actor_id,
+                COUNT(*) AS record_count,
+                SUM(points) AS total_points,
+                AVG(points) AS avg_points,
+                SUM(CASE WHEN solved = 1 THEN 1 ELSE 0 END) AS solved_count
+            FROM agent_points_ledger
+            {where_sql}
+            GROUP BY actor_id
+            ORDER BY total_points DESC, solved_count DESC, actor_id ASC
+            LIMIT ?
+            """,
+            [*params, max(1, min(int(limit or 200), 5000))],
+        ).fetchall()
+        leaders: list[dict[str, Any]] = []
+        for row in rows:
+            leaders.append(
+                {
+                    "actor_id": str(row["actor_id"]),
+                    "record_count": int(row["record_count"] or 0),
+                    "total_points": round(float(row["total_points"] or 0.0), 6),
+                    "avg_points": round(float(row["avg_points"] or 0.0), 6),
+                    "solved_count": int(row["solved_count"] or 0),
+                }
+            )
+        return {
+            "actor_type": actor_type_norm,
+            "since": since_norm,
+            "leaderboard": leaders,
+            "actor_points": {item["actor_id"]: item["total_points"] for item in leaders},
+        }
 
     def assign_task(self, task_id: str, assignee: str, actor: str) -> dict[str, Any]:
         assignee = assignee.strip()

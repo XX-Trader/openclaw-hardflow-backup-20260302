@@ -89,10 +89,38 @@
   "require_token_usage_before_done": true,
   "max_failure_before_escalate": 3,
   "pass_line_raw": 75,
+  "agent_points_policy": {
+    "enabled": true,
+    "leaderboard_lookback_days": 14,
+    "quality_weight": 0.75,
+    "timeliness_weight": 0.25,
+    "planner_share": 0.35,
+    "minimum_quality_for_positive": 70,
+    "base_points_by_priority": {
+      "low": 4,
+      "medium": 8,
+      "high": 12
+    },
+    "risk_multiplier": {
+      "low": 1,
+      "high": 1.15
+    },
+    "timeliness_sla_ms_by_priority": {
+      "low": 14400000,
+      "medium": 7200000,
+      "high": 3600000
+    }
+  },
   "todo_queue_policy": {
     "require_scheduled_at": true,
     "fifo": true,
-    "max_dispatch_per_run": 3
+    "max_dispatch_per_run": 3,
+    "agent_guarantee": {
+      "enabled": true,
+      "min_tasks_per_agent": 1,
+      "low_score_threshold": 12,
+      "lookback_days": 7
+    }
   },
   "self_evolution_policy": {
     "enabled": true,

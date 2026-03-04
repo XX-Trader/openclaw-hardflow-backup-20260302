@@ -9,7 +9,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -101,10 +101,38 @@ DEFAULT_POLICY: dict[str, Any] = {
     "require_token_usage_before_done": True,
     "max_failure_before_escalate": 3,
     "pass_line_raw": 75.0,
+    "agent_points_policy": {
+        "enabled": True,
+        "leaderboard_lookback_days": 14,
+        "quality_weight": 0.75,
+        "timeliness_weight": 0.25,
+        "planner_share": 0.35,
+        "minimum_quality_for_positive": 70.0,
+        "base_points_by_priority": {
+            "low": 4.0,
+            "medium": 8.0,
+            "high": 12.0,
+        },
+        "risk_multiplier": {
+            "low": 1.0,
+            "high": 1.15,
+        },
+        "timeliness_sla_ms_by_priority": {
+            "low": 14_400_000,
+            "medium": 7_200_000,
+            "high": 3_600_000,
+        },
+    },
     "todo_queue_policy": {
         "require_scheduled_at": True,
         "fifo": True,
         "max_dispatch_per_run": 3,
+        "agent_guarantee": {
+            "enabled": True,
+            "min_tasks_per_agent": 1,
+            "low_score_threshold": 12.0,
+            "lookback_days": 7,
+        },
     },
     "self_evolution_policy": {
         "enabled": True,
@@ -390,6 +418,101 @@ class PolicyEnforcer:
 
     def pass_line_raw(self) -> float:
         return float(self.policy.get("pass_line_raw", 75.0) or 75.0)
+
+    def points_policy(self) -> dict[str, Any]:
+        raw = self.policy.get("agent_points_policy", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        defaults = DEFAULT_POLICY.get("agent_points_policy", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+        return merge_missing_keys(raw, defaults)
+
+    def points_enabled(self) -> bool:
+        return parse_bool(self.points_policy().get("enabled", True), True)
+
+    def todo_agent_guarantee_policy(self) -> dict[str, Any]:
+        todo_cfg = self.policy.get("todo_queue_policy", {})
+        if not isinstance(todo_cfg, dict):
+            todo_cfg = {}
+        raw = todo_cfg.get("agent_guarantee", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        defaults = (
+            DEFAULT_POLICY.get("todo_queue_policy", {}).get("agent_guarantee", {})
+            if isinstance(DEFAULT_POLICY.get("todo_queue_policy", {}), dict)
+            else {}
+        )
+        if not isinstance(defaults, dict):
+            defaults = {}
+        return merge_missing_keys(raw, defaults)
+
+    def _priority_sla_ms(self, priority: str) -> int:
+        policy = self.points_policy()
+        sla_cfg = policy.get("timeliness_sla_ms_by_priority", {})
+        if not isinstance(sla_cfg, dict):
+            sla_cfg = {}
+        value = int(sla_cfg.get(priority, 0) or 0)
+        if value <= 0:
+            if priority == "high":
+                return 3_600_000
+            if priority == "medium":
+                return 7_200_000
+            return 14_400_000
+        return value
+
+    def _base_points(self, priority: str, risk_level: str) -> float:
+        policy = self.points_policy()
+        base_map = policy.get("base_points_by_priority", {})
+        if not isinstance(base_map, dict):
+            base_map = {}
+        risk_map = policy.get("risk_multiplier", {})
+        if not isinstance(risk_map, dict):
+            risk_map = {}
+        base = float(base_map.get(priority, 6.0) or 6.0)
+        multiplier = float(risk_map.get(risk_level, 1.0) or 1.0)
+        return max(0.0, base * multiplier)
+
+    def _quality_factor(
+        self,
+        quality_score: float | None,
+        solved: bool,
+        status: str,
+        minimum_quality: float,
+    ) -> float:
+        if quality_score is None:
+            return 0.72 if solved and status in {"passed", "partial"} else 0.45
+        q = max(0.0, min(100.0, float(quality_score)))
+        factor = q / 100.0
+        if solved and q < minimum_quality:
+            factor *= 0.75
+        return max(0.0, min(1.0, factor))
+
+    def _timeliness_factor(self, duration_ms: int, priority: str) -> float:
+        duration = max(0, int(duration_ms or 0))
+        sla = self._priority_sla_ms(priority)
+        if duration <= 0:
+            return 0.9
+        if duration <= sla:
+            return 1.0
+        if duration <= 2 * sla:
+            ratio = (duration - sla) / max(1, sla)
+            return max(0.6, 1.0 - ratio * 0.4)
+        if duration <= 4 * sla:
+            ratio = (duration - 2 * sla) / max(1, 2 * sla)
+            return max(0.3, 0.6 - ratio * 0.3)
+        return 0.2
+
+    def _status_multiplier(self, status: str, solved: bool) -> float:
+        if status == "passed":
+            return 1.0 if solved else 0.8
+        if status == "partial":
+            return 0.72 if solved else 0.5
+        if status == "failed":
+            return -0.35
+        if status == "escalated":
+            return -0.5
+        return -0.2
 
     def status_flow(self) -> dict[str, set[str]]:
         flow_raw = self.policy.get("status_flow", {})
@@ -1381,6 +1504,96 @@ class PolicyEnforcer:
             "report_ts": report.get("ts"),
         }
 
+        points_result: dict[str, Any] = {}
+        if self.points_enabled():
+            policy = self.points_policy()
+            quality_weight = float(policy.get("quality_weight", 0.75) or 0.75)
+            timeliness_weight = float(policy.get("timeliness_weight", 0.25) or 0.25)
+            total_weight = quality_weight + timeliness_weight
+            if total_weight <= 0:
+                quality_weight, timeliness_weight, total_weight = 0.75, 0.25, 1.0
+            quality_weight /= total_weight
+            timeliness_weight /= total_weight
+            minimum_quality = float(policy.get("minimum_quality_for_positive", 70.0) or 70.0)
+
+            task_priority = str(task_after.get("priority", "medium") or "medium").strip().lower()
+            if task_priority not in {"low", "medium", "high"}:
+                task_priority = "medium"
+            task_risk = str(task_after.get("risk_level", "low") or "low").strip().lower()
+            if task_risk not in {"low", "high"}:
+                task_risk = "low"
+
+            base_points = self._base_points(task_priority, task_risk)
+            quality_factor = self._quality_factor(quality_score, solved, status, minimum_quality)
+            timeliness_factor = self._timeliness_factor(duration_ms, task_priority)
+            performance_factor = quality_weight * quality_factor + timeliness_weight * timeliness_factor
+            status_multiplier = self._status_multiplier(status, solved)
+            agent_points = round(base_points * performance_factor * status_multiplier, 6)
+            planner_share = max(0.0, min(1.0, float(policy.get("planner_share", 0.35) or 0.35)))
+            planner_points = round(agent_points * planner_share, 6)
+
+            agent_points_record = self.db.upsert_agent_points(
+                task_id=task_id,
+                actor_type="agent",
+                actor_id=str(args.agent_id),
+                planner_id=str(args.planner_id or "coordinator"),
+                status=status,
+                solved=solved,
+                points=agent_points,
+                base_points=base_points,
+                quality_factor=quality_factor,
+                timeliness_factor=timeliness_factor,
+                details={
+                    "task_priority": task_priority,
+                    "task_risk_level": task_risk,
+                    "quality_weight": round(quality_weight, 6),
+                    "timeliness_weight": round(timeliness_weight, 6),
+                    "performance_factor": round(performance_factor, 6),
+                    "status_multiplier": round(status_multiplier, 6),
+                    "quality_score": quality_score,
+                    "duration_ms": duration_ms,
+                },
+                event_actor=task_actor,
+            )
+            planner_points_record = self.db.upsert_agent_points(
+                task_id=task_id,
+                actor_type="planner",
+                actor_id=str(args.planner_id or "coordinator"),
+                planner_id=str(args.planner_id or "coordinator"),
+                status=status,
+                solved=solved,
+                points=planner_points,
+                base_points=base_points * planner_share,
+                quality_factor=quality_factor,
+                timeliness_factor=timeliness_factor,
+                details={
+                    "agent_id": str(args.agent_id),
+                    "task_priority": task_priority,
+                    "task_risk_level": task_risk,
+                    "planner_share": planner_share,
+                    "agent_points": agent_points,
+                    "quality_score": quality_score,
+                    "duration_ms": duration_ms,
+                },
+                event_actor=task_actor,
+            )
+            points_result = {
+                "enabled": True,
+                "base_points": round(base_points, 6),
+                "quality_factor": round(quality_factor, 6),
+                "timeliness_factor": round(timeliness_factor, 6),
+                "performance_factor": round(performance_factor, 6),
+                "status_multiplier": round(status_multiplier, 6),
+                "agent_points": agent_points,
+                "planner_points": planner_points,
+                "agent_record_id": agent_points_record.get("id"),
+                "planner_record_id": planner_points_record.get("id"),
+            }
+        else:
+            points_result = {"enabled": False}
+
+        planner_payload["points"] = points_result
+
         chat_output = "NO_REPLY"
         if notify_chat:
             lines = [
@@ -1408,6 +1621,7 @@ class PolicyEnforcer:
             "report": report,
             "planner_payload": planner_payload,
             "task_status_sync": status_sync,
+            "points": points_result,
             "notify_chat": notify_chat,
             "chat_output": chat_output,
         }
@@ -1538,7 +1752,27 @@ class PolicyEnforcer:
             raise PolicyError("planner-id cannot be empty")
         since = str(getattr(args, "since", "") or "").strip()
         limit = max(1, int(getattr(args, "limit", 100) or 100))
-        return self.db.planner_summary(planner_id=planner_id, since=since, limit=limit)
+        summary = self.db.planner_summary(planner_id=planner_id, since=since, limit=limit)
+        if self.points_enabled():
+            policy = self.points_policy()
+            lookback_days = max(1, int(policy.get("leaderboard_lookback_days", 14) or 14))
+            points_since = since
+            if not points_since:
+                points_since = (
+                    datetime.now(tz=UTC).replace(microsecond=0) - timedelta(days=lookback_days)
+                ).isoformat()
+            summary["points_agent"] = self.db.points_summary(
+                actor_type="agent",
+                since=points_since,
+                limit=500,
+            )
+            summary["points_planner"] = self.db.points_summary(
+                actor_type="planner",
+                since=points_since,
+                limit=200,
+            )
+            summary["points_since"] = points_since
+        return summary
 
     def daily_summary(self, args: argparse.Namespace) -> dict[str, Any]:
         target_date = date.fromisoformat(args.date) if args.date else datetime.now(tz=UTC).date()
@@ -1749,6 +1983,7 @@ class PolicyEnforcer:
         limit_raw = int(args.limit or 0)
         limit = self.todo_queue_max_dispatch() if limit_raw <= 0 else max(1, limit_raw)
         now_value = now_iso()
+        scan_limit = max(limit * 8, 80)
         rows = self.db.conn.execute(
             """
             SELECT *
@@ -1764,9 +1999,9 @@ class PolicyEnforcer:
                 created_at ASC
             LIMIT ?
             """,
-            (now_value, limit),
+            (now_value, scan_limit),
         ).fetchall()
-        tasks = []
+        tasks: list[dict[str, Any]] = []
         ready_count = 0
         for row in rows:
             item = dict(row)
@@ -1777,14 +2012,98 @@ class PolicyEnforcer:
             item["is_ready"] = (not scheduled_at) or scheduled_at <= now_value
             if item["is_ready"]:
                 ready_count += 1
+            assignee = str(item.get("assignee") or "").strip()
+            item["assignee"] = assignee or None
+            item["dispatch_reason"] = "fifo"
+            item["guarantee_hit"] = False
             tasks.append(item)
+
+        guarantee_cfg = self.todo_agent_guarantee_policy()
+        guarantee_enabled = bool(
+            self.points_enabled() and parse_bool(guarantee_cfg.get("enabled", True), True)
+        )
+        min_tasks_per_agent = max(1, int(guarantee_cfg.get("min_tasks_per_agent", 1) or 1))
+        low_score_threshold = float(guarantee_cfg.get("low_score_threshold", 12.0) or 12.0)
+        lookback_days = max(1, int(guarantee_cfg.get("lookback_days", 7) or 7))
+        points_since = (
+            datetime.now(tz=UTC).replace(microsecond=0) - timedelta(days=lookback_days)
+        ).isoformat()
+        points_map: dict[str, float] = {}
+        low_score_agents: set[str] = set()
+        if guarantee_enabled:
+            points_summary = self.db.points_summary(
+                actor_type="agent",
+                since=points_since,
+                limit=2000,
+            )
+            points_map = {
+                str(k): float(v)
+                for k, v in (points_summary.get("actor_points", {}) or {}).items()
+            }
+            for task in tasks:
+                assignee = str(task.get("assignee") or "").strip()
+                if not assignee:
+                    continue
+                score = float(points_map.get(assignee, 0.0))
+                if score <= low_score_threshold:
+                    low_score_agents.add(assignee)
+
+        selected: list[dict[str, Any]] = []
+        selected_ids: set[str] = set()
+        guarantee_count: dict[str, int] = {}
+        guarantee_hits = 0
+
+        if guarantee_enabled and low_score_agents:
+            for task in tasks:
+                if len(selected) >= limit:
+                    break
+                if not bool(task.get("is_ready")):
+                    continue
+                task_id = str(task.get("task_id", "")).strip()
+                assignee = str(task.get("assignee") or "").strip()
+                if not task_id or not assignee:
+                    continue
+                if assignee not in low_score_agents:
+                    continue
+                if guarantee_count.get(assignee, 0) >= min_tasks_per_agent:
+                    continue
+                if task_id in selected_ids:
+                    continue
+                task["dispatch_reason"] = "guarantee_low_score_agent"
+                task["guarantee_hit"] = True
+                selected.append(task)
+                selected_ids.add(task_id)
+                guarantee_count[assignee] = guarantee_count.get(assignee, 0) + 1
+                guarantee_hits += 1
+
+        for task in tasks:
+            if len(selected) >= limit:
+                break
+            task_id = str(task.get("task_id", "")).strip()
+            if not task_id or task_id in selected_ids:
+                continue
+            selected.append(task)
+            selected_ids.add(task_id)
+
+        tasks = selected[:limit]
+        selected_ready_count = sum(1 for item in tasks if bool(item.get("is_ready")))
         return {
             "policy_limit": self.todo_queue_max_dispatch(),
             "requested_limit": limit_raw,
             "effective_limit": limit,
             "now": now_value,
-            "ready_count": ready_count,
-            "future_count": max(0, len(tasks) - ready_count),
+            "ready_count": selected_ready_count,
+            "future_count": max(0, len(tasks) - selected_ready_count),
+            "scanned_ready_count": ready_count,
+            "guarantee_policy": {
+                "enabled": guarantee_enabled,
+                "min_tasks_per_agent": min_tasks_per_agent,
+                "low_score_threshold": low_score_threshold,
+                "lookback_days": lookback_days,
+                "points_since": points_since if guarantee_enabled else "",
+                "guarantee_hits": guarantee_hits,
+                "low_score_agents": sorted(low_score_agents),
+            },
             "tasks": tasks,
         }
 

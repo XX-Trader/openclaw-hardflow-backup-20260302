@@ -10,6 +10,7 @@ import {
   nowIso,
   readCards,
   readSessionMessages,
+  resolveAgentId,
   resolveHookOptions,
   resolveWorkspaceDir,
   saveStats,
@@ -42,6 +43,7 @@ export default async function hardflowExperienceCapture(event: any): Promise<voi
   }
 
   const workspaceDir = resolveWorkspaceDir(event);
+  const agentId = resolveAgentId(event);
   const maxMessages = typeof opts.messages === "number" && opts.messages > 0 ? opts.messages : 80;
   const minMessages = typeof opts.minMessages === "number" && opts.minMessages > 0 ? opts.minMessages : 8;
   const sessionRef = findSessionRef(event);
@@ -66,6 +68,7 @@ export default async function hardflowExperienceCapture(event: any): Promise<voi
       sessionKey: event?.sessionKey || "",
       sessionId: sessionRef.sessionId,
       now,
+      agentId,
     });
     if (!card) {
       return;
@@ -92,4 +95,3 @@ export default async function hardflowExperienceCapture(event: any): Promise<voi
     console.error(`[${HOOK_NAME}] failed: ${message}`);
   }
 }
-

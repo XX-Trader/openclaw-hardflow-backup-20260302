@@ -2,8 +2,10 @@ import {
   ensureStatsRecord,
   loadStats,
   rankCards,
+  readPriorityBucketCards,
   readCards,
   readQueryHint,
+  resolveAgentId,
   resolveHookOptions,
   resolveWorkspaceDir,
   saveStats,
@@ -33,10 +35,18 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
   }
 
   const workspaceDir = resolveWorkspaceDir(event);
+  const agentId = resolveAgentId(event);
   const topK = typeof opts.topK === "number" && opts.topK > 0 ? opts.topK : 5;
 
   try {
-    const cards = await readCards(workspaceDir);
+    let cards = await readPriorityBucketCards({
+      workspaceDir,
+      agentId,
+      topK,
+    });
+    if (cards.length === 0) {
+      cards = await readCards(workspaceDir);
+    }
     if (cards.length === 0) {
       return;
     }
@@ -88,4 +98,3 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
     console.error(`[${HOOK_NAME}] failed: ${message}`);
   }
 }
-

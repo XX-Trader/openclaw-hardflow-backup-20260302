@@ -8,6 +8,10 @@ const RUNTIME_REL = path.join(EXPERIENCE_ROOT_REL, "runtime");
 const CARDS_INDEX_REL = path.join(EXPERIENCE_ROOT_REL, "cards.ndjson");
 const STATS_REL = path.join(EXPERIENCE_ROOT_REL, "stats.json");
 const RECALL_DOC_REL = path.join(EXPERIENCE_ROOT_REL, "EXPERIENCE_RECALL.md");
+const MAINTENANCE_REL = path.join(EXPERIENCE_ROOT_REL, "maintenance");
+const PRIORITY_BUCKETS_REL = path.join(MAINTENANCE_REL, "priority-buckets.json");
+
+export type MemoryTier = "reflex" | "long_term" | "recent" | "archive";
 
 export type SessionMessage = {
   role: "user" | "assistant";
@@ -40,6 +44,9 @@ export type ExperienceCard = {
   scoreVersion?: string;
   lastMaintainedAt?: string;
   duplicateReason?: string;
+  agentId?: string;
+  memoryTier?: MemoryTier;
+  priorityScore?: number;
 };
 
 type StatsRecord = {
@@ -54,10 +61,20 @@ type StatsRecord = {
   canonicalId?: string;
   clusterId?: string;
   dedupedAt?: string;
+  memoryTier?: MemoryTier;
+  priorityScore?: number;
 };
 
 type StatsFile = {
   cards: Record<string, StatsRecord>;
+};
+
+type PriorityBucketsFile = {
+  generatedAt?: string;
+  scoreVersion?: string;
+  tierOrder?: MemoryTier[];
+  global?: Partial<Record<MemoryTier, ExperienceCard[]>>;
+  byAgent?: Record<string, Partial<Record<MemoryTier, ExperienceCard[]>>>;
 };
 
 export function safeSessionKey(sessionKey: string): string {
@@ -67,6 +84,13 @@ export function safeSessionKey(sessionKey: string): string {
 
 export function nowIso(): string {
   return new Date().toISOString();
+}
+
+export function normalizeMemoryTier(value: string | undefined): MemoryTier {
+  if (value === "reflex" || value === "long_term" || value === "recent" || value === "archive") {
+    return value;
+  }
+  return "recent";
 }
 
 export function shortText(input: string, max = 280): string {
@@ -224,8 +248,9 @@ export function buildCardFromMessages(params: {
   sessionKey: string;
   sessionId: string;
   now: string;
+  agentId?: string;
 }): ExperienceCard | null {
-  const { messages, sourceAction, sessionKey, sessionId, now } = params;
+  const { messages, sourceAction, sessionKey, sessionId, now, agentId } = params;
   if (!messages || messages.length < 2) {
     return null;
   }
@@ -311,6 +336,9 @@ export function buildCardFromMessages(params: {
     tags,
     fingerprint,
     cardFile,
+    agentId: agentId || undefined,
+    memoryTier: "recent",
+    priorityScore: 0.5,
   };
 }
 
@@ -459,6 +487,19 @@ function lifecycleBias(lifecycle: "draft" | "candidate" | "stable" | "deprecated
   return 0;
 }
 
+function memoryTierBias(tier: MemoryTier): number {
+  if (tier === "reflex") {
+    return 0.24;
+  }
+  if (tier === "long_term") {
+    return 0.12;
+  }
+  if (tier === "archive") {
+    return -0.35;
+  }
+  return 0.03;
+}
+
 function tokenize(text: string): string[] {
   return (text || "")
     .toLowerCase()
@@ -528,6 +569,7 @@ export function rankCards(params: {
       if (lifecycle === "deprecated") {
         return null;
       }
+      const tier = normalizeMemoryTier(card.memoryTier || record?.memoryTier);
       const quality = Math.max(
         0,
         Math.min(
@@ -544,12 +586,154 @@ export function rankCards(params: {
         confidence * 0.2 +
         recency * 0.1 +
         quality * 0.2 +
-        lifecycleBias(lifecycle);
+        lifecycleBias(lifecycle) +
+        memoryTierBias(tier) +
+        Math.max(
+          0,
+          Math.min(
+            0.2,
+            typeof card.priorityScore === "number"
+              ? card.priorityScore * 0.2
+              : typeof record?.priorityScore === "number"
+                ? record.priorityScore * 0.2
+                : 0,
+          ),
+        );
       return { card, score };
     })
     .filter((x): x is { card: ExperienceCard; score: number } => Boolean(x))
     .sort((a, b) => b.score - a.score);
   return scored.slice(0, topK).map((x) => x.card);
+}
+
+function normalizeArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((x) => String(x || "").trim())
+    .filter((x) => x.length > 0);
+}
+
+function normalizeBucketCard(raw: unknown): ExperienceCard | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const item = raw as Record<string, unknown>;
+  const id = String(item.id || "").trim();
+  if (!id) {
+    return null;
+  }
+  const createdAt = String(item.createdAt || item.updatedAt || nowIso());
+  const updatedAt = String(item.updatedAt || createdAt);
+  return {
+    id,
+    createdAt,
+    updatedAt,
+    sourceAction: String(item.sourceAction || "maintenance"),
+    sessionKey: String(item.sessionKey || ""),
+    sessionId: String(item.sessionId || ""),
+    title: shortText(String(item.title || "Experience Card"), 96),
+    problem: String(item.problem || "N/A"),
+    rootCause: String(item.rootCause || "N/A"),
+    solutionSteps: normalizeArray(item.solutionSteps),
+    verification: String(item.verification || "N/A"),
+    boundaries: String(item.boundaries || "N/A"),
+    failureSignals: String(item.failureSignals || "N/A"),
+    rollback: String(item.rollback || "N/A"),
+    tags: normalizeArray(item.tags),
+    fingerprint: String(item.fingerprint || id),
+    cardFile: String(item.cardFile || ""),
+    lifecycle:
+      item.lifecycle === "stable" ||
+      item.lifecycle === "candidate" ||
+      item.lifecycle === "deprecated"
+        ? (item.lifecycle as "stable" | "candidate" | "deprecated")
+        : "draft",
+    canonicalId: String(item.canonicalId || id),
+    clusterId: String(item.clusterId || ""),
+    maintenanceScore:
+      typeof item.maintenanceScore === "number" ? item.maintenanceScore : undefined,
+    qualityScore: typeof item.qualityScore === "number" ? item.qualityScore : undefined,
+    scoreVersion: typeof item.scoreVersion === "string" ? item.scoreVersion : undefined,
+    lastMaintainedAt:
+      typeof item.lastMaintainedAt === "string" ? item.lastMaintainedAt : undefined,
+    duplicateReason:
+      typeof item.duplicateReason === "string" ? item.duplicateReason : undefined,
+    agentId: typeof item.agentId === "string" ? item.agentId : undefined,
+    memoryTier: normalizeMemoryTier(String(item.memoryTier || "recent")),
+    priorityScore: typeof item.priorityScore === "number" ? item.priorityScore : undefined,
+  };
+}
+
+export async function readPriorityBuckets(
+  workspaceDir: string,
+): Promise<PriorityBucketsFile | null> {
+  const file = path.join(workspaceDir, PRIORITY_BUCKETS_REL);
+  if (!(await existsFile(file))) {
+    return null;
+  }
+  try {
+    const raw = await readFile(file, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") {
+      return null;
+    }
+    return parsed as PriorityBucketsFile;
+  } catch {
+    return null;
+  }
+}
+
+export async function readPriorityBucketCards(params: {
+  workspaceDir: string;
+  agentId?: string;
+  topK: number;
+}): Promise<ExperienceCard[]> {
+  const { workspaceDir, agentId, topK } = params;
+  const buckets = await readPriorityBuckets(workspaceDir);
+  if (!buckets) {
+    return [];
+  }
+
+  const order: MemoryTier[] =
+    Array.isArray(buckets.tierOrder) && buckets.tierOrder.length > 0
+      ? buckets.tierOrder.map((x) => normalizeMemoryTier(String(x)))
+      : ["reflex", "long_term", "recent", "archive"];
+  const picked: ExperienceCard[] = [];
+  const seen = new Set<string>();
+  const target = Math.max(topK * 8, topK + 8);
+
+  const appendFromBuckets = (group: Partial<Record<MemoryTier, ExperienceCard[]>> | undefined): void => {
+    if (!group) {
+      return;
+    }
+    for (const tier of order) {
+      const rows = Array.isArray(group[tier]) ? group[tier] : [];
+      for (const row of rows) {
+        const card = normalizeBucketCard(row);
+        if (!card || seen.has(card.id)) {
+          continue;
+        }
+        seen.add(card.id);
+        picked.push(card);
+        if (picked.length >= target) {
+          return;
+        }
+      }
+      if (picked.length >= target) {
+        return;
+      }
+    }
+  };
+
+  const normalizedAgent = String(agentId || "").trim();
+  if (normalizedAgent && buckets.byAgent && buckets.byAgent[normalizedAgent]) {
+    appendFromBuckets(buckets.byAgent[normalizedAgent]);
+  }
+  appendFromBuckets(buckets.global);
+
+  return picked;
 }
 
 export async function writeRecallDoc(params: {
@@ -579,6 +763,13 @@ export async function writeRecallDoc(params: {
       lines.push(`## ${idx + 1}. ${card.title}`);
       lines.push(`- ID: ${card.id}`);
       lines.push(`- Confidence: ${conf}`);
+      lines.push(`- Tier: ${normalizeMemoryTier(card.memoryTier)}`);
+      if (typeof card.priorityScore === "number") {
+        lines.push(`- Priority score: ${card.priorityScore.toFixed(4)}`);
+      }
+      if (card.agentId) {
+        lines.push(`- Agent: ${card.agentId}`);
+      }
       lines.push(`- Tags: ${card.tags.join(", ") || "none"}`);
       lines.push(`- Problem: ${shortText(card.problem, 180)}`);
       lines.push(`- Root cause: ${shortText(card.rootCause, 180)}`);
@@ -704,6 +895,23 @@ export function resolveHookOptions<T extends Record<string, unknown>>(
 
 export function resolveWorkspaceDir(event: any): string {
   return event?.context?.workspaceDir || process.cwd();
+}
+
+export function resolveAgentId(event: any): string {
+  const candidates = [
+    event?.context?.agentId,
+    event?.context?.targetAgentId,
+    event?.context?.receiverAgentId,
+    event?.context?.bindingAgentId,
+    event?.agentId,
+  ];
+  for (const item of candidates) {
+    const value = String(item || "").trim();
+    if (value) {
+      return value;
+    }
+  }
+  return "unknown";
 }
 
 export function findSessionRef(event: any): { sessionFile?: string; sessionId: string } {

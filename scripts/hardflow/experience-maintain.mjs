@@ -4,7 +4,10 @@ import { mkdir, readFile, writeFile, appendFile, access } from "node:fs/promises
 import { constants as fsConstants } from "node:fs";
 import path from "node:path";
 
-const SCORE_VERSION = "experience-score-v1";
+const SCORE_VERSION = "experience-score-v2";
+const TIER_ORDER = ["reflex", "long_term", "recent", "archive"];
+const GLOBAL_BUCKET_LIMIT = 180;
+const AGENT_BUCKET_LIMIT = 120;
 
 function clamp(v, min = 0, max = 1) {
   return Math.max(min, Math.min(max, v));
@@ -16,6 +19,21 @@ function nowIso() {
 
 function toFixed4(v) {
   return Number(clamp(v).toFixed(4));
+}
+
+function safeText(v, max = 240) {
+  const text = String(v || "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) {
+    return text;
+  }
+  return `${text.slice(0, max - 3)}...`;
+}
+
+function normalizeMemoryTier(value) {
+  if (value === "reflex" || value === "long_term" || value === "recent" || value === "archive") {
+    return value;
+  }
+  return "recent";
 }
 
 function parseArgs() {
@@ -217,6 +235,56 @@ function lifecycleByMode(mode, m, isDuplicate) {
   return "draft";
 }
 
+function memoryTierByMode(mode, lifecycle, m, isDuplicate) {
+  if (isDuplicate || lifecycle === "deprecated") {
+    return "archive";
+  }
+  if (
+    lifecycle === "stable" &&
+    m.score >= 0.8 &&
+    m.reliability >= 0.76 &&
+    m.reuse >= 3 &&
+    m.fail <= m.success + 1
+  ) {
+    return "reflex";
+  }
+  if (
+    lifecycle === "stable" ||
+    (lifecycle === "candidate" && m.score >= (mode === "monthly" ? 0.62 : 0.58))
+  ) {
+    return "long_term";
+  }
+  if (m.recencyDays <= 45 && m.score >= 0.42) {
+    return "recent";
+  }
+  return "archive";
+}
+
+function memoryTierBias(tier) {
+  if (tier === "reflex") {
+    return 0.2;
+  }
+  if (tier === "long_term") {
+    return 0.12;
+  }
+  if (tier === "archive") {
+    return -0.18;
+  }
+  return 0.05;
+}
+
+function priorityScoreFor(card, statsRecord, metrics, memoryTier) {
+  const recency = clamp(1 - daysSince(card.updatedAt || card.createdAt) / 90);
+  const reuseNorm = clamp(Math.log2(Number(statsRecord?.reuseCount || 0) + 1) / 3);
+  const base =
+    metrics.score * 0.52 +
+    metrics.reliability * 0.22 +
+    reuseNorm * 0.16 +
+    recency * 0.1 +
+    memoryTierBias(memoryTier);
+  return clamp(base);
+}
+
 function sharedTagScore(aTags, bTags) {
   const a = new Set(Array.isArray(aTags) ? aTags : []);
   const b = new Set(Array.isArray(bTags) ? bTags : []);
@@ -383,7 +451,106 @@ function summarizeClusters(clusters, scoredCards) {
   });
 }
 
-async function writeOutputs({ files, cards, stats, report, clusterIndex, stableCards, mode, dryRun }) {
+function emptyTierBuckets() {
+  return {
+    reflex: [],
+    long_term: [],
+    recent: [],
+    archive: [],
+  };
+}
+
+function toBucketCard(card) {
+  return {
+    id: String(card.id || ""),
+    createdAt: String(card.createdAt || ""),
+    updatedAt: String(card.updatedAt || card.createdAt || ""),
+    sourceAction: String(card.sourceAction || "maintenance"),
+    sessionKey: String(card.sessionKey || ""),
+    sessionId: String(card.sessionId || ""),
+    title: safeText(card.title || card.id || "Experience Card", 120),
+    problem: safeText(card.problem || "N/A", 500),
+    rootCause: safeText(card.rootCause || "N/A", 500),
+    solutionSteps: Array.isArray(card.solutionSteps) ? card.solutionSteps.slice(0, 6).map((x) => safeText(x, 200)) : [],
+    verification: safeText(card.verification || "N/A", 240),
+    boundaries: safeText(card.boundaries || "N/A", 220),
+    failureSignals: safeText(card.failureSignals || "N/A", 220),
+    rollback: safeText(card.rollback || "N/A", 220),
+    tags: Array.isArray(card.tags) ? card.tags.slice(0, 8).map((x) => String(x || "").trim()).filter(Boolean) : [],
+    fingerprint: String(card.fingerprint || card.id || ""),
+    cardFile: String(card.cardFile || ""),
+    lifecycle: String(card.lifecycle || "draft"),
+    canonicalId: String(card.canonicalId || card.id || ""),
+    clusterId: String(card.clusterId || ""),
+    maintenanceScore: Number(card.maintenanceScore || 0),
+    qualityScore: Number(card.qualityScore || 0),
+    scoreVersion: String(card.scoreVersion || SCORE_VERSION),
+    lastMaintainedAt: String(card.lastMaintainedAt || ""),
+    duplicateReason: card.duplicateReason ? String(card.duplicateReason) : undefined,
+    memoryTier: normalizeMemoryTier(card.memoryTier),
+    priorityScore: Number(card.priorityScore || 0),
+    agentId: String(card.agentId || ""),
+  };
+}
+
+function buildPriorityBuckets(cards) {
+  const canonical = cards
+    .filter((x) => x && x.canonicalId === x.id)
+    .slice()
+    .sort((a, b) => Number(b.priorityScore || 0) - Number(a.priorityScore || 0));
+  const global = emptyTierBuckets();
+  const byAgent = new Map();
+
+  const pushTier = (target, tier, payload, limit) => {
+    const rows = target[tier];
+    if (!Array.isArray(rows)) {
+      return;
+    }
+    if (rows.length >= limit) {
+      return;
+    }
+    rows.push(payload);
+  };
+
+  for (const card of canonical) {
+    const tier = normalizeMemoryTier(card.memoryTier);
+    const payload = toBucketCard(card);
+    pushTier(global, tier, payload, GLOBAL_BUCKET_LIMIT);
+
+    const agentId = String(card.agentId || "").trim();
+    if (!agentId) {
+      continue;
+    }
+    if (!byAgent.has(agentId)) {
+      byAgent.set(agentId, emptyTierBuckets());
+    }
+    pushTier(byAgent.get(agentId), tier, payload, AGENT_BUCKET_LIMIT);
+  }
+
+  const byAgentObj = {};
+  for (const [agentId, data] of byAgent.entries()) {
+    byAgentObj[agentId] = data;
+  }
+  return {
+    generatedAt: nowIso(),
+    scoreVersion: SCORE_VERSION,
+    tierOrder: TIER_ORDER,
+    global,
+    byAgent: byAgentObj,
+  };
+}
+
+async function writeOutputs({
+  files,
+  cards,
+  stats,
+  report,
+  clusterIndex,
+  stableCards,
+  priorityBuckets,
+  mode,
+  dryRun,
+}) {
   if (dryRun) {
     return;
   }
@@ -402,6 +569,11 @@ async function writeOutputs({ files, cards, stats, report, clusterIndex, stableC
   await writeFile(
     path.join(files.maintainDir, "clusters.json"),
     `${JSON.stringify(clusterIndex, null, 2)}\n`,
+    "utf8",
+  );
+  await writeFile(
+    path.join(files.maintainDir, "priority-buckets.json"),
+    `${JSON.stringify(priorityBuckets, null, 2)}\n`,
     "utf8",
   );
   const stableDoc = [
@@ -438,6 +610,7 @@ async function writeOutputs({ files, cards, stats, report, clusterIndex, stableC
     `- duplicates: ${report.totals.duplicates}`,
     `- clusters: ${report.totals.clusters}`,
     `- stable/candidate/draft/deprecated: ${report.lifecycle.stable}/${report.lifecycle.candidate}/${report.lifecycle.draft}/${report.lifecycle.deprecated}`,
+    `- tier reflex/long_term/recent/archive: ${report.memoryTier.reflex}/${report.memoryTier.long_term}/${report.memoryTier.recent}/${report.memoryTier.archive}`,
     `- promoted: ${report.lifecycleChanges.promoted}, demoted: ${report.lifecycleChanges.demoted}`,
   ].join("\n");
   await appendFile(memoryFile, `${summary}\n`, "utf8");
@@ -479,6 +652,9 @@ async function run() {
     const clusterId = cardCluster.get(canonicalId) || card.clusterId || "cluster-unknown";
     const previous = String(card.lifecycle || "draft");
     const lifecycle = lifecycleByMode(mode, metrics, isDuplicate);
+    const memoryTier = memoryTierByMode(mode, lifecycle, metrics, isDuplicate);
+    const statsRecord = ensureStatsRecord(stats, card.id);
+    const priorityScore = priorityScoreFor(card, statsRecord, metrics, memoryTier);
     if (previous !== lifecycle) {
       if (
         (previous === "draft" && (lifecycle === "candidate" || lifecycle === "stable")) ||
@@ -504,13 +680,17 @@ async function run() {
       scoreVersion: SCORE_VERSION,
       lastMaintainedAt: generatedAt,
       duplicateReason: duplicateReasons.get(card.id),
+      agentId: String(card.agentId || "").trim() || undefined,
+      memoryTier,
+      priorityScore: toFixed4(priorityScore),
     };
     scoredCards.set(card.id, maintained);
-    const statsRecord = ensureStatsRecord(stats, card.id);
     statsRecord.maintenanceScore = maintained.maintenanceScore;
     statsRecord.lifecycle = lifecycle;
     statsRecord.canonicalId = canonicalId;
     statsRecord.clusterId = clusterId;
+    statsRecord.memoryTier = memoryTier;
+    statsRecord.priorityScore = maintained.priorityScore;
     if (isDuplicate) {
       statsRecord.dedupedAt = generatedAt;
     }
@@ -525,10 +705,21 @@ async function run() {
   };
   const canonical = updatedCards.filter((x) => x.canonicalId === x.id);
   const duplicates = updatedCards.length - canonical.length;
+  const tierCounts = {
+    reflex: canonical.filter((x) => normalizeMemoryTier(x.memoryTier) === "reflex").length,
+    long_term: canonical.filter((x) => normalizeMemoryTier(x.memoryTier) === "long_term").length,
+    recent: canonical.filter((x) => normalizeMemoryTier(x.memoryTier) === "recent").length,
+    archive: canonical.filter((x) => normalizeMemoryTier(x.memoryTier) === "archive").length,
+  };
   const stableCards = canonical
     .filter((x) => x.lifecycle === "stable")
     .sort((a, b) => (b.maintenanceScore || 0) - (a.maintenanceScore || 0));
+  const topPriority = canonical
+    .slice()
+    .sort((a, b) => (b.priorityScore || 0) - (a.priorityScore || 0))
+    .slice(0, 20);
   const clusterIndex = summarizeClusters(clusters, scoredCards);
+  const priorityBuckets = buildPriorityBuckets(updatedCards);
   const report = {
     generatedAt,
     mode,
@@ -544,11 +735,20 @@ async function run() {
       promoted,
       demoted,
     },
+    memoryTier: tierCounts,
     topStable: stableCards.slice(0, 10).map((x) => ({
       id: x.id,
       title: x.title,
       score: x.maintenanceScore,
       clusterId: x.clusterId,
+      tags: x.tags,
+    })),
+    topPriority: topPriority.map((x) => ({
+      id: x.id,
+      title: x.title,
+      priorityScore: x.priorityScore,
+      memoryTier: x.memoryTier,
+      lifecycle: x.lifecycle,
       tags: x.tags,
     })),
   };
@@ -560,6 +760,7 @@ async function run() {
     report,
     clusterIndex,
     stableCards,
+    priorityBuckets,
     mode,
     dryRun,
   });
