@@ -82,6 +82,9 @@ def main():
     recall = ensure_dict(entries, "hardflow-experience-recall")
     recall["enabled"] = True
     recall.setdefault("topK", 5)
+    recall.setdefault("graphStrategy", "balanced")
+    recall.setdefault("graphDecayDays", 30)
+    recall.setdefault("graphMaxEvents", 2000)
 
     evolve = ensure_dict(entries, "hardflow-experience-evolve")
     evolve["enabled"] = True

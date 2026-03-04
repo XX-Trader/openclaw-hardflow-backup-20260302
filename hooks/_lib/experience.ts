@@ -88,6 +88,24 @@ export type RuntimeRecallPayload = {
   agentId?: string;
 };
 
+export type EvolutionStrategy = "balanced" | "harden" | "repair-only";
+
+export type LinkGraphStrategyPolicy = {
+  strategy: EvolutionStrategy;
+  decayDays: number;
+  maxEvents: number;
+  graphWeight: number;
+  attemptSameAgent: number;
+  attemptCrossAgent: number;
+  successSameAgent: number;
+  successCrossAgent: number;
+  failureSameAgent: number;
+  failureCrossAgent: number;
+  unknownSameAgent: number;
+  unknownCrossAgent: number;
+  eventContributionCap: number;
+};
+
 type LinkGraphEvent = {
   type: "attempt" | "outcome";
   ts: string;
@@ -131,6 +149,104 @@ export function normalizeMemoryTier(value: string | undefined): MemoryTier {
     return value;
   }
   return "recent";
+}
+
+export function normalizeEvolutionStrategy(
+  value: string | undefined,
+  fallback: EvolutionStrategy = "balanced",
+): EvolutionStrategy {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+  if (normalized === "harden") {
+    return "harden";
+  }
+  if (normalized === "repair-only") {
+    return "repair-only";
+  }
+  if (normalized === "balanced") {
+    return "balanced";
+  }
+  return fallback;
+}
+
+function baseLinkGraphPolicyFor(strategy: EvolutionStrategy): LinkGraphStrategyPolicy {
+  if (strategy === "harden") {
+    return {
+      strategy,
+      decayDays: 24,
+      maxEvents: 2500,
+      graphWeight: 0.3,
+      attemptSameAgent: 0.03,
+      attemptCrossAgent: 0.01,
+      successSameAgent: 0.38,
+      successCrossAgent: 0.22,
+      failureSameAgent: -0.72,
+      failureCrossAgent: -0.44,
+      unknownSameAgent: 0.01,
+      unknownCrossAgent: 0.005,
+      eventContributionCap: 0.9,
+    };
+  }
+  if (strategy === "repair-only") {
+    return {
+      strategy,
+      decayDays: 14,
+      maxEvents: 3000,
+      graphWeight: 0.36,
+      attemptSameAgent: 0.01,
+      attemptCrossAgent: 0,
+      successSameAgent: 0.18,
+      successCrossAgent: 0.08,
+      failureSameAgent: -0.95,
+      failureCrossAgent: -0.62,
+      unknownSameAgent: 0,
+      unknownCrossAgent: 0,
+      eventContributionCap: 1,
+    };
+  }
+  return {
+    strategy: "balanced",
+    decayDays: 30,
+    maxEvents: 2000,
+    graphWeight: 0.25,
+    attemptSameAgent: 0.05,
+    attemptCrossAgent: 0.02,
+    successSameAgent: 0.5,
+    successCrossAgent: 0.28,
+    failureSameAgent: -0.55,
+    failureCrossAgent: -0.32,
+    unknownSameAgent: 0.02,
+    unknownCrossAgent: 0.01,
+    eventContributionCap: 0.8,
+  };
+}
+
+export function resolveLinkGraphStrategyPolicy(params: {
+  strategy?: string;
+  decayDays?: number;
+  maxEvents?: number;
+  graphWeight?: number;
+}): LinkGraphStrategyPolicy {
+  const strategy = normalizeEvolutionStrategy(params.strategy, "balanced");
+  const base = baseLinkGraphPolicyFor(strategy);
+  const decayDays =
+    typeof params.decayDays === "number" ? Math.round(clamp(params.decayDays, 3, 120)) : base.decayDays;
+  const maxEvents =
+    typeof params.maxEvents === "number"
+      ? Math.round(clamp(params.maxEvents, 200, 20000))
+      : base.maxEvents;
+  const graphWeight =
+    typeof params.graphWeight === "number"
+      ? clamp(params.graphWeight, 0, 0.6)
+      : base.graphWeight;
+  return {
+    ...base,
+    decayDays,
+    maxEvents,
+    graphWeight,
+  };
 }
 
 export function shortText(input: string, max = 280): string {
@@ -596,8 +712,11 @@ export function rankCards(params: {
   query: string;
   topK: number;
   graphBoosts?: Record<string, number>;
+  graphWeight?: number;
 }): ExperienceCard[] {
-  const { cards, stats, query, topK, graphBoosts } = params;
+  const { cards, stats, query, topK, graphBoosts, graphWeight } = params;
+  const normalizedGraphWeight =
+    typeof graphWeight === "number" ? clamp(graphWeight, 0, 0.6) : 0.25;
   const now = Date.now();
   const scored = cards
     .map((card) => {
@@ -640,7 +759,7 @@ export function rankCards(params: {
         quality * 0.2 +
         lifecycleBias(lifecycle) +
         memoryTierBias(tier) +
-        graphBoost * 0.25 +
+        graphBoost * normalizedGraphWeight +
         Math.max(
           0,
           Math.min(
@@ -828,13 +947,13 @@ function normalizeLinkGraphEvent(raw: unknown): LinkGraphEvent | null {
   };
 }
 
-function recencyWeightByTs(ts: string, nowMs: number): number {
+function recencyWeightByTs(ts: string, nowMs: number, decayDays: number): number {
   const tsMs = Number(new Date(ts).getTime());
   if (!Number.isFinite(tsMs) || tsMs <= 0) {
     return 0.35;
   }
   const ageDays = Math.max(0, (nowMs - tsMs) / (1000 * 3600 * 24));
-  return Math.exp(-ageDays / 30);
+  return Math.exp(-ageDays / Math.max(1, decayDays));
 }
 
 export async function appendLinkGraphEvent(params: {
@@ -854,6 +973,8 @@ export async function readLinkGraphBoosts(params: {
   workspaceDir: string;
   queryKey: string;
   agentId?: string;
+  strategy?: string;
+  decayDays?: number;
   maxEvents?: number;
 }): Promise<Record<string, number>> {
   const filePath = path.join(params.workspaceDir, LINKGRAPH_EVENTS_REL);
@@ -870,9 +991,12 @@ export async function readLinkGraphBoosts(params: {
     return {};
   }
 
-  const maxEvents =
-    typeof params.maxEvents === "number" && params.maxEvents > 0 ? params.maxEvents : 2000;
-  const start = Math.max(0, rows.length - maxEvents);
+  const policy = resolveLinkGraphStrategyPolicy({
+    strategy: params.strategy,
+    decayDays: params.decayDays,
+    maxEvents: params.maxEvents,
+  });
+  const start = Math.max(0, rows.length - policy.maxEvents);
   const normalizedAgent = String(params.agentId || "").trim();
   const nowMs = Date.now();
   const boosts = new Map<string, number>();
@@ -895,19 +1019,19 @@ export async function readLinkGraphBoosts(params: {
     }
 
     const sameAgent = normalizedAgent && event.agentId === normalizedAgent;
-    const weight = recencyWeightByTs(event.ts, nowMs);
+    const weight = recencyWeightByTs(event.ts, nowMs, policy.decayDays);
     let base = 0;
     if (event.type === "attempt") {
-      base = sameAgent ? 0.05 : 0.02;
+      base = sameAgent ? policy.attemptSameAgent : policy.attemptCrossAgent;
     } else if (event.outcome === "success") {
-      base = sameAgent ? 0.5 : 0.28;
+      base = sameAgent ? policy.successSameAgent : policy.successCrossAgent;
     } else if (event.outcome === "failure") {
-      base = sameAgent ? -0.55 : -0.32;
+      base = sameAgent ? policy.failureSameAgent : policy.failureCrossAgent;
     } else {
-      base = sameAgent ? 0.02 : 0.01;
+      base = sameAgent ? policy.unknownSameAgent : policy.unknownCrossAgent;
     }
 
-    const delta = clamp(base * weight, -0.8, 0.8);
+    const delta = clamp(base * weight, -policy.eventContributionCap, policy.eventContributionCap);
     for (const cardId of event.cardIds) {
       addBoost(cardId, delta);
     }

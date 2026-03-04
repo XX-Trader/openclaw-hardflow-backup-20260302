@@ -146,13 +146,25 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
     return data
 
 
-def build_message(command: str) -> str:
+def build_message(command: str, extra_rules: list[str] | None = None) -> str:
     cmd = str(command or "").strip()
+    rules = [
+        "Execute the command exactly once.",
+        "Do not run follow-up diagnostics (for example: ls/cat/read/lsof/rm) after the command finishes.",
+        "If the command prints NO_REPLY, you must respond exactly NO_REPLY and stop.",
+    ]
+    if isinstance(extra_rules, list):
+        for item in extra_rules:
+            text = str(item or "").strip()
+            if text:
+                rules.append(text)
+    rules_text = " ".join(rules)
     return (
         "You are scheduled runner. Run command only:\n"
         f"{cmd}\n"
         "Do not write, edit, create, move, or delete any file. "
-        "Do not execute any other command.\n"
+        "Do not execute any other command. "
+        f"{rules_text}\n"
         "Return EXACTLY raw stdout/stderr text from the command. "
         "Do not add explanation, greeting, or prefix text. "
         "If output is empty, reply NO_REPLY."
@@ -171,6 +183,13 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
     openclaw_home = openclaw_home.expanduser()
     ops_dir = openclaw_home / "ops"
     workspace_dir = openclaw_home / "workspace"
+    log_watcher_job_ids = {"fd8ae471-69f7-4bb5-9d2e-46aa26b092f1"}
+    # Include mojibake aliases observed on mixed-encoding terminals.
+    log_watcher_name_aliases = {
+        "log-watcher agent（双项目）",
+        "log-watcher agent锛堝弻椤圭洰锛?",
+        "log-watcher agent閿涘牆寮绘い鍦窗閿?",
+    }
     known: dict[str, dict[str, Any]] = {
         "log-watcher agent（双项目）": {
             "description": "log-watcher command-runner (stable no-edit mode, single-instance lock)",
@@ -236,25 +255,46 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
             "timeout": 1800,
         },
     }
+    log_watcher_spec = next(
+        (
+            spec
+            for key, spec in known.items()
+            if str(key).startswith("log-watcher agent")
+        ),
+        None,
+    )
+    if isinstance(log_watcher_spec, dict):
+        for alias in sorted(log_watcher_name_aliases):
+            known[alias] = log_watcher_spec
 
     status: dict[str, str] = {}
     refs: list[str] = []
     for item in jobs:
         if not isinstance(item, dict):
             continue
+        job_id = str(item.get("id", "")).strip()
         name = str(item.get("name", "")).strip()
         spec = known.get(name)
+        if spec is None and job_id in log_watcher_job_ids and isinstance(log_watcher_spec, dict):
+            spec = log_watcher_spec
         if spec is None:
             continue
         payload = item.get("payload")
         if not isinstance(payload, dict):
             payload = {}
         payload["kind"] = "agentTurn"
-        payload["message"] = build_message(str(spec["command"]))
+        extra_rules: list[str] = []
+        if job_id in log_watcher_job_ids or name in log_watcher_name_aliases:
+            extra_rules = [
+                "The flock lock guard is expected. NO_REPLY is a valid successful outcome.",
+                "Do not attempt to inspect or remove lock/state files.",
+                "Do not retry or rerun the command in this turn.",
+            ]
+        payload["message"] = build_message(str(spec["command"]), extra_rules=extra_rules)
         payload["timeoutSeconds"] = int(spec["timeout"])
         item["payload"] = payload
         item["description"] = str(spec["description"])
-        status[name] = "hardened"
+        status[name or job_id] = "hardened"
 
         try:
             cmd_parts = str(spec["command"]).split()

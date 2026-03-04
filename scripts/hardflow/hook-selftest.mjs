@@ -314,7 +314,14 @@ async function main() {
         hooks: {
           internal: {
             entries: {
-              "hardflow-experience-recall": { enabled: true, topK: 3 },
+              "hardflow-experience-recall": {
+                enabled: true,
+                topK: 3,
+                graphStrategy: "harden",
+                graphDecayDays: 21,
+                graphMaxEvents: 1800,
+                graphWeight: 0.3,
+              },
             },
           },
         },

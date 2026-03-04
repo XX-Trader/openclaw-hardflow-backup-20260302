@@ -8,6 +8,7 @@ import {
   readCards,
   readLinkGraphBoosts,
   readQueryHint,
+  resolveLinkGraphStrategyPolicy,
   resolveAgentId,
   resolveHookOptions,
   resolveWorkspaceDir,
@@ -20,6 +21,10 @@ import {
 type RecallOptions = {
   enabled?: boolean;
   topK?: number;
+  graphStrategy?: "balanced" | "harden" | "repair-only";
+  graphDecayDays?: number;
+  graphMaxEvents?: number;
+  graphWeight?: number;
 };
 
 const HOOK_NAME = "hardflow-experience-recall";
@@ -56,10 +61,19 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
     const stats = await loadStats(workspaceDir);
     const query = await readQueryHint(workspaceDir);
     const queryKey = buildSignalKeyFromQuery(query);
+    const graphPolicy = resolveLinkGraphStrategyPolicy({
+      strategy: opts.graphStrategy || process.env.EVOLVE_STRATEGY,
+      decayDays: opts.graphDecayDays,
+      maxEvents: opts.graphMaxEvents,
+      graphWeight: opts.graphWeight,
+    });
     const graphBoosts = await readLinkGraphBoosts({
       workspaceDir,
       queryKey,
       agentId,
+      strategy: graphPolicy.strategy,
+      decayDays: graphPolicy.decayDays,
+      maxEvents: graphPolicy.maxEvents,
     });
     const selected = rankCards({
       cards,
@@ -67,6 +81,7 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
       query,
       topK,
       graphBoosts,
+      graphWeight: graphPolicy.graphWeight,
     });
     const selectedIds = selected.map((c) => c.id);
     if (selectedIds.length === 0) {
