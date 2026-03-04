@@ -7,6 +7,9 @@ import argparse
 import json
 import os
 import re
+import sqlite3
+import subprocess
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -78,6 +81,146 @@ def load_json(path: Path, default: Any) -> Any:
 def save_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def policy_enforcer_path() -> Path:
+    custom = str(os.environ.get("POLICY_ENFORCER_PY", "")).strip()
+    if custom:
+        return Path(custom).expanduser()
+    return Path(__file__).resolve().parent / "policy" / "policy_enforcer.py"
+
+
+def task_exists_in_db(db_path: Path, task_id: str) -> bool:
+    normalized_id = str(task_id or "").strip()
+    if not normalized_id or (not db_path.exists()):
+        return False
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT 1 AS ok FROM tasks WHERE task_id = ?", (normalized_id,)).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
+    script = policy_enforcer_path()
+    if not script.exists():
+        return False, {}, f"policy_enforcer_missing:{script}"
+    cmd = [sys.executable, str(script), "--db", str(db_path), *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        return False, payload or {}, f"policy_enforcer_failed:{err_text}"
+    if not isinstance(payload, dict):
+        return False, {}, "policy_enforcer_invalid_json_output"
+    if not bool(payload.get("ok", False)):
+        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+    return True, payload, ""
+
+
+def ensure_task_binding(db_path: Path, task_id: str, actor: str) -> tuple[str, str]:
+    normalized = str(task_id or "").strip()
+    if not normalized:
+        return "", ""
+    if not db_path.exists():
+        return "", f"task_db_missing:{db_path}"
+    if task_exists_in_db(db_path, normalized):
+        return normalized, ""
+    create_args = [
+        "create-task",
+        "--task-id",
+        normalized,
+        "--task-type",
+        "ops_runtime_cron",
+        "--reason",
+        f"[CRON_RUNTIME] bind {normalized}",
+        "--source",
+        "ops-agent/api-test-audit",
+        "--request-source",
+        "ai",
+        "--priority",
+        "low",
+        "--risk-level",
+        "low",
+        "--pool",
+        "jobs",
+        "--assignee",
+        "ops-agent",
+        "--need-human-confirm",
+        "false",
+        "--human-confirmed",
+        "true",
+        "--requirement",
+        f"Auto register runtime task for {normalized} to bind observability records.",
+        "--result-output",
+        "Runtime task exists and accepts module/communication/report records.",
+        "--acceptance",
+        "Task can be used for cron observability binding without manual action.",
+        "--observable-outputs",
+        "module_logs,module_communications,agent_task_reports,planner_summary",
+        "--acceptance-thresholds",
+        "At least one runtime observability record is bound to this task.",
+        "--scheduled-at",
+        now_iso(),
+        "--actor",
+        str(actor or "ops-agent"),
+    ]
+    ok, _payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+    if ok and task_exists_in_db(db_path, normalized):
+        return normalized, ""
+    return "", (err or f"auto_register_task_failed:{normalized}")
+
+
+def quality_grade_from_score(score: float) -> str:
+    value = float(score or 0.0)
+    if value >= 95:
+        return "a+"
+    if value >= 90:
+        return "a"
+    if value >= 80:
+        return "b"
+    if value >= 70:
+        return "c"
+    if value >= 60:
+        return "d"
+    return "f"
 
 
 def default_config() -> dict[str, Any]:
@@ -962,8 +1105,10 @@ def run_browser_checks(
 
 
 def main() -> int:
+    run_started_at = now()
     home = Path(os.path.expanduser("~"))
     parser = argparse.ArgumentParser(description="OpenClaw API audit runner")
+    parser.add_argument("--db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument("--config-file", default=str(home / ".openclaw/ops/api-test-config.json"))
     parser.add_argument("--state-file", default=str(home / ".openclaw/ops/api-test-state.json"))
     parser.add_argument("--history-dir", default=str(home / ".openclaw/ops/api-test-runs"))
@@ -979,6 +1124,7 @@ def main() -> int:
     state_path = Path(args.state_file).expanduser()
     history_dir = Path(args.history_dir).expanduser()
     history_dir.mkdir(parents=True, exist_ok=True)
+    db_path = Path(args.db).expanduser()
 
     config = load_json(config_path, None)
     config_source = "file"
@@ -1024,6 +1170,128 @@ def main() -> int:
             state["runs"] = int(state.get("runs", 0)) + 1
             state["last_run_file"] = str(run_file)
             save_json(state_path, state)
+            run_duration_ms = 0
+            policy_observability: dict[str, Any] = {"enabled": False, "db": "", "task_bound": False, "errors": []}
+            if db_path.exists():
+                policy_observability["enabled"] = True
+                policy_observability["db"] = str(db_path)
+                raw_task_id = str(args.task_id or "").strip()
+                bound_task_id = ""
+                if raw_task_id:
+                    bound_task_id, bind_err = ensure_task_binding(db_path, raw_task_id, "ops-agent")
+                    if bound_task_id:
+                        policy_observability["task_bound"] = True
+                    elif bind_err:
+                        policy_observability["errors"].append(bind_err)
+                module_args = [
+                    "log-module",
+                    "--module-name",
+                    "ops-agent/api-test-audit",
+                    "--phase",
+                    "api_test_audit",
+                    "--level",
+                    "error",
+                    "--status",
+                    "failed",
+                    "--message",
+                    "api test audit failed: config missing",
+                    "--duration-ms",
+                    str(run_duration_ms),
+                    "--details-json",
+                    json.dumps(
+                        {
+                            "config_file": str(config_path),
+                            "config_source": "missing",
+                            "risk_reasons": ["config_missing"],
+                        },
+                        ensure_ascii=False,
+                    ),
+                    "--actor",
+                    "ops-agent",
+                ]
+                if bound_task_id:
+                    module_args.extend(["--task-id", bound_task_id])
+                ok_module, _payload_module, err_module = invoke_policy_enforcer(db_path, module_args, timeout=30)
+                policy_observability["log_module_ok"] = ok_module
+                if (not ok_module) and err_module:
+                    policy_observability["errors"].append(err_module)
+                comm_args = [
+                    "log-communication",
+                    "--from-module",
+                    "ops-agent/api-test-audit",
+                    "--to-module",
+                    "coordinator",
+                    "--protocol",
+                    "policy-enforcer",
+                    "--message-type",
+                    "api_test_audit_result",
+                    "--status",
+                    "failed",
+                    "--latency-ms",
+                    str(run_duration_ms),
+                    "--correlation-id",
+                    str(run_record.get("run_id", "")),
+                    "--payload-ref",
+                    str(run_file),
+                    "--details-json",
+                    json.dumps({"risk_reasons": ["config_missing"]}, ensure_ascii=False),
+                    "--actor",
+                    "ops-agent",
+                ]
+                if bound_task_id:
+                    comm_args.extend(["--task-id", bound_task_id])
+                ok_comm, _payload_comm, err_comm = invoke_policy_enforcer(db_path, comm_args, timeout=30)
+                policy_observability["log_communication_ok"] = ok_comm
+                if (not ok_comm) and err_comm:
+                    policy_observability["errors"].append(err_comm)
+                if bound_task_id:
+                    report_args = [
+                        "report-agent-result",
+                        "--task-id",
+                        bound_task_id,
+                        "--agent-id",
+                        "ops-agent",
+                        "--planner-id",
+                        "coordinator",
+                        "--status",
+                        "failed",
+                        "--solved",
+                        "false",
+                        "--resolved-issues",
+                        "",
+                        "--resolution-summary",
+                        "api test audit cannot run because config is missing",
+                        "--resolution-steps",
+                        "load_config,validate_config",
+                        "--failed-items",
+                        "config_missing",
+                        "--failure-count",
+                        "1",
+                        "--duration-ms",
+                        str(run_duration_ms),
+                        "--input-tokens",
+                        "0",
+                        "--output-tokens",
+                        "0",
+                        "--cost-estimate",
+                        "0",
+                        "--quality-score",
+                        "20",
+                        "--quality-grade",
+                        quality_grade_from_score(20),
+                        "--notify-chat",
+                        "true",
+                        "--details-json",
+                        json.dumps({"config_file": str(config_path), "run_id": run_record.get("run_id")}, ensure_ascii=False),
+                        "--actor",
+                        "ops-agent",
+                    ]
+                    ok_report, _payload_report, err_report = invoke_policy_enforcer(db_path, report_args, timeout=35)
+                    policy_observability["report_agent_result_ok"] = ok_report
+                    if (not ok_report) and err_report:
+                        policy_observability["errors"].append(err_report)
+            run_record["policy_observability"] = policy_observability
+            save_json(run_file, run_record)
             output = (
                 "# api-test-audit\n"
                 f"- sender_identity: {sender_identity}\n"
@@ -1034,6 +1302,10 @@ def main() -> int:
                 f"- config_file: {config_path}\n"
                 "- action: run init_api_test_config.py and replace placeholders"
             )
+            if policy_observability.get("errors"):
+                output += f"\n- exception_count: {len(policy_observability.get('errors', []))}"
+                for reason in policy_observability.get("errors", [])[:12]:
+                    output += f"\n- exception: {reason}"
             if args.emit_json:
                 print(json.dumps({"notify": True, "output": output, "record": str(run_file)}, ensure_ascii=False))
             else:
@@ -1202,6 +1474,187 @@ def main() -> int:
     state["runs"] = int(state.get("runs", 0)) + 1
     state["last_run_file"] = str(run_file)
     save_json(state_path, state)
+    run_duration_ms = max(0, int((now() - run_started_at).total_seconds() * 1000))
+    run_record["run_duration_ms"] = run_duration_ms
+
+    policy_observability: dict[str, Any] = {"enabled": False, "db": "", "task_bound": False, "errors": []}
+    planner_summary_snapshot: dict[str, Any] = {}
+    if db_path.exists():
+        policy_observability["enabled"] = True
+        policy_observability["db"] = str(db_path)
+        raw_task_id = str(args.task_id or "").strip()
+        bound_task_id = ""
+        if raw_task_id:
+            bound_task_id, bind_err = ensure_task_binding(db_path, raw_task_id, "ops-agent")
+            if bound_task_id:
+                policy_observability["task_bound"] = True
+            elif bind_err:
+                policy_observability["errors"].append(bind_err)
+
+        module_level = "error" if alert_issues else "info"
+        module_status = "failed" if alert_issues else "passed"
+        module_args = [
+            "log-module",
+            "--module-name",
+            "ops-agent/api-test-audit",
+            "--phase",
+            "api_test_audit",
+            "--level",
+            module_level,
+            "--status",
+            module_status,
+            "--message",
+            (
+                "api test audit finished: "
+                + f"endpoints={len(endpoint_results)} browser_checks={len(browser_results)} alert_high={len(alert_issues)}"
+            ),
+            "--duration-ms",
+            str(run_duration_ms),
+            "--details-json",
+            json.dumps(
+                {
+                    "engine": engine,
+                    "endpoint_engine": endpoint_engine,
+                    "risk_reasons": risk_reasons,
+                    "high_issue_count": len(high_issues),
+                    "alert_high_count": len(alert_issues),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "ops-agent",
+        ]
+        if bound_task_id:
+            module_args.extend(["--task-id", bound_task_id])
+        ok_module, _payload_module, err_module = invoke_policy_enforcer(db_path, module_args, timeout=30)
+        policy_observability["log_module_ok"] = ok_module
+        if (not ok_module) and err_module:
+            policy_observability["errors"].append(err_module)
+
+        comm_args = [
+            "log-communication",
+            "--from-module",
+            "ops-agent/api-test-audit",
+            "--to-module",
+            "coordinator",
+            "--protocol",
+            "policy-enforcer",
+            "--message-type",
+            "api_test_audit_result",
+            "--status",
+            ("failed" if alert_issues else "acked"),
+            "--latency-ms",
+            str(run_duration_ms),
+            "--correlation-id",
+            str(run_record.get("run_id", "")),
+            "--payload-ref",
+            str(run_file),
+            "--details-json",
+            json.dumps(
+                {
+                    "risk_reasons": risk_reasons,
+                    "high_issue_count": len(high_issues),
+                    "alert_high_count": len(alert_issues),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "ops-agent",
+        ]
+        if bound_task_id:
+            comm_args.extend(["--task-id", bound_task_id])
+        ok_comm, _payload_comm, err_comm = invoke_policy_enforcer(db_path, comm_args, timeout=30)
+        policy_observability["log_communication_ok"] = ok_comm
+        if (not ok_comm) and err_comm:
+            policy_observability["errors"].append(err_comm)
+
+        if bound_task_id:
+            fail_count = len(alert_issues)
+            report_score = max(35.0, 95.0 - (float(fail_count) * 10.0)) if fail_count > 0 else 98.0
+            report_args = [
+                "report-agent-result",
+                "--task-id",
+                bound_task_id,
+                "--agent-id",
+                "ops-agent",
+                "--planner-id",
+                "coordinator",
+                "--status",
+                ("failed" if fail_count > 0 else "passed"),
+                "--solved",
+                ("false" if fail_count > 0 else "true"),
+                "--resolved-issues",
+                ("api_test_audit_passed" if fail_count == 0 else ""),
+                "--resolution-summary",
+                (
+                    "api test audit finished without new/reopened high issues"
+                    if fail_count == 0
+                    else "api test audit found new/reopened high issues"
+                ),
+                "--resolution-steps",
+                "load_config,run_endpoint_checks,run_browser_checks,analyze_risks",
+                "--failed-items",
+                ",".join(risk_reasons[:20]),
+                "--failure-count",
+                str(fail_count),
+                "--duration-ms",
+                str(run_duration_ms),
+                "--input-tokens",
+                "0",
+                "--output-tokens",
+                "0",
+                "--cost-estimate",
+                "0",
+                "--quality-score",
+                str(round(float(report_score), 2)),
+                "--quality-grade",
+                quality_grade_from_score(report_score),
+                "--notify-chat",
+                ("true" if fail_count > 0 else "false"),
+                "--details-json",
+                json.dumps(
+                    {
+                        "run_id": run_record.get("run_id"),
+                        "endpoint_count": len(endpoint_results),
+                        "browser_check_count": len(browser_results),
+                        "alert_high_count": len(alert_issues),
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                "ops-agent",
+            ]
+            ok_report, _payload_report, err_report = invoke_policy_enforcer(db_path, report_args, timeout=35)
+            policy_observability["report_agent_result_ok"] = ok_report
+            if (not ok_report) and err_report:
+                policy_observability["errors"].append(err_report)
+
+        since_24h = (now() - timedelta(hours=24)).replace(microsecond=0).isoformat()
+        ok_summary, payload_summary, err_summary = invoke_policy_enforcer(
+            db_path,
+            ["planner-summary", "--planner-id", "coordinator", "--since", since_24h, "--limit", "80"],
+            timeout=30,
+        )
+        policy_observability["planner_summary_ok"] = ok_summary
+        if ok_summary and isinstance(payload_summary, dict):
+            summary = payload_summary.get("summary")
+            if isinstance(summary, dict):
+                planner_summary_snapshot = {
+                    "planner_id": summary.get("planner_id"),
+                    "report_count": summary.get("report_count", 0),
+                    "task_count": summary.get("task_count", 0),
+                    "resolved_task_count": summary.get("resolved_task_count", 0),
+                    "failed_task_count": summary.get("failed_task_count", 0),
+                    "solved_ratio_pct": summary.get("solved_ratio_pct", 0.0),
+                    "total_tokens": summary.get("total_tokens", 0),
+                    "total_cost_estimate": summary.get("total_cost_estimate", 0.0),
+                }
+        if (not ok_summary) and err_summary:
+            policy_observability["errors"].append(err_summary)
+    run_record["policy_observability"] = policy_observability
+    if planner_summary_snapshot:
+        run_record["planner_summary"] = planner_summary_snapshot
+    save_json(run_file, run_record)
 
     output = "NO_REPLY"
     if notify:
@@ -1231,6 +1684,44 @@ def main() -> int:
                 lines.append(f"- high[{item.get('id')}]_devtools: {devtools_log}")
         lines.append("- visual_review: use native AI vision on screenshots; do not run image parsing scripts")
         output = "\n".join(lines)
+    exception_reasons = [str(x) for x in policy_observability.get("errors", []) if str(x).strip()]
+    notify = bool(notify or exception_reasons)
+    if planner_summary_snapshot:
+        summary_line = (
+            f"- planner_summary: reports={planner_summary_snapshot.get('report_count', 0)}, "
+            f"resolved={planner_summary_snapshot.get('resolved_task_count', 0)}, "
+            f"failed={planner_summary_snapshot.get('failed_task_count', 0)}, "
+            f"tokens={planner_summary_snapshot.get('total_tokens', 0)}"
+        )
+        if output == "NO_REPLY":
+            output = "\n".join(
+                [
+                    "# api-test-audit",
+                    f"- sender_identity: {sender_identity}",
+                    f"- task: {args.task_id or '-'}",
+                    f"- time: {now_iso()}",
+                    summary_line,
+                ]
+            )
+        else:
+            output = output + "\n" + summary_line
+    if exception_reasons:
+        if output == "NO_REPLY":
+            output = "\n".join(
+                [
+                    "# api-test-audit",
+                    f"- sender_identity: {sender_identity}",
+                    f"- task: {args.task_id or '-'}",
+                    f"- time: {now_iso()}",
+                    f"- exception_count: {len(exception_reasons)}",
+                ]
+            )
+        else:
+            output = output + f"\n- exception_count: {len(exception_reasons)}"
+        for reason in exception_reasons[:12]:
+            output = output + f"\n- exception: {reason}"
+    run_record["notify"] = notify
+    save_json(run_file, run_record)
 
     if args.emit_json:
         print(json.dumps({"notify": notify, "output": output, "record": str(run_file)}, ensure_ascii=False))

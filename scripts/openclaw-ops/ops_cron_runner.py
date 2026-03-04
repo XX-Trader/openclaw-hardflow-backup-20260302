@@ -375,6 +375,63 @@ def task_exists_in_db(db_path: Path, task_id: str) -> bool:
         return False
 
 
+def ensure_task_binding(db_path: Path, task_id: str, actor: str, source_module: str) -> tuple[str, str]:
+    normalized = str(task_id or "").strip()
+    if not normalized:
+        return "", ""
+    if not db_path.exists():
+        return "", f"task_db_missing:{db_path}"
+    if task_exists_in_db(db_path, normalized):
+        return normalized, ""
+
+    actor_name = str(actor or "ops-agent").strip() or "ops-agent"
+    assignee = actor_name.split("/", 1)[0].strip() or "ops-agent"
+    source_name = str(source_module or "ops-agent/ops-cron-runner").strip() or "ops-agent/ops-cron-runner"
+    create_args = [
+        "create-task",
+        "--task-id",
+        normalized,
+        "--task-type",
+        "ops_runtime_cron",
+        "--reason",
+        f"[CRON_RUNTIME] bind {normalized}",
+        "--source",
+        source_name,
+        "--request-source",
+        "ai",
+        "--priority",
+        "low",
+        "--risk-level",
+        "low",
+        "--pool",
+        "jobs",
+        "--assignee",
+        assignee,
+        "--need-human-confirm",
+        "false",
+        "--human-confirmed",
+        "true",
+        "--requirement",
+        f"Auto register runtime task for {normalized} to bind observability records.",
+        "--result-output",
+        "Runtime task exists and accepts module/communication/report records.",
+        "--acceptance",
+        "Task can be used for cron observability binding without manual action.",
+        "--observable-outputs",
+        "module_logs,module_communications,agent_task_reports,planner_summary",
+        "--acceptance-thresholds",
+        "At least one runtime observability record is bound to this task.",
+        "--scheduled-at",
+        now_iso(),
+        "--actor",
+        actor_name,
+    ]
+    ok, _payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+    if ok and task_exists_in_db(db_path, normalized):
+        return normalized, ""
+    return "", (err or f"auto_register_task_failed:{normalized}")
+
+
 def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
     script = policy_enforcer_path()
     if not script.exists():
@@ -1895,10 +1952,17 @@ def main() -> int:
     if policy_db_path.exists():
         policy_observability["enabled"] = True
         raw_task_id = str(args.task_id or "").strip()
-        bound_task_id = raw_task_id if task_exists_in_db(policy_db_path, raw_task_id) else ""
-        policy_observability["task_bound"] = bool(bound_task_id)
-        if raw_task_id and (not bound_task_id):
-            policy_observability["errors"].append(f"task_not_found_for_report:{raw_task_id}")
+        bound_task_id = ""
+        if raw_task_id:
+            bound_task_id, bind_err = ensure_task_binding(
+                policy_db_path,
+                raw_task_id,
+                "ops-agent",
+                "ops-agent/ops-cron-runner",
+            )
+            policy_observability["task_bound"] = bool(bound_task_id)
+            if (not bound_task_id) and bind_err:
+                policy_observability["errors"].append(bind_err)
 
         mode_name = str(result.record.get("mode", args.mode))
         run_duration_ms = int(result.record.get("run_duration_ms", 0) or 0)
@@ -2092,6 +2156,28 @@ def main() -> int:
     result.record["policy_observability"] = policy_observability
     if planner_summary_snapshot:
         result.record["planner_summary"] = planner_summary_snapshot
+    exception_reasons = [str(x).strip() for x in policy_observability.get("errors", []) if str(x).strip()]
+    if exception_reasons:
+        result.notify = True
+        if result.output == "NO_REPLY":
+            lines = [
+                "# ops-cron-runner-exception",
+                f"- sender_identity: {result.record.get('sender_identity', DEFAULT_SENDER_PREFIX)}",
+                f"- task: {args.task_id or '-'}",
+                f"- time: {now_iso()}",
+                f"- mode: {result.record.get('mode', args.mode)}",
+                f"- exception_count: {len(exception_reasons)}",
+            ]
+            result.output = "\n".join(lines)
+        else:
+            result.output = f"{result.output}\n- exception_count: {len(exception_reasons)}"
+        for reason in exception_reasons[:12]:
+            result.output = f"{result.output}\n- exception: {reason}"
+    if not result.notify:
+        result.output = "NO_REPLY"
+    result.record["notify"] = bool(result.notify)
+    if exception_reasons:
+        result.record["exception_reasons"] = exception_reasons[:50]
     save_json(run_file, result.record)
 
     if args.emit_json:

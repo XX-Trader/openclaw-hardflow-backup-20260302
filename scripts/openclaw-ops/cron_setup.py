@@ -224,6 +224,17 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
             ),
             "timeout": 1200,
         },
+        "project_index_maintainer_30m": {
+            "description": "Project index maintainer (stable python runner, compact failure output)",
+            "command": (
+                f"python3 {ops_dir / 'policy' / 'project_index_maintainer.py'} "
+                f"--registry {ops_dir / 'task-center' / 'project-registry.json'} "
+                f"--task-db {ops_dir / 'task-center' / 'task_center.db'} "
+                "--task-id cron:project-index-maintainer-30m --actor project-agent "
+                "--git-pull --doc-timeout 8 --doc-fetch-max-chars 24000"
+            ),
+            "timeout": 1800,
+        },
     }
 
     status: dict[str, str] = {}

@@ -17,6 +17,8 @@ import json
 import math
 import os
 import re
+import sqlite3
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -98,6 +100,148 @@ def normalize_log_mode(value: str, default: str = "silent") -> str:
 def normalize_sender_identity(value: str, default: str = DEFAULT_SENDER_IDENTITY) -> str:
     sender = str(value or "").strip()
     return sender or default
+
+
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def policy_enforcer_path() -> Path:
+    custom = str(os.environ.get("POLICY_ENFORCER_PY", "")).strip()
+    if custom:
+        return Path(custom).expanduser()
+    return POLICY_DIR / "policy_enforcer.py"
+
+
+def task_exists_in_db(db_path: Path, task_id: str) -> bool:
+    normalized_id = str(task_id or "").strip()
+    if not normalized_id or (not db_path.exists()):
+        return False
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT 1 AS ok FROM tasks WHERE task_id = ?", (normalized_id,)).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def ensure_task_binding(db_path: Path, task_id: str, actor: str, source_module: str) -> tuple[str, str]:
+    normalized = str(task_id or "").strip()
+    if not normalized:
+        return "", ""
+    if not db_path.exists():
+        return "", f"task_db_missing:{db_path}"
+    if task_exists_in_db(db_path, normalized):
+        return normalized, ""
+
+    actor_name = str(actor or "github-web-evolution-agent").strip() or "github-web-evolution-agent"
+    assignee = actor_name.split("/", 1)[0].strip() or "optimization-agent"
+    source_name = str(source_module or "optimization-agent/github-web-evolution").strip() or "optimization-agent/github-web-evolution"
+    create_args = [
+        "create-task",
+        "--task-id",
+        normalized,
+        "--task-type",
+        "ops_runtime_cron",
+        "--reason",
+        f"[CRON_RUNTIME] bind {normalized}",
+        "--source",
+        source_name,
+        "--request-source",
+        "ai",
+        "--priority",
+        "low",
+        "--risk-level",
+        "low",
+        "--pool",
+        "jobs",
+        "--assignee",
+        assignee,
+        "--need-human-confirm",
+        "false",
+        "--human-confirmed",
+        "true",
+        "--requirement",
+        f"Auto register runtime task for {normalized} to bind observability records.",
+        "--result-output",
+        "Runtime task exists and accepts module/communication/report records.",
+        "--acceptance",
+        "Task can be used for cron observability binding without manual action.",
+        "--observable-outputs",
+        "module_logs,module_communications,agent_task_reports,planner_summary",
+        "--acceptance-thresholds",
+        "At least one runtime observability record is bound to this task.",
+        "--scheduled-at",
+        now_iso(),
+        "--actor",
+        actor_name,
+    ]
+    ok, _payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+    if ok and task_exists_in_db(db_path, normalized):
+        return normalized, ""
+    return "", (err or f"auto_register_task_failed:{normalized}")
+
+
+def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
+    script = policy_enforcer_path()
+    if not script.exists():
+        return False, {}, f"policy_enforcer_missing:{script}"
+    cmd = [sys.executable, str(script), "--db", str(db_path), *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        return False, payload or {}, f"policy_enforcer_failed:{err_text}"
+    if not isinstance(payload, dict):
+        return False, {}, "policy_enforcer_invalid_json_output"
+    if not bool(payload.get("ok", False)):
+        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+    return True, payload, ""
+
+
+def quality_grade_from_score(score: float) -> str:
+    value = max(0.0, min(float(score), 100.0))
+    if value >= 95:
+        return "a+"
+    if value >= 90:
+        return "a"
+    if value >= 80:
+        return "b"
+    if value >= 70:
+        return "c"
+    return "d"
 
 
 def load_json(path: Path, default: Any) -> Any:
@@ -659,6 +803,7 @@ def create_todo_task(
     }
 
 def main() -> int:
+    run_started_at = now()
     home = Path(os.path.expanduser("~"))
     parser = argparse.ArgumentParser(description="GitHub web evolution incremental runner")
     parser.add_argument("--db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
@@ -732,6 +877,7 @@ def main() -> int:
     changes: list[dict[str, Any]] = []
     created_tasks: list[dict[str, Any]] = []
     task_skipped_reason = ""
+    run_errors: list[str] = []
 
     index_payload = load_index(index_file)
     previous_repos = index_payload.get("repos", {}) if isinstance(index_payload.get("repos"), dict) else {}
@@ -741,156 +887,180 @@ def main() -> int:
     run_dir = runs_dir / f"{run_stamp}_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    if run_allowed:
-        for q in query_list:
-            items, qlog = github_search_repositories(
-                query=q,
-                token=github_token,
-                per_page=max(1, int(args.max_repos_per_query)),
-                timeout=max(5, int(args.http_timeout)),
-            )
-            query_logs.append(qlog)
-            query_results.append((q, items))
-
-        selected = merge_query_results(
-            query_results=query_results,
-            min_stars=max(0, int(args.min_stars)),
-            min_quality_score=max(1, int(args.min_quality_score)),
-            max_total_repos=max(1, int(args.max_total_repos)),
-        )
-
-        max_readme = max(0, int(args.max_readme_repos))
-        for repo in selected[:max_readme]:
-            full_name = str(repo.get("full_name", ""))
-            slug = repo_slug(full_name)
-            owner = str(repo.get("owner", ""))
-            name = str(repo.get("name", ""))
-            readme_info = fetch_repo_readme(
-                owner=owner,
-                repo=name,
-                token=github_token,
-                timeout=max(5, int(args.http_timeout)),
-                max_readme_bytes=max(4096, int(args.readme_max_bytes)),
-            )
-            readme_fetch.append({"full_name": full_name, **{k: v for k, v in readme_info.items() if k != "text"}})
-
-            methods = extract_method_lines(
-                readme_text=str(readme_info.get("text", "")),
-                max_lines=max(1, int(args.method_lines_per_repo)),
-            )
-            readme_file = readmes_dir / f"{slug}.md"
-            methods_file = methods_dir / f"{slug}.md"
-            meta_file = repos_dir / f"{slug}.json"
-
-            if str(readme_info.get("text", "")).strip():
-                save_text(readme_file, str(readme_info.get("text", "")) + "\n")
-            if methods:
-                save_text(
-                    methods_file,
-                    "# Method Snippets\n\n" + "\n".join(f"- {x}" for x in methods) + "\n",
+    try:
+        if run_allowed:
+            for q in query_list:
+                items, qlog = github_search_repositories(
+                    query=q,
+                    token=github_token,
+                    per_page=max(1, int(args.max_repos_per_query)),
+                    timeout=max(5, int(args.http_timeout)),
                 )
+                query_logs.append(qlog)
+                query_results.append((q, items))
 
-            prev = previous_repos.get(full_name, {}) if isinstance(previous_repos.get(full_name), dict) else {}
-            prev_pushed = str(prev.get("pushed_at", ""))
-            prev_sha = str(prev.get("readme_sha", ""))
-            prev_stars = int(prev.get("stargazers_count", 0) or 0)
+            selected = merge_query_results(
+                query_results=query_results,
+                min_stars=max(0, int(args.min_stars)),
+                min_quality_score=max(1, int(args.min_quality_score)),
+                max_total_repos=max(1, int(args.max_total_repos)),
+            )
 
-            readme_sha = str(readme_info.get("sha", ""))
-            if not readme_sha and str(readme_info.get("text", "")).strip():
-                readme_sha = hashlib.sha1(str(readme_info.get("text", "")).encode("utf-8", errors="ignore")).hexdigest()[:16]
-
-            repo_row = {
-                **repo,
-                "readme_sha": readme_sha,
-                "readme_path": str(readme_info.get("path", "")),
-                "readme_file": str(readme_file),
-                "methods_file": str(methods_file),
-                "methods_count": len(methods),
-                "last_seen_at": now_iso(),
-            }
-            save_json(meta_file, repo_row)
-            previous_repos[full_name] = repo_row
-
-            change_type = ""
-            change_flags: list[str] = []
-            if not prev:
-                change_type = "new"
-            else:
-                if str(repo.get("pushed_at", "")) != prev_pushed:
-                    change_flags.append("pushed_at")
-                if readme_sha and readme_sha != prev_sha:
-                    change_flags.append("readme")
-                if int(repo.get("stargazers_count", 0) or 0) != prev_stars:
-                    change_flags.append("stars")
-                if change_flags:
-                    change_type = "updated"
-
-            if change_type:
-                changes.append(
-                    {
-                        "change_type": change_type,
-                        "change_flags": change_flags,
-                        "full_name": full_name,
-                        "html_url": str(repo.get("html_url", "")),
-                        "quality_score": int(repo.get("quality_score", 0) or 0),
-                        "stargazers_count": int(repo.get("stargazers_count", 0) or 0),
-                        "pushed_at": str(repo.get("pushed_at", "")),
-                        "readme_sha": readme_sha,
-                        "meta_file": str(meta_file),
-                        "readme_file": str(readme_file),
-                        "methods_file": str(methods_file),
-                    }
+            max_readme = max(0, int(args.max_readme_repos))
+            for repo in selected[:max_readme]:
+                full_name = str(repo.get("full_name", ""))
+                slug = repo_slug(full_name)
+                owner = str(repo.get("owner", ""))
+                name = str(repo.get("name", ""))
+                readme_info = fetch_repo_readme(
+                    owner=owner,
+                    repo=name,
+                    token=github_token,
+                    timeout=max(5, int(args.http_timeout)),
+                    max_readme_bytes=max(4096, int(args.readme_max_bytes)),
                 )
+                readme_fetch.append({"full_name": full_name, **{k: v for k, v in readme_info.items() if k != "text"}})
 
-        index_payload["repos"] = previous_repos
-        index_payload["updated_at"] = now_iso()
-        save_json(index_file, index_payload)
-        write_catalog_markdown(index_payload, catalog_file)
+                methods = extract_method_lines(
+                    readme_text=str(readme_info.get("text", "")),
+                    max_lines=max(1, int(args.method_lines_per_repo)),
+                )
+                readme_file = readmes_dir / f"{slug}.md"
+                methods_file = methods_dir / f"{slug}.md"
+                meta_file = repos_dir / f"{slug}.json"
 
-    save_json(run_dir / "queries.json", {"queries": query_list, "logs": query_logs})
-    save_json(run_dir / "selected_repositories.json", {"count": len(selected), "items": selected})
-    save_json(run_dir / "changes.json", {"count": len(changes), "items": changes})
+                if str(readme_info.get("text", "")).strip():
+                    save_text(readme_file, str(readme_info.get("text", "")) + "\n")
+                if methods:
+                    save_text(
+                        methods_file,
+                        "# Method Snippets\n\n" + "\n".join(f"- {x}" for x in methods) + "\n",
+                    )
+
+                prev = previous_repos.get(full_name, {}) if isinstance(previous_repos.get(full_name), dict) else {}
+                prev_pushed = str(prev.get("pushed_at", ""))
+                prev_sha = str(prev.get("readme_sha", ""))
+                prev_stars = int(prev.get("stargazers_count", 0) or 0)
+
+                readme_sha = str(readme_info.get("sha", ""))
+                if not readme_sha and str(readme_info.get("text", "")).strip():
+                    readme_sha = hashlib.sha1(str(readme_info.get("text", "")).encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+                repo_row = {
+                    **repo,
+                    "readme_sha": readme_sha,
+                    "readme_path": str(readme_info.get("path", "")),
+                    "readme_file": str(readme_file),
+                    "methods_file": str(methods_file),
+                    "methods_count": len(methods),
+                    "last_seen_at": now_iso(),
+                }
+                save_json(meta_file, repo_row)
+                previous_repos[full_name] = repo_row
+
+                change_type = ""
+                change_flags: list[str] = []
+                if not prev:
+                    change_type = "new"
+                else:
+                    if str(repo.get("pushed_at", "")) != prev_pushed:
+                        change_flags.append("pushed_at")
+                    if readme_sha and readme_sha != prev_sha:
+                        change_flags.append("readme")
+                    if int(repo.get("stargazers_count", 0) or 0) != prev_stars:
+                        change_flags.append("stars")
+                    if change_flags:
+                        change_type = "updated"
+
+                if change_type:
+                    changes.append(
+                        {
+                            "change_type": change_type,
+                            "change_flags": change_flags,
+                            "full_name": full_name,
+                            "html_url": str(repo.get("html_url", "")),
+                            "quality_score": int(repo.get("quality_score", 0) or 0),
+                            "stargazers_count": int(repo.get("stargazers_count", 0) or 0),
+                            "pushed_at": str(repo.get("pushed_at", "")),
+                            "readme_sha": readme_sha,
+                            "meta_file": str(meta_file),
+                            "readme_file": str(readme_file),
+                            "methods_file": str(methods_file),
+                        }
+                    )
+
+            index_payload["repos"] = previous_repos
+            index_payload["updated_at"] = now_iso()
+            save_json(index_file, index_payload)
+            write_catalog_markdown(index_payload, catalog_file)
+    except Exception as exc:
+        run_errors.append(f"github_web_collect_failed:{exc}")
 
     fingerprint = fingerprint_from_changes(changes) if changes else ""
     dedupe_key = dedupe_key_from_changes(changes)
     candidate_batches: list[list[dict[str, Any]]] = []
 
-    if run_allowed and len(changes) >= max(1, int(args.min_new_or_updated)):
-        candidate_batches = split_changes_for_tasks(
-            changes,
-            max_tasks_per_run=max(1, int(args.max_tasks_per_run)),
-            min_changes_per_task=max(1, int(args.min_new_or_updated)),
-        )
+    try:
+        save_json(run_dir / "queries.json", {"queries": query_list, "logs": query_logs})
+        save_json(run_dir / "selected_repositories.json", {"count": len(selected), "items": selected})
+        save_json(run_dir / "changes.json", {"count": len(changes), "items": changes})
+
+        if run_allowed and len(changes) >= max(1, int(args.min_new_or_updated)):
+            candidate_batches = split_changes_for_tasks(
+                changes,
+                max_tasks_per_run=max(1, int(args.max_tasks_per_run)),
+                min_changes_per_task=max(1, int(args.min_new_or_updated)),
+            )
+            tc = TaskCenter(Path(args.db).expanduser())
+            try:
+                tc.init_schema()
+                for batch in candidate_batches:
+                    fp = fingerprint_from_changes(batch)
+                    if not fp:
+                        continue
+                    dk = dedupe_key_from_changes(batch)
+                    created = create_todo_task(
+                        tc=tc,
+                        fingerprint=fp,
+                        dedupe_key=dk,
+                        assignee=str(args.assignee or "optimization-agent").strip() or "optimization-agent",
+                        schedule_gap_minutes=max(1, int(args.schedule_gap_minutes)),
+                        report_file=Path("<pending>"),
+                        catalog_file=catalog_file,
+                        changes=batch,
+                        query_list=query_list,
+                        recent_dedupe_days=max(0, int(args.recent_dedupe_days)),
+                    )
+                    if created:
+                        created_tasks.append(created)
+                if created_tasks:
+                    task_skipped_reason = "" if len(created_tasks) == len(candidate_batches) else "partially_duplicate_or_open"
+                else:
+                    task_skipped_reason = "already_open_or_duplicate_recent"
+            finally:
+                tc.close()
+        elif run_allowed and len(changes) < max(1, int(args.min_new_or_updated)):
+            task_skipped_reason = "changes_below_threshold"
+    except Exception as exc:
+        run_errors.append(f"github_web_package_failed:{exc}")
+
+    report_file = report_dir / f"{run_stamp}_{run_id}.json"
+    if created_tasks:
         tc = TaskCenter(Path(args.db).expanduser())
         try:
-            tc.init_schema()
-            for batch in candidate_batches:
-                fp = fingerprint_from_changes(batch)
-                if not fp:
+            for item in created_tasks:
+                task_id = str(item.get("task_id", ""))
+                if not task_id:
                     continue
-                dk = dedupe_key_from_changes(batch)
-                created = create_todo_task(
-                    tc=tc,
-                    fingerprint=fp,
-                    dedupe_key=dk,
-                    assignee=str(args.assignee or "optimization-agent").strip() or "optimization-agent",
-                    schedule_gap_minutes=max(1, int(args.schedule_gap_minutes)),
-                    report_file=Path("<pending>"),
-                    catalog_file=catalog_file,
-                    changes=batch,
-                    query_list=query_list,
-                    recent_dedupe_days=max(0, int(args.recent_dedupe_days)),
-                )
-                if created:
-                    created_tasks.append(created)
-            if created_tasks:
-                task_skipped_reason = "" if len(created_tasks) == len(candidate_batches) else "partially_duplicate_or_open"
-            else:
-                task_skipped_reason = "already_open_or_duplicate_recent"
+                row = tc.get_task(task_id)
+                if not isinstance(row, dict):
+                    continue
+                requirement = str(row.get("requirement", "")).replace("<pending>", str(report_file))
+                tc.update_task(task_id, actor="github-web-evolution-agent", fields={"requirement": requirement})
+        except Exception as exc:
+            run_errors.append(f"github_web_requirement_update_failed:{exc}")
         finally:
             tc.close()
-    elif run_allowed and len(changes) < max(1, int(args.min_new_or_updated)):
-        task_skipped_reason = "changes_below_threshold"
 
     report = {
         "run_id": run_id,
@@ -925,25 +1095,201 @@ def main() -> int:
         "dedupe_key": dedupe_key,
         "catalog_file": str(catalog_file),
         "index_file": str(index_file),
+        "run_errors": run_errors,
     }
 
-    report_file = report_dir / f"{run_stamp}_{run_id}.json"
-    save_json(report_file, report)
+    run_duration_ms = max(0, int((now() - run_started_at).total_seconds() * 1000))
+    report["run_duration_ms"] = run_duration_ms
 
-    if created_tasks:
-        tc = TaskCenter(Path(args.db).expanduser())
-        try:
-            for item in created_tasks:
-                task_id = str(item.get("task_id", ""))
-                if not task_id:
-                    continue
-                row = tc.get_task(task_id)
-                if not isinstance(row, dict):
-                    continue
-                requirement = str(row.get("requirement", "")).replace("<pending>", str(report_file))
-                tc.update_task(task_id, actor="github-web-evolution-agent", fields={"requirement": requirement})
-        finally:
-            tc.close()
+    policy_observability: dict[str, Any] = {"enabled": False, "db": "", "task_bound": False, "errors": []}
+    planner_summary_snapshot: dict[str, Any] = {}
+    db_file = Path(args.db).expanduser()
+    if db_file.exists():
+        policy_observability["enabled"] = True
+        policy_observability["db"] = str(db_file)
+        bound_task_id = ""
+        raw_task_id = str(args.task_id or "").strip()
+        if raw_task_id:
+            bound_task_id, bind_err = ensure_task_binding(
+                db_file,
+                raw_task_id,
+                "github-web-evolution-agent",
+                "optimization-agent/github-web-evolution",
+            )
+            if bound_task_id:
+                policy_observability["task_bound"] = True
+            elif bind_err:
+                policy_observability["errors"].append(bind_err)
+
+        module_args = [
+            "log-module",
+            "--module-name",
+            "optimization-agent/github-web-evolution",
+            "--phase",
+            "web_scan",
+            "--level",
+            ("error" if run_errors else "info"),
+            "--status",
+            ("failed" if run_errors else "passed"),
+            "--message",
+            (
+                "github web evolution run finished: "
+                + f"selected={len(selected)} changed={len(changes)} created={len(created_tasks)}"
+            ),
+            "--duration-ms",
+            str(run_duration_ms),
+            "--details-json",
+            json.dumps(
+                {
+                    "run_allowed": bool(run_allowed),
+                    "query_count": len(query_list),
+                    "selected_count": len(selected),
+                    "changes_count": len(changes),
+                    "created_task_count": len(created_tasks),
+                    "run_error_count": len(run_errors),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "github-web-evolution-agent",
+        ]
+        if bound_task_id:
+            module_args.extend(["--task-id", bound_task_id])
+        ok_module, _payload_module, err_module = invoke_policy_enforcer(db_file, module_args, timeout=30)
+        policy_observability["log_module_ok"] = ok_module
+        if not ok_module and err_module:
+            policy_observability["errors"].append(err_module)
+
+        comm_args = [
+            "log-communication",
+            "--from-module",
+            "optimization-agent/github-web-evolution",
+            "--to-module",
+            "coordinator",
+            "--protocol",
+            "policy-enforcer",
+            "--message-type",
+            "github_web_evolution_result",
+            "--status",
+            ("failed" if run_errors else "acked"),
+            "--latency-ms",
+            str(run_duration_ms),
+            "--correlation-id",
+            str(run_id),
+            "--payload-ref",
+            str(report_file),
+            "--details-json",
+            json.dumps(
+                {
+                    "fingerprint": fingerprint,
+                    "dedupe_key": dedupe_key,
+                    "task_created_count": len(created_tasks),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "github-web-evolution-agent",
+        ]
+        if bound_task_id:
+            comm_args.extend(["--task-id", bound_task_id])
+        ok_comm, _payload_comm, err_comm = invoke_policy_enforcer(db_file, comm_args, timeout=30)
+        policy_observability["log_communication_ok"] = ok_comm
+        if not ok_comm and err_comm:
+            policy_observability["errors"].append(err_comm)
+
+        report_count = 0
+        for item in created_tasks:
+            task_id = str(item.get("task_id", "")).strip()
+            if not task_id:
+                continue
+            score = float(item.get("quality_score", 0) or 0)
+            success = not run_errors
+            report_args = [
+                "report-agent-result",
+                "--task-id",
+                task_id,
+                "--agent-id",
+                "optimization-agent",
+                "--planner-id",
+                "coordinator",
+                "--status",
+                ("passed" if success else "partial"),
+                "--solved",
+                ("true" if success else "false"),
+                "--resolved-issues",
+                "github_web_evolution_todo_packaged",
+                "--resolution-summary",
+                (
+                    "github web evolution todo task packaged"
+                    if success
+                    else "todo task packaged with partial runtime errors"
+                ),
+                "--resolution-steps",
+                "search_github,extract_readme_methods,detect_changes,create_todo_task",
+                "--failed-items",
+                ",".join(run_errors[:20]),
+                "--failure-count",
+                str(len(run_errors)),
+                "--duration-ms",
+                str(run_duration_ms),
+                "--input-tokens",
+                "0",
+                "--output-tokens",
+                "0",
+                "--cost-estimate",
+                "0",
+                "--quality-score",
+                str(round(score, 2)),
+                "--quality-grade",
+                quality_grade_from_score(score),
+                "--notify-chat",
+                ("true" if run_errors else "false"),
+                "--details-json",
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "fingerprint": item.get("fingerprint"),
+                        "dedupe_key": item.get("dedupe_key"),
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                "github-web-evolution-agent",
+            ]
+            ok_report, _payload_report, err_report = invoke_policy_enforcer(db_file, report_args, timeout=35)
+            if ok_report:
+                report_count += 1
+            elif err_report:
+                policy_observability["errors"].append(err_report)
+        policy_observability["report_agent_result_count"] = report_count
+
+        since_24h = (now() - timedelta(hours=24)).replace(microsecond=0).isoformat()
+        ok_summary, payload_summary, err_summary = invoke_policy_enforcer(
+            db_file,
+            ["planner-summary", "--planner-id", "coordinator", "--since", since_24h, "--limit", "60"],
+            timeout=30,
+        )
+        policy_observability["planner_summary_ok"] = ok_summary
+        if ok_summary and isinstance(payload_summary, dict):
+            summary = payload_summary.get("summary")
+            if isinstance(summary, dict):
+                planner_summary_snapshot = {
+                    "planner_id": summary.get("planner_id"),
+                    "report_count": summary.get("report_count", 0),
+                    "task_count": summary.get("task_count", 0),
+                    "resolved_task_count": summary.get("resolved_task_count", 0),
+                    "failed_task_count": summary.get("failed_task_count", 0),
+                    "solved_ratio_pct": summary.get("solved_ratio_pct", 0.0),
+                    "total_tokens": summary.get("total_tokens", 0),
+                    "total_cost_estimate": summary.get("total_cost_estimate", 0.0),
+                }
+        if (not ok_summary) and err_summary:
+            policy_observability["errors"].append(err_summary)
+
+    report["policy_observability"] = policy_observability
+    if planner_summary_snapshot:
+        report["planner_summary"] = planner_summary_snapshot
+    save_json(report_file, report)
 
     state["runs"] = int(state.get("runs", 0)) + 1
     state["updated_at"] = now_iso()
@@ -963,9 +1309,11 @@ def main() -> int:
     state["fingerprints"] = fps
     save_json(state_file, state)
 
-    notify = bool(created_tasks)
-    if (not notify) and log_mode == "chat":
-        notify = True
+    exception_reasons: list[str] = []
+    exception_reasons.extend(run_errors)
+    if isinstance(policy_observability.get("errors"), list):
+        exception_reasons.extend(str(x) for x in policy_observability.get("errors", []) if str(x).strip())
+    notify = bool(exception_reasons)
 
     output = "NO_REPLY"
     if notify:
@@ -983,7 +1331,10 @@ def main() -> int:
             f"- web_root: {web_root}",
             f"- catalog: {catalog_file}",
             f"- report: {report_file}",
+            f"- exception_count: {len(exception_reasons)}",
         ]
+        for reason in exception_reasons[:12]:
+            lines.append(f"- exception: {reason}")
         for item in changes[:12]:
             lines.append(
                 "- change: "

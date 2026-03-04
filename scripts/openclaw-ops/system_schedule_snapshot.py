@@ -7,7 +7,9 @@ import argparse
 import hashlib
 import json
 import os
+import sqlite3
 import subprocess
+import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -64,6 +66,135 @@ def normalize_log_mode(value: str) -> str:
 def normalize_sender_identity(value: str, default: str = DEFAULT_SENDER_IDENTITY) -> str:
     sender = str(value or "").strip()
     return sender or default
+
+
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def policy_enforcer_path() -> Path:
+    custom = str(os.environ.get("POLICY_ENFORCER_PY", "")).strip()
+    if custom:
+        return Path(custom).expanduser()
+    return Path(__file__).resolve().parent / "policy" / "policy_enforcer.py"
+
+
+def task_exists_in_db(db_path: Path, task_id: str) -> bool:
+    normalized_id = str(task_id or "").strip()
+    if not normalized_id or (not db_path.exists()):
+        return False
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT 1 AS ok FROM tasks WHERE task_id = ?", (normalized_id,)).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
+    script = policy_enforcer_path()
+    if not script.exists():
+        return False, {}, f"policy_enforcer_missing:{script}"
+    cmd = [sys.executable, str(script), "--db", str(db_path), *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        return False, payload or {}, f"policy_enforcer_failed:{err_text}"
+    if not isinstance(payload, dict):
+        return False, {}, "policy_enforcer_invalid_json_output"
+    if not bool(payload.get("ok", False)):
+        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+    return True, payload, ""
+
+
+def ensure_task_binding(db_path: Path, task_id: str, actor: str, source_module: str) -> tuple[str, str]:
+    normalized = str(task_id or "").strip()
+    if not normalized:
+        return "", ""
+    if not db_path.exists():
+        return "", f"task_db_missing:{db_path}"
+    if task_exists_in_db(db_path, normalized):
+        return normalized, ""
+
+    actor_name = str(actor or "ops-agent").strip() or "ops-agent"
+    assignee = actor_name.split("/", 1)[0].strip() or "ops-agent"
+    source_name = str(source_module or "ops-agent/system-schedule-audit").strip() or "ops-agent/system-schedule-audit"
+    create_args = [
+        "create-task",
+        "--task-id",
+        normalized,
+        "--task-type",
+        "ops_runtime_cron",
+        "--reason",
+        f"[CRON_RUNTIME] bind {normalized}",
+        "--source",
+        source_name,
+        "--request-source",
+        "ai",
+        "--priority",
+        "low",
+        "--risk-level",
+        "low",
+        "--pool",
+        "jobs",
+        "--assignee",
+        assignee,
+        "--need-human-confirm",
+        "false",
+        "--human-confirmed",
+        "true",
+        "--requirement",
+        f"Auto register runtime task for {normalized} to bind observability records.",
+        "--result-output",
+        "Runtime task exists and accepts module/communication/report records.",
+        "--acceptance",
+        "Task can be used for cron observability binding without manual action.",
+        "--observable-outputs",
+        "module_logs,module_communications,agent_task_reports,planner_summary",
+        "--acceptance-thresholds",
+        "At least one runtime observability record is bound to this task.",
+        "--scheduled-at",
+        now_iso(),
+        "--actor",
+        actor_name,
+    ]
+    ok, _payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+    if ok and task_exists_in_db(db_path, normalized):
+        return normalized, ""
+    return "", (err or f"auto_register_task_failed:{normalized}")
 
 
 def digest_object(value: Any) -> str:
@@ -250,8 +381,10 @@ def build_output(
 
 
 def main() -> int:
+    run_started_at = datetime.now(TZ)
     home = Path(os.path.expanduser("~"))
     parser = argparse.ArgumentParser(description="System/OpenClaw schedule snapshot monitor")
+    parser.add_argument("--db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument("--openclaw-jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
     parser.add_argument("--output-dir", default=str(home / ".openclaw/ops/system-schedule/snapshots"))
     parser.add_argument("--state-file", default=str(home / ".openclaw/ops/system-schedule/state.json"))
@@ -297,6 +430,233 @@ def main() -> int:
         "risk_reasons": compare.get("risk_reasons", []),
         "change_reasons": compare.get("change_reasons", []),
     }
+    run_duration_ms = max(0, int((datetime.now(TZ) - run_started_at).total_seconds() * 1000))
+    result["run_duration_ms"] = run_duration_ms
+
+    policy_db_path = Path(args.db).expanduser()
+    policy_observability: dict[str, Any] = {"enabled": False, "db": str(policy_db_path), "task_bound": False, "errors": []}
+    planner_summary_snapshot: dict[str, Any] = {}
+    if policy_db_path.exists():
+        policy_observability["enabled"] = True
+        raw_task_id = str(args.task_id or "").strip()
+        bound_task_id = ""
+        if raw_task_id:
+            bound_task_id, bind_err = ensure_task_binding(
+                policy_db_path,
+                raw_task_id,
+                "ops-agent",
+                "ops-agent/system-schedule-audit",
+            )
+            policy_observability["task_bound"] = bool(bound_task_id)
+            if (not bound_task_id) and bind_err:
+                policy_observability["errors"].append(bind_err)
+
+        risk_reasons = [str(x).strip() for x in compare.get("risk_reasons", []) if str(x).strip()]
+        change_reasons = [str(x).strip() for x in compare.get("change_reasons", []) if str(x).strip()]
+        module_args = [
+            "log-module",
+            "--module-name",
+            "ops-agent/system-schedule-audit",
+            "--phase",
+            "snapshot",
+            "--level",
+            ("error" if risk_reasons else "info"),
+            "--status",
+            ("failed" if risk_reasons else "passed"),
+            "--message",
+            (
+                "system schedule snapshot collected: "
+                + f"risk={len(risk_reasons)} change={len(change_reasons)} notify={bool(result.get('notify'))}"
+            ),
+            "--duration-ms",
+            str(run_duration_ms),
+            "--details-json",
+            json.dumps(
+                {
+                    "snapshot_file": str(snapshot_file),
+                    "state_file": str(state_file),
+                    "risk_reasons": risk_reasons,
+                    "change_reasons": change_reasons,
+                    "notify": bool(result.get("notify")),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "ops-agent",
+        ]
+        if bound_task_id:
+            module_args.extend(["--task-id", bound_task_id])
+        ok_module, _payload_module, err_module = invoke_policy_enforcer(policy_db_path, module_args, timeout=30)
+        policy_observability["log_module_ok"] = ok_module
+        if (not ok_module) and err_module:
+            policy_observability["errors"].append(err_module)
+
+        comm_args = [
+            "log-communication",
+            "--from-module",
+            "ops-agent/system-schedule-audit",
+            "--to-module",
+            "coordinator",
+            "--protocol",
+            "policy-enforcer",
+            "--message-type",
+            "system_schedule_snapshot",
+            "--status",
+            ("failed" if risk_reasons else "acked"),
+            "--latency-ms",
+            str(run_duration_ms),
+            "--correlation-id",
+            str(snapshot_file.stem),
+            "--payload-ref",
+            str(snapshot_file),
+            "--details-json",
+            json.dumps({"state_file": str(state_file), "notify": bool(result.get("notify"))}, ensure_ascii=False),
+            "--actor",
+            "ops-agent",
+        ]
+        if bound_task_id:
+            comm_args.extend(["--task-id", bound_task_id])
+        ok_comm, _payload_comm, err_comm = invoke_policy_enforcer(policy_db_path, comm_args, timeout=30)
+        policy_observability["log_communication_ok"] = ok_comm
+        if (not ok_comm) and err_comm:
+            policy_observability["errors"].append(err_comm)
+
+        if bound_task_id:
+            report_args = [
+                "report-agent-result",
+                "--task-id",
+                bound_task_id,
+                "--agent-id",
+                "ops-agent",
+                "--planner-id",
+                "coordinator",
+                "--status",
+                ("failed" if risk_reasons else "passed"),
+                "--solved",
+                ("false" if risk_reasons else "true"),
+                "--resolved-issues",
+                "system_schedule_snapshot",
+                "--resolution-summary",
+                (
+                    "system schedule snapshot completed"
+                    if not risk_reasons
+                    else "system schedule snapshot detected risk items"
+                ),
+                "--resolution-steps",
+                "collect_snapshot,compare,save_state,build_output",
+                "--failed-items",
+                ",".join(risk_reasons[:20]),
+                "--failure-count",
+                str(len(risk_reasons)),
+                "--duration-ms",
+                str(run_duration_ms),
+                "--input-tokens",
+                "0",
+                "--output-tokens",
+                "0",
+                "--cost-estimate",
+                "0",
+                "--quality-score",
+                str(75.0 if risk_reasons else 92.0),
+                "--quality-grade",
+                ("c" if risk_reasons else "a"),
+                "--notify-chat",
+                ("true" if risk_reasons else "false"),
+                "--details-json",
+                json.dumps(
+                    {
+                        "snapshot_file": str(snapshot_file),
+                        "state_file": str(state_file),
+                        "risk_reasons": risk_reasons,
+                        "change_reasons": change_reasons,
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                "ops-agent",
+            ]
+            ok_report, payload_report, err_report = invoke_policy_enforcer(policy_db_path, report_args, timeout=35)
+            policy_observability["report_agent_result_ok"] = ok_report
+            if ok_report and isinstance(payload_report, dict):
+                result_payload = payload_report.get("result")
+                if isinstance(result_payload, dict):
+                    planner_payload = result_payload.get("planner_payload")
+                    if isinstance(planner_payload, dict):
+                        policy_observability["agent_report"] = {
+                            "report_status": planner_payload.get("report_status"),
+                            "notify_chat": planner_payload.get("notify_chat"),
+                            "failure_count": planner_payload.get("failure_count"),
+                        }
+            if (not ok_report) and err_report:
+                policy_observability["errors"].append(err_report)
+
+        since_24h = (datetime.now(tz=timezone.utc) - timedelta(hours=24)).replace(microsecond=0).isoformat()
+        ok_summary, payload_summary, err_summary = invoke_policy_enforcer(
+            policy_db_path,
+            ["planner-summary", "--planner-id", "coordinator", "--since", since_24h, "--limit", "80"],
+            timeout=30,
+        )
+        policy_observability["planner_summary_ok"] = ok_summary
+        if ok_summary and isinstance(payload_summary, dict):
+            summary = payload_summary.get("summary")
+            if isinstance(summary, dict):
+                planner_summary_snapshot = {
+                    "planner_id": summary.get("planner_id"),
+                    "report_count": summary.get("report_count", 0),
+                    "task_count": summary.get("task_count", 0),
+                    "resolved_task_count": summary.get("resolved_task_count", 0),
+                    "failed_task_count": summary.get("failed_task_count", 0),
+                    "solved_ratio_pct": summary.get("solved_ratio_pct", 0.0),
+                    "total_tokens": summary.get("total_tokens", 0),
+                    "total_cost_estimate": summary.get("total_cost_estimate", 0.0),
+                }
+        if (not ok_summary) and err_summary:
+            policy_observability["errors"].append(err_summary)
+
+    exception_reasons = [str(x).strip() for x in policy_observability.get("errors", []) if str(x).strip()]
+    notify = bool(result.get("notify") or exception_reasons)
+    output = str(result.get("output", "NO_REPLY"))
+    if planner_summary_snapshot and notify:
+        summary_line = (
+            f"- planner_summary: reports={planner_summary_snapshot.get('report_count', 0)}, "
+            f"resolved={planner_summary_snapshot.get('resolved_task_count', 0)}, "
+            f"failed={planner_summary_snapshot.get('failed_task_count', 0)}, "
+            f"tokens={planner_summary_snapshot.get('total_tokens', 0)}"
+        )
+        if output == "NO_REPLY":
+            output = "\n".join(
+                [
+                    "# ops-system-schedule-audit",
+                    f"- sender_identity: {sender_identity}",
+                    f"- task: {args.task_id or '-'}",
+                    f"- time: {now_iso()}",
+                    summary_line,
+                ]
+            )
+        else:
+            output = f"{output}\n{summary_line}"
+    if exception_reasons:
+        if output == "NO_REPLY":
+            output = "\n".join(
+                [
+                    "# ops-system-schedule-audit-exception",
+                    f"- sender_identity: {sender_identity}",
+                    f"- task: {args.task_id or '-'}",
+                    f"- time: {now_iso()}",
+                    f"- exception_count: {len(exception_reasons)}",
+                ]
+            )
+        else:
+            output = f"{output}\n- exception_count: {len(exception_reasons)}"
+        for reason in exception_reasons[:12]:
+            output = f"{output}\n- exception: {reason}"
+    if not notify:
+        output = "NO_REPLY"
+
+    result["notify"] = notify
+    result["output"] = output
+    result["policy_observability"] = policy_observability
+    result["planner_summary"] = planner_summary_snapshot
     if args.emit_json:
         print(json.dumps(result, ensure_ascii=False))
     else:

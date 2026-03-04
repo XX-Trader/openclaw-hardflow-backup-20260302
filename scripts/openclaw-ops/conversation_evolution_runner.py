@@ -14,6 +14,8 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
+import subprocess
 import sys
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -163,6 +165,151 @@ def normalize_log_mode(value: str, default: str = "silent") -> str:
 def normalize_sender_identity(value: str, default: str = DEFAULT_SENDER_IDENTITY) -> str:
     sender = str(value or "").strip()
     return sender or default
+
+
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def policy_enforcer_path() -> Path:
+    custom = str(os.environ.get("POLICY_ENFORCER_PY", "")).strip()
+    if custom:
+        return Path(custom).expanduser()
+    return POLICY_DIR / "policy_enforcer.py"
+
+
+def task_exists_in_db(db_path: Path, task_id: str) -> bool:
+    normalized_id = str(task_id or "").strip()
+    if not normalized_id or (not db_path.exists()):
+        return False
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT 1 AS ok FROM tasks WHERE task_id = ?", (normalized_id,)).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def ensure_task_binding(db_path: Path, task_id: str, actor: str, source_module: str) -> tuple[str, str]:
+    normalized = str(task_id or "").strip()
+    if not normalized:
+        return "", ""
+    if not db_path.exists():
+        return "", f"task_db_missing:{db_path}"
+    if task_exists_in_db(db_path, normalized):
+        return normalized, ""
+
+    actor_name = str(actor or "conversation-evolution-agent").strip() or "conversation-evolution-agent"
+    assignee = actor_name.split("/", 1)[0].strip() or "conversation-evolution-agent"
+    source_name = (
+        str(source_module or "conversation-evolution-agent/dialog-review").strip()
+        or "conversation-evolution-agent/dialog-review"
+    )
+    create_args = [
+        "create-task",
+        "--task-id",
+        normalized,
+        "--task-type",
+        "ops_runtime_cron",
+        "--reason",
+        f"[CRON_RUNTIME] bind {normalized}",
+        "--source",
+        source_name,
+        "--request-source",
+        "ai",
+        "--priority",
+        "low",
+        "--risk-level",
+        "low",
+        "--pool",
+        "jobs",
+        "--assignee",
+        assignee,
+        "--need-human-confirm",
+        "false",
+        "--human-confirmed",
+        "true",
+        "--requirement",
+        f"Auto register runtime task for {normalized} to bind observability records.",
+        "--result-output",
+        "Runtime task exists and accepts module/communication/report records.",
+        "--acceptance",
+        "Task can be used for cron observability binding without manual action.",
+        "--observable-outputs",
+        "module_logs,module_communications,agent_task_reports,planner_summary",
+        "--acceptance-thresholds",
+        "At least one runtime observability record is bound to this task.",
+        "--scheduled-at",
+        now_iso(),
+        "--actor",
+        actor_name,
+    ]
+    ok, _payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+    if ok and task_exists_in_db(db_path, normalized):
+        return normalized, ""
+    return "", (err or f"auto_register_task_failed:{normalized}")
+
+
+def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
+    script = policy_enforcer_path()
+    if not script.exists():
+        return False, {}, f"policy_enforcer_missing:{script}"
+    cmd = [sys.executable, str(script), "--db", str(db_path), *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        return False, payload or {}, f"policy_enforcer_failed:{err_text}"
+    if not isinstance(payload, dict):
+        return False, {}, "policy_enforcer_invalid_json_output"
+    if not bool(payload.get("ok", False)):
+        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+    return True, payload, ""
+
+
+def quality_grade_from_score(score: float) -> str:
+    value = max(0.0, min(float(score), 100.0))
+    if value >= 95:
+        return "a+"
+    if value >= 90:
+        return "a"
+    if value >= 80:
+        return "b"
+    if value >= 70:
+        return "c"
+    return "d"
 
 
 def state_default() -> dict[str, Any]:
@@ -729,6 +876,7 @@ def should_run(
 
 
 def main() -> int:
+    run_started_at = now()
     home = Path(os.path.expanduser("~"))
     parser = argparse.ArgumentParser(description="Conversation evolution incremental runner")
     parser.add_argument("--db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
@@ -793,36 +941,40 @@ def main() -> int:
     candidate_rejected: list[dict[str, Any]] = []
     created: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    run_errors: list[str] = []
 
-    if run_allowed and files:
-        findings, finding_summary = collect_findings(
-            files=files,
-            max_bytes_per_file=max(1024, int(args.max_bytes_per_file)),
-            max_lines_per_file=max(50, int(args.max_lines_per_file)),
-            max_findings=max(10, int(args.max_findings)),
-        )
-        candidates, candidate_rejected = build_candidates(
-            findings=findings,
-            lookback_hours=int(args.lookback_hours),
-            min_evidence_lines=max(1, int(args.min_evidence_lines)),
-            min_unique_files=max(1, int(args.min_unique_files)),
-            min_quality_score=max(1, int(args.min_quality_score)),
-            max_evidence_per_candidate=max(1, int(args.max_evidence_per_candidate)),
-        )
-        if candidates:
-            tc = TaskCenter(Path(args.db).expanduser())
-            try:
-                tc.init_schema()
-                created, skipped = create_todo_tasks(
-                    tc,
-                    candidates=candidates,
-                    assignee=str(args.assignee or "optimization-agent").strip() or "optimization-agent",
-                    max_tasks_per_run=max(1, int(args.max_tasks_per_run)),
-                    schedule_gap_minutes=max(1, int(args.schedule_gap_minutes)),
-                    recent_dedupe_days=max(0, int(args.recent_dedupe_days)),
-                )
-            finally:
-                tc.close()
+    try:
+        if run_allowed and files:
+            findings, finding_summary = collect_findings(
+                files=files,
+                max_bytes_per_file=max(1024, int(args.max_bytes_per_file)),
+                max_lines_per_file=max(50, int(args.max_lines_per_file)),
+                max_findings=max(10, int(args.max_findings)),
+            )
+            candidates, candidate_rejected = build_candidates(
+                findings=findings,
+                lookback_hours=int(args.lookback_hours),
+                min_evidence_lines=max(1, int(args.min_evidence_lines)),
+                min_unique_files=max(1, int(args.min_unique_files)),
+                min_quality_score=max(1, int(args.min_quality_score)),
+                max_evidence_per_candidate=max(1, int(args.max_evidence_per_candidate)),
+            )
+            if candidates:
+                tc = TaskCenter(Path(args.db).expanduser())
+                try:
+                    tc.init_schema()
+                    created, skipped = create_todo_tasks(
+                        tc,
+                        candidates=candidates,
+                        assignee=str(args.assignee or "optimization-agent").strip() or "optimization-agent",
+                        max_tasks_per_run=max(1, int(args.max_tasks_per_run)),
+                        schedule_gap_minutes=max(1, int(args.schedule_gap_minutes)),
+                        recent_dedupe_days=max(0, int(args.recent_dedupe_days)),
+                    )
+                finally:
+                    tc.close()
+    except Exception as exc:
+        run_errors.append(f"conversation_evolution_run_failed:{exc}")
 
     report = {
         "run_id": uuid.uuid4().hex[:12],
@@ -851,8 +1003,198 @@ def main() -> int:
         "created_count": len(created),
         "created": created,
         "skipped": skipped,
+        "run_errors": run_errors,
     }
     report_file = report_dir / f"{now().strftime('%Y%m%d_%H%M%S')}_{report['run_id']}.json"
+
+    run_duration_ms = max(0, int((now() - run_started_at).total_seconds() * 1000))
+    report["run_duration_ms"] = run_duration_ms
+
+    policy_observability: dict[str, Any] = {"enabled": False, "db": "", "task_bound": False, "errors": []}
+    planner_summary_snapshot: dict[str, Any] = {}
+    db_path = Path(args.db).expanduser()
+    if db_path.exists():
+        policy_observability["enabled"] = True
+        policy_observability["db"] = str(db_path)
+        bound_task_id = ""
+        raw_task_id = str(args.task_id or "").strip()
+        if raw_task_id:
+            bound_task_id, bind_err = ensure_task_binding(
+                db_path,
+                raw_task_id,
+                "conversation-evolution-agent",
+                "conversation-evolution-agent/dialog-review",
+            )
+            if bound_task_id:
+                policy_observability["task_bound"] = True
+            elif bind_err:
+                policy_observability["errors"].append(bind_err)
+
+        module_args = [
+            "log-module",
+            "--module-name",
+            "conversation-evolution-agent/dialog-review",
+            "--phase",
+            "dialog_review",
+            "--level",
+            ("error" if run_errors else "info"),
+            "--status",
+            ("failed" if run_errors else "passed"),
+            "--message",
+            (
+                "conversation evolution run finished: "
+                + f"created={len(created)} candidates={len(candidates)} findings={int(finding_summary.get('total_findings', 0) or 0)}"
+            ),
+            "--duration-ms",
+            str(run_duration_ms),
+            "--details-json",
+            json.dumps(
+                {
+                    "run_allowed": bool(run_allowed),
+                    "files_scanned_count": len(files),
+                    "created_count": len(created),
+                    "run_error_count": len(run_errors),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "conversation-evolution-agent",
+        ]
+        if bound_task_id:
+            module_args.extend(["--task-id", bound_task_id])
+        ok_module, _payload_module, err_module = invoke_policy_enforcer(db_path, module_args, timeout=30)
+        policy_observability["log_module_ok"] = ok_module
+        if not ok_module and err_module:
+            policy_observability["errors"].append(err_module)
+
+        comm_args = [
+            "log-communication",
+            "--from-module",
+            "conversation-evolution-agent/dialog-review",
+            "--to-module",
+            "coordinator",
+            "--protocol",
+            "policy-enforcer",
+            "--message-type",
+            "todo_task_packaged",
+            "--status",
+            ("failed" if run_errors else "acked"),
+            "--latency-ms",
+            str(run_duration_ms),
+            "--correlation-id",
+            str(report.get("run_id", "")),
+            "--payload-ref",
+            str(report_file),
+            "--details-json",
+            json.dumps(
+                {
+                    "created_count": len(created),
+                    "candidate_count": len(candidates),
+                    "run_error_count": len(run_errors),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "conversation-evolution-agent",
+        ]
+        if bound_task_id:
+            comm_args.extend(["--task-id", bound_task_id])
+        ok_comm, _payload_comm, err_comm = invoke_policy_enforcer(db_path, comm_args, timeout=30)
+        policy_observability["log_communication_ok"] = ok_comm
+        if not ok_comm and err_comm:
+            policy_observability["errors"].append(err_comm)
+
+        reported_count = 0
+        for item in created:
+            task_id = str(item.get("task_id", "")).strip()
+            if not task_id:
+                continue
+            score = float(item.get("quality_score", 0) or 0)
+            report_args = [
+                "report-agent-result",
+                "--task-id",
+                task_id,
+                "--agent-id",
+                "conversation-evolution-agent",
+                "--planner-id",
+                "coordinator",
+                "--status",
+                ("partial" if run_errors else "passed"),
+                "--solved",
+                ("false" if run_errors else "true"),
+                "--resolved-issues",
+                "conversation_evolution_todo_packaged",
+                "--resolution-summary",
+                (
+                    "conversation evolution todo task packaged successfully"
+                    if not run_errors
+                    else "todo task created but run has runtime errors"
+                ),
+                "--resolution-steps",
+                "scan_recent_files,collect_findings,build_candidates,create_todo_task",
+                "--failed-items",
+                ",".join(run_errors[:20]),
+                "--failure-count",
+                str(len(run_errors)),
+                "--duration-ms",
+                str(run_duration_ms),
+                "--input-tokens",
+                "0",
+                "--output-tokens",
+                "0",
+                "--cost-estimate",
+                "0",
+                "--quality-score",
+                str(round(score, 2)),
+                "--quality-grade",
+                quality_grade_from_score(score),
+                "--notify-chat",
+                ("true" if run_errors else "false"),
+                "--details-json",
+                json.dumps(
+                    {
+                        "run_id": report.get("run_id"),
+                        "fingerprint": item.get("fingerprint"),
+                        "scheduled_at": item.get("scheduled_at"),
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                "conversation-evolution-agent",
+            ]
+            ok_report, _payload_report, err_report = invoke_policy_enforcer(db_path, report_args, timeout=35)
+            if ok_report:
+                reported_count += 1
+            elif err_report:
+                policy_observability["errors"].append(err_report)
+        policy_observability["report_agent_result_count"] = reported_count
+
+        since_24h = (now() - timedelta(hours=24)).replace(microsecond=0).isoformat()
+        ok_summary, payload_summary, err_summary = invoke_policy_enforcer(
+            db_path,
+            ["planner-summary", "--planner-id", "coordinator", "--since", since_24h, "--limit", "60"],
+            timeout=30,
+        )
+        policy_observability["planner_summary_ok"] = ok_summary
+        if ok_summary and isinstance(payload_summary, dict):
+            summary = payload_summary.get("summary")
+            if isinstance(summary, dict):
+                planner_summary_snapshot = {
+                    "planner_id": summary.get("planner_id"),
+                    "report_count": summary.get("report_count", 0),
+                    "task_count": summary.get("task_count", 0),
+                    "resolved_task_count": summary.get("resolved_task_count", 0),
+                    "failed_task_count": summary.get("failed_task_count", 0),
+                    "solved_ratio_pct": summary.get("solved_ratio_pct", 0.0),
+                    "total_tokens": summary.get("total_tokens", 0),
+                    "total_cost_estimate": summary.get("total_cost_estimate", 0.0),
+                }
+        if (not ok_summary) and err_summary:
+            policy_observability["errors"].append(err_summary)
+
+    report["policy_observability"] = policy_observability
+    if planner_summary_snapshot:
+        report["planner_summary"] = planner_summary_snapshot
     save_json(report_file, report)
 
     state["runs"] = int(state.get("runs", 0)) + 1
@@ -870,9 +1212,11 @@ def main() -> int:
     state["fingerprints"] = fps
     save_json(state_path, state)
 
-    notify = bool(created)
-    if not notify and log_mode == "chat":
-        notify = True
+    exception_reasons: list[str] = []
+    exception_reasons.extend(run_errors)
+    if isinstance(policy_observability.get("errors"), list):
+        exception_reasons.extend(str(x) for x in policy_observability.get("errors", []) if str(x).strip())
+    notify = bool(exception_reasons)
 
     output = "NO_REPLY"
     if notify:
@@ -889,6 +1233,7 @@ def main() -> int:
             f"- created_todo: {len(created)}",
             f"- skipped: {len(skipped)}",
             f"- assignee: {str(args.assignee or 'optimization-agent')}",
+            f"- exception_count: {len(exception_reasons)}",
             (
                 "- quality_gate: "
                 f"score>={max(1, int(args.min_quality_score))}, "
@@ -897,6 +1242,8 @@ def main() -> int:
                 f"dedupe_days={max(0, int(args.recent_dedupe_days))}"
             ),
         ]
+        for reason in exception_reasons[:12]:
+            lines.append(f"- exception: {reason}")
         per_cat = finding_summary.get("per_category", {})
         if isinstance(per_cat, dict) and per_cat:
             lines.append(

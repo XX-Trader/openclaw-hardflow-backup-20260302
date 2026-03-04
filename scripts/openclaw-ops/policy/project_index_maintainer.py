@@ -142,6 +142,63 @@ def task_exists_in_db(db_path: Path, task_id: str) -> bool:
         return False
 
 
+def ensure_task_binding(db_path: Path, task_id: str, actor: str, source_module: str) -> tuple[str, str]:
+    normalized = str(task_id or "").strip()
+    if not normalized:
+        return "", ""
+    if not db_path.exists():
+        return "", f"task_db_missing:{db_path}"
+    if task_exists_in_db(db_path, normalized):
+        return normalized, ""
+
+    actor_name = str(actor or "project-agent").strip() or "project-agent"
+    assignee = actor_name.split("/", 1)[0].strip() or "project-agent"
+    source_name = str(source_module or "project-agent/project-index-maintainer").strip() or "project-agent/project-index-maintainer"
+    create_args = [
+        "create-task",
+        "--task-id",
+        normalized,
+        "--task-type",
+        "ops_runtime_cron",
+        "--reason",
+        f"[CRON_RUNTIME] bind {normalized}",
+        "--source",
+        source_name,
+        "--request-source",
+        "ai",
+        "--priority",
+        "low",
+        "--risk-level",
+        "low",
+        "--pool",
+        "jobs",
+        "--assignee",
+        assignee,
+        "--need-human-confirm",
+        "false",
+        "--human-confirmed",
+        "true",
+        "--requirement",
+        f"Auto register runtime task for {normalized} to bind observability records.",
+        "--result-output",
+        "Runtime task exists and accepts module/communication/report records.",
+        "--acceptance",
+        "Task can be used for cron observability binding without manual action.",
+        "--observable-outputs",
+        "module_logs,module_communications,agent_task_reports,planner_summary",
+        "--acceptance-thresholds",
+        "At least one runtime observability record is bound to this task.",
+        "--scheduled-at",
+        now_iso(),
+        "--actor",
+        actor_name,
+    ]
+    ok, _payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+    if ok and task_exists_in_db(db_path, normalized):
+        return normalized, ""
+    return "", (err or f"auto_register_task_failed:{normalized}")
+
+
 def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
     script = policy_enforcer_path()
     if not script.exists():
@@ -833,6 +890,72 @@ def write_task_event(task_db: str, task_id: str, actor: str, report: dict[str, A
         db.close()
 
 
+def compact_text(value: Any, max_len: int = 240) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def detect_issue_code(project: dict[str, Any]) -> str:
+    if not bool(project.get("git_pull_ok", True)) and bool(project.get("git_pull_attempted", False)):
+        return "git_pull_failed"
+    if not bool(project.get("ok", False)):
+        return "project_index_build_failed"
+    return "unknown_failure"
+
+
+def build_failure_output(report: dict[str, Any]) -> str:
+    projects = report.get("projects", [])
+    if not isinstance(projects, list):
+        projects = []
+
+    failed_items: list[dict[str, Any]] = []
+    for item in projects:
+        if not isinstance(item, dict):
+            continue
+        if bool(item.get("ok", False)):
+            continue
+        failed_items.append(item)
+
+    lines: list[str] = []
+    lines.append("# project-index-maintainer")
+    lines.append(f"status: {'failed' if failed_items else 'unknown_failure'}")
+    lines.append(f"generated_at: {compact_text(report.get('generated_at', '-'), 64)}")
+    lines.append(
+        "summary: "
+        + f"projects_total={int(report.get('project_count', 0) or 0)}, "
+        + f"projects_failed={len(failed_items)}, "
+        + f"changed_count={int(report.get('changed_count', 0) or 0)}"
+    )
+    lines.append("failed_modules:")
+
+    if not failed_items:
+        lines.append("- module=project_index_maintainer issue=unknown_failure detail=no_project_level_error_found")
+        return "\n".join(lines)
+
+    for item in failed_items[:8]:
+        project_id = str(item.get("project_id", "")).strip() or "unknown-project"
+        issue_code = detect_issue_code(item)
+        errors = item.get("errors", [])
+        detail = ""
+        if isinstance(errors, list):
+            for err in errors:
+                text = compact_text(err, 220)
+                if text:
+                    detail = text
+                    break
+        if not detail:
+            detail = "no_error_detail"
+        lines.append(
+            "- "
+            + f"module=project-index/{project_id} "
+            + f"issue={issue_code} "
+            + f"detail={detail}"
+        )
+    return "\n".join(lines)
+
+
 def main() -> int:
     run_started_at = datetime.now(tz=UTC)
     parser = argparse.ArgumentParser(description="Maintain project index docs for multi-project workflows")
@@ -858,7 +981,30 @@ def main() -> int:
     args = parser.parse_args()
 
     registry = Path(args.registry).expanduser()
-    projects = load_registry(registry)
+    try:
+        projects = load_registry(registry)
+    except Exception as exc:
+        report = {
+            "ok": False,
+            "generated_at": now_iso(),
+            "registry": str(registry),
+            "project_count": 0,
+            "changed_count": 0,
+            "projects": [
+                {
+                    "project_id": "registry",
+                    "ok": False,
+                    "git_pull_ok": True,
+                    "git_pull_attempted": False,
+                    "errors": [f"registry_load_failed:{exc}"],
+                }
+            ],
+        }
+        if args.emit_json:
+            print(json.dumps(report, ensure_ascii=False))
+        else:
+            print(build_failure_output(report))
+        return 2
     results: list[ProjectResult] = []
     for item in projects:
         results.append(
@@ -893,11 +1039,18 @@ def main() -> int:
         policy_observability["enabled"] = task_db_path.exists()
         policy_observability["db"] = str(task_db_path)
         bound_task_id = ""
-        if str(args.task_id or "").strip() and task_exists_in_db(task_db_path, str(args.task_id or "").strip()):
-            bound_task_id = str(args.task_id or "").strip()
-            policy_observability["task_bound"] = True
-        elif str(args.task_id or "").strip():
-            policy_observability["errors"].append(f"task_not_found_for_report:{str(args.task_id or '').strip()}")
+        raw_task_id = str(args.task_id or "").strip()
+        if raw_task_id:
+            bound_task_id, bind_err = ensure_task_binding(
+                task_db_path,
+                raw_task_id,
+                "project-agent",
+                "project-agent/project-index-maintainer",
+            )
+            if bound_task_id:
+                policy_observability["task_bound"] = True
+            elif bind_err:
+                policy_observability["errors"].append(bind_err)
 
         if task_db_path.exists():
             err_items: list[str] = []
@@ -1098,10 +1251,10 @@ def main() -> int:
     if args.emit_json:
         print(json.dumps(report, ensure_ascii=False))
     else:
-        if report["changed_count"] == 0 and report["ok"]:
+        if report["ok"]:
             print("NO_REPLY")
         else:
-            print(json.dumps(report, ensure_ascii=False))
+            print(build_failure_output(report))
     return 0 if report["ok"] else 2
 
 

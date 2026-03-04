@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import sys
 import uuid
@@ -61,6 +62,60 @@ def now_iso() -> str:
     return now().replace(microsecond=0).isoformat()
 
 
+def compact_text(value: Any, max_len: int = 240) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def build_startup_failure_output(
+    *,
+    sender_identity: str,
+    task_id: str,
+    error: str,
+    detail: str = "",
+) -> str:
+    lines = [
+        "# governance-evolution",
+        "- status: failed",
+        f"- sender_identity: {sender_identity}",
+        f"- task: {task_id or '-'}",
+        f"- time: {now_iso()}",
+        f"- error: {compact_text(error, 200)}",
+    ]
+    detail_text = compact_text(detail, 320)
+    if detail_text:
+        lines.append(f"- detail: {detail_text}")
+    return "\n".join(lines)
+
+
+def print_startup_failure(
+    *,
+    emit_json: bool,
+    sender_identity: str,
+    task_id: str,
+    error: str,
+    detail: str = "",
+    extra: dict[str, Any] | None = None,
+) -> None:
+    output = build_startup_failure_output(
+        sender_identity=sender_identity,
+        task_id=task_id,
+        error=error,
+        detail=detail,
+    )
+    if emit_json:
+        payload: dict[str, Any] = {"ok": False, "notify": True, "output": output, "error": str(error)}
+        if str(detail or "").strip():
+            payload["detail"] = str(detail)
+        if isinstance(extra, dict):
+            payload.update(extra)
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(output)
+
+
 def normalize_log_mode(value: str, default: str = "silent") -> str:
     mode = str(value or "").strip().lower()
     return mode if mode in LOG_MODES else default
@@ -99,6 +154,148 @@ def run_git(repo: Path, args: list[str], timeout: int = 40) -> tuple[int, str, s
 
 def has_command(name: str) -> bool:
     return shutil.which(name) is not None
+
+
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def policy_enforcer_path() -> Path:
+    custom = str(os.environ.get("POLICY_ENFORCER_PY", "")).strip()
+    if custom:
+        return Path(custom).expanduser()
+    return POLICY_DIR / "policy_enforcer.py"
+
+
+def task_exists_in_db(db_path: Path, task_id: str) -> bool:
+    normalized_id = str(task_id or "").strip()
+    if not normalized_id or (not db_path.exists()):
+        return False
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT 1 AS ok FROM tasks WHERE task_id = ?", (normalized_id,)).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def ensure_task_binding(db_path: Path, task_id: str, actor: str, source_module: str) -> tuple[str, str]:
+    normalized = str(task_id or "").strip()
+    if not normalized:
+        return "", ""
+    if not db_path.exists():
+        return "", f"task_db_missing:{db_path}"
+    if task_exists_in_db(db_path, normalized):
+        return normalized, ""
+
+    actor_name = str(actor or "governance-evolution-agent").strip() or "governance-evolution-agent"
+    assignee = actor_name.split("/", 1)[0].strip() or "optimization-agent"
+    source_name = str(source_module or "optimization-agent/governance-evolution").strip() or "optimization-agent/governance-evolution"
+    create_args = [
+        "create-task",
+        "--task-id",
+        normalized,
+        "--task-type",
+        "ops_runtime_cron",
+        "--reason",
+        f"[CRON_RUNTIME] bind {normalized}",
+        "--source",
+        source_name,
+        "--request-source",
+        "ai",
+        "--priority",
+        "low",
+        "--risk-level",
+        "low",
+        "--pool",
+        "jobs",
+        "--assignee",
+        assignee,
+        "--need-human-confirm",
+        "false",
+        "--human-confirmed",
+        "true",
+        "--requirement",
+        f"Auto register runtime task for {normalized} to bind observability records.",
+        "--result-output",
+        "Runtime task exists and accepts module/communication/report records.",
+        "--acceptance",
+        "Task can be used for cron observability binding without manual action.",
+        "--observable-outputs",
+        "module_logs,module_communications,agent_task_reports,planner_summary",
+        "--acceptance-thresholds",
+        "At least one runtime observability record is bound to this task.",
+        "--scheduled-at",
+        now_iso(),
+        "--actor",
+        actor_name,
+    ]
+    ok, _payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+    if ok and task_exists_in_db(db_path, normalized):
+        return normalized, ""
+    return "", (err or f"auto_register_task_failed:{normalized}")
+
+
+def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
+    script = policy_enforcer_path()
+    if not script.exists():
+        return False, {}, f"policy_enforcer_missing:{script}"
+    cmd = [sys.executable, str(script), "--db", str(db_path), *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        return False, payload or {}, f"policy_enforcer_failed:{err_text}"
+    if not isinstance(payload, dict):
+        return False, {}, "policy_enforcer_invalid_json_output"
+    if not bool(payload.get("ok", False)):
+        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+    return True, payload, ""
+
+
+def quality_grade_from_score(score: float) -> str:
+    value = max(0.0, min(float(score), 100.0))
+    if value >= 95:
+        return "a+"
+    if value >= 90:
+        return "a"
+    if value >= 80:
+        return "b"
+    if value >= 70:
+        return "c"
+    return "d"
 
 
 def load_json(path: Path, default: Any) -> Any:
@@ -917,6 +1114,7 @@ def attempt_auto_pr(
 
 
 def main() -> int:
+    run_started_at = now()
     home = Path(os.path.expanduser("~"))
     parser = argparse.ArgumentParser(description="Governance evolution incremental runner")
     parser.add_argument("--repo-path", default="", help="target workflow git repository path")
@@ -951,6 +1149,8 @@ def main() -> int:
     parser.add_argument("--push-before-pr", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
+    sender_identity = normalize_sender_identity(args.sender_identity)
+    task_id = str(args.task_id or "").strip()
 
     openclaw_config = Path(args.openclaw_config).expanduser()
     resolved_repo, repo_resolve = resolve_repo_from_inputs(
@@ -961,15 +1161,20 @@ def main() -> int:
         repo_name=str(args.repo_name or ""),
     )
     if resolved_repo is None:
-        payload = {"ok": False, "error": str(repo_resolve.get("error", "repo resolve failed")), "repo_resolve": repo_resolve}
-        print(json.dumps(payload, ensure_ascii=False))
+        print_startup_failure(
+            emit_json=bool(args.emit_json),
+            sender_identity=sender_identity,
+            task_id=task_id,
+            error=str(repo_resolve.get("error", "repo resolve failed")),
+            detail=compact_text(repo_resolve, 320),
+            extra={"repo_resolve": repo_resolve},
+        )
         return 2
     repo = resolved_repo
     db_file = Path(args.db).expanduser()
     state_file = Path(args.state_file).expanduser()
     report_dir = Path(args.report_dir).expanduser()
     report_dir.mkdir(parents=True, exist_ok=True)
-    sender_identity = normalize_sender_identity(args.sender_identity)
     log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
     git_update_strategy = normalize_git_update_strategy(args.git_update_strategy, default="fetch")
 
@@ -978,13 +1183,22 @@ def main() -> int:
         state = state_default()
 
     if not repo.exists() or not repo.is_dir():
-        payload = {"ok": False, "error": f"repo path invalid: {repo}"}
-        print(json.dumps(payload, ensure_ascii=False))
+        print_startup_failure(
+            emit_json=bool(args.emit_json),
+            sender_identity=sender_identity,
+            task_id=task_id,
+            error=f"repo path invalid: {repo}",
+        )
         return 2
     rc, out, err = run_git(repo, ["rev-parse", "--is-inside-work-tree"], timeout=20)
     if rc != 0 or str(out).strip().lower() != "true":
-        payload = {"ok": False, "error": f"not git repo: {repo}", "detail": err or out}
-        print(json.dumps(payload, ensure_ascii=False))
+        print_startup_failure(
+            emit_json=bool(args.emit_json),
+            sender_identity=sender_identity,
+            task_id=task_id,
+            error=f"not git repo: {repo}",
+            detail=(err or out),
+        )
         return 2
 
     git_update_result = update_local_git(
@@ -1017,6 +1231,7 @@ def main() -> int:
     task_packaging: dict[str, Any] = {"created": [], "skipped": []}
     auto_pr_result: dict[str, Any] = {"attempted": bool(args.auto_pr), "ok": False, "reason": "not_run"}
     notify = False
+    run_errors: list[str] = []
     task_clarity = str(args.task_clarity or "auto").strip().lower()
     require_project_context = False
 
@@ -1028,70 +1243,73 @@ def main() -> int:
         exclude_prefixes = list(DEFAULT_EXCLUDE_PREFIXES)
     exclude_filenames = set(DEFAULT_EXCLUDE_FILENAMES)
 
-    if run_allowed or bool(args.force):
-        changes_all, scan_meta = collect_incremental_changes(
-            repo,
-            mode=str(args.mode).strip().lower(),
-            last_head=last_scan_head,
-            max_files=max(1, int(args.max_files)),
-            force=bool(args.force),
-        )
-        for item in changes_all:
-            rel = str(item.get("path", "")).strip()
-            if should_include_file(
-                rel=rel,
-                watch_prefixes=watch_prefixes,
-                exclude_prefixes=exclude_prefixes,
-                exclude_filenames=exclude_filenames,
-            ):
-                changes_scoped.append(item)
-
-        change_stats_all = summarize_change_stats(changes_all)
-        change_stats_scoped = summarize_change_stats(changes_scoped)
-        fingerprint = to_fingerprint(changes_scoped, scan_meta.get("head", "")) if changes_scoped else ""
-        require_project_context = bool(args.project_context_gate) and infer_need_project_context(
-            task_clarity=task_clarity,
-            changes_count=len(changes_scoped),
-            clarity_max_files=max(1, int(args.clarity_max_files)),
-        )
-
-        if changes_scoped and fingerprint:
-            task_packaging = create_task_packages(
-                db_file=db_file,
-                repo_path=repo,
-                fingerprint=fingerprint,
-                scan_head=str(scan_meta.get("head", "")),
-                diff_base=str(scan_meta.get("diff_base", "")),
-                changes=changes_scoped,
-                create_review_task=bool(args.create_review_task),
-                require_project_context=require_project_context,
-                project_context_assignee=str(args.project_context_assignee or "project-agent").strip() or "project-agent",
+    try:
+        if run_allowed or bool(args.force):
+            changes_all, scan_meta = collect_incremental_changes(
+                repo,
+                mode=str(args.mode).strip().lower(),
+                last_head=last_scan_head,
+                max_files=max(1, int(args.max_files)),
+                force=bool(args.force),
             )
-            if task_packaging.get("created"):
-                notify = True
-        context_gate = task_packaging.get("context_gate", {}) if isinstance(task_packaging, dict) else {}
-        context_blocked = bool(context_gate.get("blocked", False)) if isinstance(context_gate, dict) else False
-        if bool(args.auto_pr) and (not context_blocked):
-            auto_pr_result = attempt_auto_pr(
-                repo=repo,
-                pr_base=str(args.pr_base).strip() or "main",
-                pr_title_prefix=str(args.pr_title_prefix).strip() or "chore: governance evolution",
-                reviewer_gh_user=str(args.reviewer_gh_user).strip(),
-                push_before_pr=bool(args.push_before_pr),
+            for item in changes_all:
+                rel = str(item.get("path", "")).strip()
+                if should_include_file(
+                    rel=rel,
+                    watch_prefixes=watch_prefixes,
+                    exclude_prefixes=exclude_prefixes,
+                    exclude_filenames=exclude_filenames,
+                ):
+                    changes_scoped.append(item)
+
+            change_stats_all = summarize_change_stats(changes_all)
+            change_stats_scoped = summarize_change_stats(changes_scoped)
+            fingerprint = to_fingerprint(changes_scoped, scan_meta.get("head", "")) if changes_scoped else ""
+            require_project_context = bool(args.project_context_gate) and infer_need_project_context(
+                task_clarity=task_clarity,
+                changes_count=len(changes_scoped),
+                clarity_max_files=max(1, int(args.clarity_max_files)),
             )
-            if bool(auto_pr_result.get("ok", False)):
-                notify = True
-        elif bool(args.auto_pr) and context_blocked:
-            auto_pr_result = {
-                "attempted": True,
-                "ok": False,
-                "reason": "blocked_by_project_context_gate",
-                "pr_url": "",
-                "pr_number": 0,
-                "branch": "",
-            }
-    else:
-        scan_meta = {"mode": args.mode, "head": "", "diff_base": "", "skip_reason": "min_interval"}
+
+            if changes_scoped and fingerprint:
+                task_packaging = create_task_packages(
+                    db_file=db_file,
+                    repo_path=repo,
+                    fingerprint=fingerprint,
+                    scan_head=str(scan_meta.get("head", "")),
+                    diff_base=str(scan_meta.get("diff_base", "")),
+                    changes=changes_scoped,
+                    create_review_task=bool(args.create_review_task),
+                    require_project_context=require_project_context,
+                    project_context_assignee=str(args.project_context_assignee or "project-agent").strip() or "project-agent",
+                )
+                if task_packaging.get("created"):
+                    notify = True
+            context_gate = task_packaging.get("context_gate", {}) if isinstance(task_packaging, dict) else {}
+            context_blocked = bool(context_gate.get("blocked", False)) if isinstance(context_gate, dict) else False
+            if bool(args.auto_pr) and (not context_blocked):
+                auto_pr_result = attempt_auto_pr(
+                    repo=repo,
+                    pr_base=str(args.pr_base).strip() or "main",
+                    pr_title_prefix=str(args.pr_title_prefix).strip() or "chore: governance evolution",
+                    reviewer_gh_user=str(args.reviewer_gh_user).strip(),
+                    push_before_pr=bool(args.push_before_pr),
+                )
+                if bool(auto_pr_result.get("ok", False)):
+                    notify = True
+            elif bool(args.auto_pr) and context_blocked:
+                auto_pr_result = {
+                    "attempted": True,
+                    "ok": False,
+                    "reason": "blocked_by_project_context_gate",
+                    "pr_url": "",
+                    "pr_number": 0,
+                    "branch": "",
+                }
+        else:
+            scan_meta = {"mode": args.mode, "head": "", "diff_base": "", "skip_reason": "min_interval"}
+    except Exception as exc:
+        run_errors.append(f"governance_evolution_run_failed:{exc}")
 
     report = {
         "run_id": uuid.uuid4().hex[:12],
@@ -1117,8 +1335,200 @@ def main() -> int:
         "fingerprint": fingerprint,
         "task_packaging": task_packaging,
         "auto_pr": auto_pr_result,
+        "run_errors": run_errors,
     }
     report_file = report_dir / f"{now().strftime('%Y%m%d_%H%M%S')}_{report['run_id']}.json"
+    run_duration_ms = max(0, int((now() - run_started_at).total_seconds() * 1000))
+    report["run_duration_ms"] = run_duration_ms
+
+    policy_observability: dict[str, Any] = {"enabled": False, "db": "", "task_bound": False, "errors": []}
+    planner_summary_snapshot: dict[str, Any] = {}
+    if db_file.exists():
+        policy_observability["enabled"] = True
+        policy_observability["db"] = str(db_file)
+        bound_task_id = ""
+        raw_task_id = str(args.task_id or "").strip()
+        if raw_task_id:
+            bound_task_id, bind_err = ensure_task_binding(
+                db_file,
+                raw_task_id,
+                "governance-evolution-agent",
+                "optimization-agent/governance-evolution",
+            )
+            if bound_task_id:
+                policy_observability["task_bound"] = True
+            elif bind_err:
+                policy_observability["errors"].append(bind_err)
+
+        created_items = task_packaging.get("created", []) if isinstance(task_packaging.get("created"), list) else []
+        module_args = [
+            "log-module",
+            "--module-name",
+            "optimization-agent/governance-evolution",
+            "--phase",
+            "incremental_scan",
+            "--level",
+            ("error" if run_errors else "info"),
+            "--status",
+            ("failed" if run_errors else "passed"),
+            "--message",
+            (
+                "governance evolution run finished: "
+                + f"changes_scoped={len(changes_scoped)} created={len(created_items)} auto_pr_ok={bool(auto_pr_result.get('ok', False))}"
+            ),
+            "--duration-ms",
+            str(run_duration_ms),
+            "--details-json",
+            json.dumps(
+                {
+                    "run_allowed": bool(run_allowed),
+                    "changes_scoped_count": len(changes_scoped),
+                    "created_task_count": len(created_items),
+                    "auto_pr_result": auto_pr_result,
+                    "run_error_count": len(run_errors),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "governance-evolution-agent",
+        ]
+        if bound_task_id:
+            module_args.extend(["--task-id", bound_task_id])
+        ok_module, _payload_module, err_module = invoke_policy_enforcer(db_file, module_args, timeout=30)
+        policy_observability["log_module_ok"] = ok_module
+        if not ok_module and err_module:
+            policy_observability["errors"].append(err_module)
+
+        comm_args = [
+            "log-communication",
+            "--from-module",
+            "optimization-agent/governance-evolution",
+            "--to-module",
+            "coordinator",
+            "--protocol",
+            "policy-enforcer",
+            "--message-type",
+            "governance_evolution_result",
+            "--status",
+            ("failed" if run_errors else "acked"),
+            "--latency-ms",
+            str(run_duration_ms),
+            "--correlation-id",
+            str(report.get("run_id", "")),
+            "--payload-ref",
+            str(report_file),
+            "--details-json",
+            json.dumps(
+                {
+                    "fingerprint": fingerprint,
+                    "created_task_count": len(created_items),
+                    "context_gate": task_packaging.get("context_gate", {}),
+                },
+                ensure_ascii=False,
+            ),
+            "--actor",
+            "governance-evolution-agent",
+        ]
+        if bound_task_id:
+            comm_args.extend(["--task-id", bound_task_id])
+        ok_comm, _payload_comm, err_comm = invoke_policy_enforcer(db_file, comm_args, timeout=30)
+        policy_observability["log_communication_ok"] = ok_comm
+        if not ok_comm and err_comm:
+            policy_observability["errors"].append(err_comm)
+
+        report_count = 0
+        base_steps = "collect_incremental_changes,build_task_packages,optional_auto_pr"
+        for item in created_items:
+            task_id = str(item.get("task_id", "")).strip()
+            if not task_id:
+                continue
+            success = not run_errors
+            quality_score = 92.0 if success else 55.0
+            report_args = [
+                "report-agent-result",
+                "--task-id",
+                task_id,
+                "--agent-id",
+                "optimization-agent",
+                "--planner-id",
+                "coordinator",
+                "--status",
+                ("passed" if success else "partial"),
+                "--solved",
+                ("true" if success else "false"),
+                "--resolved-issues",
+                "governance_evolution_task_packaged",
+                "--resolution-summary",
+                (
+                    "governance evolution task package created"
+                    if success
+                    else "task package created with partial runtime errors"
+                ),
+                "--resolution-steps",
+                base_steps,
+                "--failed-items",
+                ",".join(run_errors[:20]),
+                "--failure-count",
+                str(len(run_errors)),
+                "--duration-ms",
+                str(run_duration_ms),
+                "--input-tokens",
+                "0",
+                "--output-tokens",
+                "0",
+                "--cost-estimate",
+                "0",
+                "--quality-score",
+                str(quality_score),
+                "--quality-grade",
+                quality_grade_from_score(quality_score),
+                "--notify-chat",
+                ("true" if run_errors else "false"),
+                "--details-json",
+                json.dumps(
+                    {
+                        "run_id": report.get("run_id"),
+                        "task_type": item.get("type"),
+                        "assignee": item.get("assignee"),
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                "governance-evolution-agent",
+            ]
+            ok_report, _payload_report, err_report = invoke_policy_enforcer(db_file, report_args, timeout=35)
+            if ok_report:
+                report_count += 1
+            elif err_report:
+                policy_observability["errors"].append(err_report)
+        policy_observability["report_agent_result_count"] = report_count
+
+        since_24h = (now() - timedelta(hours=24)).replace(microsecond=0).isoformat()
+        ok_summary, payload_summary, err_summary = invoke_policy_enforcer(
+            db_file,
+            ["planner-summary", "--planner-id", "coordinator", "--since", since_24h, "--limit", "60"],
+            timeout=30,
+        )
+        policy_observability["planner_summary_ok"] = ok_summary
+        if ok_summary and isinstance(payload_summary, dict):
+            summary = payload_summary.get("summary")
+            if isinstance(summary, dict):
+                planner_summary_snapshot = {
+                    "planner_id": summary.get("planner_id"),
+                    "report_count": summary.get("report_count", 0),
+                    "task_count": summary.get("task_count", 0),
+                    "resolved_task_count": summary.get("resolved_task_count", 0),
+                    "failed_task_count": summary.get("failed_task_count", 0),
+                    "solved_ratio_pct": summary.get("solved_ratio_pct", 0.0),
+                    "total_tokens": summary.get("total_tokens", 0),
+                    "total_cost_estimate": summary.get("total_cost_estimate", 0.0),
+                }
+        if (not ok_summary) and err_summary:
+            policy_observability["errors"].append(err_summary)
+
+    report["policy_observability"] = policy_observability
+    if planner_summary_snapshot:
+        report["planner_summary"] = planner_summary_snapshot
     save_json(report_file, report)
 
     state["runs"] = int(state.get("runs", 0)) + 1
@@ -1142,8 +1552,18 @@ def main() -> int:
         state["last_pr_number"] = int(auto_pr_result.get("pr_number", 0) or 0)
     save_json(state_file, state)
 
-    if (not notify) and log_mode == "chat":
-        notify = True
+    exception_reasons: list[str] = []
+    exception_reasons.extend(run_errors)
+    if isinstance(policy_observability.get("errors"), list):
+        exception_reasons.extend(str(x) for x in policy_observability.get("errors", []) if str(x).strip())
+    auto_pr_reason = str(auto_pr_result.get("reason", "")).strip()
+    if bool(auto_pr_result.get("attempted", False)) and (not bool(auto_pr_result.get("ok", False))):
+        non_error_reasons = {"not_run", "no_commits_ahead_base", "invalid_branch_for_pr", "blocked_by_project_context_gate"}
+        if auto_pr_reason and auto_pr_reason not in non_error_reasons:
+            exception_reasons.append(f"auto_pr_failed:{auto_pr_reason}")
+    if bool(git_update_result.get("enabled", False)) and not bool(git_update_result.get("fetch_ok", True)):
+        exception_reasons.append(f"git_update_failed:{git_update_result.get('error', git_update_result.get('skipped_reason', 'unknown'))}")
+    notify = bool(exception_reasons)
 
     output = "NO_REPLY"
     if notify:
@@ -1162,6 +1582,7 @@ def main() -> int:
             f"- changes_scoped_stats: +{change_stats_scoped.get('added', 0)} ~{change_stats_scoped.get('modified', 0)} -{change_stats_scoped.get('deleted', 0)} r{change_stats_scoped.get('renamed', 0)}",
             f"- created_tasks: {len(task_packaging.get('created', []))}",
             f"- fingerprint: {fingerprint or '-'}",
+            f"- exception_count: {len(exception_reasons)}",
         ]
         lines.append(
             "- git_update: "
@@ -1186,6 +1607,8 @@ def main() -> int:
                 f"- auto_pr: ok={auto_pr_result.get('ok')}, reason={auto_pr_result.get('reason', '-')}, "
                 f"url={auto_pr_result.get('pr_url', '-')}"
             )
+        for reason in exception_reasons[:12]:
+            lines.append(f"- exception: {reason}")
         for item in changes_scoped[:12]:
             lines.append(f"- change: {item.get('status', 'M')} {item.get('path', '')}")
         output = "\n".join(lines)
