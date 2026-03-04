@@ -317,10 +317,17 @@ async function main() {
               "hardflow-experience-recall": {
                 enabled: true,
                 topK: 3,
-                graphStrategy: "harden",
+                graphStrategy: "auto",
                 graphDecayDays: 21,
                 graphMaxEvents: 1800,
                 graphWeight: 0.3,
+                antiPatternWeight: 0.36,
+                antiPatternMaxPenalty: 0.85,
+                reflectionEnabled: true,
+                reflectionRoundInterval: 1,
+                reflectionWindowDays: 7,
+                reflectionMinOutcomes: 1,
+                reflectionMaxEvents: 1800,
               },
             },
           },
@@ -412,6 +419,60 @@ async function main() {
   });
   if (!hasOutcomeEvent) {
     throw new Error("hardflow-experience-evolve did not append outcome linkgraph event");
+  }
+  const reflectionStateFile = path.join(
+    testWorkspace,
+    ".workflow",
+    "experience",
+    "linkgraph",
+    "reflection-state.json",
+  );
+  await mustExist(reflectionStateFile);
+  const reflectionStateRaw = await readFile(reflectionStateFile, "utf8");
+  const reflectionState = JSON.parse(reflectionStateRaw);
+  if (!["balanced", "harden", "repair-only"].includes(String(reflectionState?.strategy || ""))) {
+    throw new Error("hardflow-experience-recall did not persist reflection strategy state");
+  }
+
+  const evolveGateDir = path.join(testWorkspace, ".workflow", "gates");
+  await mkdir(evolveGateDir, { recursive: true });
+  await writeFile(
+    path.join(evolveGateDir, "tester.json"),
+    JSON.stringify({ passed: false }) + "\n",
+    "utf8",
+  );
+
+  const bootstrapEventFailure = {
+    type: "agent",
+    action: "bootstrap",
+    sessionKey: "selftest-main",
+    timestamp: new Date(),
+    messages: [],
+    context: {
+      workspaceDir: testWorkspace,
+      bootstrapFiles: [],
+      cfg: bootstrapEvent.context.cfg,
+    },
+  };
+  await experienceRecall(bootstrapEventFailure);
+  await experienceEvolve(evolveEvent);
+  const antiPatternFile = path.join(
+    testWorkspace,
+    ".workflow",
+    "experience",
+    "linkgraph",
+    "anti-patterns.json",
+  );
+  await mustExist(antiPatternFile);
+  const antiPatternRaw = await readFile(antiPatternFile, "utf8");
+  const antiPatternData = JSON.parse(antiPatternRaw);
+  const antiPatternEntries = antiPatternData?.entries || {};
+  const hasFailureEntry = Object.values(antiPatternEntries).some((entry) => {
+    const item = entry || {};
+    return Number(item.failureCount || 0) >= 1;
+  });
+  if (!hasFailureEntry) {
+    throw new Error("hardflow-experience-evolve did not persist anti-pattern failures");
   }
 
   const maintainScript = fileURLToPath(new URL("./experience-maintain.mjs", import.meta.url));

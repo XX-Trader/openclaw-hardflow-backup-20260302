@@ -4,10 +4,12 @@ import {
   ensureStatsRecord,
   loadStats,
   rankCards,
+  readAntiPatternPenalties,
   readPriorityBucketCards,
   readCards,
   readLinkGraphBoosts,
   readQueryHint,
+  resolveAdaptiveGraphStrategy,
   resolveLinkGraphStrategyPolicy,
   resolveAgentId,
   resolveHookOptions,
@@ -21,10 +23,17 @@ import {
 type RecallOptions = {
   enabled?: boolean;
   topK?: number;
-  graphStrategy?: "balanced" | "harden" | "repair-only";
+  graphStrategy?: "auto" | "balanced" | "harden" | "repair-only";
   graphDecayDays?: number;
   graphMaxEvents?: number;
   graphWeight?: number;
+  antiPatternWeight?: number;
+  antiPatternMaxPenalty?: number;
+  reflectionEnabled?: boolean;
+  reflectionRoundInterval?: number;
+  reflectionWindowDays?: number;
+  reflectionMinOutcomes?: number;
+  reflectionMaxEvents?: number;
 };
 
 const HOOK_NAME = "hardflow-experience-recall";
@@ -61,8 +70,17 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
     const stats = await loadStats(workspaceDir);
     const query = await readQueryHint(workspaceDir);
     const queryKey = buildSignalKeyFromQuery(query);
+    const strategyResolution = await resolveAdaptiveGraphStrategy({
+      workspaceDir,
+      requestedStrategy: opts.graphStrategy || process.env.EVOLVE_STRATEGY || "auto",
+      reflectionEnabled: opts.reflectionEnabled,
+      roundInterval: opts.reflectionRoundInterval,
+      windowDays: opts.reflectionWindowDays,
+      minOutcomes: opts.reflectionMinOutcomes,
+      maxEvents: opts.reflectionMaxEvents || opts.graphMaxEvents,
+    });
     const graphPolicy = resolveLinkGraphStrategyPolicy({
-      strategy: opts.graphStrategy || process.env.EVOLVE_STRATEGY,
+      strategy: strategyResolution.strategy,
       decayDays: opts.graphDecayDays,
       maxEvents: opts.graphMaxEvents,
       graphWeight: opts.graphWeight,
@@ -75,6 +93,12 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
       decayDays: graphPolicy.decayDays,
       maxEvents: graphPolicy.maxEvents,
     });
+    const antiPatternPenalties = await readAntiPatternPenalties({
+      workspaceDir,
+      queryKey,
+      agentId,
+      maxPenalty: opts.antiPatternMaxPenalty,
+    });
     const selected = rankCards({
       cards,
       stats,
@@ -82,6 +106,8 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
       topK,
       graphBoosts,
       graphWeight: graphPolicy.graphWeight,
+      antiPatternPenalties,
+      antiPatternWeight: opts.antiPatternWeight,
     });
     const selectedIds = selected.map((c) => c.id);
     if (selectedIds.length === 0) {
@@ -93,6 +119,11 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
       cards: selected,
       stats,
       query,
+      strategy: graphPolicy.strategy,
+      strategyMode: strategyResolution.mode,
+      strategyRatios: strategyResolution.ratios,
+      reflection: strategyResolution.reflection,
+      antiPatternPenalties,
     });
     await writeRuntimeRecall({
       workspaceDir,

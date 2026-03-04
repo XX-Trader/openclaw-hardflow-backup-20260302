@@ -12,6 +12,8 @@ const MAINTENANCE_REL = path.join(EXPERIENCE_ROOT_REL, "maintenance");
 const PRIORITY_BUCKETS_REL = path.join(MAINTENANCE_REL, "priority-buckets.json");
 const LINKGRAPH_REL = path.join(EXPERIENCE_ROOT_REL, "linkgraph");
 const LINKGRAPH_EVENTS_REL = path.join(LINKGRAPH_REL, "events.jsonl");
+const ANTI_PATTERNS_REL = path.join(LINKGRAPH_REL, "anti-patterns.json");
+const REFLECTION_STATE_REL = path.join(LINKGRAPH_REL, "reflection-state.json");
 
 export type MemoryTier = "reflex" | "long_term" | "recent" | "archive";
 
@@ -104,6 +106,50 @@ export type LinkGraphStrategyPolicy = {
   unknownSameAgent: number;
   unknownCrossAgent: number;
   eventContributionCap: number;
+};
+
+export type StrategyRatios = {
+  repair: number;
+  optimize: number;
+  innovate: number;
+};
+
+type ReflectionState = {
+  recallCount: number;
+  lastComputedRound: number;
+  lastComputedAt?: string;
+  strategy: EvolutionStrategy;
+  ratios: StrategyRatios;
+  windowDays: number;
+  consideredOutcomes: number;
+  successCount: number;
+  failureCount: number;
+  unknownCount: number;
+  successRate: number;
+  failureRate: number;
+  unknownRate: number;
+  reason: string;
+};
+
+type AntiPatternCard = {
+  failureCount: number;
+  lastFailureAt?: string;
+  agents?: string[];
+};
+
+type AntiPatternEntry = {
+  queryKey: string;
+  querySamples: string[];
+  failureCount: number;
+  successCount: number;
+  lastOutcomeAt?: string;
+  lastFailureAt?: string;
+  cards: Record<string, AntiPatternCard>;
+};
+
+type AntiPatternLibrary = {
+  updatedAt: string;
+  entries: Record<string, AntiPatternEntry>;
 };
 
 type LinkGraphEvent = {
@@ -247,6 +293,54 @@ export function resolveLinkGraphStrategyPolicy(params: {
     maxEvents,
     graphWeight,
   };
+}
+
+function normalizeRatios(ratios: StrategyRatios): StrategyRatios {
+  const repair = clamp(Number(ratios.repair || 0), 0, 1);
+  const optimize = clamp(Number(ratios.optimize || 0), 0, 1);
+  const innovate = clamp(Number(ratios.innovate || 0), 0, 1);
+  const total = repair + optimize + innovate;
+  if (total <= 0) {
+    return { repair: 0.2, optimize: 0.3, innovate: 0.5 };
+  }
+  return {
+    repair: repair / total,
+    optimize: optimize / total,
+    innovate: innovate / total,
+  };
+}
+
+function ratiosFromStrategy(strategy: EvolutionStrategy): StrategyRatios {
+  if (strategy === "repair-only") {
+    return { repair: 0.8, optimize: 0.2, innovate: 0 };
+  }
+  if (strategy === "harden") {
+    return { repair: 0.4, optimize: 0.4, innovate: 0.2 };
+  }
+  return { repair: 0.2, optimize: 0.3, innovate: 0.5 };
+}
+
+function buildDynamicRatios(params: {
+  failureRate: number;
+  unknownRate: number;
+}): StrategyRatios {
+  const failureRate = clamp(params.failureRate, 0, 1);
+  const unknownRate = clamp(params.unknownRate, 0, 1);
+  const repair = clamp(0.15 + failureRate * 0.92 + unknownRate * 0.28, 0.1, 0.88);
+  const innovate = clamp(0.62 - failureRate * 0.96 - unknownRate * 0.2, 0, 0.72);
+  const optimize = clamp(1 - repair - innovate, 0.08, 0.58);
+  return normalizeRatios({ repair, optimize, innovate });
+}
+
+function strategyFromRatios(ratios: StrategyRatios): EvolutionStrategy {
+  const normalized = normalizeRatios(ratios);
+  if (normalized.repair >= 0.62) {
+    return "repair-only";
+  }
+  if (normalized.repair >= 0.36) {
+    return "harden";
+  }
+  return "balanced";
 }
 
 export function shortText(input: string, max = 280): string {
@@ -713,10 +807,14 @@ export function rankCards(params: {
   topK: number;
   graphBoosts?: Record<string, number>;
   graphWeight?: number;
+  antiPatternPenalties?: Record<string, number>;
+  antiPatternWeight?: number;
 }): ExperienceCard[] {
-  const { cards, stats, query, topK, graphBoosts, graphWeight } = params;
+  const { cards, stats, query, topK, graphBoosts, graphWeight, antiPatternPenalties, antiPatternWeight } = params;
   const normalizedGraphWeight =
     typeof graphWeight === "number" ? clamp(graphWeight, 0, 0.6) : 0.25;
+  const normalizedAntiPatternWeight =
+    typeof antiPatternWeight === "number" ? clamp(antiPatternWeight, 0, 0.7) : 0.36;
   const now = Date.now();
   const scored = cards
     .map((card) => {
@@ -752,6 +850,7 @@ export function rankCards(params: {
         ),
       );
       const graphBoost = clamp(Number(graphBoosts?.[card.id] || 0), -1, 1);
+      const antiPenalty = clamp(Number(antiPatternPenalties?.[card.id] || 0), 0, 1);
       const score =
         relevance * 0.5 +
         confidence * 0.2 +
@@ -760,6 +859,7 @@ export function rankCards(params: {
         lifecycleBias(lifecycle) +
         memoryTierBias(tier) +
         graphBoost * normalizedGraphWeight +
+        antiPenalty * -normalizedAntiPatternWeight +
         Math.max(
           0,
           Math.min(
@@ -1044,11 +1144,434 @@ export async function readLinkGraphBoosts(params: {
   return out;
 }
 
+function defaultReflectionState(): ReflectionState {
+  const strategy: EvolutionStrategy = "balanced";
+  const ratios = ratiosFromStrategy(strategy);
+  return {
+    recallCount: 0,
+    lastComputedRound: 0,
+    lastComputedAt: "",
+    strategy,
+    ratios,
+    windowDays: 7,
+    consideredOutcomes: 0,
+    successCount: 0,
+    failureCount: 0,
+    unknownCount: 0,
+    successRate: 0,
+    failureRate: 0,
+    unknownRate: 0,
+    reason: "initial-default",
+  };
+}
+
+function normalizeReflectionState(raw: unknown): ReflectionState {
+  if (!raw || typeof raw !== "object") {
+    return defaultReflectionState();
+  }
+  const item = raw as Record<string, unknown>;
+  const strategy = normalizeEvolutionStrategy(String(item.strategy || "balanced"), "balanced");
+  const ratios = normalizeRatios(
+    item.ratios && typeof item.ratios === "object"
+      ? {
+          repair: Number((item.ratios as Record<string, unknown>).repair || 0),
+          optimize: Number((item.ratios as Record<string, unknown>).optimize || 0),
+          innovate: Number((item.ratios as Record<string, unknown>).innovate || 0),
+        }
+      : ratiosFromStrategy(strategy),
+  );
+  return {
+    recallCount: Math.max(0, Number(item.recallCount || 0)),
+    lastComputedRound: Math.max(0, Number(item.lastComputedRound || 0)),
+    lastComputedAt: String(item.lastComputedAt || ""),
+    strategy,
+    ratios,
+    windowDays: Math.max(1, Number(item.windowDays || 7)),
+    consideredOutcomes: Math.max(0, Number(item.consideredOutcomes || 0)),
+    successCount: Math.max(0, Number(item.successCount || 0)),
+    failureCount: Math.max(0, Number(item.failureCount || 0)),
+    unknownCount: Math.max(0, Number(item.unknownCount || 0)),
+    successRate: clamp(Number(item.successRate || 0), 0, 1),
+    failureRate: clamp(Number(item.failureRate || 0), 0, 1),
+    unknownRate: clamp(Number(item.unknownRate || 0), 0, 1),
+    reason: String(item.reason || "state-loaded"),
+  };
+}
+
+async function readReflectionState(workspaceDir: string): Promise<ReflectionState> {
+  const filePath = path.join(workspaceDir, REFLECTION_STATE_REL);
+  if (!(await existsFile(filePath))) {
+    return defaultReflectionState();
+  }
+  try {
+    const raw = await readFile(filePath, "utf8");
+    return normalizeReflectionState(JSON.parse(raw));
+  } catch {
+    return defaultReflectionState();
+  }
+}
+
+async function saveReflectionState(workspaceDir: string, state: ReflectionState): Promise<void> {
+  const filePath = path.join(workspaceDir, REFLECTION_STATE_REL);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, JSON.stringify(state, null, 2), "utf8");
+}
+
+async function readRecentOutcomeEvents(params: {
+  workspaceDir: string;
+  maxEvents: number;
+  windowDays: number;
+}): Promise<LinkGraphEvent[]> {
+  const filePath = path.join(params.workspaceDir, LINKGRAPH_EVENTS_REL);
+  if (!(await existsFile(filePath))) {
+    return [];
+  }
+  const raw = await readFile(filePath, "utf8");
+  const rows = raw.split("\n").filter(Boolean);
+  if (rows.length === 0) {
+    return [];
+  }
+  const start = Math.max(0, rows.length - Math.max(1, params.maxEvents));
+  const nowMs = Date.now();
+  const out: LinkGraphEvent[] = [];
+
+  for (let idx = start; idx < rows.length; idx += 1) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rows[idx]);
+    } catch {
+      continue;
+    }
+    const event = normalizeLinkGraphEvent(parsed);
+    if (!event || event.type !== "outcome") {
+      continue;
+    }
+    const tsMs = Number(new Date(event.ts).getTime());
+    if (!Number.isFinite(tsMs) || tsMs <= 0) {
+      continue;
+    }
+    const ageDays = (nowMs - tsMs) / (1000 * 3600 * 24);
+    if (ageDays > Math.max(1, params.windowDays)) {
+      continue;
+    }
+    out.push(event);
+  }
+  return out;
+}
+
+export async function resolveAdaptiveGraphStrategy(params: {
+  workspaceDir: string;
+  requestedStrategy?: string;
+  reflectionEnabled?: boolean;
+  roundInterval?: number;
+  windowDays?: number;
+  minOutcomes?: number;
+  maxEvents?: number;
+}): Promise<{
+  strategy: EvolutionStrategy;
+  ratios: StrategyRatios;
+  mode: "fixed" | "auto";
+  reflection: ReflectionState;
+}> {
+  const requested = String(params.requestedStrategy || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+  if (requested === "balanced" || requested === "harden" || requested === "repair-only") {
+    const strategy = normalizeEvolutionStrategy(requested, "balanced");
+    const reflection = normalizeReflectionState({
+      ...defaultReflectionState(),
+      strategy,
+      ratios: ratiosFromStrategy(strategy),
+      reason: "fixed-strategy",
+    });
+    return {
+      strategy,
+      ratios: reflection.ratios,
+      mode: "fixed",
+      reflection,
+    };
+  }
+
+  const reflectionEnabled =
+    params.reflectionEnabled === undefined ? true : Boolean(params.reflectionEnabled);
+  if (!reflectionEnabled && requested !== "auto") {
+    const strategy = normalizeEvolutionStrategy(requested, "balanced");
+    const reflection = normalizeReflectionState({
+      ...defaultReflectionState(),
+      strategy,
+      ratios: ratiosFromStrategy(strategy),
+      reason: "reflection-disabled",
+    });
+    return {
+      strategy,
+      ratios: reflection.ratios,
+      mode: "fixed",
+      reflection,
+    };
+  }
+
+  const interval = Math.round(clamp(Number(params.roundInterval || 8), 1, 200));
+  const windowDays = Math.round(clamp(Number(params.windowDays || 7), 1, 90));
+  const minOutcomes = Math.round(clamp(Number(params.minOutcomes || 6), 1, 200));
+  const maxEvents = Math.round(clamp(Number(params.maxEvents || 2000), 200, 20000));
+  const state = await readReflectionState(params.workspaceDir);
+  state.recallCount += 1;
+
+  const shouldCompute =
+    state.lastComputedRound <= 0 || state.recallCount - state.lastComputedRound >= interval;
+  if (shouldCompute) {
+    const outcomes = await readRecentOutcomeEvents({
+      workspaceDir: params.workspaceDir,
+      maxEvents,
+      windowDays,
+    });
+    let successCount = 0;
+    let failureCount = 0;
+    let unknownCount = 0;
+    for (const event of outcomes) {
+      if (event.outcome === "success") {
+        successCount += 1;
+      } else if (event.outcome === "failure") {
+        failureCount += 1;
+      } else {
+        unknownCount += 1;
+      }
+    }
+
+    const consideredOutcomes = successCount + failureCount;
+    const totalOutcomes = consideredOutcomes + unknownCount;
+    const successRate = consideredOutcomes > 0 ? successCount / consideredOutcomes : 0;
+    const failureRate = consideredOutcomes > 0 ? failureCount / consideredOutcomes : 0;
+    const unknownRate = totalOutcomes > 0 ? unknownCount / totalOutcomes : 0;
+
+    let ratios = state.ratios;
+    let strategy = state.strategy;
+    let reason = "insufficient-outcomes-hold";
+    if (consideredOutcomes >= minOutcomes) {
+      ratios = buildDynamicRatios({ failureRate, unknownRate });
+      strategy = strategyFromRatios(ratios);
+      reason = "computed-from-recent-outcomes";
+    } else if (state.lastComputedRound <= 0) {
+      strategy = "balanced";
+      ratios = ratiosFromStrategy(strategy);
+      reason = "fallback-balanced-first-cycle";
+    }
+
+    state.lastComputedRound = state.recallCount;
+    state.lastComputedAt = nowIso();
+    state.strategy = strategy;
+    state.ratios = normalizeRatios(ratios);
+    state.windowDays = windowDays;
+    state.consideredOutcomes = consideredOutcomes;
+    state.successCount = successCount;
+    state.failureCount = failureCount;
+    state.unknownCount = unknownCount;
+    state.successRate = successRate;
+    state.failureRate = failureRate;
+    state.unknownRate = unknownRate;
+    state.reason = reason;
+  }
+
+  await saveReflectionState(params.workspaceDir, state);
+  return {
+    strategy: state.strategy,
+    ratios: state.ratios,
+    mode: "auto",
+    reflection: state,
+  };
+}
+
+function defaultAntiPatternLibrary(): AntiPatternLibrary {
+  return {
+    updatedAt: nowIso(),
+    entries: {},
+  };
+}
+
+function normalizeAntiPatternLibrary(raw: unknown): AntiPatternLibrary {
+  if (!raw || typeof raw !== "object") {
+    return defaultAntiPatternLibrary();
+  }
+  const item = raw as Record<string, unknown>;
+  const entriesRaw =
+    item.entries && typeof item.entries === "object"
+      ? (item.entries as Record<string, unknown>)
+      : {};
+  const entries: Record<string, AntiPatternEntry> = {};
+
+  for (const [queryKey, value] of Object.entries(entriesRaw)) {
+    if (!value || typeof value !== "object") {
+      continue;
+    }
+    const row = value as Record<string, unknown>;
+    const cardsRaw =
+      row.cards && typeof row.cards === "object" ? (row.cards as Record<string, unknown>) : {};
+    const cards: Record<string, AntiPatternCard> = {};
+    for (const [cardId, cardRaw] of Object.entries(cardsRaw)) {
+      if (!cardRaw || typeof cardRaw !== "object") {
+        continue;
+      }
+      const card = cardRaw as Record<string, unknown>;
+      cards[cardId] = {
+        failureCount: Math.max(0, Number(card.failureCount || 0)),
+        lastFailureAt: typeof card.lastFailureAt === "string" ? card.lastFailureAt : undefined,
+        agents: Array.isArray(card.agents)
+          ? dedupeStringArray(card.agents.map((x) => String(x || ""))).slice(0, 12)
+          : [],
+      };
+    }
+    entries[queryKey] = {
+      queryKey,
+      querySamples: Array.isArray(row.querySamples)
+        ? dedupeStringArray(row.querySamples.map((x) => shortText(String(x || ""), 180))).slice(0, 6)
+        : [],
+      failureCount: Math.max(0, Number(row.failureCount || 0)),
+      successCount: Math.max(0, Number(row.successCount || 0)),
+      lastOutcomeAt: typeof row.lastOutcomeAt === "string" ? row.lastOutcomeAt : undefined,
+      lastFailureAt: typeof row.lastFailureAt === "string" ? row.lastFailureAt : undefined,
+      cards,
+    };
+  }
+
+  return {
+    updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : nowIso(),
+    entries,
+  };
+}
+
+async function readAntiPatternLibrary(workspaceDir: string): Promise<AntiPatternLibrary> {
+  const filePath = path.join(workspaceDir, ANTI_PATTERNS_REL);
+  if (!(await existsFile(filePath))) {
+    return defaultAntiPatternLibrary();
+  }
+  try {
+    const raw = await readFile(filePath, "utf8");
+    return normalizeAntiPatternLibrary(JSON.parse(raw));
+  } catch {
+    return defaultAntiPatternLibrary();
+  }
+}
+
+async function saveAntiPatternLibrary(
+  workspaceDir: string,
+  library: AntiPatternLibrary,
+): Promise<void> {
+  const filePath = path.join(workspaceDir, ANTI_PATTERNS_REL);
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, JSON.stringify(library, null, 2), "utf8");
+}
+
+export async function updateAntiPatternLibrary(params: {
+  workspaceDir: string;
+  queryKey: string;
+  query: string;
+  cardIds: string[];
+  agentId?: string;
+  outcome: "success" | "failure" | "unknown";
+  ts?: string;
+}): Promise<void> {
+  const queryKey = String(params.queryKey || "").trim();
+  const cardIds = dedupeStringArray(params.cardIds || []);
+  if (!queryKey || cardIds.length === 0) {
+    return;
+  }
+  const library = await readAntiPatternLibrary(params.workspaceDir);
+  const ts = String(params.ts || "").trim() || nowIso();
+  const agentId = String(params.agentId || "").trim();
+  const query = shortText(params.query || "", 240);
+  const entry =
+    library.entries[queryKey] ||
+    ({
+      queryKey,
+      querySamples: [],
+      failureCount: 0,
+      successCount: 0,
+      cards: {},
+    } as AntiPatternEntry);
+
+  if (query) {
+    entry.querySamples = dedupeStringArray([query, ...entry.querySamples]).slice(0, 6);
+  }
+  entry.lastOutcomeAt = ts;
+
+  if (params.outcome === "failure") {
+    entry.failureCount += 1;
+    entry.lastFailureAt = ts;
+    for (const cardId of cardIds) {
+      const card = entry.cards[cardId] || { failureCount: 0, agents: [] };
+      card.failureCount = Math.max(0, Number(card.failureCount || 0)) + 1;
+      card.lastFailureAt = ts;
+      if (agentId) {
+        card.agents = dedupeStringArray([agentId, ...(card.agents || [])]).slice(0, 12);
+      }
+      entry.cards[cardId] = card;
+    }
+  } else if (params.outcome === "success") {
+    entry.successCount += 1;
+    for (const cardId of cardIds) {
+      if (!entry.cards[cardId]) {
+        continue;
+      }
+      entry.cards[cardId].failureCount = Math.max(
+        0,
+        Number(entry.cards[cardId].failureCount || 0) - 1,
+      );
+    }
+  }
+
+  library.entries[queryKey] = entry;
+  library.updatedAt = ts;
+  await saveAntiPatternLibrary(params.workspaceDir, library);
+}
+
+export async function readAntiPatternPenalties(params: {
+  workspaceDir: string;
+  queryKey: string;
+  agentId?: string;
+  maxPenalty?: number;
+}): Promise<Record<string, number>> {
+  const queryKey = String(params.queryKey || "").trim();
+  if (!queryKey) {
+    return {};
+  }
+  const library = await readAntiPatternLibrary(params.workspaceDir);
+  const entry = library.entries[queryKey];
+  if (!entry) {
+    return {};
+  }
+  const maxPenalty =
+    typeof params.maxPenalty === "number" ? clamp(params.maxPenalty, 0.1, 1) : 0.85;
+  const nowMs = Date.now();
+  const agentId = String(params.agentId || "").trim();
+  const out: Record<string, number> = {};
+
+  for (const [cardId, card] of Object.entries(entry.cards || {})) {
+    const failCount = Math.max(0, Number(card.failureCount || 0));
+    if (failCount <= 0) {
+      continue;
+    }
+    const severity = clamp(Math.log1p(failCount) / Math.log1p(8), 0, 1);
+    const recentWeight = recencyWeightByTs(card.lastFailureAt || entry.lastFailureAt || "", nowMs, 21);
+    const sameAgent =
+      agentId && Array.isArray(card.agents) ? card.agents.includes(agentId) : false;
+    const boosted = severity * (0.55 + recentWeight * 0.45) + (sameAgent ? 0.08 : 0);
+    out[cardId] = clamp(boosted, 0, maxPenalty);
+  }
+
+  return out;
+}
+
 export async function writeRecallDoc(params: {
   workspaceDir: string;
   cards: ExperienceCard[];
   stats: StatsFile;
   query: string;
+  strategy?: EvolutionStrategy;
+  strategyMode?: "fixed" | "auto";
+  strategyRatios?: StrategyRatios;
+  reflection?: ReflectionState;
+  antiPatternPenalties?: Record<string, number>;
 }): Promise<{ path: string; content: string }> {
   const { workspaceDir, cards, stats, query } = params;
   const lines: string[] = [];
@@ -1056,11 +1579,26 @@ export async function writeRecallDoc(params: {
   lines.push("");
   lines.push(`Generated at: ${nowIso()}`);
   lines.push(`Query hint: ${shortText(query || "none", 260)}`);
+  if (params.strategy) {
+    lines.push(`Graph strategy: ${params.strategy} (${params.strategyMode || "fixed"})`);
+  }
+  if (params.strategyRatios) {
+    const ratios = normalizeRatios(params.strategyRatios);
+    lines.push(
+      `Reflection ratios (repair/optimize/innovate): ${(ratios.repair * 100).toFixed(0)}%/${(ratios.optimize * 100).toFixed(0)}%/${(ratios.innovate * 100).toFixed(0)}%`,
+    );
+  }
+  if (params.reflection && params.strategyMode === "auto") {
+    lines.push(
+      `Reflection window: ${params.reflection.windowDays}d, considered outcomes: ${params.reflection.consideredOutcomes}, failure rate: ${(params.reflection.failureRate * 100).toFixed(1)}%`,
+    );
+  }
   lines.push("");
   lines.push("Usage policy:");
   lines.push("1. Reuse only when pattern matches.");
   lines.push("2. Run minimum verification before broad changes.");
   lines.push("3. Prefer current repo state if conflicts appear.");
+  lines.push("4. Avoid anti-pattern cards with high failure risk unless verified.");
   lines.push("");
   if (cards.length === 0) {
     lines.push("No recall candidates.");
@@ -1068,12 +1606,16 @@ export async function writeRecallDoc(params: {
   } else {
     cards.forEach((card, idx) => {
       const conf = confidenceOf(stats.cards[card.id]).toFixed(2);
+      const antiPenalty = clamp(Number(params.antiPatternPenalties?.[card.id] || 0), 0, 1);
       lines.push(`## ${idx + 1}. ${card.title}`);
       lines.push(`- ID: ${card.id}`);
       lines.push(`- Confidence: ${conf}`);
       lines.push(`- Tier: ${normalizeMemoryTier(card.memoryTier)}`);
       if (typeof card.priorityScore === "number") {
         lines.push(`- Priority score: ${card.priorityScore.toFixed(4)}`);
+      }
+      if (antiPenalty > 0) {
+        lines.push(`- Anti-pattern risk: ${(antiPenalty * 100).toFixed(0)}%`);
       }
       if (card.agentId) {
         lines.push(`- Agent: ${card.agentId}`);

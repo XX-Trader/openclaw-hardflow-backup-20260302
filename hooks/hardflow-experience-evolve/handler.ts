@@ -10,6 +10,7 @@ import {
   resolveOutcome,
   resolveWorkspaceDir,
   saveStats,
+  updateAntiPatternLibrary,
 } from "../_lib/experience.ts";
 
 const HOOK_NAME = "hardflow-experience-evolve";
@@ -61,6 +62,15 @@ export default async function hardflowExperienceEvolve(event: any): Promise<void
         outcome,
       },
     });
+    await updateAntiPatternLibrary({
+      workspaceDir,
+      queryKey: runtimeRecall?.queryKey || buildSignalKeyFromQuery(runtimeRecall?.query || ""),
+      query: runtimeRecall?.query || "",
+      cardIds: recalledIds,
+      agentId: runtimeRecall?.agentId || fallbackAgentId,
+      outcome,
+      ts: now,
+    });
     await clearRuntimeRecall(workspaceDir, sessionKey);
 
     if (Array.isArray(event.messages)) {
@@ -71,4 +81,3 @@ export default async function hardflowExperienceEvolve(event: any): Promise<void
     console.error(`[${HOOK_NAME}] failed: ${message}`);
   }
 }
-
