@@ -456,3 +456,40 @@ python3 scripts/openclaw-ops/cron_setup.py \
 建议：
 - 设置环境变量 `GITHUB_TOKEN` 提升 GitHub API 速率上限。
 - 网络侧建议默认“先沉淀再审核”，不要直接自动改代码。
+
+## Cron/Reviewer 安装策略更新（2026-03-04）
+
+### 1) `cron_setup.py` 新增安装策略与去重治理
+
+- `--install-profile {legacy,minimal,standard,aggressive}`
+  - `legacy`：保持历史行为（默认）
+  - `minimal`：降频并优先启用本仓库进化主链（自进化 + 治理进化，条件满足时）
+  - `standard`：在 `minimal` 基础上可启用对话进化
+  - `aggressive`：尽量启用全部进化任务（前提路径可用）
+- `--legacy-optimize-jobs-mode {auto,keep,disable,remove}`
+  - 默认 `auto`：`legacy` 保留，其他 profile 自动禁用旧 `optimize_*` 任务
+- `--daily-report-dedupe-mode {auto,keep,disable-digest,disable-daily-work}`
+  - 默认 `auto`：非 `legacy` 且检测到日总结任务时，自动禁用 `daily_todo_digest`，避免重复提醒
+
+### 2) `cron_setup.py` 默认进化脚本路径优先级
+
+以下参数默认优先使用当前仓库 `scripts/openclaw-ops/` 下脚本，缺失时回退到 `~/.openclaw/ops/`：
+
+- `--self-evolution-py`
+- `--conversation-evolution-py`
+- `--governance-evolution-py`
+- `--github-web-evolution-py`
+
+### 3) `install_reviewer_scan_jobs.py` 新增 reviewer profile
+
+- `--reviewer-profile {legacy,minimal,standard,aggressive}`（默认 `legacy`）
+- 新增可调度参数：
+  - `--hourly-every-ms`
+  - `--daily-expr`
+  - `--bi-daily-expr`
+  - `--weekly-expr`
+  - `--enable-hourly/--no-enable-hourly`
+  - `--enable-daily/--no-enable-daily`
+  - `--enable-bi-daily/--no-enable-bi-daily`
+  - `--enable-weekly/--no-enable-weekly`
+- `minimal` 默认关闭 bi-daily 并降低 hourly 频率，减少定时任务噪音。

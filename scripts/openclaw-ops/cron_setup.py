@@ -26,6 +26,47 @@ except Exception:  # pragma: no cover
 
 LOG_MODES = {"silent", "chat"}
 API_ENGINES = {"http", "playwright", "playwright-real", "selenium"}
+INSTALL_PROFILES = {"legacy", "minimal", "standard", "aggressive"}
+LEGACY_OPTIMIZE_JOB_MODES = {"auto", "keep", "disable", "remove"}
+DAILY_REPORT_DEDUPE_MODES = {"auto", "keep", "disable-digest", "disable-daily-work"}
+LEGACY_OPTIMIZE_JOB_IDS = {
+    "948d7307-6941-44ee-a8aa-57da767a31b7",  # optimization-agent 治理巡检 (external optimize_incremental_scan.py)
+    "22b1712a-ff4a-4502-bce6-4e39c44cbe9f",  # optimize 自我进化总结 (external optimize_incremental_scan.py)
+    "7e12c6d4-adb0-4ad4-83a6-58bffec8eb53",  # optimize 全量校准 (external optimize_full_calibration.py)
+    "8f9102f4-d62c-4a01-85ef-1d393e2244de",  # optimize 频率策略管理 (external optimize_frequency_manager.py)
+}
+LEGACY_OPTIMIZE_COMMAND_HINTS = (
+    "optimize_incremental_scan.py",
+    "optimize_full_calibration.py",
+    "optimize_frequency_manager.py",
+)
+DAILY_TODO_DIGEST_JOB_IDS = {"2ce5fe63-8316-4503-95e4-48515042b453"}
+DAILY_TODO_DIGEST_COMMAND_HINTS = ("daily_todo_digest.py",)
+DAILY_WORK_JOB_IDS = {"9873ab34-c4af-4db0-8cd5-40df68f92efd"}
+PROFILE_BASELINE: dict[str, dict[str, int | str]] = {
+    "legacy": {},
+    "minimal": {
+        "incremental_every_ms": 1800000,
+        "full_expr": "23 */12 * * *",
+        "conversation_every_ms": 28800000,
+        "governance_every_ms": 28800000,
+        "github_every_ms": 86400000,
+    },
+    "standard": {
+        "incremental_every_ms": 1200000,
+        "full_expr": "23 */8 * * *",
+        "conversation_every_ms": 21600000,
+        "governance_every_ms": 21600000,
+        "github_every_ms": 43200000,
+    },
+    "aggressive": {
+        "incremental_every_ms": 900000,
+        "full_expr": "23 */6 * * *",
+        "conversation_every_ms": 14400000,
+        "governance_every_ms": 14400000,
+        "github_every_ms": 21600000,
+    },
+}
 
 
 def now_ms() -> int:
@@ -44,6 +85,270 @@ def normalize_log_mode(value: str, default: str = "silent") -> str:
 def normalize_api_engine(value: str, default: str = "playwright-real") -> str:
     engine = str(value or "").strip().lower()
     return engine if engine in API_ENGINES else default
+
+
+def prefer_existing_path(*candidates: Path) -> Path:
+    if not candidates:
+        raise ValueError("prefer_existing_path requires at least one candidate")
+    for path in candidates:
+        candidate = Path(path).expanduser()
+        if candidate.exists():
+            return candidate
+    return Path(candidates[0]).expanduser()
+
+
+def get_payload_message(job: dict[str, Any]) -> str:
+    payload = job.get("payload")
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("message", ""))
+
+
+def is_legacy_optimize_job(job: dict[str, Any]) -> bool:
+    job_id = str(job.get("id", "")).strip()
+    if job_id in LEGACY_OPTIMIZE_JOB_IDS:
+        return True
+    message = get_payload_message(job).lower()
+    return any(hint in message for hint in LEGACY_OPTIMIZE_COMMAND_HINTS)
+
+
+def is_daily_todo_digest_job(job: dict[str, Any]) -> bool:
+    job_id = str(job.get("id", "")).strip()
+    if job_id in DAILY_TODO_DIGEST_JOB_IDS:
+        return True
+    message = get_payload_message(job).lower()
+    return any(hint in message for hint in DAILY_TODO_DIGEST_COMMAND_HINTS)
+
+
+def is_daily_work_report_job(job: dict[str, Any]) -> bool:
+    job_id = str(job.get("id", "")).strip()
+    if job_id in DAILY_WORK_JOB_IDS:
+        return True
+    return str(job.get("name", "")).strip() == "ops_daily_work_report_dingtalk"
+
+
+def resolve_legacy_optimize_job_mode(mode: str, profile: str) -> str:
+    normalized = str(mode or "auto").strip().lower()
+    if normalized not in LEGACY_OPTIMIZE_JOB_MODES:
+        normalized = "auto"
+    if normalized == "auto":
+        return "keep" if profile == "legacy" else "disable"
+    return normalized
+
+
+def resolve_daily_report_dedupe_mode(mode: str, profile: str, has_daily_work: bool) -> str:
+    normalized = str(mode or "auto").strip().lower()
+    if normalized not in DAILY_REPORT_DEDUPE_MODES:
+        normalized = "auto"
+    if normalized == "auto":
+        if profile == "legacy":
+            return "keep"
+        return "disable-digest" if has_daily_work else "keep"
+    return normalized
+
+
+def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
+    profile = str(getattr(args, "install_profile", "legacy") or "legacy").strip().lower()
+    if profile not in INSTALL_PROFILES:
+        profile = "legacy"
+    setattr(args, "install_profile", profile)
+
+    changes: dict[str, dict[str, Any]] = {}
+    skipped: list[str] = []
+
+    def set_arg(name: str, value: Any) -> None:
+        old = getattr(args, name)
+        if old != value:
+            setattr(args, name, value)
+            changes[name] = {"from": old, "to": value}
+
+    def ensure_minimum(name: str, minimum: int) -> None:
+        current = int(getattr(args, name))
+        if current < minimum:
+            set_arg(name, minimum)
+
+    def enable_flag(name: str, *, when: bool, reason: str) -> None:
+        if bool(getattr(args, name)):
+            return
+        if when:
+            set_arg(name, True)
+        else:
+            skipped.append(reason)
+
+    def governance_ready_for_install() -> bool:
+        script_ok = Path(str(args.governance_evolution_py)).expanduser().is_file()
+        registry_ok = Path(str(args.governance_evolution_project_registry)).expanduser().exists()
+        repo_raw = str(args.governance_evolution_repo_path).strip()
+        repo_ok = False
+        if repo_raw:
+            repo_path = Path(repo_raw).expanduser()
+            repo_ok = repo_path.is_dir() and (repo_path / ".git").exists()
+        return script_ok and (registry_ok or repo_ok)
+
+    if profile == "minimal":
+        baseline = PROFILE_BASELINE["minimal"]
+        ensure_minimum("incremental_every_ms", int(baseline["incremental_every_ms"]))
+        set_arg("full_expr", str(baseline["full_expr"]))
+        ensure_minimum("governance_evolution_every_ms", int(baseline["governance_every_ms"]))
+        ensure_minimum("conversation_evolution_every_ms", int(baseline["conversation_every_ms"]))
+        ensure_minimum("github_web_evolution_every_ms", int(baseline["github_every_ms"]))
+
+        governance_ready = governance_ready_for_install()
+        enable_flag(
+            "install_governance_evolution_job",
+            when=governance_ready,
+            reason="install_governance_evolution_job skipped: project-registry/repo-path missing",
+        )
+        enable_flag(
+            "install_self_evolution_job",
+            when=Path(str(args.self_evolution_py)).expanduser().is_file(),
+            reason="install_self_evolution_job skipped: self-evolution script missing",
+        )
+    elif profile == "standard":
+        baseline = PROFILE_BASELINE["standard"]
+        ensure_minimum("incremental_every_ms", int(baseline["incremental_every_ms"]))
+        set_arg("full_expr", str(baseline["full_expr"]))
+        ensure_minimum("governance_evolution_every_ms", int(baseline["governance_every_ms"]))
+        ensure_minimum("conversation_evolution_every_ms", int(baseline["conversation_every_ms"]))
+        ensure_minimum("github_web_evolution_every_ms", int(baseline["github_every_ms"]))
+
+        governance_ready = governance_ready_for_install()
+        conversation_ready = Path(str(args.conversation_evolution_py)).expanduser().is_file() and Path(
+            str(args.conversation_evolution_openclaw_home)
+        ).expanduser().is_dir()
+        enable_flag(
+            "install_governance_evolution_job",
+            when=governance_ready,
+            reason="install_governance_evolution_job skipped: project-registry/repo-path missing",
+        )
+        enable_flag(
+            "install_conversation_evolution_job",
+            when=conversation_ready,
+            reason="install_conversation_evolution_job skipped: openclaw-home missing",
+        )
+        enable_flag(
+            "install_self_evolution_job",
+            when=Path(str(args.self_evolution_py)).expanduser().is_file(),
+            reason="install_self_evolution_job skipped: self-evolution script missing",
+        )
+    elif profile == "aggressive":
+        baseline = PROFILE_BASELINE["aggressive"]
+        ensure_minimum("incremental_every_ms", int(baseline["incremental_every_ms"]))
+        set_arg("full_expr", str(baseline["full_expr"]))
+        ensure_minimum("governance_evolution_every_ms", int(baseline["governance_every_ms"]))
+        ensure_minimum("conversation_evolution_every_ms", int(baseline["conversation_every_ms"]))
+        ensure_minimum("github_web_evolution_every_ms", int(baseline["github_every_ms"]))
+
+        governance_ready = governance_ready_for_install()
+        conversation_ready = Path(str(args.conversation_evolution_py)).expanduser().is_file() and Path(
+            str(args.conversation_evolution_openclaw_home)
+        ).expanduser().is_dir()
+        github_ready = Path(str(args.github_web_evolution_py)).expanduser().is_file() and Path(
+            str(args.github_web_evolution_openclaw_home)
+        ).expanduser().is_dir()
+        enable_flag(
+            "install_governance_evolution_job",
+            when=governance_ready,
+            reason="install_governance_evolution_job skipped: project-registry/repo-path missing",
+        )
+        enable_flag(
+            "install_conversation_evolution_job",
+            when=conversation_ready,
+            reason="install_conversation_evolution_job skipped: openclaw-home missing",
+        )
+        enable_flag(
+            "install_github_web_evolution_job",
+            when=github_ready,
+            reason="install_github_web_evolution_job skipped: openclaw-home missing",
+        )
+        enable_flag(
+            "install_self_evolution_job",
+            when=Path(str(args.self_evolution_py)).expanduser().is_file(),
+            reason="install_self_evolution_job skipped: self-evolution script missing",
+        )
+
+    return {"profile": profile, "changes": changes, "skipped": skipped}
+
+
+def apply_legacy_optimize_job_policy(
+    jobs: list[dict[str, Any]],
+    mode: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    mode = str(mode or "keep").strip().lower()
+    if mode not in {"keep", "disable", "remove"}:
+        mode = "keep"
+    summary = {
+        "mode": mode,
+        "matched": 0,
+        "disabled": 0,
+        "removed": 0,
+        "jobs": [],
+    }
+    if mode == "keep":
+        return jobs, summary
+
+    ts = now_ms()
+    kept: list[dict[str, Any]] = []
+    for item in jobs:
+        if not isinstance(item, dict):
+            kept.append(item)
+            continue
+        if not is_legacy_optimize_job(item):
+            kept.append(item)
+            continue
+
+        summary["matched"] += 1
+        detail = {"id": str(item.get("id", "")), "name": str(item.get("name", ""))}
+        if mode == "remove":
+            summary["removed"] += 1
+            summary["jobs"].append({**detail, "action": "removed"})
+            continue
+
+        if bool(item.get("enabled", True)):
+            item["enabled"] = False
+            item["updatedAtMs"] = ts
+            summary["disabled"] += 1
+            summary["jobs"].append({**detail, "action": "disabled"})
+        else:
+            summary["jobs"].append({**detail, "action": "already_disabled"})
+        kept.append(item)
+    return kept, summary
+
+
+def apply_daily_report_dedupe_policy(
+    jobs: list[dict[str, Any]],
+    mode: str,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    mode = str(mode or "keep").strip().lower()
+    if mode not in {"keep", "disable-digest", "disable-daily-work"}:
+        mode = "keep"
+    summary = {
+        "mode": mode,
+        "matched": 0,
+        "disabled": 0,
+        "jobs": [],
+    }
+    if mode == "keep":
+        return jobs, summary
+
+    ts = now_ms()
+    target_matcher = is_daily_todo_digest_job if mode == "disable-digest" else is_daily_work_report_job
+
+    for item in jobs:
+        if not isinstance(item, dict):
+            continue
+        if not target_matcher(item):
+            continue
+        summary["matched"] += 1
+        detail = {"id": str(item.get("id", "")), "name": str(item.get("name", ""))}
+        if bool(item.get("enabled", True)):
+            item["enabled"] = False
+            item["updatedAtMs"] = ts
+            summary["disabled"] += 1
+            summary["jobs"].append({**detail, "action": "disabled"})
+        else:
+            summary["jobs"].append({**detail, "action": "already_disabled"})
+    return jobs, summary
 
 
 def load_jobs(path: Path) -> dict[str, Any]:
@@ -285,6 +590,8 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
     refs: list[str] = []
     for item in jobs:
         if not isinstance(item, dict):
+            continue
+        if not bool(item.get("enabled", True)):
             continue
         job_id = str(item.get("id", "")).strip()
         name = str(item.get("name", "")).strip()
@@ -1023,8 +1330,36 @@ def upsert_jobs(
 
 def main() -> int:
     home = Path(os.path.expanduser("~"))
+    local_ops_dir = ROOT
+    default_self_evolution_py = prefer_existing_path(
+        local_ops_dir / "self_evolution_todo.py",
+        home / ".openclaw/ops/self_evolution_todo.py",
+    )
+    default_conversation_evolution_py = prefer_existing_path(
+        local_ops_dir / "conversation_evolution_runner.py",
+        home / ".openclaw/ops/conversation_evolution_runner.py",
+    )
+    default_governance_evolution_py = prefer_existing_path(
+        local_ops_dir / "governance_evolution_runner.py",
+        home / ".openclaw/ops/governance_evolution_runner.py",
+    )
+    default_github_web_evolution_py = prefer_existing_path(
+        local_ops_dir / "github_web_evolution_runner.py",
+        home / ".openclaw/ops/github_web_evolution_runner.py",
+    )
     parser = argparse.ArgumentParser(description="Install OpenClaw hardflow cron jobs")
     parser.add_argument("--jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
+    parser.add_argument("--install-profile", default="legacy", choices=sorted(INSTALL_PROFILES))
+    parser.add_argument(
+        "--legacy-optimize-jobs-mode",
+        default="auto",
+        choices=sorted(LEGACY_OPTIMIZE_JOB_MODES),
+    )
+    parser.add_argument(
+        "--daily-report-dedupe-mode",
+        default="auto",
+        choices=sorted(DAILY_REPORT_DEDUPE_MODES),
+    )
 
     parser.add_argument("--runner-py", default=str(home / ".openclaw/ops/ops_cron_runner.py"))
     parser.add_argument("--config-file", default=str(home / ".openclaw/ops/cron-monitor-config.json"))
@@ -1067,7 +1402,7 @@ def main() -> int:
     parser.add_argument("--daily-work-env-file", default=str(home / ".openclaw/ops/runtime.env"))
 
     parser.add_argument("--install-self-evolution-job", action="store_true")
-    parser.add_argument("--self-evolution-py", default=str(home / ".openclaw/ops/self_evolution_todo.py"))
+    parser.add_argument("--self-evolution-py", default=str(default_self_evolution_py))
     parser.add_argument("--self-evolution-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument("--self-evolution-state", default=str(home / ".openclaw/ops/self-evolution/state.json"))
     parser.add_argument("--self-evolution-report-dir", default=str(home / ".openclaw/ops/self-evolution/reports"))
@@ -1077,7 +1412,7 @@ def main() -> int:
     parser.add_argument("--self-evolution-max-tasks-per-run", type=int, default=3)
 
     parser.add_argument("--install-conversation-evolution-job", action="store_true")
-    parser.add_argument("--conversation-evolution-py", default=str(home / ".openclaw/ops/conversation_evolution_runner.py"))
+    parser.add_argument("--conversation-evolution-py", default=str(default_conversation_evolution_py))
     parser.add_argument("--conversation-evolution-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument(
         "--conversation-evolution-openclaw-home",
@@ -1106,7 +1441,7 @@ def main() -> int:
     parser.add_argument("--conversation-evolution-assignee", default="optimization-agent")
 
     parser.add_argument("--install-governance-evolution-job", action="store_true")
-    parser.add_argument("--governance-evolution-py", default=str(home / ".openclaw/ops/governance_evolution_runner.py"))
+    parser.add_argument("--governance-evolution-py", default=str(default_governance_evolution_py))
     parser.add_argument("--governance-evolution-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument(
         "--governance-evolution-state",
@@ -1138,7 +1473,7 @@ def main() -> int:
     parser.add_argument("--governance-evolution-push-before-pr", action=argparse.BooleanOptionalAction, default=False)
 
     parser.add_argument("--install-github-web-evolution-job", action="store_true")
-    parser.add_argument("--github-web-evolution-py", default=str(home / ".openclaw/ops/github_web_evolution_runner.py"))
+    parser.add_argument("--github-web-evolution-py", default=str(default_github_web_evolution_py))
     parser.add_argument("--github-web-evolution-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument("--github-web-evolution-openclaw-home", default=str(home / ".openclaw"))
     parser.add_argument("--github-web-evolution-web-root", default=str(home / ".openclaw/web/github"))
@@ -1167,6 +1502,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
+    profile_result = apply_install_profile(args)
+    legacy_optimize_mode = resolve_legacy_optimize_job_mode(
+        str(args.legacy_optimize_jobs_mode),
+        str(profile_result.get("profile", "legacy")),
+    )
 
     jobs_file = Path(args.jobs_file).expanduser()
     config_file = Path(args.config_file).expanduser()
@@ -1174,6 +1514,15 @@ def main() -> int:
 
     data = load_jobs(jobs_file)
     jobs = data.get("jobs", [])
+    existing_daily_work_enabled = any(
+        isinstance(item, dict) and is_daily_work_report_job(item) and bool(item.get("enabled", True))
+        for item in jobs
+    )
+    daily_report_dedupe_mode = resolve_daily_report_dedupe_mode(
+        str(args.daily_report_dedupe_mode),
+        str(profile_result.get("profile", "legacy")),
+        bool(args.install_daily_work_job) or existing_daily_work_enabled,
+    )
 
     channel = str(args.channel or "").strip()
     target = str(args.to or "").strip()
@@ -1361,6 +1710,14 @@ def main() -> int:
     removed_name_conflicts: list[dict[str, str]] = []
     if not bool(args.keep_name_conflicts):
         merged_jobs, removed_name_conflicts = remove_name_conflicts(jobs=merged_jobs, expected_jobs=fresh_jobs)
+    merged_jobs, legacy_optimize_policy_result = apply_legacy_optimize_job_policy(
+        jobs=merged_jobs,
+        mode=legacy_optimize_mode,
+    )
+    merged_jobs, daily_report_dedupe_result = apply_daily_report_dedupe_policy(
+        jobs=merged_jobs,
+        mode=daily_report_dedupe_mode,
+    )
     harden_result = harden_known_jobs(jobs=merged_jobs, openclaw_home=openclaw_home)
     harden_missing_refs = list(harden_result.get("missing_refs", []))
     if harden_missing_refs and not bool(args.skip_script_path_check):
@@ -1394,6 +1751,9 @@ def main() -> int:
         "backup": backup_file,
         "config_file": str(config_file),
         "delivery": {"channel": channel, "to": target},
+        "install_profile": profile_result,
+        "legacy_optimize_policy": legacy_optimize_policy_result,
+        "daily_report_dedupe_policy": daily_report_dedupe_result,
         "job_status": status,
         "job_ids": [item["id"] for item in fresh_jobs],
         "skill_log_switches": cfg.get("skill_log_switches", {}),
@@ -1429,6 +1789,27 @@ def main() -> int:
         for jid in result["job_ids"]:
             print(f"{jid}={status.get(jid, 'unknown')}")
         print(f"delivery={channel}:{target}")
+        install_profile = result.get("install_profile", {})
+        print(f"install_profile={install_profile.get('profile', 'legacy')}")
+        if install_profile.get("changes"):
+            print("install_profile_changes=" + json.dumps(install_profile.get("changes", {}), ensure_ascii=False))
+        if install_profile.get("skipped"):
+            print("install_profile_skipped=" + "; ".join(str(x) for x in install_profile.get("skipped", [])))
+        legacy_policy = result.get("legacy_optimize_policy", {})
+        print(
+            "legacy_optimize_policy="
+            f"{legacy_policy.get('mode', 'keep')},"
+            f"matched:{legacy_policy.get('matched', 0)},"
+            f"disabled:{legacy_policy.get('disabled', 0)},"
+            f"removed:{legacy_policy.get('removed', 0)}"
+        )
+        dedupe_policy = result.get("daily_report_dedupe_policy", {})
+        print(
+            "daily_report_dedupe_policy="
+            f"{dedupe_policy.get('mode', 'keep')},"
+            f"matched:{dedupe_policy.get('matched', 0)},"
+            f"disabled:{dedupe_policy.get('disabled', 0)}"
+        )
         before_counts = result.get("audit", {}).get("before", {}).get("counts", {})
         after_counts = result.get("audit", {}).get("after", {}).get("counts", {})
         print(

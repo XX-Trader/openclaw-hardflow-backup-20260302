@@ -23,6 +23,37 @@ HOURLY_JOB_ID = "d3859fd5-3ea2-4ee5-ab1d-7fd526f26722"
 DAILY_JOB_ID = "0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a"
 BI_DAILY_JOB_ID = "a9c4a133-bf5b-4b91-8d89-ec97995f95f9"
 WEEKLY_JOB_ID = "771fda88-c8ff-49dc-a4da-6f57167c1d26"
+REVIEWER_PROFILES = {"legacy", "minimal", "standard", "aggressive"}
+REVIEWER_PROFILE_BASELINE: dict[str, dict[str, int | bool]] = {
+    "legacy": {
+        "hourly_every_ms": 3600000,
+        "enable_hourly": True,
+        "enable_daily": True,
+        "enable_bi_daily": True,
+        "enable_weekly": True,
+    },
+    "minimal": {
+        "hourly_every_ms": 7200000,
+        "enable_hourly": True,
+        "enable_daily": True,
+        "enable_bi_daily": False,
+        "enable_weekly": True,
+    },
+    "standard": {
+        "hourly_every_ms": 3600000,
+        "enable_hourly": True,
+        "enable_daily": True,
+        "enable_bi_daily": True,
+        "enable_weekly": True,
+    },
+    "aggressive": {
+        "hourly_every_ms": 1800000,
+        "enable_hourly": True,
+        "enable_daily": True,
+        "enable_bi_daily": True,
+        "enable_weekly": True,
+    },
+}
 
 
 def now_ms() -> int:
@@ -69,6 +100,41 @@ def build_message(command: str) -> str:
     )
 
 
+def apply_reviewer_profile(args: argparse.Namespace) -> dict[str, Any]:
+    profile = str(getattr(args, "reviewer_profile", "legacy") or "legacy").strip().lower()
+    if profile not in REVIEWER_PROFILES:
+        profile = "legacy"
+    setattr(args, "reviewer_profile", profile)
+
+    changes: dict[str, dict[str, Any]] = {}
+
+    def set_arg(name: str, value: Any) -> None:
+        old = getattr(args, name)
+        if old != value:
+            setattr(args, name, value)
+            changes[name] = {"from": old, "to": value}
+
+    baseline = REVIEWER_PROFILE_BASELINE.get(profile, REVIEWER_PROFILE_BASELINE["legacy"])
+    min_hourly = int(baseline.get("hourly_every_ms", 3600000))
+    if int(args.hourly_every_ms) < min_hourly:
+        set_arg("hourly_every_ms", min_hourly)
+
+    toggle_defaults = {
+        "enable_hourly": bool(baseline.get("enable_hourly", True)),
+        "enable_daily": bool(baseline.get("enable_daily", True)),
+        "enable_bi_daily": bool(baseline.get("enable_bi_daily", True)),
+        "enable_weekly": bool(baseline.get("enable_weekly", True)),
+    }
+    for key, default_value in toggle_defaults.items():
+        raw = getattr(args, key)
+        if raw is None:
+            set_arg(key, default_value)
+        else:
+            set_arg(key, bool(raw))
+
+    return {"profile": profile, "changes": changes}
+
+
 def build_jobs(
     *,
     runner_py: str,
@@ -76,6 +142,14 @@ def build_jobs(
     state_file: str,
     history_dir: str,
     tz_name: str,
+    hourly_every_ms: int,
+    daily_expr: str,
+    bi_daily_expr: str,
+    weekly_expr: str,
+    enable_hourly: bool,
+    enable_daily: bool,
+    enable_bi_daily: bool,
+    enable_weekly: bool,
     normal_log_mode: str,
     daily_fix_command: str,
     hourly_git_fetch: bool,
@@ -123,10 +197,10 @@ def build_jobs(
             "agentId": "reviewer",
             "name": "reviewer_git_update_hourly",
             "description": "Hourly git incremental scan (branch sync, PR check, optional approved merge)",
-            "enabled": True,
+            "enabled": bool(enable_hourly),
             "createdAtMs": ts,
             "updatedAtMs": ts,
-            "schedule": {"kind": "every", "everyMs": 3600000, "anchorMs": ts},
+            "schedule": {"kind": "every", "everyMs": max(600000, int(hourly_every_ms)), "anchorMs": ts},
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_hourly), "timeoutSeconds": 1200},
@@ -136,10 +210,10 @@ def build_jobs(
             "agentId": "reviewer",
             "name": "reviewer_incremental_daily_4am",
             "description": "Daily 04:00 incremental review with optional fix command",
-            "enabled": True,
+            "enabled": bool(enable_daily),
             "createdAtMs": ts,
             "updatedAtMs": ts,
-            "schedule": {"kind": "cron", "expr": "0 4 * * *", "tz": tz_name},
+            "schedule": {"kind": "cron", "expr": str(daily_expr), "tz": tz_name},
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_daily), "timeoutSeconds": 1800},
@@ -149,10 +223,10 @@ def build_jobs(
             "agentId": "reviewer",
             "name": "reviewer_recurring_bi_daily",
             "description": "Every 2 days recurring issue scan with dedupe",
-            "enabled": True,
+            "enabled": bool(enable_bi_daily),
             "createdAtMs": ts,
             "updatedAtMs": ts,
-            "schedule": {"kind": "cron", "expr": "20 4 */2 * *", "tz": tz_name},
+            "schedule": {"kind": "cron", "expr": str(bi_daily_expr), "tz": tz_name},
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_bi_daily), "timeoutSeconds": 1800},
@@ -162,10 +236,10 @@ def build_jobs(
             "agentId": "reviewer",
             "name": "reviewer_weekly_structure_review",
             "description": "Weekly structure review: coupling, duplication, config dispersion, boundary clarity",
-            "enabled": True,
+            "enabled": bool(enable_weekly),
             "createdAtMs": ts,
             "updatedAtMs": ts,
-            "schedule": {"kind": "cron", "expr": "40 4 * * 1", "tz": tz_name},
+            "schedule": {"kind": "cron", "expr": str(weekly_expr), "tz": tz_name},
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_weekly), "timeoutSeconds": 1800},
@@ -225,6 +299,15 @@ def main() -> None:
     parser.add_argument("--state-file", default=str(home / ".openclaw/ops/reviewer-scan-state.json"))
     parser.add_argument("--history-dir", default=str(home / ".openclaw/ops/reviewer-scan-runs"))
     parser.add_argument("--tz", default="Asia/Shanghai")
+    parser.add_argument("--reviewer-profile", default="legacy", choices=sorted(REVIEWER_PROFILES))
+    parser.add_argument("--hourly-every-ms", type=int, default=3600000)
+    parser.add_argument("--daily-expr", default="0 4 * * *")
+    parser.add_argument("--bi-daily-expr", default="20 4 */2 * *")
+    parser.add_argument("--weekly-expr", default="40 4 * * 1")
+    parser.add_argument("--enable-hourly", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--enable-daily", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--enable-bi-daily", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--enable-weekly", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--normal-log-mode", default="silent", choices=["silent", "chat"])
     parser.add_argument("--daily-fix-command", default="")
 
@@ -240,6 +323,7 @@ def main() -> None:
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
     args = parser.parse_args()
+    profile_result = apply_reviewer_profile(args)
 
     jobs_path = Path(args.jobs_file).expanduser()
     jobs_path.parent.mkdir(parents=True, exist_ok=True)
@@ -264,6 +348,14 @@ def main() -> None:
         state_file=str(Path(args.state_file).expanduser()),
         history_dir=str(Path(args.history_dir).expanduser()),
         tz_name=str(args.tz).strip() or "Asia/Shanghai",
+        hourly_every_ms=max(600000, int(args.hourly_every_ms)),
+        daily_expr=str(args.daily_expr).strip() or "0 4 * * *",
+        bi_daily_expr=str(args.bi_daily_expr).strip() or "20 4 */2 * *",
+        weekly_expr=str(args.weekly_expr).strip() or "40 4 * * 1",
+        enable_hourly=bool(args.enable_hourly),
+        enable_daily=bool(args.enable_daily),
+        enable_bi_daily=bool(args.enable_bi_daily),
+        enable_weekly=bool(args.enable_weekly),
         normal_log_mode=str(args.normal_log_mode).strip(),
         daily_fix_command=str(args.daily_fix_command),
         hourly_git_fetch=bool(args.hourly_git_fetch),
@@ -298,6 +390,17 @@ def main() -> None:
     print(f"state_file={args.state_file}")
     print(f"history_dir={args.history_dir}")
     print(f"delivery={channel}:{target}")
+    print(f"reviewer_profile={profile_result.get('profile', 'legacy')}")
+    if profile_result.get("changes"):
+        print("reviewer_profile_changes=" + json.dumps(profile_result.get("changes", {}), ensure_ascii=False))
+    print(f"hourly_every_ms={max(600000, int(args.hourly_every_ms))}")
+    print(f"daily_expr={str(args.daily_expr).strip() or '0 4 * * *'}")
+    print(f"bi_daily_expr={str(args.bi_daily_expr).strip() or '20 4 */2 * *'}")
+    print(f"weekly_expr={str(args.weekly_expr).strip() or '40 4 * * 1'}")
+    print(f"enable_hourly={bool(args.enable_hourly)}")
+    print(f"enable_daily={bool(args.enable_daily)}")
+    print(f"enable_bi_daily={bool(args.enable_bi_daily)}")
+    print(f"enable_weekly={bool(args.enable_weekly)}")
     print(f"hourly_git_fetch={bool(args.hourly_git_fetch)}")
     print(f"hourly_check_pr={bool(args.hourly_check_pr)}")
     print(f"hourly_allow_merge={bool(args.hourly_allow_merge)}")

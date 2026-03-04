@@ -918,6 +918,9 @@ def run_cron_setup(
     incremental_log_mode: str,
     full_log_mode: str,
     daily_log_mode: str,
+    install_profile: str,
+    legacy_optimize_jobs_mode: str,
+    daily_report_dedupe_mode: str,
     install_system_schedule_job: bool,
     system_log_mode: str,
     install_api_test_job: bool,
@@ -1014,6 +1017,12 @@ def run_cron_setup(
         full_log_mode,
         "--daily-log-mode",
         daily_log_mode,
+        "--install-profile",
+        str(install_profile or "legacy"),
+        "--legacy-optimize-jobs-mode",
+        str(legacy_optimize_jobs_mode or "auto"),
+        "--daily-report-dedupe-mode",
+        str(daily_report_dedupe_mode or "auto"),
     ]
     if daily_major_only:
         cmd.append("--daily-major-only")
@@ -1241,6 +1250,13 @@ def main() -> int:
     parser.add_argument("--cron-incremental-log-mode", default="silent", choices=["silent", "chat"])
     parser.add_argument("--cron-full-log-mode", default="silent", choices=["silent", "chat"])
     parser.add_argument("--cron-daily-log-mode", default="silent", choices=["silent", "chat"])
+    parser.add_argument("--cron-install-profile", default="standard", choices=["legacy", "minimal", "standard", "aggressive"])
+    parser.add_argument("--cron-legacy-optimize-jobs-mode", default="auto", choices=["auto", "keep", "disable", "remove"])
+    parser.add_argument(
+        "--cron-daily-report-dedupe-mode",
+        default="auto",
+        choices=["auto", "keep", "disable-digest", "disable-daily-work"],
+    )
     parser.add_argument("--cron-install-system-schedule-job", action="store_true")
     parser.add_argument("--cron-system-log-mode", default="silent", choices=["silent", "chat"])
     parser.add_argument("--cron-install-api-test-job", action="store_true")
@@ -2247,6 +2263,9 @@ def main() -> int:
                 incremental_log_mode=args.cron_incremental_log_mode,
                 full_log_mode=args.cron_full_log_mode,
                 daily_log_mode=args.cron_daily_log_mode,
+                install_profile=str(args.cron_install_profile),
+                legacy_optimize_jobs_mode=str(args.cron_legacy_optimize_jobs_mode),
+                daily_report_dedupe_mode=str(args.cron_daily_report_dedupe_mode),
                 install_system_schedule_job=bool(install_system_schedule_job),
                 system_log_mode=args.cron_system_log_mode,
                 install_api_test_job=bool(install_api_test_job),
@@ -2414,6 +2433,9 @@ def main() -> int:
             "install_conversation_evolution_job": bool(install_conversation_evolution_job),
             "install_governance_evolution_job": bool(install_governance_evolution_job),
             "install_github_web_evolution_job": bool(install_github_web_evolution_job),
+            "install_profile": str(args.cron_install_profile),
+            "legacy_optimize_jobs_mode": str(args.cron_legacy_optimize_jobs_mode),
+            "daily_report_dedupe_mode": str(args.cron_daily_report_dedupe_mode),
             "incremental_log_mode": args.cron_incremental_log_mode,
             "full_log_mode": args.cron_full_log_mode,
             "daily_log_mode": args.cron_daily_log_mode,

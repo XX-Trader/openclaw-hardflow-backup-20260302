@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "generated_at": "2026-03-04T15:32:15+00:00",
+  "registry": ".workflow\\project-index\\project-registry.json",
+  "project_count": 1,
+  "changed_count": 1,
+  "projects": [
+    {
+      "project_id": "openclaw-hardflow-backup-20260302",
+      "name": "openclaw-hardflow-backup-20260302",
+      "path": ".",
+      "ok": true,
+      "changed": true,
+      "git_repo": true,
+      "git_pull_attempted": false,
+      "git_pull_ok": false,
+      "errors": [],
+      "outputs": [
+        ".workflow\\project-index\\PROJECT_INDEX.md",
+        ".workflow\\project-index\\project-index.json",
+        ".workflow\\project-index\\doc-knowledge.json",
+        ".workflow\\project-index\\doc-search-index.json",
+        ".workflow\\project-index\\DOC_KNOWLEDGE.md",
+        "memory_index_failed:[WinError 2] 系统找不到指定的文件。"
+      ]
+    }
+  ],
+  "run_duration_ms": 4094,
+  "policy_observability": {
+    "enabled": false,
+    "db": "",
+    "task_bound": false,
+    "errors": []
+  }
+}
