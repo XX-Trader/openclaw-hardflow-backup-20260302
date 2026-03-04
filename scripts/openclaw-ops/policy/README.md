@@ -138,6 +138,22 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py report-agent-result \
   --quality-grade a
 ```
 
+说明（2026-03）：
+- `report-agent-result` 会同步回写 `tasks.status` 与 `tasks.action`，避免任务长期停留在 `pending`。
+- 映射规则：`passed -> passed/pass`，`failed -> failed/retry`，达到失败阈值自动升级为 `escalated/escalate_human`。
+- 聊天消息仍遵循“仅异常发送”，正常成功路径返回 `NO_REPLY`。
+
+历史状态回填（修复旧数据）：
+
+```bash
+python3 scripts/openclaw-ops/policy/policy_enforcer.py reconcile-task-status \
+  --dry-run \
+  --limit 2000
+
+python3 scripts/openclaw-ops/policy/policy_enforcer.py reconcile-task-status \
+  --limit 2000
+```
+
 规划者统计（任务完成情况/agent完成质量）：
 
 ```bash

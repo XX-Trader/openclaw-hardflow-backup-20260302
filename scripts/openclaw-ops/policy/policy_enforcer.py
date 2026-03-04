@@ -747,6 +747,91 @@ class PolicyEnforcer:
         if to_status not in allowed:
             raise PolicyError(f"status transition blocked by policy: {from_status} -> {to_status}")
 
+    def derive_task_status_from_agent_report(
+        self,
+        report_status: str,
+        solved: bool,
+        failure_count: int,
+    ) -> tuple[str, str]:
+        normalized_status = str(report_status or "").strip().lower()
+        normalized_failure = max(0, int(failure_count or 0))
+
+        if normalized_status == "escalated":
+            return "escalated", "escalate_human"
+        if normalized_status == "failed":
+            if normalized_failure >= self.max_failure_before_escalate():
+                return "escalated", "escalate_human"
+            return "failed", "retry"
+        if normalized_status == "partial":
+            return "running", "retry"
+
+        if solved and normalized_failure == 0:
+            return "passed", "pass"
+        return "running", "retry"
+
+    def sync_task_status_from_agent_report(
+        self,
+        *,
+        task: dict[str, Any],
+        task_id: str,
+        report_status: str,
+        solved: bool,
+        failure_count: int,
+        actor: str,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        current_status = str(task.get("status", "pending")).strip().lower() or "pending"
+        current_action = str(task.get("action", "") or "").strip()
+        target_status, target_action = self.derive_task_status_from_agent_report(
+            report_status=report_status,
+            solved=solved,
+            failure_count=failure_count,
+        )
+
+        sync_info: dict[str, Any] = {
+            "task_status_before": current_status,
+            "task_status_target": target_status,
+            "task_status_after": current_status,
+            "task_action_before": current_action,
+            "task_action_target": target_action,
+            "task_action_after": current_action,
+            "task_status_updated": False,
+            "task_action_updated": False,
+            "sync_skipped_reason": "",
+        }
+
+        # Keep terminal statuses stable unless report agrees with current status.
+        if current_status in {"passed", "cancelled"} and current_status != target_status:
+            sync_info["sync_skipped_reason"] = f"terminal_status_locked:{current_status}"
+            return task, sync_info
+
+        updated_task = task
+        if current_status != target_status:
+            updated_task = self.db.transition_status(
+                task_id=task_id,
+                new_status=target_status,
+                actor=actor,
+                stage="agent_report",
+                details={
+                    "report_status": report_status,
+                    "solved": bool(solved),
+                    "failure_count": int(failure_count or 0),
+                },
+            )
+            sync_info["task_status_updated"] = True
+
+        latest_action = str(updated_task.get("action", "") or "").strip()
+        if target_action and latest_action != target_action:
+            updated_task = self.db.update_task(
+                task_id=task_id,
+                actor=actor,
+                fields={"action": target_action},
+            )
+            sync_info["task_action_updated"] = True
+
+        sync_info["task_status_after"] = str(updated_task.get("status", "") or "").strip().lower()
+        sync_info["task_action_after"] = str(updated_task.get("action", "") or "").strip()
+        return updated_task, sync_info
+
     def create_task(self, args: argparse.Namespace) -> dict[str, Any]:
         priority = args.priority
         if priority not in {"low", "medium", "high"}:
@@ -1191,7 +1276,7 @@ class PolicyEnforcer:
         task_id = str(args.task_id or "").strip()
         if not task_id:
             raise PolicyError("task-id is required")
-        task = self.db.get_task(task_id)
+        task_before = self.db.get_task(task_id)
 
         status = str(args.status or "").strip().lower() or "passed"
         if status not in {"passed", "failed", "partial", "escalated"}:
@@ -1250,10 +1335,30 @@ class PolicyEnforcer:
             actor=str(args.actor or ""),
         )
 
+        task_actor = str(args.actor or args.agent_id or "agent").strip()
+        task_after, status_sync = self.sync_task_status_from_agent_report(
+            task=task_before,
+            task_id=task_id,
+            report_status=status,
+            solved=solved,
+            failure_count=failure_count,
+            actor=task_actor,
+        )
+
         planner_payload = {
             "task_id": task_id,
-            "task_status": str(task.get("status", "")),
-            "task_reason": str(task.get("reason", "")),
+            "task_status": str(task_after.get("status", "")),
+            "task_status_before": status_sync.get("task_status_before", ""),
+            "task_status_target": status_sync.get("task_status_target", ""),
+            "task_status_after": status_sync.get("task_status_after", ""),
+            "task_action": str(task_after.get("action", "")),
+            "task_action_before": status_sync.get("task_action_before", ""),
+            "task_action_target": status_sync.get("task_action_target", ""),
+            "task_action_after": status_sync.get("task_action_after", ""),
+            "task_status_updated": bool(status_sync.get("task_status_updated")),
+            "task_action_updated": bool(status_sync.get("task_action_updated")),
+            "task_sync_skipped_reason": str(status_sync.get("sync_skipped_reason", "")),
+            "task_reason": str(task_after.get("reason", "")),
             "agent_id": str(args.agent_id),
             "planner_id": str(args.planner_id or "coordinator"),
             "report_status": status,
@@ -1302,8 +1407,129 @@ class PolicyEnforcer:
         return {
             "report": report,
             "planner_payload": planner_payload,
+            "task_status_sync": status_sync,
             "notify_chat": notify_chat,
             "chat_output": chat_output,
+        }
+
+    def reconcile_task_statuses(self, args: argparse.Namespace) -> dict[str, Any]:
+        limit = max(1, int(getattr(args, "limit", 2000) or 2000))
+        dry_run = bool(getattr(args, "dry_run", False))
+        actor = str(getattr(args, "actor", "") or "coordinator").strip() or "coordinator"
+
+        unresolved = self.db.unresolved_tasks()
+        tasks = unresolved[:limit]
+        scanned = len(tasks)
+
+        stats: dict[str, int] = {
+            "scanned": scanned,
+            "updated": 0,
+            "status_updated": 0,
+            "action_updated": 0,
+            "skipped_no_report": 0,
+            "skipped_terminal_locked": 0,
+            "no_change": 0,
+        }
+        details: list[dict[str, Any]] = []
+
+        for task in tasks:
+            task_id = str(task.get("task_id", "")).strip()
+            if not task_id:
+                continue
+
+            reports = self.db.list_agent_task_reports(task_id=task_id, limit=1)
+            if not reports:
+                stats["skipped_no_report"] += 1
+                continue
+
+            latest_report = reports[0]
+            report_status = str(latest_report.get("status", "")).strip().lower() or "passed"
+            solved = bool(latest_report.get("solved"))
+            failure_count = int(latest_report.get("failure_count") or 0)
+            target_status, target_action = self.derive_task_status_from_agent_report(
+                report_status=report_status,
+                solved=solved,
+                failure_count=failure_count,
+            )
+            current_status = str(task.get("status", "")).strip().lower()
+            current_action = str(task.get("action", "") or "").strip()
+
+            if current_status in {"passed", "cancelled"} and current_status != target_status:
+                stats["skipped_terminal_locked"] += 1
+                details.append(
+                    {
+                        "task_id": task_id,
+                        "state": "skipped_terminal_locked",
+                        "current_status": current_status,
+                        "target_status": target_status,
+                        "report_status": report_status,
+                    }
+                )
+                continue
+
+            need_status_update = current_status != target_status
+            need_action_update = bool(target_action) and current_action != target_action
+            if not need_status_update and not need_action_update:
+                stats["no_change"] += 1
+                continue
+
+            if dry_run:
+                if need_status_update:
+                    stats["status_updated"] += 1
+                if need_action_update:
+                    stats["action_updated"] += 1
+                stats["updated"] += 1
+                details.append(
+                    {
+                        "task_id": task_id,
+                        "state": "would_update",
+                        "current_status": current_status,
+                        "target_status": target_status,
+                        "current_action": current_action,
+                        "target_action": target_action,
+                        "report_status": report_status,
+                        "failure_count": failure_count,
+                    }
+                )
+                continue
+
+            _task_after, sync_info = self.sync_task_status_from_agent_report(
+                task=task,
+                task_id=task_id,
+                report_status=report_status,
+                solved=solved,
+                failure_count=failure_count,
+                actor=actor,
+            )
+            changed_status = bool(sync_info.get("task_status_updated"))
+            changed_action = bool(sync_info.get("task_action_updated"))
+            if changed_status or changed_action:
+                if changed_status:
+                    stats["status_updated"] += 1
+                if changed_action:
+                    stats["action_updated"] += 1
+                stats["updated"] += 1
+                details.append(
+                    {
+                        "task_id": task_id,
+                        "state": "updated",
+                        "current_status": sync_info.get("task_status_before"),
+                        "target_status": sync_info.get("task_status_target"),
+                        "current_action": sync_info.get("task_action_before"),
+                        "target_action": sync_info.get("task_action_target"),
+                        "report_status": report_status,
+                        "failure_count": failure_count,
+                    }
+                )
+            else:
+                stats["no_change"] += 1
+
+        return {
+            "dry_run": dry_run,
+            "limit": limit,
+            "scanned_total_unresolved": len(unresolved),
+            "stats": stats,
+            "updated_tasks": details[:200],
         }
 
     def planner_summary(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -1995,6 +2221,14 @@ def build_parser() -> argparse.ArgumentParser:
     report_agent.add_argument("--details-json", default="")
     report_agent.add_argument("--actor", default="")
 
+    reconcile_status = sub.add_parser(
+        "reconcile-task-status",
+        help="backfill tasks.status/tasks.action from latest agent reports",
+    )
+    reconcile_status.add_argument("--limit", default="2000")
+    reconcile_status.add_argument("--dry-run", action="store_true")
+    reconcile_status.add_argument("--actor", default="coordinator")
+
     planner_summary = sub.add_parser("planner-summary", help="planner task completion statistics")
     planner_summary.add_argument("--planner-id", default="coordinator")
     planner_summary.add_argument("--since", default="")
@@ -2119,6 +2353,8 @@ def main() -> int:
                 emit_json({"ok": True, "log": enforcer.log_communication(args)})
             elif args.command == "report-agent-result":
                 emit_json({"ok": True, "result": enforcer.report_agent_result(args)})
+            elif args.command == "reconcile-task-status":
+                emit_json({"ok": True, "result": enforcer.reconcile_task_statuses(args)})
             elif args.command == "planner-summary":
                 emit_json({"ok": True, "summary": enforcer.planner_summary(args)})
             elif args.command == "daily-summary":
