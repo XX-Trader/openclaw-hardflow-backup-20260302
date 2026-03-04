@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Conversation evolution runner.
+"""Conversation evolution incremental runner.
 
 Purpose:
 1) Scan recent conversation/session/memory files.
 2) Detect potential bugs / workflow gaps / unresolved items / optimization points.
-3) Package suggestions as TODO tasks for human-reviewed follow-up.
+3) Package high-quality suggestions as TODO tasks for human-reviewed follow-up.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from task_center import TaskCenter  # type: ignore
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
 DEFAULT_SENDER_IDENTITY = "conversation-evolution-agent/dialog-review"
+DEFAULT_MAX_EVIDENCE_PER_CANDIDATE = 24
 SKIP_DIRS = {
     ".git",
     "__pycache__",
@@ -106,7 +107,7 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
         "改进",
         "重构",
         "性能",
-        "稳定性",
+        "稳定",
         "节省",
     ],
 }
@@ -312,6 +313,18 @@ def normalize_text_line(text: str) -> str:
     return compact[:220]
 
 
+def normalize_for_dedupe(text: str) -> str:
+    compact = normalize_text_line(text).lower()
+    compact = re.sub(
+        r"\b\d{4}-\d{2}-\d{2}[ t]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:z|[+-]\d{2}:?\d{2})?\b",
+        "<ts>",
+        compact,
+    )
+    compact = re.sub(r"\b[0-9a-f]{8,64}\b", "<hex>", compact)
+    compact = re.sub(r"\d+", "<num>", compact)
+    return compact[:180]
+
+
 def match_categories(line: str) -> set[str]:
     out: set[str] = set()
     low = str(line or "").lower()
@@ -382,11 +395,64 @@ def collect_findings(
     return findings, summary
 
 
+def candidate_quality_metrics(items: list[dict[str, Any]]) -> dict[str, int]:
+    evidence_count = len(items)
+    unique_files = len({str(x.get("path", "")).strip().lower() for x in items if str(x.get("path", "")).strip()})
+    unique_texts = len({normalize_for_dedupe(str(x.get("text", ""))) for x in items if str(x.get("text", "")).strip()})
+    return {
+        "evidence_count": int(evidence_count),
+        "unique_files": int(unique_files),
+        "unique_texts": int(unique_texts),
+    }
+
+
+def candidate_quality_score(metrics: dict[str, int]) -> int:
+    evidence_count = max(0, int(metrics.get("evidence_count", 0)))
+    unique_files = max(0, int(metrics.get("unique_files", 0)))
+    unique_texts = max(0, int(metrics.get("unique_texts", 0)))
+    evidence_score = min(60, evidence_count * 12)
+    file_score = min(25, unique_files * 8)
+    diversity_score = 0
+    if evidence_count > 0:
+        diversity_score = int(round(min(15.0, (unique_texts / evidence_count) * 15.0)))
+    return int(max(0, evidence_score + file_score + diversity_score))
+
+
+def candidate_dedupe_key(category: str, items: list[dict[str, Any]]) -> str:
+    stable_items = sorted(
+        items,
+        key=lambda x: (
+            str(x.get("path", "")).strip().lower(),
+            int(x.get("line", 0) or 0),
+            normalize_for_dedupe(str(x.get("text", ""))),
+        ),
+    )
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for item in stable_items:
+        token = (
+            f"{str(item.get('path', '')).strip().lower()}:"
+            f"{normalize_for_dedupe(str(item.get('text', '')))}"
+        )
+        if (not token) or token in seen:
+            continue
+        seen.add(token)
+        tokens.append(token)
+        if len(tokens) >= 16:
+            break
+    raw = f"{str(category).strip().lower()}|{'|'.join(tokens)}".encode("utf-8", errors="ignore")
+    return hashlib.sha1(raw).hexdigest()[:16]
+
+
 def build_candidates(
     *,
     findings: list[dict[str, Any]],
     lookback_hours: int,
-) -> list[dict[str, str]]:
+    min_evidence_lines: int,
+    min_unique_files: int,
+    min_quality_score: int,
+    max_evidence_per_candidate: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     grouped: dict[str, list[dict[str, Any]]] = {k: [] for k in CATEGORY_KEYWORDS.keys()}
     for item in findings:
         cat = str(item.get("category", "")).strip()
@@ -394,20 +460,52 @@ def build_candidates(
             grouped[cat].append(item)
 
     ordered_categories = ["bug", "unresolved", "workflow_gap", "optimize"]
-    candidates: list[dict[str, str]] = []
+    candidates: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    min_evidence = max(1, int(min_evidence_lines))
+    min_files = max(1, int(min_unique_files))
+    min_score = max(1, int(min_quality_score))
+    evidence_cap = max(1, int(max_evidence_per_candidate))
+
     for cat in ordered_categories:
         items = grouped.get(cat, [])
         if not items:
             continue
-        evidence_lines = []
-        for it in items[:24]:
-            evidence_lines.append(
-                f"- {it.get('path')}:{int(it.get('line', 0))} | {it.get('text', '')}"
+
+        metrics = candidate_quality_metrics(items)
+        score = candidate_quality_score(metrics)
+        fail_reasons: list[str] = []
+        if int(metrics.get("evidence_count", 0)) < min_evidence:
+            fail_reasons.append("low_evidence")
+        if int(metrics.get("unique_files", 0)) < min_files:
+            fail_reasons.append("low_file_coverage")
+        if score < min_score:
+            fail_reasons.append("low_quality_score")
+        if fail_reasons:
+            rejected.append(
+                {
+                    "category": cat,
+                    "quality_score": score,
+                    "metrics": metrics,
+                    "reasons": fail_reasons,
+                }
             )
+            continue
+
+        evidence_lines = []
+        for it in items[:evidence_cap]:
+            evidence_lines.append(f"- {it.get('path')}:{int(it.get('line', 0))} | {it.get('text', '')}")
+
+        dedupe_key = candidate_dedupe_key(cat, items)
         requirement = "\n".join(
             [
-                f"复盘窗口: 最近 {int(lookback_hours)} 小时对话/会话记录",
+                f"复盘窗口: 最近 {int(lookback_hours)} 小时对话/会话/记忆记录",
                 f"主题: {CATEGORY_TITLES.get(cat, cat)}",
+                (
+                    "质量评估: "
+                    f"score={score}, evidence={int(metrics.get('evidence_count', 0))}, "
+                    f"files={int(metrics.get('unique_files', 0))}, unique_text={int(metrics.get('unique_texts', 0))}"
+                ),
                 "",
                 "观察到的问题与线索:",
                 *evidence_lines,
@@ -422,17 +520,30 @@ def build_candidates(
         )
         candidates.append(
             {
+                "category": cat,
+                "dedupe_key": dedupe_key,
+                "quality": {"score": score, **metrics},
                 "title": CATEGORY_TITLES.get(cat, cat),
-                "reason": f"近期对话复盘识别到 {cat} 信号 {len(items)} 条",
+                "reason": f"近期对话复盘识别到 {cat} 信号 {len(items)} 条，质量分 {score}",
                 "requirement": requirement,
             }
         )
-    return candidates
+
+    return candidates, rejected
+
+
+def parse_marker(text: str, marker: str) -> str:
+    pattern = rf"\[{re.escape(str(marker or '').strip())}:([a-f0-9]{{8,64}})\]"
+    m = re.search(pattern, str(text or ""), flags=re.IGNORECASE)
+    return str(m.group(1)).lower() if m else ""
 
 
 def parse_fingerprint(text: str) -> str:
-    m = re.search(r"\[fingerprint:([a-f0-9]{8,40})\]", str(text or ""), flags=re.IGNORECASE)
-    return str(m.group(1)).lower() if m else ""
+    return parse_marker(text, "fingerprint")
+
+
+def parse_dedupe_key(text: str) -> str:
+    return parse_marker(text, "dedupe_key")
 
 
 def candidate_fingerprint(title: str, requirement: str) -> str:
@@ -458,6 +569,32 @@ def collect_open_fingerprints(tc: TaskCenter) -> set[str]:
     return out
 
 
+def collect_recent_dedupe_keys(tc: TaskCenter, recent_days: int) -> set[str]:
+    days = max(0, int(recent_days))
+    if days <= 0:
+        return set()
+    cutoff = now() - timedelta(days=days)
+    rows = tc.conn.execute(
+        """
+        SELECT requirement, created_at
+        FROM tasks
+        WHERE source = 'conversation-evolution-agent'
+          AND pool = 'todo'
+        ORDER BY created_at DESC
+        LIMIT 5000
+        """
+    ).fetchall()
+    out: set[str] = set()
+    for row in rows:
+        created_at = parse_iso(str(row["created_at"] or ""))
+        if created_at and created_at < cutoff:
+            continue
+        key = parse_dedupe_key(str(row["requirement"] or ""))
+        if key:
+            out.add(key)
+    return out
+
+
 def infer_next_schedule_base(tc: TaskCenter) -> datetime:
     row = tc.conn.execute(
         """
@@ -480,12 +617,14 @@ def infer_next_schedule_base(tc: TaskCenter) -> datetime:
 def create_todo_tasks(
     tc: TaskCenter,
     *,
-    candidates: list[dict[str, str]],
+    candidates: list[dict[str, Any]],
     assignee: str,
     max_tasks_per_run: int,
     schedule_gap_minutes: int,
+    recent_dedupe_days: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     open_fingerprints = collect_open_fingerprints(tc)
+    recent_dedupe_keys = collect_recent_dedupe_keys(tc, recent_days=recent_dedupe_days)
     created: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
     base = infer_next_schedule_base(tc)
@@ -497,19 +636,28 @@ def create_todo_tasks(
         title = str(candidate.get("title", "")).strip()
         reason = str(candidate.get("reason", "")).strip()
         requirement_raw = str(candidate.get("requirement", "")).strip()
+        dedupe_key = str(candidate.get("dedupe_key", "")).strip().lower()
+        quality = candidate.get("quality") if isinstance(candidate.get("quality"), dict) else {}
         if not title or not requirement_raw:
             continue
 
         fp = candidate_fingerprint(title=title, requirement=requirement_raw)
         if fp in open_fingerprints:
-            skipped.append({"fingerprint": fp, "reason": "already_open"})
+            skipped.append({"fingerprint": fp, "dedupe_key": dedupe_key, "reason": "already_open"})
+            continue
+        if dedupe_key and dedupe_key in recent_dedupe_keys:
+            skipped.append({"fingerprint": fp, "dedupe_key": dedupe_key, "reason": "duplicate_recent"})
             continue
         if len(created) >= limit:
-            skipped.append({"fingerprint": fp, "reason": "run_limit_reached"})
+            skipped.append({"fingerprint": fp, "dedupe_key": dedupe_key, "reason": "run_limit_reached"})
             continue
 
         schedule_at = (base + timedelta(minutes=gap * (len(created) + 1))).replace(microsecond=0).isoformat()
-        requirement = f"[fingerprint:{fp}]\n{requirement_raw}"
+        markers = [f"[fingerprint:{fp}]"]
+        if dedupe_key:
+            markers.append(f"[dedupe_key:{dedupe_key}]")
+        requirement = "\n".join([*markers, requirement_raw])
+
         payload = {
             "task_id": f"todo-conversation-evolution-{now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}",
             "pool": "todo",
@@ -527,7 +675,7 @@ def create_todo_tasks(
             "result_output": "输出结构化优化建议与后续任务包，不直接执行高风险改动",
             "acceptance": "建议项可执行、证据可追溯、包含验证与回滚方案",
             "observable_outputs": "task_center记录、优化清单、验证步骤",
-            "acceptance_thresholds": "至少1项可执行建议，且含证据与风险说明",
+            "acceptance_thresholds": "至少1项可执行建议，且包含证据与风险说明",
             "scheduled_at": schedule_at,
         }
         task = tc.create_task(payload, actor="conversation-evolution-agent")
@@ -536,18 +684,29 @@ def create_todo_tasks(
             actor="conversation-evolution-agent",
             event_type="conversation_evolution_task_packaged",
             stage="dialog_review",
-            details={"fingerprint": fp, "scheduled_at": schedule_at},
+            details={
+                "fingerprint": fp,
+                "dedupe_key": dedupe_key,
+                "quality_score": int(quality.get("score", 0) or 0),
+                "scheduled_at": schedule_at,
+            },
         )
+
         created.append(
             {
                 "task_id": task["task_id"],
                 "fingerprint": fp,
+                "dedupe_key": dedupe_key,
+                "quality_score": int(quality.get("score", 0) or 0),
                 "scheduled_at": schedule_at,
                 "title": title,
                 "assignee": who,
             }
         )
         open_fingerprints.add(fp)
+        if dedupe_key:
+            recent_dedupe_keys.add(dedupe_key)
+
     return created, skipped
 
 
@@ -586,8 +745,13 @@ def main() -> int:
     parser.add_argument("--max-bytes-per-file", type=int, default=400000)
     parser.add_argument("--max-lines-per-file", type=int, default=1000)
     parser.add_argument("--max-findings", type=int, default=240)
+    parser.add_argument("--max-evidence-per-candidate", type=int, default=DEFAULT_MAX_EVIDENCE_PER_CANDIDATE)
+    parser.add_argument("--min-evidence-lines", type=int, default=3)
+    parser.add_argument("--min-unique-files", type=int, default=1)
+    parser.add_argument("--min-quality-score", type=int, default=55)
     parser.add_argument("--max-tasks-per-run", type=int, default=3)
     parser.add_argument("--schedule-gap-minutes", type=int, default=90)
+    parser.add_argument("--recent-dedupe-days", type=int, default=14)
     parser.add_argument("--assignee", default="optimization-agent")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
@@ -596,8 +760,10 @@ def main() -> int:
     state_path = Path(args.state_file).expanduser()
     report_dir = Path(args.report_dir).expanduser()
     report_dir.mkdir(parents=True, exist_ok=True)
+
     log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
     sender_identity = normalize_sender_identity(args.sender_identity)
+
     state = load_json(state_path, None)
     if not isinstance(state, dict):
         state = state_default()
@@ -605,6 +771,7 @@ def main() -> int:
     openclaw_home = Path(args.openclaw_home).expanduser()
     extra_roots = [Path(x).expanduser() for x in args.scan_root if str(x).strip()]
     roots = collect_workspace_roots(openclaw_home=openclaw_home, extra_roots=extra_roots)
+
     files = collect_recent_files(
         roots=roots,
         lookback_hours=max(1, int(args.lookback_hours)),
@@ -622,7 +789,8 @@ def main() -> int:
 
     findings: list[dict[str, Any]] = []
     finding_summary: dict[str, Any] = {"total_findings": 0, "per_category": {}, "top_files": []}
-    candidates: list[dict[str, str]] = []
+    candidates: list[dict[str, Any]] = []
+    candidate_rejected: list[dict[str, Any]] = []
     created: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
 
@@ -633,7 +801,14 @@ def main() -> int:
             max_lines_per_file=max(50, int(args.max_lines_per_file)),
             max_findings=max(10, int(args.max_findings)),
         )
-        candidates = build_candidates(findings=findings, lookback_hours=int(args.lookback_hours))
+        candidates, candidate_rejected = build_candidates(
+            findings=findings,
+            lookback_hours=int(args.lookback_hours),
+            min_evidence_lines=max(1, int(args.min_evidence_lines)),
+            min_unique_files=max(1, int(args.min_unique_files)),
+            min_quality_score=max(1, int(args.min_quality_score)),
+            max_evidence_per_candidate=max(1, int(args.max_evidence_per_candidate)),
+        )
         if candidates:
             tc = TaskCenter(Path(args.db).expanduser())
             try:
@@ -644,6 +819,7 @@ def main() -> int:
                     assignee=str(args.assignee or "optimization-agent").strip() or "optimization-agent",
                     max_tasks_per_run=max(1, int(args.max_tasks_per_run)),
                     schedule_gap_minutes=max(1, int(args.schedule_gap_minutes)),
+                    recent_dedupe_days=max(0, int(args.recent_dedupe_days)),
                 )
             finally:
                 tc.close()
@@ -662,7 +838,16 @@ def main() -> int:
         "files_scanned": files[:200],
         "finding_summary": finding_summary,
         "findings": findings[:400],
+        "quality_policy": {
+            "min_evidence_lines": max(1, int(args.min_evidence_lines)),
+            "min_unique_files": max(1, int(args.min_unique_files)),
+            "min_quality_score": max(1, int(args.min_quality_score)),
+            "max_evidence_per_candidate": max(1, int(args.max_evidence_per_candidate)),
+            "recent_dedupe_days": max(0, int(args.recent_dedupe_days)),
+        },
         "candidates_count": len(candidates),
+        "candidates_rejected_count": len(candidate_rejected),
+        "candidates_rejected": candidate_rejected[:200],
         "created_count": len(created),
         "created": created,
         "skipped": skipped,
@@ -676,6 +861,7 @@ def main() -> int:
     state["last_latest_mtime"] = float(latest_mtime)
     if run_allowed:
         state["last_scan_at"] = now_iso()
+
     fps = state.get("fingerprints")
     if not isinstance(fps, dict):
         fps = {}
@@ -699,8 +885,17 @@ def main() -> int:
             f"- files_scanned: {len(files)}",
             f"- findings: {int(finding_summary.get('total_findings', 0) or 0)}",
             f"- candidates: {len(candidates)}",
+            f"- rejected: {len(candidate_rejected)}",
             f"- created_todo: {len(created)}",
+            f"- skipped: {len(skipped)}",
             f"- assignee: {str(args.assignee or 'optimization-agent')}",
+            (
+                "- quality_gate: "
+                f"score>={max(1, int(args.min_quality_score))}, "
+                f"evidence>={max(1, int(args.min_evidence_lines))}, "
+                f"files>={max(1, int(args.min_unique_files))}, "
+                f"dedupe_days={max(0, int(args.recent_dedupe_days))}"
+            ),
         ]
         per_cat = finding_summary.get("per_category", {})
         if isinstance(per_cat, dict) and per_cat:
@@ -709,7 +904,10 @@ def main() -> int:
                 + ", ".join(f"{k}={int(v)}" for k, v in sorted(per_cat.items(), key=lambda kv: str(kv[0])))
             )
         for item in created[:8]:
-            lines.append(f"- todo[{item.get('task_id')}]: scheduled_at={item.get('scheduled_at')}")
+            lines.append(
+                f"- todo[{item.get('task_id')}]: score={item.get('quality_score', 0)}, "
+                f"scheduled_at={item.get('scheduled_at')}"
+            )
         output = "\n".join(lines)
 
     if args.emit_json:

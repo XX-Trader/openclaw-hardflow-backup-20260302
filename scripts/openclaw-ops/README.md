@@ -59,6 +59,11 @@
   - 自动创建 `optimization-agent` 优化任务，支持可选创建 `reviewer` 审查任务。
   - 可选自动 PR（需要 `gh auth` 与干净工作区），并输出报告与状态。
   - 默认排除记忆/会话文件（`openclaw-memory/`、`.workflow/experience/`、`.workflow/sessions/`、`memory/`、`MEMORY.md`）。
+- `github_web_evolution_runner.py`
+  - 定时搜索 GitHub 高质量仓库并沉淀到 `~/.openclaw/web/github/`。
+  - 自动落盘仓库元数据、README、方法片段、运行报告与目录索引（`CATALOG.md`）。
+  - 按增量变化打包 `github_web_evolution` TODO 任务，支持质量阈值、去重与分批建单。
+  - 仅产出任务包，不直接执行高风险改动。
 - `reviewer_cron_runner.py`
   - Reviewer 定时审查执行器，支持 `hourly_git / daily_incremental / bi_daily_recurring / weekly_structure` 四种模式。
   - 内置问题去重与生命周期：`open / resolved / reopened`。
@@ -110,6 +115,22 @@ python3 scripts/openclaw-ops/cron_setup.py \
   --governance-evolution-project-context-assignee project-agent \
   --governance-evolution-create-review-task \
   --no-governance-evolution-auto-pr \
+  --install-github-web-evolution-job \
+  --github-web-evolution-openclaw-home ~/.openclaw \
+  --github-web-evolution-web-root ~/.openclaw/web/github \
+  --github-web-evolution-every-ms 43200000 \
+  --github-web-evolution-min-interval-minutes 360 \
+  --github-web-evolution-max-queries 5 \
+  --github-web-evolution-max-repos-per-query 20 \
+  --github-web-evolution-max-total-repos 40 \
+  --github-web-evolution-min-stars 80 \
+  --github-web-evolution-min-quality-score 45 \
+  --github-web-evolution-min-new-or-updated 2 \
+  --github-web-evolution-recent-dedupe-days 14 \
+  --github-web-evolution-max-tasks-per-run 2 \
+  --github-web-evolution-schedule-gap-minutes 90 \
+  --github-web-evolution-assignee optimization-agent \
+  --github-web-evolution-github-token-env GITHUB_TOKEN \
   --dingtalk-webhook-env DINGTALK_WEBHOOK_URL \
   --dingtalk-secret-env DINGTALK_SECRET \
   --incremental-log-mode silent \
@@ -118,7 +139,8 @@ python3 scripts/openclaw-ops/cron_setup.py \
   --system-log-mode silent \
   --api-test-log-mode silent \
   --daily-work-log-mode silent \
-  --self-evolution-log-mode silent
+  --self-evolution-log-mode silent \
+  --github-web-evolution-log-mode silent
 
 # 手动执行一次增量巡检
 python3 scripts/openclaw-ops/ops_cron_runner.py --mode incremental
@@ -162,6 +184,27 @@ python3 scripts/openclaw-ops/governance_evolution_runner.py \
   --project-context-gate \
   --project-context-assignee project-agent \
   --create-review-task \
+  --normal-log-mode silent
+
+# 手动执行一次 GitHub 网络资源进化扫描（只沉淀 + 打包 TODO）
+python3 scripts/openclaw-ops/github_web_evolution_runner.py \
+  --db ~/.openclaw/ops/task-center/task_center.db \
+  --openclaw-home ~/.openclaw \
+  --web-root ~/.openclaw/web/github \
+  --state-file ~/.openclaw/ops/github-web-evolution/state.json \
+  --report-dir ~/.openclaw/ops/github-web-evolution/reports \
+  --min-interval-minutes 360 \
+  --max-queries 5 \
+  --max-repos-per-query 20 \
+  --max-total-repos 40 \
+  --min-stars 80 \
+  --min-quality-score 45 \
+  --min-new-or-updated 2 \
+  --recent-dedupe-days 14 \
+  --max-tasks-per-run 2 \
+  --schedule-gap-minutes 90 \
+  --assignee optimization-agent \
+  --github-token-env GITHUB_TOKEN \
   --normal-log-mode silent
 
 # 手动执行一次系统定时快照审计
@@ -335,3 +378,81 @@ python3 scripts/openclaw-ops/conversation_evolution_runner.py \
   --assignee optimization-agent \
   --normal-log-mode silent
 ```
+
+## Conversation Evolution Quality Gate (2026-03-03)
+
+为减少“低质量建议/重复建议/需求漂移”，`conversation_evolution_runner.py` 已增加硬门禁：
+
+- 质量门禁：候选建议必须同时满足
+  - `min_evidence_lines`
+  - `min_unique_files`
+  - `min_quality_score`
+- 去重门禁：写入 `[dedupe_key:...]`，并按 `recent_dedupe_days` 防止短期重复创建同类 TODO。
+
+`cron_setup.py` 新增参数：
+
+- `--conversation-evolution-max-evidence-per-candidate` (default: `24`)
+- `--conversation-evolution-min-evidence-lines` (default: `3`)
+- `--conversation-evolution-min-unique-files` (default: `1`)
+- `--conversation-evolution-min-quality-score` (default: `55`)
+- `--conversation-evolution-recent-dedupe-days` (default: `14`)
+
+示例（更严格）：
+
+```bash
+python3 scripts/openclaw-ops/cron_setup.py \
+  --install-conversation-evolution-job \
+  --conversation-evolution-openclaw-home ~/.openclaw \
+  --conversation-evolution-lookback-hours 72 \
+  --conversation-evolution-min-interval-minutes 180 \
+  --conversation-evolution-max-files 120 \
+  --conversation-evolution-max-evidence-per-candidate 30 \
+  --conversation-evolution-min-evidence-lines 4 \
+  --conversation-evolution-min-unique-files 2 \
+  --conversation-evolution-min-quality-score 65 \
+  --conversation-evolution-recent-dedupe-days 21 \
+  --conversation-evolution-max-tasks-per-run 3 \
+  --conversation-evolution-assignee optimization-agent
+```
+
+## GitHub Web Evolution Channel (2026-03-04)
+
+新增脚本：`scripts/openclaw-ops/github_web_evolution_runner.py`
+
+用途：定时从 GitHub 搜索与你工作流相关的高信号仓库，沉淀知识并触发“人工审核后再优化”的任务链路。
+
+落盘目录（默认）：
+- `~/.openclaw/web/github/repos/*.json`：仓库元数据
+- `~/.openclaw/web/github/readmes/*.md`：README 原文快照
+- `~/.openclaw/web/github/methods/*.md`：抽取的方法片段
+- `~/.openclaw/web/github/runs/<timestamp_runid>/`：单次运行明细
+- `~/.openclaw/web/github/index.json` / `CATALOG.md`：累计索引与目录
+
+任务策略：
+- 只对新增/更新仓库建 TODO（`task_type=github_web_evolution`）。
+- 默认 `source=github-web-evolution-agent`，`need_human_confirm=true`。
+- 去重维度：`fingerprint` + `dedupe_key`，避免短期重复建单。
+- 支持 `max_tasks_per_run` 分批建单；单批仍受 `min_new_or_updated` 门槛控制。
+
+`cron_setup.py` 新增参数：
+- `--install-github-web-evolution-job`
+- `--github-web-evolution-openclaw-home`
+- `--github-web-evolution-web-root`
+- `--github-web-evolution-every-ms`
+- `--github-web-evolution-log-mode`
+- `--github-web-evolution-min-interval-minutes`
+- `--github-web-evolution-max-queries`
+- `--github-web-evolution-max-repos-per-query`
+- `--github-web-evolution-max-total-repos`
+- `--github-web-evolution-min-stars`
+- `--github-web-evolution-min-quality-score`
+- `--github-web-evolution-min-new-or-updated`
+- `--github-web-evolution-recent-dedupe-days`
+- `--github-web-evolution-max-tasks-per-run`
+- `--github-web-evolution-schedule-gap-minutes`
+- `--github-web-evolution-assignee`
+- `--github-web-evolution-github-token-env`
+
+建议：
+- 设置环境变量 `GITHUB_TOKEN` 提升 GitHub API 速率上限。
+- 网络侧建议默认“先沉淀再审核”，不要直接自动改代码。

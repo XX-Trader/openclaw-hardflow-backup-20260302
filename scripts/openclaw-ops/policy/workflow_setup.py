@@ -928,6 +928,11 @@ def run_cron_setup(
     conversation_evolution_lookback_hours: int,
     conversation_evolution_min_interval_minutes: int,
     conversation_evolution_max_files: int,
+    conversation_evolution_max_evidence_per_candidate: int,
+    conversation_evolution_min_evidence_lines: int,
+    conversation_evolution_min_unique_files: int,
+    conversation_evolution_min_quality_score: int,
+    conversation_evolution_recent_dedupe_days: int,
     conversation_evolution_max_tasks_per_run: int,
     conversation_evolution_schedule_gap_minutes: int,
     conversation_evolution_assignee: str,
@@ -952,6 +957,23 @@ def run_cron_setup(
     governance_evolution_pr_base: str,
     governance_evolution_reviewer_gh_user: str,
     governance_evolution_push_before_pr: bool,
+    install_github_web_evolution_job: bool,
+    github_web_evolution_openclaw_home: str,
+    github_web_evolution_web_root: str,
+    github_web_evolution_every_ms: int,
+    github_web_evolution_log_mode: str,
+    github_web_evolution_min_interval_minutes: int,
+    github_web_evolution_max_queries: int,
+    github_web_evolution_max_repos_per_query: int,
+    github_web_evolution_max_total_repos: int,
+    github_web_evolution_min_stars: int,
+    github_web_evolution_min_quality_score: int,
+    github_web_evolution_min_new_or_updated: int,
+    github_web_evolution_recent_dedupe_days: int,
+    github_web_evolution_max_tasks_per_run: int,
+    github_web_evolution_schedule_gap_minutes: int,
+    github_web_evolution_assignee: str,
+    github_web_evolution_github_token_env: str,
 ) -> tuple[bool, dict[str, Any]]:
     cmd = [
         sys.executable,
@@ -1044,6 +1066,16 @@ def run_cron_setup(
                 str(max(1, int(conversation_evolution_min_interval_minutes))),
                 "--conversation-evolution-max-files",
                 str(max(10, int(conversation_evolution_max_files))),
+                "--conversation-evolution-max-evidence-per-candidate",
+                str(max(1, int(conversation_evolution_max_evidence_per_candidate))),
+                "--conversation-evolution-min-evidence-lines",
+                str(max(1, int(conversation_evolution_min_evidence_lines))),
+                "--conversation-evolution-min-unique-files",
+                str(max(1, int(conversation_evolution_min_unique_files))),
+                "--conversation-evolution-min-quality-score",
+                str(max(1, int(conversation_evolution_min_quality_score))),
+                "--conversation-evolution-recent-dedupe-days",
+                str(max(0, int(conversation_evolution_recent_dedupe_days))),
                 "--conversation-evolution-max-tasks-per-run",
                 str(max(1, int(conversation_evolution_max_tasks_per_run))),
                 "--conversation-evolution-schedule-gap-minutes",
@@ -1113,6 +1145,46 @@ def run_cron_setup(
             cmd.append("--no-governance-evolution-push-before-pr")
         if str(governance_evolution_reviewer_gh_user).strip():
             cmd.extend(["--governance-evolution-reviewer-gh-user", governance_evolution_reviewer_gh_user.strip()])
+    if install_github_web_evolution_job:
+        cmd.append("--install-github-web-evolution-job")
+        cmd.extend(
+            [
+                "--github-web-evolution-py",
+                str(openclaw_home / "ops" / "github_web_evolution_runner.py"),
+                "--github-web-evolution-openclaw-home",
+                str(github_web_evolution_openclaw_home).strip(),
+                "--github-web-evolution-web-root",
+                str(github_web_evolution_web_root).strip(),
+                "--github-web-evolution-every-ms",
+                str(max(600000, int(github_web_evolution_every_ms))),
+                "--github-web-evolution-log-mode",
+                github_web_evolution_log_mode,
+                "--github-web-evolution-min-interval-minutes",
+                str(max(1, int(github_web_evolution_min_interval_minutes))),
+                "--github-web-evolution-max-queries",
+                str(max(1, int(github_web_evolution_max_queries))),
+                "--github-web-evolution-max-repos-per-query",
+                str(max(1, int(github_web_evolution_max_repos_per_query))),
+                "--github-web-evolution-max-total-repos",
+                str(max(1, int(github_web_evolution_max_total_repos))),
+                "--github-web-evolution-min-stars",
+                str(max(0, int(github_web_evolution_min_stars))),
+                "--github-web-evolution-min-quality-score",
+                str(max(1, int(github_web_evolution_min_quality_score))),
+                "--github-web-evolution-min-new-or-updated",
+                str(max(1, int(github_web_evolution_min_new_or_updated))),
+                "--github-web-evolution-recent-dedupe-days",
+                str(max(0, int(github_web_evolution_recent_dedupe_days))),
+                "--github-web-evolution-max-tasks-per-run",
+                str(max(1, int(github_web_evolution_max_tasks_per_run))),
+                "--github-web-evolution-schedule-gap-minutes",
+                str(max(1, int(github_web_evolution_schedule_gap_minutes))),
+                "--github-web-evolution-assignee",
+                str(github_web_evolution_assignee).strip() or "optimization-agent",
+                "--github-web-evolution-github-token-env",
+                str(github_web_evolution_github_token_env).strip() or "GITHUB_TOKEN",
+            ]
+        )
     if channel:
         cmd.extend(["--channel", channel])
     if target:
@@ -1179,6 +1251,11 @@ def main() -> int:
     parser.add_argument("--cron-conversation-evolution-lookback-hours", type=int, default=72)
     parser.add_argument("--cron-conversation-evolution-min-interval-minutes", type=int, default=180)
     parser.add_argument("--cron-conversation-evolution-max-files", type=int, default=120)
+    parser.add_argument("--cron-conversation-evolution-max-evidence-per-candidate", type=int, default=24)
+    parser.add_argument("--cron-conversation-evolution-min-evidence-lines", type=int, default=3)
+    parser.add_argument("--cron-conversation-evolution-min-unique-files", type=int, default=1)
+    parser.add_argument("--cron-conversation-evolution-min-quality-score", type=int, default=55)
+    parser.add_argument("--cron-conversation-evolution-recent-dedupe-days", type=int, default=14)
     parser.add_argument("--cron-conversation-evolution-max-tasks-per-run", type=int, default=3)
     parser.add_argument("--cron-conversation-evolution-schedule-gap-minutes", type=int, default=90)
     parser.add_argument("--cron-conversation-evolution-assignee", default="optimization-agent")
@@ -1207,6 +1284,23 @@ def main() -> int:
     parser.add_argument("--cron-governance-evolution-pr-base", default="main")
     parser.add_argument("--cron-governance-evolution-reviewer-gh-user", default="")
     parser.add_argument("--cron-governance-evolution-push-before-pr", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--cron-install-github-web-evolution-job", action="store_true")
+    parser.add_argument("--cron-github-web-evolution-openclaw-home", default="")
+    parser.add_argument("--cron-github-web-evolution-web-root", default="")
+    parser.add_argument("--cron-github-web-evolution-every-ms", type=int, default=43200000)
+    parser.add_argument("--cron-github-web-evolution-log-mode", default="silent", choices=["silent", "chat"])
+    parser.add_argument("--cron-github-web-evolution-min-interval-minutes", type=int, default=360)
+    parser.add_argument("--cron-github-web-evolution-max-queries", type=int, default=5)
+    parser.add_argument("--cron-github-web-evolution-max-repos-per-query", type=int, default=20)
+    parser.add_argument("--cron-github-web-evolution-max-total-repos", type=int, default=40)
+    parser.add_argument("--cron-github-web-evolution-min-stars", type=int, default=80)
+    parser.add_argument("--cron-github-web-evolution-min-quality-score", type=int, default=45)
+    parser.add_argument("--cron-github-web-evolution-min-new-or-updated", type=int, default=2)
+    parser.add_argument("--cron-github-web-evolution-recent-dedupe-days", type=int, default=14)
+    parser.add_argument("--cron-github-web-evolution-max-tasks-per-run", type=int, default=1)
+    parser.add_argument("--cron-github-web-evolution-schedule-gap-minutes", type=int, default=90)
+    parser.add_argument("--cron-github-web-evolution-assignee", default="optimization-agent")
+    parser.add_argument("--cron-github-web-evolution-github-token-env", default="GITHUB_TOKEN")
     parser.add_argument("--skip-ops-sync", action="store_true")
     parser.add_argument("--sync-source-dir", default="")
     parser.add_argument("--sync-manifest-file", default="")
@@ -1334,6 +1428,7 @@ def main() -> int:
     install_self_evolution_job = bool(args.cron_install_self_evolution_job)
     install_conversation_evolution_job = bool(args.cron_install_conversation_evolution_job)
     install_governance_evolution_job = bool(args.cron_install_governance_evolution_job)
+    install_github_web_evolution_job = bool(args.cron_install_github_web_evolution_job)
     sync_ops_enabled = not bool(args.skip_ops_sync)
     memory_restore_enabled = not bool(args.skip_memory_restore)
     configure_runtime_env_enabled = bool(args.configure_runtime_env)
@@ -1424,6 +1519,10 @@ def main() -> int:
                 )
                 install_governance_evolution_job = prompt_yes_no(
                     "Install governance evolution incremental job", default=install_governance_evolution_job or True
+                )
+                install_github_web_evolution_job = prompt_yes_no(
+                    "Install GitHub web evolution incremental job",
+                    default=install_github_web_evolution_job or True,
                 )
                 args.cron_incremental_log_mode = normalize_log_mode(
                     prompt_text("Incremental log mode (silent/chat)", args.cron_incremental_log_mode or "silent"),
@@ -1537,6 +1636,41 @@ def main() -> int:
                             str(args.cron_conversation_evolution_max_files or 120),
                         )
                         or "120"
+                    )
+                    args.cron_conversation_evolution_max_evidence_per_candidate = int(
+                        prompt_text(
+                            "Conversation evolution max evidence per candidate",
+                            str(args.cron_conversation_evolution_max_evidence_per_candidate or 24),
+                        )
+                        or "24"
+                    )
+                    args.cron_conversation_evolution_min_evidence_lines = int(
+                        prompt_text(
+                            "Conversation evolution min evidence lines",
+                            str(args.cron_conversation_evolution_min_evidence_lines or 3),
+                        )
+                        or "3"
+                    )
+                    args.cron_conversation_evolution_min_unique_files = int(
+                        prompt_text(
+                            "Conversation evolution min unique files",
+                            str(args.cron_conversation_evolution_min_unique_files or 1),
+                        )
+                        or "1"
+                    )
+                    args.cron_conversation_evolution_min_quality_score = int(
+                        prompt_text(
+                            "Conversation evolution min quality score",
+                            str(args.cron_conversation_evolution_min_quality_score or 55),
+                        )
+                        or "55"
+                    )
+                    args.cron_conversation_evolution_recent_dedupe_days = int(
+                        prompt_text(
+                            "Conversation evolution recent dedupe days",
+                            str(args.cron_conversation_evolution_recent_dedupe_days or 14),
+                        )
+                        or "14"
                     )
                     args.cron_conversation_evolution_max_tasks_per_run = int(
                         prompt_text(
@@ -1656,6 +1790,119 @@ def main() -> int:
                             "Governance evolution push branch before PR",
                             default=bool(args.cron_governance_evolution_push_before_pr),
                         )
+                if install_github_web_evolution_job:
+                    args.cron_github_web_evolution_openclaw_home = (
+                        prompt_text(
+                            "GitHub web evolution openclaw home",
+                            str(args.cron_github_web_evolution_openclaw_home or openclaw_home),
+                        ).strip()
+                        or str(openclaw_home)
+                    )
+                    args.cron_github_web_evolution_web_root = (
+                        prompt_text(
+                            "GitHub web evolution web root",
+                            str(args.cron_github_web_evolution_web_root or (openclaw_home / "web" / "github")),
+                        ).strip()
+                        or str(openclaw_home / "web" / "github")
+                    )
+                    args.cron_github_web_evolution_every_ms = int(
+                        prompt_text(
+                            "GitHub web evolution interval minutes",
+                            str(max(10, int(args.cron_github_web_evolution_every_ms or 43200000) // 60000)),
+                        )
+                        or "720"
+                    ) * 60000
+                    args.cron_github_web_evolution_log_mode = normalize_log_mode(
+                        prompt_text(
+                            "GitHub web evolution log mode (silent/chat)",
+                            args.cron_github_web_evolution_log_mode or "silent",
+                        ),
+                        default="silent",
+                    )
+                    args.cron_github_web_evolution_min_interval_minutes = int(
+                        prompt_text(
+                            "GitHub web evolution min interval minutes",
+                            str(args.cron_github_web_evolution_min_interval_minutes or 360),
+                        )
+                        or "360"
+                    )
+                    args.cron_github_web_evolution_max_queries = int(
+                        prompt_text(
+                            "GitHub web evolution max queries",
+                            str(args.cron_github_web_evolution_max_queries or 5),
+                        )
+                        or "5"
+                    )
+                    args.cron_github_web_evolution_max_repos_per_query = int(
+                        prompt_text(
+                            "GitHub web evolution max repos per query",
+                            str(args.cron_github_web_evolution_max_repos_per_query or 20),
+                        )
+                        or "20"
+                    )
+                    args.cron_github_web_evolution_max_total_repos = int(
+                        prompt_text(
+                            "GitHub web evolution max total repos",
+                            str(args.cron_github_web_evolution_max_total_repos or 40),
+                        )
+                        or "40"
+                    )
+                    args.cron_github_web_evolution_min_stars = int(
+                        prompt_text(
+                            "GitHub web evolution min stars",
+                            str(args.cron_github_web_evolution_min_stars or 80),
+                        )
+                        or "80"
+                    )
+                    args.cron_github_web_evolution_min_quality_score = int(
+                        prompt_text(
+                            "GitHub web evolution min quality score",
+                            str(args.cron_github_web_evolution_min_quality_score or 45),
+                        )
+                        or "45"
+                    )
+                    args.cron_github_web_evolution_min_new_or_updated = int(
+                        prompt_text(
+                            "GitHub web evolution min new/updated repos",
+                            str(args.cron_github_web_evolution_min_new_or_updated or 2),
+                        )
+                        or "2"
+                    )
+                    args.cron_github_web_evolution_recent_dedupe_days = int(
+                        prompt_text(
+                            "GitHub web evolution recent dedupe days",
+                            str(args.cron_github_web_evolution_recent_dedupe_days or 14),
+                        )
+                        or "14"
+                    )
+                    args.cron_github_web_evolution_max_tasks_per_run = int(
+                        prompt_text(
+                            "GitHub web evolution max tasks per run",
+                            str(args.cron_github_web_evolution_max_tasks_per_run or 1),
+                        )
+                        or "1"
+                    )
+                    args.cron_github_web_evolution_schedule_gap_minutes = int(
+                        prompt_text(
+                            "GitHub web evolution schedule gap minutes",
+                            str(args.cron_github_web_evolution_schedule_gap_minutes or 90),
+                        )
+                        or "90"
+                    )
+                    args.cron_github_web_evolution_assignee = (
+                        prompt_text(
+                            "GitHub web evolution assignee",
+                            str(args.cron_github_web_evolution_assignee or "optimization-agent"),
+                        ).strip()
+                        or "optimization-agent"
+                    )
+                    args.cron_github_web_evolution_github_token_env = (
+                        prompt_text(
+                            "GitHub web evolution token env name",
+                            str(args.cron_github_web_evolution_github_token_env or "GITHUB_TOKEN"),
+                        ).strip()
+                        or "GITHUB_TOKEN"
+                    )
 
     args.cron_incremental_log_mode = normalize_log_mode(args.cron_incremental_log_mode or "silent", default="silent")
     args.cron_full_log_mode = normalize_log_mode(args.cron_full_log_mode or "silent", default="silent")
@@ -1687,6 +1934,21 @@ def main() -> int:
     args.cron_conversation_evolution_max_files = max(
         10, int(args.cron_conversation_evolution_max_files or 120)
     )
+    args.cron_conversation_evolution_max_evidence_per_candidate = max(
+        1, int(args.cron_conversation_evolution_max_evidence_per_candidate or 24)
+    )
+    args.cron_conversation_evolution_min_evidence_lines = max(
+        1, int(args.cron_conversation_evolution_min_evidence_lines or 3)
+    )
+    args.cron_conversation_evolution_min_unique_files = max(
+        1, int(args.cron_conversation_evolution_min_unique_files or 1)
+    )
+    args.cron_conversation_evolution_min_quality_score = max(
+        1, int(args.cron_conversation_evolution_min_quality_score or 55)
+    )
+    args.cron_conversation_evolution_recent_dedupe_days = max(
+        0, int(args.cron_conversation_evolution_recent_dedupe_days or 14)
+    )
     args.cron_conversation_evolution_max_tasks_per_run = max(
         1, int(args.cron_conversation_evolution_max_tasks_per_run or 3)
     )
@@ -1699,6 +1961,50 @@ def main() -> int:
     )
     args.cron_conversation_evolution_assignee = (
         str(args.cron_conversation_evolution_assignee or "optimization-agent").strip() or "optimization-agent"
+    )
+    args.cron_github_web_evolution_every_ms = max(600000, int(args.cron_github_web_evolution_every_ms or 43200000))
+    args.cron_github_web_evolution_log_mode = normalize_log_mode(
+        args.cron_github_web_evolution_log_mode or "silent", default="silent"
+    )
+    args.cron_github_web_evolution_min_interval_minutes = max(
+        1, int(args.cron_github_web_evolution_min_interval_minutes or 360)
+    )
+    args.cron_github_web_evolution_max_queries = max(1, int(args.cron_github_web_evolution_max_queries or 5))
+    args.cron_github_web_evolution_max_repos_per_query = max(
+        1, int(args.cron_github_web_evolution_max_repos_per_query or 20)
+    )
+    args.cron_github_web_evolution_max_total_repos = max(
+        1, int(args.cron_github_web_evolution_max_total_repos or 40)
+    )
+    args.cron_github_web_evolution_min_stars = max(0, int(args.cron_github_web_evolution_min_stars or 80))
+    args.cron_github_web_evolution_min_quality_score = max(
+        1, int(args.cron_github_web_evolution_min_quality_score or 45)
+    )
+    args.cron_github_web_evolution_min_new_or_updated = max(
+        1, int(args.cron_github_web_evolution_min_new_or_updated or 2)
+    )
+    args.cron_github_web_evolution_recent_dedupe_days = max(
+        0, int(args.cron_github_web_evolution_recent_dedupe_days or 14)
+    )
+    args.cron_github_web_evolution_max_tasks_per_run = max(
+        1, int(args.cron_github_web_evolution_max_tasks_per_run or 1)
+    )
+    args.cron_github_web_evolution_schedule_gap_minutes = max(
+        1, int(args.cron_github_web_evolution_schedule_gap_minutes or 90)
+    )
+    raw_github_web_home = str(args.cron_github_web_evolution_openclaw_home or "").strip()
+    args.cron_github_web_evolution_openclaw_home = str(
+        Path(raw_github_web_home).expanduser() if raw_github_web_home else openclaw_home
+    )
+    raw_github_web_root = str(args.cron_github_web_evolution_web_root or "").strip()
+    args.cron_github_web_evolution_web_root = str(
+        Path(raw_github_web_root).expanduser() if raw_github_web_root else (openclaw_home / "web" / "github")
+    )
+    args.cron_github_web_evolution_assignee = (
+        str(args.cron_github_web_evolution_assignee or "optimization-agent").strip() or "optimization-agent"
+    )
+    args.cron_github_web_evolution_github_token_env = (
+        str(args.cron_github_web_evolution_github_token_env or "GITHUB_TOKEN").strip() or "GITHUB_TOKEN"
     )
     args.cron_governance_evolution_every_ms = max(600000, int(args.cron_governance_evolution_every_ms or 21600000))
     args.cron_governance_evolution_max_files = max(10, int(args.cron_governance_evolution_max_files or 120))
@@ -1937,6 +2243,13 @@ def main() -> int:
                 conversation_evolution_lookback_hours=int(args.cron_conversation_evolution_lookback_hours),
                 conversation_evolution_min_interval_minutes=int(args.cron_conversation_evolution_min_interval_minutes),
                 conversation_evolution_max_files=int(args.cron_conversation_evolution_max_files),
+                conversation_evolution_max_evidence_per_candidate=int(
+                    args.cron_conversation_evolution_max_evidence_per_candidate
+                ),
+                conversation_evolution_min_evidence_lines=int(args.cron_conversation_evolution_min_evidence_lines),
+                conversation_evolution_min_unique_files=int(args.cron_conversation_evolution_min_unique_files),
+                conversation_evolution_min_quality_score=int(args.cron_conversation_evolution_min_quality_score),
+                conversation_evolution_recent_dedupe_days=int(args.cron_conversation_evolution_recent_dedupe_days),
                 conversation_evolution_max_tasks_per_run=int(args.cron_conversation_evolution_max_tasks_per_run),
                 conversation_evolution_schedule_gap_minutes=int(args.cron_conversation_evolution_schedule_gap_minutes),
                 conversation_evolution_assignee=str(args.cron_conversation_evolution_assignee).strip()
@@ -1966,6 +2279,25 @@ def main() -> int:
                 governance_evolution_pr_base=str(args.cron_governance_evolution_pr_base).strip() or "main",
                 governance_evolution_reviewer_gh_user=str(args.cron_governance_evolution_reviewer_gh_user).strip(),
                 governance_evolution_push_before_pr=bool(args.cron_governance_evolution_push_before_pr),
+                install_github_web_evolution_job=bool(install_github_web_evolution_job),
+                github_web_evolution_openclaw_home=str(args.cron_github_web_evolution_openclaw_home).strip(),
+                github_web_evolution_web_root=str(args.cron_github_web_evolution_web_root).strip(),
+                github_web_evolution_every_ms=int(args.cron_github_web_evolution_every_ms),
+                github_web_evolution_log_mode=args.cron_github_web_evolution_log_mode,
+                github_web_evolution_min_interval_minutes=int(args.cron_github_web_evolution_min_interval_minutes),
+                github_web_evolution_max_queries=int(args.cron_github_web_evolution_max_queries),
+                github_web_evolution_max_repos_per_query=int(args.cron_github_web_evolution_max_repos_per_query),
+                github_web_evolution_max_total_repos=int(args.cron_github_web_evolution_max_total_repos),
+                github_web_evolution_min_stars=int(args.cron_github_web_evolution_min_stars),
+                github_web_evolution_min_quality_score=int(args.cron_github_web_evolution_min_quality_score),
+                github_web_evolution_min_new_or_updated=int(args.cron_github_web_evolution_min_new_or_updated),
+                github_web_evolution_recent_dedupe_days=int(args.cron_github_web_evolution_recent_dedupe_days),
+                github_web_evolution_max_tasks_per_run=int(args.cron_github_web_evolution_max_tasks_per_run),
+                github_web_evolution_schedule_gap_minutes=int(args.cron_github_web_evolution_schedule_gap_minutes),
+                github_web_evolution_assignee=str(args.cron_github_web_evolution_assignee).strip()
+                or "optimization-agent",
+                github_web_evolution_github_token_env=str(args.cron_github_web_evolution_github_token_env).strip()
+                or "GITHUB_TOKEN",
             )
             cron_setup_result = {
                 "ok": cron_ok,
@@ -1991,6 +2323,8 @@ def main() -> int:
                     verify_names.append("ops_conversation_evolution_incremental")
                 if bool(install_governance_evolution_job):
                     verify_names.append("ops_governance_evolution_incremental")
+                if bool(install_github_web_evolution_job):
+                    verify_names.append("ops_github_web_evolution_incremental")
                 verify_ok, verify_payload = run_verify_job_payload_paths(
                     script_path=verify_job_paths_py,
                     jobs_file=openclaw_home / "cron" / "jobs.json",
@@ -2051,6 +2385,7 @@ def main() -> int:
             "install_self_evolution_job": bool(install_self_evolution_job),
             "install_conversation_evolution_job": bool(install_conversation_evolution_job),
             "install_governance_evolution_job": bool(install_governance_evolution_job),
+            "install_github_web_evolution_job": bool(install_github_web_evolution_job),
             "incremental_log_mode": args.cron_incremental_log_mode,
             "full_log_mode": args.cron_full_log_mode,
             "daily_log_mode": args.cron_daily_log_mode,
@@ -2073,10 +2408,35 @@ def main() -> int:
             "conversation_evolution_lookback_hours": int(args.cron_conversation_evolution_lookback_hours),
             "conversation_evolution_min_interval_minutes": int(args.cron_conversation_evolution_min_interval_minutes),
             "conversation_evolution_max_files": int(args.cron_conversation_evolution_max_files),
+            "conversation_evolution_max_evidence_per_candidate": int(
+                args.cron_conversation_evolution_max_evidence_per_candidate
+            ),
+            "conversation_evolution_min_evidence_lines": int(args.cron_conversation_evolution_min_evidence_lines),
+            "conversation_evolution_min_unique_files": int(args.cron_conversation_evolution_min_unique_files),
+            "conversation_evolution_min_quality_score": int(args.cron_conversation_evolution_min_quality_score),
+            "conversation_evolution_recent_dedupe_days": int(args.cron_conversation_evolution_recent_dedupe_days),
             "conversation_evolution_max_tasks_per_run": int(args.cron_conversation_evolution_max_tasks_per_run),
             "conversation_evolution_schedule_gap_minutes": int(args.cron_conversation_evolution_schedule_gap_minutes),
             "conversation_evolution_assignee": str(args.cron_conversation_evolution_assignee).strip()
             or "optimization-agent",
+            "github_web_evolution_openclaw_home": str(args.cron_github_web_evolution_openclaw_home).strip(),
+            "github_web_evolution_web_root": str(args.cron_github_web_evolution_web_root).strip(),
+            "github_web_evolution_every_ms": int(args.cron_github_web_evolution_every_ms),
+            "github_web_evolution_log_mode": args.cron_github_web_evolution_log_mode,
+            "github_web_evolution_min_interval_minutes": int(args.cron_github_web_evolution_min_interval_minutes),
+            "github_web_evolution_max_queries": int(args.cron_github_web_evolution_max_queries),
+            "github_web_evolution_max_repos_per_query": int(args.cron_github_web_evolution_max_repos_per_query),
+            "github_web_evolution_max_total_repos": int(args.cron_github_web_evolution_max_total_repos),
+            "github_web_evolution_min_stars": int(args.cron_github_web_evolution_min_stars),
+            "github_web_evolution_min_quality_score": int(args.cron_github_web_evolution_min_quality_score),
+            "github_web_evolution_min_new_or_updated": int(args.cron_github_web_evolution_min_new_or_updated),
+            "github_web_evolution_recent_dedupe_days": int(args.cron_github_web_evolution_recent_dedupe_days),
+            "github_web_evolution_max_tasks_per_run": int(args.cron_github_web_evolution_max_tasks_per_run),
+            "github_web_evolution_schedule_gap_minutes": int(args.cron_github_web_evolution_schedule_gap_minutes),
+            "github_web_evolution_assignee": str(args.cron_github_web_evolution_assignee).strip()
+            or "optimization-agent",
+            "github_web_evolution_github_token_env": str(args.cron_github_web_evolution_github_token_env).strip()
+            or "GITHUB_TOKEN",
             "governance_evolution_repo_path": str(args.cron_governance_evolution_repo_path).strip(),
             "governance_evolution_openclaw_config": str(args.cron_governance_evolution_openclaw_config).strip(),
             "governance_evolution_project_registry": str(args.cron_governance_evolution_project_registry).strip(),

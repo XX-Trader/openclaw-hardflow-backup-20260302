@@ -464,6 +464,35 @@ class PolicyEnforcer:
         payload.update(self.parse_context_json_arg(context_json))
         return payload
 
+    def parse_optional_json_arg(self, raw: str, field_name: str) -> dict[str, Any]:
+        text = str(raw or "").strip()
+        if not text:
+            return {}
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise PolicyError(f"{field_name} is not valid JSON: {exc}") from exc
+        if not isinstance(data, dict):
+            raise PolicyError(f"{field_name} must be a JSON object")
+        return data
+
+    def parse_text_list_arg(self, raw: str) -> list[str]:
+        text = str(raw or "").strip()
+        if not text:
+            return []
+        out: list[str] = []
+        seen: set[str] = set()
+        for item in text.split(","):
+            value = item.strip()
+            if not value:
+                continue
+            lowered = value.lower()
+            if lowered in seen:
+                continue
+            seen.add(lowered)
+            out.append(value)
+        return out
+
     def extract_context_from_text(self, text: str) -> dict[str, str]:
         raw = str(text or "").strip()
         location = ""
@@ -1126,6 +1155,165 @@ class PolicyEnforcer:
         result["pricing_currency"] = pricing.get("currency", "CNY")
         return result
 
+    def log_module(self, args: argparse.Namespace) -> dict[str, Any]:
+        details = self.parse_optional_json_arg(getattr(args, "details_json", ""), "details-json")
+        task_id = str(getattr(args, "task_id", "") or "").strip()
+        return self.db.record_module_log(
+            task_id=task_id,
+            module_name=str(args.module_name),
+            phase=str(args.phase or "runtime"),
+            level=str(args.level or "info"),
+            status=str(args.status or "running"),
+            message=str(args.message),
+            duration_ms=int(args.duration_ms or 0),
+            details=details,
+            actor=str(args.actor or ""),
+        )
+
+    def log_communication(self, args: argparse.Namespace) -> dict[str, Any]:
+        details = self.parse_optional_json_arg(getattr(args, "details_json", ""), "details-json")
+        task_id = str(getattr(args, "task_id", "") or "").strip()
+        return self.db.record_module_communication(
+            task_id=task_id,
+            from_module=str(args.from_module),
+            to_module=str(args.to_module),
+            protocol=str(args.protocol or "internal"),
+            message_type=str(args.message_type or "handoff"),
+            status=str(args.status or "sent"),
+            latency_ms=int(args.latency_ms or 0),
+            correlation_id=str(args.correlation_id or ""),
+            payload_ref=str(args.payload_ref or ""),
+            details=details,
+            actor=str(args.actor or ""),
+        )
+
+    def report_agent_result(self, args: argparse.Namespace) -> dict[str, Any]:
+        task_id = str(args.task_id or "").strip()
+        if not task_id:
+            raise PolicyError("task-id is required")
+        task = self.db.get_task(task_id)
+
+        status = str(args.status or "").strip().lower() or "passed"
+        if status not in {"passed", "failed", "partial", "escalated"}:
+            raise PolicyError("status must be passed|failed|partial|escalated")
+
+        resolved_issues = self.parse_text_list_arg(str(args.resolved_issues or ""))
+        resolution_steps = self.parse_text_list_arg(str(args.resolution_steps or ""))
+        failed_items = self.parse_text_list_arg(str(args.failed_items or ""))
+        details = self.parse_optional_json_arg(getattr(args, "details_json", ""), "details-json")
+
+        solved_default = status in {"passed", "partial"}
+        solved = parse_bool(getattr(args, "solved", ""), solved_default)
+        failure_count = max(0, int(args.failure_count or 0))
+
+        manual_notify_raw = str(getattr(args, "notify_chat", "") or "").strip().lower()
+        if manual_notify_raw in {"true", "false", "1", "0", "yes", "no"}:
+            notify_chat = parse_bool(manual_notify_raw, False)
+        else:
+            notify_chat = (status in {"failed", "escalated"}) or (not solved) or failure_count > 0
+
+        quality_score_raw = str(getattr(args, "quality_score", "") or "").strip()
+        quality_score: float | None = None
+        if quality_score_raw:
+            quality_score = float(quality_score_raw)
+            quality_score = max(0.0, min(100.0, quality_score))
+
+        input_tokens = max(0, int(args.input_tokens or 0))
+        output_tokens = max(0, int(args.output_tokens or 0))
+        total_tokens = input_tokens + output_tokens
+        duration_ms = max(0, int(args.duration_ms or 0))
+        cost_estimate = float(args.cost_estimate or 0.0)
+        model_id = str(args.model or "").strip()
+        if model_id:
+            self.assert_model_allowed(model_id)
+
+        report = self.db.upsert_agent_task_report(
+            task_id=task_id,
+            agent_id=str(args.agent_id),
+            planner_id=str(args.planner_id or "coordinator"),
+            status=status,
+            solved=solved,
+            resolved_issues=resolved_issues,
+            resolution_summary=str(args.resolution_summary or ""),
+            resolution_steps=resolution_steps,
+            failed_items=failed_items,
+            failure_count=failure_count,
+            duration_ms=duration_ms,
+            model_id=model_id,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_estimate=cost_estimate,
+            quality_score=quality_score,
+            quality_grade=str(args.quality_grade or ""),
+            notify_chat=notify_chat,
+            details=details,
+            actor=str(args.actor or ""),
+        )
+
+        planner_payload = {
+            "task_id": task_id,
+            "task_status": str(task.get("status", "")),
+            "task_reason": str(task.get("reason", "")),
+            "agent_id": str(args.agent_id),
+            "planner_id": str(args.planner_id or "coordinator"),
+            "report_status": status,
+            "solved": solved,
+            "resolved_issues": resolved_issues,
+            "resolution_summary": str(args.resolution_summary or ""),
+            "resolution_steps": resolution_steps,
+            "failed_items": failed_items,
+            "failure_count": failure_count,
+            "duration_ms": duration_ms,
+            "model_id": model_id,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens,
+            "cost_estimate": round(cost_estimate, 6),
+            "quality_score": quality_score,
+            "quality_grade": str(args.quality_grade or ""),
+            "notify_chat": notify_chat,
+            "report_id": report.get("id"),
+            "report_ts": report.get("ts"),
+        }
+
+        chat_output = "NO_REPLY"
+        if notify_chat:
+            lines = [
+                f"# Agent异常回报 {task_id}",
+                f"- planner: {planner_payload['planner_id']}",
+                f"- agent: {planner_payload['agent_id']}",
+                f"- status: {planner_payload['report_status']}",
+                f"- solved: {str(planner_payload['solved']).lower()}",
+                f"- failure_count: {planner_payload['failure_count']}",
+                f"- duration_ms: {planner_payload['duration_ms']}",
+                f"- model: {planner_payload['model_id'] or '-'}",
+                f"- tokens: in={planner_payload['input_tokens']}, out={planner_payload['output_tokens']}, total={planner_payload['total_tokens']}",
+                f"- cost_estimate: {planner_payload['cost_estimate']}",
+                f"- quality_score: {planner_payload['quality_score'] if planner_payload['quality_score'] is not None else 'n/a'}",
+                f"- quality_grade: {planner_payload['quality_grade'] or 'n/a'}",
+                f"- resolution_summary: {planner_payload['resolution_summary'] or '-'}",
+            ]
+            if planner_payload["resolved_issues"]:
+                lines.append(f"- resolved_issues: {', '.join(planner_payload['resolved_issues'])}")
+            if planner_payload["failed_items"]:
+                lines.append(f"- failed_items: {', '.join(planner_payload['failed_items'])}")
+            chat_output = "\n".join(lines)
+
+        return {
+            "report": report,
+            "planner_payload": planner_payload,
+            "notify_chat": notify_chat,
+            "chat_output": chat_output,
+        }
+
+    def planner_summary(self, args: argparse.Namespace) -> dict[str, Any]:
+        planner_id = str(args.planner_id or "coordinator").strip()
+        if not planner_id:
+            raise PolicyError("planner-id cannot be empty")
+        since = str(getattr(args, "since", "") or "").strip()
+        limit = max(1, int(getattr(args, "limit", 100) or 100))
+        return self.db.planner_summary(planner_id=planner_id, since=since, limit=limit)
+
     def daily_summary(self, args: argparse.Namespace) -> dict[str, Any]:
         target_date = date.fromisoformat(args.date) if args.date else datetime.now(tz=UTC).date()
         summary = self.db.daily_summary(target_date)
@@ -1341,23 +1529,36 @@ class PolicyEnforcer:
             FROM tasks
             WHERE pool = 'todo'
               AND status = 'pending'
-              AND (scheduled_at IS NULL OR scheduled_at <= ?)
-            ORDER BY COALESCE(scheduled_at, created_at) ASC, created_at ASC
+            ORDER BY
+                CASE
+                    WHEN scheduled_at IS NULL OR TRIM(scheduled_at) = '' OR scheduled_at <= ? THEN 0
+                    ELSE 1
+                END ASC,
+                COALESCE(NULLIF(TRIM(scheduled_at), ''), created_at) ASC,
+                created_at ASC
             LIMIT ?
             """,
             (now_value, limit),
         ).fetchall()
         tasks = []
+        ready_count = 0
         for row in rows:
             item = dict(row)
             item["need_human_confirm"] = bool(item.get("need_human_confirm"))
             item["human_confirmed"] = bool(item.get("human_confirmed"))
+            # no-time or due-time tasks should be dispatched first
+            scheduled_at = str(item.get("scheduled_at", "") or "").strip()
+            item["is_ready"] = (not scheduled_at) or scheduled_at <= now_value
+            if item["is_ready"]:
+                ready_count += 1
             tasks.append(item)
         return {
             "policy_limit": self.todo_queue_max_dispatch(),
             "requested_limit": limit_raw,
             "effective_limit": limit,
             "now": now_value,
+            "ready_count": ready_count,
+            "future_count": max(0, len(tasks) - ready_count),
             "tasks": tasks,
         }
 
@@ -1748,6 +1949,57 @@ def build_parser() -> argparse.ArgumentParser:
     record_token.add_argument("--input-tokens", required=True)
     record_token.add_argument("--output-tokens", required=True)
 
+    log_module = sub.add_parser("log-module", help="record standardized module runtime log")
+    log_module.add_argument("--task-id", default="")
+    log_module.add_argument("--module-name", required=True)
+    log_module.add_argument("--phase", default="runtime")
+    log_module.add_argument("--level", default="info")
+    log_module.add_argument("--status", default="running")
+    log_module.add_argument("--message", required=True)
+    log_module.add_argument("--duration-ms", default="0")
+    log_module.add_argument("--details-json", default="")
+    log_module.add_argument("--actor", default="")
+
+    log_communication = sub.add_parser("log-communication", help="record module-to-module communication log")
+    log_communication.add_argument("--task-id", default="")
+    log_communication.add_argument("--from-module", required=True)
+    log_communication.add_argument("--to-module", required=True)
+    log_communication.add_argument("--protocol", default="internal")
+    log_communication.add_argument("--message-type", default="handoff")
+    log_communication.add_argument("--status", default="sent")
+    log_communication.add_argument("--latency-ms", default="0")
+    log_communication.add_argument("--correlation-id", default="")
+    log_communication.add_argument("--payload-ref", default="")
+    log_communication.add_argument("--details-json", default="")
+    log_communication.add_argument("--actor", default="")
+
+    report_agent = sub.add_parser("report-agent-result", help="agent result report to planner with exception-only chat")
+    report_agent.add_argument("--task-id", required=True)
+    report_agent.add_argument("--agent-id", required=True)
+    report_agent.add_argument("--planner-id", default="coordinator")
+    report_agent.add_argument("--status", default="passed")
+    report_agent.add_argument("--solved", default="")
+    report_agent.add_argument("--resolved-issues", default="")
+    report_agent.add_argument("--resolution-summary", default="")
+    report_agent.add_argument("--resolution-steps", default="")
+    report_agent.add_argument("--failed-items", default="")
+    report_agent.add_argument("--failure-count", default="0")
+    report_agent.add_argument("--duration-ms", default="0")
+    report_agent.add_argument("--model", default="")
+    report_agent.add_argument("--input-tokens", default="0")
+    report_agent.add_argument("--output-tokens", default="0")
+    report_agent.add_argument("--cost-estimate", default="0")
+    report_agent.add_argument("--quality-score", default="")
+    report_agent.add_argument("--quality-grade", default="")
+    report_agent.add_argument("--notify-chat", default="")
+    report_agent.add_argument("--details-json", default="")
+    report_agent.add_argument("--actor", default="")
+
+    planner_summary = sub.add_parser("planner-summary", help="planner task completion statistics")
+    planner_summary.add_argument("--planner-id", default="coordinator")
+    planner_summary.add_argument("--since", default="")
+    planner_summary.add_argument("--limit", default="100")
+
     daily = sub.add_parser("daily-summary", help="generate daily summary")
     daily.add_argument("--date", default="")
     daily.add_argument("--output", default="")
@@ -1861,6 +2113,14 @@ def main() -> int:
                 emit_json({"ok": True, "task": enforcer.complete_task(args)})
             elif args.command == "record-token":
                 emit_json({"ok": True, "usage": enforcer.record_token(args)})
+            elif args.command == "log-module":
+                emit_json({"ok": True, "log": enforcer.log_module(args)})
+            elif args.command == "log-communication":
+                emit_json({"ok": True, "log": enforcer.log_communication(args)})
+            elif args.command == "report-agent-result":
+                emit_json({"ok": True, "result": enforcer.report_agent_result(args)})
+            elif args.command == "planner-summary":
+                emit_json({"ok": True, "summary": enforcer.planner_summary(args)})
             elif args.command == "daily-summary":
                 emit_json({"ok": True, "summary": enforcer.daily_summary(args)})
             elif args.command == "task-report":
@@ -1893,5 +2153,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
-

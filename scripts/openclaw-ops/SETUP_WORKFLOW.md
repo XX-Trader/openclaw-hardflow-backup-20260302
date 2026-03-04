@@ -60,6 +60,18 @@ python scripts/openclaw-ops/policy/workflow_setup.py init \
   --openclaw-home ~/.openclaw \
   --scan-root . \
   --install-cron-setup \
+  --cron-install-github-web-evolution-job \
+  --cron-github-web-evolution-openclaw-home ~/.openclaw \
+  --cron-github-web-evolution-web-root ~/.openclaw/web/github \
+  --cron-github-web-evolution-every-ms 43200000 \
+  --cron-github-web-evolution-min-interval-minutes 360 \
+  --cron-github-web-evolution-min-stars 80 \
+  --cron-github-web-evolution-min-quality-score 45 \
+  --cron-github-web-evolution-min-new-or-updated 2 \
+  --cron-github-web-evolution-recent-dedupe-days 14 \
+  --cron-github-web-evolution-max-tasks-per-run 2 \
+  --cron-github-web-evolution-assignee optimization-agent \
+  --cron-github-web-evolution-github-token-env GITHUB_TOKEN \
   --cron-channel telegram \
   --cron-to <target> \
   --emit-json
@@ -117,6 +129,23 @@ python scripts/openclaw-ops/verify_job_payload_paths.py \
 - `--cron-governance-evolution-pr-base`
 - `--cron-governance-evolution-reviewer-gh-user`
 - `--cron-governance-evolution-push-before-pr / --no-cron-governance-evolution-push-before-pr`
+- `--cron-install-github-web-evolution-job`
+- `--cron-github-web-evolution-openclaw-home`
+- `--cron-github-web-evolution-web-root`
+- `--cron-github-web-evolution-every-ms`
+- `--cron-github-web-evolution-log-mode`
+- `--cron-github-web-evolution-min-interval-minutes`
+- `--cron-github-web-evolution-max-queries`
+- `--cron-github-web-evolution-max-repos-per-query`
+- `--cron-github-web-evolution-max-total-repos`
+- `--cron-github-web-evolution-min-stars`
+- `--cron-github-web-evolution-min-quality-score`
+- `--cron-github-web-evolution-min-new-or-updated`
+- `--cron-github-web-evolution-recent-dedupe-days`
+- `--cron-github-web-evolution-max-tasks-per-run`
+- `--cron-github-web-evolution-schedule-gap-minutes`
+- `--cron-github-web-evolution-assignee`
+- `--cron-github-web-evolution-github-token-env`
 
 ## 4. 关键输出字段
 
@@ -167,3 +196,45 @@ python scripts/openclaw-ops/verify_job_payload_paths.py \
 - `--cron-conversation-evolution-schedule-gap-minutes`
 - `--cron-conversation-evolution-assignee`
 - --cron-conversation-evolution-assignee 默认建议值：optimization-agent。
+
+## 9. Conversation Evolution 质量门禁与去重（2026-03-03）
+
+新增可配置项（`workflow_setup.py`）：
+
+- `--cron-conversation-evolution-max-evidence-per-candidate`（默认 `24`）
+- `--cron-conversation-evolution-min-evidence-lines`（默认 `3`）
+- `--cron-conversation-evolution-min-unique-files`（默认 `1`）
+- `--cron-conversation-evolution-min-quality-score`（默认 `55`）
+- `--cron-conversation-evolution-recent-dedupe-days`（默认 `14`）
+
+对应 `cron_setup.py` 参数：
+
+- `--conversation-evolution-max-evidence-per-candidate`
+- `--conversation-evolution-min-evidence-lines`
+- `--conversation-evolution-min-unique-files`
+- `--conversation-evolution-min-quality-score`
+- `--conversation-evolution-recent-dedupe-days`
+
+说明：
+
+- 质量不足的候选会进入 `candidates_rejected`，不会创建 TODO。
+- 已创建任务会写入 `dedupe_key`，在去重窗口内不重复创建同类建议。
+
+## 10. GitHub Web Evolution（2026-03-04）
+
+- 新增 job：`ops_github_web_evolution_incremental`（agent: `optimization-agent`）。
+- 用途：从 GitHub 定时搜索高信号仓库，沉淀到 `~/.openclaw/web/github/`，并仅在增量命中时创建 TODO 任务包。
+- 默认沉淀目录：
+  - `repos/*.json`（仓库元数据）
+  - `readmes/*.md`（README 快照）
+  - `methods/*.md`（方法片段）
+  - `runs/<timestamp_runid>/`（单次运行记录）
+  - `index.json` 与 `CATALOG.md`（目录索引）
+- 任务策略：
+  - `task_type=github_web_evolution`
+  - `source=github-web-evolution-agent`
+  - `need_human_confirm=true`
+  - 去重键：`fingerprint` + `dedupe_key`
+  - 支持 `max_tasks_per_run` 分批建单（每批受 `min_new_or_updated` 门槛约束）
+- 运行建议：
+  - 推荐配置 `GITHUB_TOKEN`（由 `--cron-github-web-evolution-github-token-env` 读取）以减少 API 限流影响。

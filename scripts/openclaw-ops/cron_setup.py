@@ -476,6 +476,11 @@ def build_conversation_evolution_job(
     lookback_hours: int,
     min_interval_minutes: int,
     max_files: int,
+    max_evidence_per_candidate: int,
+    min_evidence_lines: int,
+    min_unique_files: int,
+    min_quality_score: int,
+    recent_dedupe_days: int,
     max_tasks_per_run: int,
     schedule_gap_minutes: int,
     assignee: str,
@@ -489,6 +494,11 @@ def build_conversation_evolution_job(
         f"--lookback-hours {max(1, int(lookback_hours))} "
         f"--min-interval-minutes {max(1, int(min_interval_minutes))} "
         f"--max-files {max(10, int(max_files))} "
+        f"--max-evidence-per-candidate {max(1, int(max_evidence_per_candidate))} "
+        f"--min-evidence-lines {max(1, int(min_evidence_lines))} "
+        f"--min-unique-files {max(1, int(min_unique_files))} "
+        f"--min-quality-score {max(1, int(min_quality_score))} "
+        f"--recent-dedupe-days {max(0, int(recent_dedupe_days))} "
         f"--max-tasks-per-run {max(1, int(max_tasks_per_run))} "
         f"--schedule-gap-minutes {max(1, int(schedule_gap_minutes))} "
         f"--assignee \"{str(assignee or 'optimization-agent').strip() or 'optimization-agent'}\""
@@ -583,6 +593,62 @@ def build_governance_evolution_job(
         "agentId": "optimization-agent",
         "name": "ops_governance_evolution_incremental",
         "description": "治理进化增量扫描：产出优化/审查任务，可选自动PR",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {"kind": "every", "everyMs": int(every_ms), "anchorMs": ts},
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
+    }
+
+
+def build_github_web_evolution_job(
+    *,
+    script_py: str,
+    db_file: str,
+    openclaw_home: str,
+    web_root: str,
+    state_file: str,
+    report_dir: str,
+    every_ms: int,
+    log_mode: str,
+    min_interval_minutes: int,
+    max_queries: int,
+    max_repos_per_query: int,
+    max_total_repos: int,
+    min_stars: int,
+    min_quality_score: int,
+    min_new_or_updated: int,
+    recent_dedupe_days: int,
+    max_tasks_per_run: int,
+    schedule_gap_minutes: int,
+    assignee: str,
+    github_token_env: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+    cmd = (
+        f"python3 \"{script_py}\" --db \"{db_file}\" --openclaw-home \"{openclaw_home}\" "
+        f"--web-root \"{web_root}\" --state-file \"{state_file}\" --report-dir \"{report_dir}\" "
+        f"--task-id cron:ops-github-web-evolution --normal-log-mode {normalize_log_mode(log_mode)} "
+        f"--min-interval-minutes {max(1, int(min_interval_minutes))} "
+        f"--max-queries {max(1, int(max_queries))} "
+        f"--max-repos-per-query {max(1, int(max_repos_per_query))} "
+        f"--max-total-repos {max(1, int(max_total_repos))} "
+        f"--min-stars {max(0, int(min_stars))} "
+        f"--min-quality-score {max(1, int(min_quality_score))} "
+        f"--min-new-or-updated {max(1, int(min_new_or_updated))} "
+        f"--recent-dedupe-days {max(0, int(recent_dedupe_days))} "
+        f"--max-tasks-per-run {max(1, int(max_tasks_per_run))} "
+        f"--schedule-gap-minutes {max(1, int(schedule_gap_minutes))} "
+        f"--assignee \"{str(assignee or 'optimization-agent').strip() or 'optimization-agent'}\" "
+        f"--github-token-env \"{str(github_token_env or 'GITHUB_TOKEN').strip() or 'GITHUB_TOKEN'}\""
+    )
+    return {
+        "id": "8bc8e2ad-9e3f-4f0d-8af5-2f85bbf88831",
+        "agentId": "optimization-agent",
+        "name": "ops_github_web_evolution_incremental",
+        "description": "GitHub web knowledge incremental evolution: search, archive, and package TODO tasks",
         "enabled": True,
         "createdAtMs": ts,
         "updatedAtMs": ts,
@@ -840,6 +906,9 @@ def validate_runtime_paths(args: argparse.Namespace) -> dict[str, Any]:
             registry = Path(str(args.governance_evolution_project_registry or "")).expanduser()
             if not registry.exists():
                 errors.append("governance_evolution_repo_resolve_missing:repo_path_or_project_registry")
+    if bool(args.install_github_web_evolution_job):
+        add_check("github_web_evolution_py", str(args.github_web_evolution_py), required=True, expect="file")
+        add_check("github_web_evolution_openclaw_home", str(args.github_web_evolution_openclaw_home), required=True, expect="dir")
 
     return {"ok": len(errors) == 0, "errors": errors, "checks": checks}
 
@@ -962,6 +1031,11 @@ def main() -> int:
     parser.add_argument("--conversation-evolution-lookback-hours", type=int, default=72)
     parser.add_argument("--conversation-evolution-min-interval-minutes", type=int, default=180)
     parser.add_argument("--conversation-evolution-max-files", type=int, default=120)
+    parser.add_argument("--conversation-evolution-max-evidence-per-candidate", type=int, default=24)
+    parser.add_argument("--conversation-evolution-min-evidence-lines", type=int, default=3)
+    parser.add_argument("--conversation-evolution-min-unique-files", type=int, default=1)
+    parser.add_argument("--conversation-evolution-min-quality-score", type=int, default=55)
+    parser.add_argument("--conversation-evolution-recent-dedupe-days", type=int, default=14)
     parser.add_argument("--conversation-evolution-max-tasks-per-run", type=int, default=3)
     parser.add_argument("--conversation-evolution-schedule-gap-minutes", type=int, default=90)
     parser.add_argument("--conversation-evolution-assignee", default="optimization-agent")
@@ -997,6 +1071,28 @@ def main() -> int:
     parser.add_argument("--governance-evolution-pr-base", default="main")
     parser.add_argument("--governance-evolution-reviewer-gh-user", default="")
     parser.add_argument("--governance-evolution-push-before-pr", action=argparse.BooleanOptionalAction, default=False)
+
+    parser.add_argument("--install-github-web-evolution-job", action="store_true")
+    parser.add_argument("--github-web-evolution-py", default=str(home / ".openclaw/ops/github_web_evolution_runner.py"))
+    parser.add_argument("--github-web-evolution-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--github-web-evolution-openclaw-home", default=str(home / ".openclaw"))
+    parser.add_argument("--github-web-evolution-web-root", default=str(home / ".openclaw/web/github"))
+    parser.add_argument("--github-web-evolution-state", default=str(home / ".openclaw/ops/github-web-evolution/state.json"))
+    parser.add_argument("--github-web-evolution-report-dir", default=str(home / ".openclaw/ops/github-web-evolution/reports"))
+    parser.add_argument("--github-web-evolution-every-ms", type=int, default=43200000)
+    parser.add_argument("--github-web-evolution-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--github-web-evolution-min-interval-minutes", type=int, default=360)
+    parser.add_argument("--github-web-evolution-max-queries", type=int, default=5)
+    parser.add_argument("--github-web-evolution-max-repos-per-query", type=int, default=20)
+    parser.add_argument("--github-web-evolution-max-total-repos", type=int, default=40)
+    parser.add_argument("--github-web-evolution-min-stars", type=int, default=80)
+    parser.add_argument("--github-web-evolution-min-quality-score", type=int, default=45)
+    parser.add_argument("--github-web-evolution-min-new-or-updated", type=int, default=2)
+    parser.add_argument("--github-web-evolution-recent-dedupe-days", type=int, default=14)
+    parser.add_argument("--github-web-evolution-max-tasks-per-run", type=int, default=1)
+    parser.add_argument("--github-web-evolution-schedule-gap-minutes", type=int, default=90)
+    parser.add_argument("--github-web-evolution-assignee", default="optimization-agent")
+    parser.add_argument("--github-web-evolution-github-token-env", default="GITHUB_TOKEN")
 
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
@@ -1044,6 +1140,7 @@ def main() -> int:
             "self_evolution": args.self_evolution_log_mode,
             "conversation_evolution": args.conversation_evolution_log_mode,
             "governance_evolution": args.governance_evolution_log_mode,
+            "github_web_evolution": args.github_web_evolution_log_mode,
         },
     )
 
@@ -1126,6 +1223,11 @@ def main() -> int:
                 lookback_hours=max(1, int(args.conversation_evolution_lookback_hours)),
                 min_interval_minutes=max(1, int(args.conversation_evolution_min_interval_minutes)),
                 max_files=max(10, int(args.conversation_evolution_max_files)),
+                max_evidence_per_candidate=max(1, int(args.conversation_evolution_max_evidence_per_candidate)),
+                min_evidence_lines=max(1, int(args.conversation_evolution_min_evidence_lines)),
+                min_unique_files=max(1, int(args.conversation_evolution_min_unique_files)),
+                min_quality_score=max(1, int(args.conversation_evolution_min_quality_score)),
+                recent_dedupe_days=max(0, int(args.conversation_evolution_recent_dedupe_days)),
                 max_tasks_per_run=max(1, int(args.conversation_evolution_max_tasks_per_run)),
                 schedule_gap_minutes=max(1, int(args.conversation_evolution_schedule_gap_minutes)),
                 assignee=str(args.conversation_evolution_assignee).strip() or "optimization-agent",
@@ -1160,6 +1262,31 @@ def main() -> int:
                 pr_base=str(args.governance_evolution_pr_base).strip() or "main",
                 reviewer_gh_user=str(args.governance_evolution_reviewer_gh_user).strip(),
                 push_before_pr=bool(args.governance_evolution_push_before_pr),
+            )
+        )
+    if bool(args.install_github_web_evolution_job):
+        fresh_jobs.append(
+            build_github_web_evolution_job(
+                script_py=str(Path(args.github_web_evolution_py).expanduser()),
+                db_file=str(Path(args.github_web_evolution_db).expanduser()),
+                openclaw_home=str(Path(args.github_web_evolution_openclaw_home).expanduser()),
+                web_root=str(Path(args.github_web_evolution_web_root).expanduser()),
+                state_file=str(Path(args.github_web_evolution_state).expanduser()),
+                report_dir=str(Path(args.github_web_evolution_report_dir).expanduser()),
+                every_ms=max(600000, int(args.github_web_evolution_every_ms)),
+                log_mode=args.github_web_evolution_log_mode,
+                min_interval_minutes=max(1, int(args.github_web_evolution_min_interval_minutes)),
+                max_queries=max(1, int(args.github_web_evolution_max_queries)),
+                max_repos_per_query=max(1, int(args.github_web_evolution_max_repos_per_query)),
+                max_total_repos=max(1, int(args.github_web_evolution_max_total_repos)),
+                min_stars=max(0, int(args.github_web_evolution_min_stars)),
+                min_quality_score=max(1, int(args.github_web_evolution_min_quality_score)),
+                min_new_or_updated=max(1, int(args.github_web_evolution_min_new_or_updated)),
+                recent_dedupe_days=max(0, int(args.github_web_evolution_recent_dedupe_days)),
+                max_tasks_per_run=max(1, int(args.github_web_evolution_max_tasks_per_run)),
+                schedule_gap_minutes=max(1, int(args.github_web_evolution_schedule_gap_minutes)),
+                assignee=str(args.github_web_evolution_assignee).strip() or "optimization-agent",
+                github_token_env=str(args.github_web_evolution_github_token_env).strip() or "GITHUB_TOKEN",
             )
         )
 
@@ -1216,6 +1343,7 @@ def main() -> int:
             "self_evolution_job": bool(args.install_self_evolution_job),
             "conversation_evolution_job": bool(args.install_conversation_evolution_job),
             "governance_evolution_job": bool(args.install_governance_evolution_job),
+            "github_web_evolution_job": bool(args.install_github_web_evolution_job),
         },
     }
     if args.emit_json:

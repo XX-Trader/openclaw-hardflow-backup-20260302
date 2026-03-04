@@ -3,7 +3,7 @@
     {
       "id": "openclaw-hardflow-backup-20260302",
       "name": "openclaw-hardflow-backup-20260302",
-      "path": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302",
+      "path": ".",
       "index_dir": ".workflow/project-index",
       "auto_pull": true,
       "git_remote": "origin",

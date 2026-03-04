@@ -21,6 +21,7 @@ import re
 import sqlite3
 import shutil
 import subprocess
+import sys
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -28,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 TZ = timezone(timedelta(hours=8))
+UTC = timezone.utc
 ERROR_KEYWORDS = (
     "error",
     "exception",
@@ -329,6 +331,77 @@ def run_shell(command: str, timeout: int = 20) -> tuple[int, str, str]:
         return proc.returncode, (proc.stdout or "").strip(), (proc.stderr or "").strip()
     except Exception as exc:  # pragma: no cover
         return 127, "", str(exc)
+
+
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def policy_enforcer_path() -> Path:
+    custom = str(os.environ.get("POLICY_ENFORCER_PY", "")).strip()
+    if custom:
+        return Path(custom).expanduser()
+    return Path(__file__).resolve().parent / "policy" / "policy_enforcer.py"
+
+
+def task_exists_in_db(db_path: Path, task_id: str) -> bool:
+    normalized_id = str(task_id or "").strip()
+    if not normalized_id:
+        return False
+    if not db_path.exists():
+        return False
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT 1 AS ok FROM tasks WHERE task_id = ?", (normalized_id,)).fetchone()
+        conn.close()
+        return bool(row)
+    except Exception:
+        return False
+
+
+def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
+    script = policy_enforcer_path()
+    if not script.exists():
+        return False, {}, f"policy_enforcer_missing:{script}"
+    cmd = [sys.executable, str(script), "--db", str(db_path), *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        return False, payload or {}, f"policy_enforcer_failed:{err_text}"
+    if not isinstance(payload, dict):
+        return False, {}, "policy_enforcer_invalid_json_output"
+    if not bool(payload.get("ok", False)):
+        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+    return True, payload, ""
 
 
 def collect_services(cfg: dict[str, Any]) -> tuple[dict[str, dict[str, str]], str | None]:
@@ -1806,6 +1879,221 @@ def main() -> int:
     state["last_run_record"] = str(run_file)
     save_json(state_path, state)
 
+    token_cfg = cfg.get("token_monitor") if isinstance(cfg.get("token_monitor"), dict) else {}
+    policy_db_raw = str(
+        token_cfg.get("task_center_db")
+        or (home / ".openclaw" / "ops" / "task-center" / "task_center.db")
+    ).strip()
+    policy_db_path = Path(policy_db_raw).expanduser()
+    policy_observability: dict[str, Any] = {
+        "enabled": False,
+        "db": str(policy_db_path),
+        "task_bound": False,
+        "errors": [],
+    }
+    planner_summary_snapshot: dict[str, Any] = {}
+    if policy_db_path.exists():
+        policy_observability["enabled"] = True
+        raw_task_id = str(args.task_id or "").strip()
+        bound_task_id = raw_task_id if task_exists_in_db(policy_db_path, raw_task_id) else ""
+        policy_observability["task_bound"] = bool(bound_task_id)
+        if raw_task_id and (not bound_task_id):
+            policy_observability["errors"].append(f"task_not_found_for_report:{raw_task_id}")
+
+        mode_name = str(result.record.get("mode", args.mode))
+        run_duration_ms = int(result.record.get("run_duration_ms", 0) or 0)
+        risk_reasons = [str(x).strip() for x in (result.record.get("risk_reasons") or []) if str(x).strip()]
+        change_reasons = [str(x).strip() for x in (result.record.get("change_reasons") or []) if str(x).strip()]
+        handoff_data = result.record.get("handoff_summary")
+        if not isinstance(handoff_data, dict):
+            handoff_data = result.record.get("handoff_24h")
+        if not isinstance(handoff_data, dict):
+            handoff_data = {}
+
+        module_details = {
+            "mode": mode_name,
+            "run_id": str(result.record.get("run_id", "")),
+            "record_file": str(run_file),
+            "notify": bool(result.record.get("notify")),
+            "risk_reasons": risk_reasons,
+            "change_reasons": change_reasons,
+            "handoff": handoff_data,
+        }
+        module_args = [
+            "log-module",
+            "--module-name",
+            "ops-agent/ops-cron-runner",
+            "--phase",
+            mode_name,
+            "--level",
+            ("error" if risk_reasons else "info"),
+            "--status",
+            ("failed" if risk_reasons else "passed"),
+            "--message",
+            (
+                f"ops-cron-runner mode={mode_name} risk={len(risk_reasons)} "
+                + f"change={len(change_reasons)} notify={bool(result.record.get('notify'))}"
+            ),
+            "--duration-ms",
+            str(run_duration_ms),
+            "--details-json",
+            json.dumps(module_details, ensure_ascii=False),
+            "--actor",
+            str(result.record.get("sender_identity", "")) or "ops-agent/ops-cron-runner",
+        ]
+        if bound_task_id:
+            module_args.extend(["--task-id", bound_task_id])
+        ok_module, _payload_module, err_module = invoke_policy_enforcer(policy_db_path, module_args, timeout=25)
+        policy_observability["log_module_ok"] = ok_module
+        if not ok_module and err_module:
+            policy_observability["errors"].append(err_module)
+
+        comm_status = "acked"
+        if risk_reasons:
+            comm_status = "failed"
+        elif int(handoff_data.get("todo_new", 0) or 0) == 0 and mode_name != "daily":
+            comm_status = "sent"
+        comm_args = [
+            "log-communication",
+            "--from-module",
+            "ops-agent/ops-cron-runner",
+            "--to-module",
+            "coordinator",
+            "--protocol",
+            "policy-enforcer",
+            "--message-type",
+            "incident_handoff",
+            "--status",
+            comm_status,
+            "--latency-ms",
+            str(run_duration_ms),
+            "--correlation-id",
+            str(result.record.get("run_id", "")),
+            "--payload-ref",
+            str(run_file),
+            "--details-json",
+            json.dumps({"handoff": handoff_data, "mode": mode_name}, ensure_ascii=False),
+            "--actor",
+            str(result.record.get("sender_identity", "")) or "ops-agent/ops-cron-runner",
+        ]
+        if bound_task_id:
+            comm_args.extend(["--task-id", bound_task_id])
+        ok_comm, _payload_comm, err_comm = invoke_policy_enforcer(policy_db_path, comm_args, timeout=25)
+        policy_observability["log_communication_ok"] = ok_comm
+        if not ok_comm and err_comm:
+            policy_observability["errors"].append(err_comm)
+
+        if bound_task_id:
+            report_status = "passed"
+            if risk_reasons:
+                report_status = "failed"
+                if any("workflow_job_error" in x or "scan_error" in x for x in risk_reasons):
+                    report_status = "escalated"
+            resolved_items = [compact_reason(x) for x in change_reasons if compact_reason(x)]
+            failed_items = [compact_reason(x) for x in risk_reasons if compact_reason(x)]
+            quality_score = 96.0 if not risk_reasons else max(30.0, 80.0 - (len(risk_reasons) * 10.0))
+            token_usage = result.record.get("token_usage", {})
+            if not isinstance(token_usage, dict):
+                token_usage = {}
+            report_args = [
+                "report-agent-result",
+                "--task-id",
+                bound_task_id,
+                "--agent-id",
+                "ops-agent",
+                "--planner-id",
+                "coordinator",
+                "--status",
+                report_status,
+                "--solved",
+                ("false" if risk_reasons else "true"),
+                "--resolved-issues",
+                ",".join(resolved_items[:20]),
+                "--resolution-summary",
+                f"ops scan mode={mode_name} completed",
+                "--resolution-steps",
+                "scan,aggregate,handoff",
+                "--failed-items",
+                ",".join(failed_items[:20]),
+                "--failure-count",
+                str(len(risk_reasons)),
+                "--duration-ms",
+                str(run_duration_ms),
+                "--input-tokens",
+                str(int(token_usage.get("total_tokens", 0) or 0)),
+                "--output-tokens",
+                "0",
+                "--cost-estimate",
+                str(float(result.record.get("cost_estimate", 0.0) or 0.0)),
+                "--quality-score",
+                str(round(float(quality_score), 4)),
+                "--quality-grade",
+                ("a" if not risk_reasons else "c"),
+                "--notify-chat",
+                ("true" if risk_reasons else "false"),
+                "--details-json",
+                json.dumps(
+                    {
+                        "mode": mode_name,
+                        "run_id": str(result.record.get("run_id", "")),
+                        "record_file": str(run_file),
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                str(result.record.get("sender_identity", "")) or "ops-agent/ops-cron-runner",
+            ]
+            ok_report, payload_report, err_report = invoke_policy_enforcer(policy_db_path, report_args, timeout=30)
+            policy_observability["report_agent_result_ok"] = ok_report
+            if ok_report and isinstance(payload_report, dict):
+                result_payload = payload_report.get("result")
+                if isinstance(result_payload, dict):
+                    planner_payload = result_payload.get("planner_payload")
+                    if isinstance(planner_payload, dict):
+                        policy_observability["agent_report"] = {
+                            "report_status": planner_payload.get("report_status"),
+                            "notify_chat": planner_payload.get("notify_chat"),
+                            "failure_count": planner_payload.get("failure_count"),
+                        }
+            if not ok_report and err_report:
+                policy_observability["errors"].append(err_report)
+
+        since_24h = (datetime.now(tz=UTC) - timedelta(hours=24)).replace(microsecond=0).isoformat()
+        ok_summary, payload_summary, err_summary = invoke_policy_enforcer(
+            policy_db_path,
+            [
+                "planner-summary",
+                "--planner-id",
+                "coordinator",
+                "--since",
+                since_24h,
+                "--limit",
+                "60",
+            ],
+            timeout=30,
+        )
+        policy_observability["planner_summary_ok"] = ok_summary
+        if ok_summary and isinstance(payload_summary, dict):
+            summary = payload_summary.get("summary")
+            if isinstance(summary, dict):
+                planner_summary_snapshot = {
+                    "planner_id": summary.get("planner_id"),
+                    "report_count": summary.get("report_count", 0),
+                    "task_count": summary.get("task_count", 0),
+                    "resolved_task_count": summary.get("resolved_task_count", 0),
+                    "failed_task_count": summary.get("failed_task_count", 0),
+                    "solved_ratio_pct": summary.get("solved_ratio_pct", 0.0),
+                    "total_tokens": summary.get("total_tokens", 0),
+                    "total_cost_estimate": summary.get("total_cost_estimate", 0.0),
+                }
+        if not ok_summary and err_summary:
+            policy_observability["errors"].append(err_summary)
+
+    result.record["policy_observability"] = policy_observability
+    if planner_summary_snapshot:
+        result.record["planner_summary"] = planner_summary_snapshot
+    save_json(run_file, result.record)
+
     if args.emit_json:
         print(json.dumps({"notify": result.notify, "output": result.output, "record": str(run_file)}, ensure_ascii=False))
     else:
@@ -1818,4 +2106,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -27,6 +27,10 @@ TASK_PRIORITIES = {"low", "medium", "high"}
 TASK_RISK_LEVELS = {"low", "high"}
 TASK_REQUEST_SOURCES = {"human", "ai"}
 STAGE_RUN_STATUSES = {"running", "passed", "failed"}
+MODULE_LOG_LEVELS = {"debug", "info", "warn", "error"}
+MODULE_RUN_STATUSES = {"started", "running", "passed", "failed", "timeout", "skipped"}
+COMMUNICATION_STATUSES = {"sent", "acked", "failed", "timeout"}
+AGENT_REPORT_STATUSES = {"passed", "failed", "partial", "escalated"}
 
 
 class TaskCenterError(RuntimeError):
@@ -111,6 +115,33 @@ def parse_json(text: str | None) -> dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {}
     except json.JSONDecodeError:
         return {}
+
+
+def normalize_text_list(value: Any) -> str:
+    items: list[str] = []
+    if isinstance(value, str):
+        items = [x.strip() for x in value.split(",") if x.strip()]
+    elif isinstance(value, list):
+        items = [str(x).strip() for x in value if str(x).strip()]
+    elif isinstance(value, tuple):
+        items = [str(x).strip() for x in value if str(x).strip()]
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return ",".join(unique)
+
+
+def split_text_list(value: Any) -> list[str]:
+    text = str(value or "").strip()
+    if not text:
+        return []
+    return [x for x in (item.strip() for item in text.split(",")) if x]
 
 
 def load_pricing(pricing_file: str | Path) -> dict[str, Any]:
@@ -245,6 +276,63 @@ class TaskCenter:
                 FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS module_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT,
+                ts TEXT NOT NULL,
+                module_name TEXT NOT NULL,
+                phase TEXT NOT NULL,
+                level TEXT NOT NULL,
+                status TEXT NOT NULL,
+                message TEXT NOT NULL,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                details_json TEXT NOT NULL,
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS module_communications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT,
+                ts TEXT NOT NULL,
+                from_module TEXT NOT NULL,
+                to_module TEXT NOT NULL,
+                protocol TEXT NOT NULL,
+                message_type TEXT NOT NULL,
+                status TEXT NOT NULL,
+                latency_ms INTEGER,
+                correlation_id TEXT NOT NULL DEFAULT '',
+                payload_ref TEXT NOT NULL DEFAULT '',
+                details_json TEXT NOT NULL,
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS agent_task_reports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                planner_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                solved INTEGER NOT NULL DEFAULT 0,
+                resolved_issues TEXT NOT NULL DEFAULT '',
+                resolution_summary TEXT NOT NULL DEFAULT '',
+                resolution_steps TEXT NOT NULL DEFAULT '',
+                failed_items TEXT NOT NULL DEFAULT '',
+                failure_count INTEGER NOT NULL DEFAULT 0,
+                duration_ms INTEGER NOT NULL DEFAULT 0,
+                model_id TEXT NOT NULL DEFAULT '',
+                input_tokens INTEGER NOT NULL DEFAULT 0,
+                output_tokens INTEGER NOT NULL DEFAULT 0,
+                total_tokens INTEGER NOT NULL DEFAULT 0,
+                cost_estimate REAL NOT NULL DEFAULT 0,
+                quality_score REAL,
+                quality_grade TEXT NOT NULL DEFAULT '',
+                notify_chat INTEGER NOT NULL DEFAULT 0,
+                details_json TEXT NOT NULL,
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE,
+                UNIQUE(task_id, agent_id, planner_id)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
             CREATE INDEX IF NOT EXISTS idx_task_events_task_id ON task_events(task_id);
@@ -252,6 +340,13 @@ class TaskCenter:
             CREATE INDEX IF NOT EXISTS idx_token_usage_ts ON token_usage(ts);
             CREATE INDEX IF NOT EXISTS idx_stage_runs_task_id ON stage_runs(task_id);
             CREATE INDEX IF NOT EXISTS idx_stage_runs_started_at ON stage_runs(started_at);
+            CREATE INDEX IF NOT EXISTS idx_module_logs_task_id ON module_logs(task_id);
+            CREATE INDEX IF NOT EXISTS idx_module_logs_module_ts ON module_logs(module_name, ts);
+            CREATE INDEX IF NOT EXISTS idx_module_communications_task_id ON module_communications(task_id);
+            CREATE INDEX IF NOT EXISTS idx_module_communications_path_ts
+                ON module_communications(from_module, to_module, ts);
+            CREATE INDEX IF NOT EXISTS idx_agent_task_reports_task_id ON agent_task_reports(task_id);
+            CREATE INDEX IF NOT EXISTS idx_agent_task_reports_planner_ts ON agent_task_reports(planner_id, ts);
             """
         )
         self._ensure_task_columns()
@@ -376,6 +471,10 @@ class TaskCenter:
 
         return normalized
 
+    def _task_exists(self, task_id: str) -> bool:
+        row = self.conn.execute("SELECT 1 FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+        return bool(row)
+
     def create_task(self, task: dict[str, Any], actor: str = "system") -> dict[str, Any]:
         payload = self._normalize_task(task)
 
@@ -434,6 +533,131 @@ class TaskCenter:
             )
 
         return self.get_task(payload["task_id"])
+
+    def update_task(self, task_id: str, actor: str, fields: dict[str, Any]) -> dict[str, Any]:
+        if not self._task_exists(task_id):
+            raise TaskCenterError(f"task not found: {task_id}")
+        if not isinstance(fields, dict) or not fields:
+            raise TaskCenterError("fields must be non-empty object")
+
+        allowed_fields = {
+            "task_type",
+            "reason",
+            "source",
+            "request_source",
+            "priority",
+            "risk_level",
+            "assignee",
+            "status",
+            "need_human_confirm",
+            "human_confirmed",
+            "needs_clarification",
+            "clarification_reason",
+            "context_completeness",
+            "context_fields_missing",
+            "context_fields_recommended_missing",
+            "context_payload",
+            "owner",
+            "change_id",
+            "requirement",
+            "result_output",
+            "acceptance",
+            "observable_outputs",
+            "acceptance_thresholds",
+            "score_raw",
+            "score_normalized",
+            "score_payload",
+            "token_usage_summary",
+            "cost_estimate_total",
+            "action",
+            "scheduled_at",
+        }
+
+        updates: dict[str, Any] = {}
+        for key, value in fields.items():
+            name = str(key or "").strip()
+            if not name:
+                continue
+            if name not in allowed_fields:
+                raise TaskCenterError(f"field not allowed for update: {name}")
+            updates[name] = value
+        if not updates:
+            raise TaskCenterError("no valid fields to update")
+
+        if "priority" in updates:
+            updates["priority"] = str(updates["priority"]).strip().lower()
+            if updates["priority"] not in TASK_PRIORITIES:
+                raise TaskCenterError(f"invalid priority: {updates['priority']}")
+        if "risk_level" in updates:
+            updates["risk_level"] = str(updates["risk_level"]).strip().lower()
+            if updates["risk_level"] not in TASK_RISK_LEVELS:
+                raise TaskCenterError(f"invalid risk_level: {updates['risk_level']}")
+        if "status" in updates:
+            updates["status"] = str(updates["status"]).strip().lower()
+            if updates["status"] not in TASK_STATUSES:
+                raise TaskCenterError(f"invalid status: {updates['status']}")
+        if "request_source" in updates:
+            updates["request_source"] = normalize_request_source(updates["request_source"], default="human")
+        if "needs_clarification" in updates:
+            updates["needs_clarification"] = 1 if to_bool(updates["needs_clarification"]) else 0
+        if "need_human_confirm" in updates:
+            updates["need_human_confirm"] = 1 if to_bool(updates["need_human_confirm"]) else 0
+        if "human_confirmed" in updates:
+            updates["human_confirmed"] = 1 if to_bool(updates["human_confirmed"]) else 0
+        if "context_completeness" in updates:
+            try:
+                completeness = float(updates["context_completeness"] or 0.0)
+            except (TypeError, ValueError):
+                completeness = 0.0
+            updates["context_completeness"] = max(0.0, min(100.0, completeness))
+        if "context_fields_missing" in updates:
+            updates["context_fields_missing"] = normalize_context_missing_fields(updates["context_fields_missing"])
+        if "context_fields_recommended_missing" in updates:
+            updates["context_fields_recommended_missing"] = normalize_context_missing_fields(
+                updates["context_fields_recommended_missing"]
+            )
+        if "context_payload" in updates:
+            payload = updates["context_payload"]
+            if isinstance(payload, str):
+                parsed = parse_json(payload)
+                payload = parsed if parsed else {"raw": payload}
+            if not isinstance(payload, dict):
+                payload = {"raw": str(payload)}
+            updates["context_payload"] = ensure_json(payload)
+        if "score_payload" in updates:
+            payload = updates["score_payload"]
+            if isinstance(payload, str):
+                payload = parse_json(payload) or {"raw": payload}
+            updates["score_payload"] = ensure_json(payload if isinstance(payload, dict) else {"raw": str(payload)})
+        if "token_usage_summary" in updates:
+            payload = updates["token_usage_summary"]
+            if isinstance(payload, str):
+                payload = parse_json(payload) or {"raw": payload}
+            updates["token_usage_summary"] = ensure_json(
+                payload if isinstance(payload, dict) else {"raw": str(payload)}
+            )
+        if "assignee" in updates:
+            assignee = str(updates["assignee"] or "").strip()
+            updates["assignee"] = assignee or None
+
+        updates["updated_at"] = utc_now_iso()
+        cols = [f"{name} = ?" for name in updates.keys()]
+        vals = list(updates.values()) + [task_id]
+
+        with self.conn:
+            self.conn.execute(
+                f"UPDATE tasks SET {', '.join(cols)} WHERE task_id = ?",
+                vals,
+            )
+            self.add_event(
+                task_id=task_id,
+                actor=actor,
+                event_type="task_updated",
+                stage="task_update",
+                details={"updated_fields": sorted(k for k in updates.keys() if k != "updated_at")},
+            )
+
+        return self.get_task(task_id)
 
     def get_task(self, task_id: str) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
@@ -613,6 +837,398 @@ class TaskCenter:
         out: list[dict[str, Any]] = []
         for row in rows:
             item = dict(row)
+            item["details"] = parse_json(item.pop("details_json", ""))
+            out.append(item)
+        return out
+
+    def get_module_log(self, log_id: int) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM module_logs WHERE id = ?", (int(log_id),)).fetchone()
+        if not row:
+            raise TaskCenterError(f"module_log not found: {log_id}")
+        item = dict(row)
+        item["details"] = parse_json(item.pop("details_json", ""))
+        return item
+
+    def record_module_log(
+        self,
+        *,
+        task_id: str = "",
+        module_name: str,
+        phase: str,
+        level: str,
+        status: str,
+        message: str,
+        duration_ms: int = 0,
+        details: dict[str, Any] | None = None,
+        actor: str = "",
+    ) -> dict[str, Any]:
+        module = str(module_name or "").strip()
+        stage = str(phase or "").strip() or "runtime"
+        normalized_level = str(level or "").strip().lower() or "info"
+        normalized_status = str(status or "").strip().lower() or "running"
+        note = str(message or "").strip()
+        if not module:
+            raise TaskCenterError("module_name cannot be empty")
+        if not note:
+            raise TaskCenterError("message cannot be empty")
+        if normalized_level not in MODULE_LOG_LEVELS:
+            raise TaskCenterError(f"invalid module log level: {normalized_level}")
+        if normalized_status not in MODULE_RUN_STATUSES:
+            raise TaskCenterError(f"invalid module run status: {normalized_status}")
+
+        row_task_id = str(task_id or "").strip() or None
+        if row_task_id and (not self._task_exists(row_task_id)):
+            raise TaskCenterError(f"task not found: {row_task_id}")
+
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO module_logs (
+                    task_id, ts, module_name, phase, level, status, message, duration_ms, details_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row_task_id,
+                    utc_now_iso(),
+                    module,
+                    stage,
+                    normalized_level,
+                    normalized_status,
+                    note,
+                    max(0, int(duration_ms or 0)),
+                    ensure_json(details),
+                ),
+            )
+            log_id = int(cursor.lastrowid)
+            if row_task_id:
+                self.add_event(
+                    task_id=row_task_id,
+                    actor=(str(actor or "").strip() or module),
+                    event_type="module_log_recorded",
+                    stage=stage,
+                    details={
+                        "module_name": module,
+                        "level": normalized_level,
+                        "status": normalized_status,
+                        "message": note,
+                        "duration_ms": max(0, int(duration_ms or 0)),
+                    },
+                )
+        return self.get_module_log(log_id)
+
+    def list_module_logs(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit or 200), 2000))
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM module_logs
+            WHERE task_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (task_id, limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["details"] = parse_json(item.pop("details_json", ""))
+            out.append(item)
+        out.reverse()
+        return out
+
+    def get_module_communication(self, comm_id: int) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM module_communications WHERE id = ?", (int(comm_id),)).fetchone()
+        if not row:
+            raise TaskCenterError(f"module_communication not found: {comm_id}")
+        item = dict(row)
+        item["details"] = parse_json(item.pop("details_json", ""))
+        return item
+
+    def record_module_communication(
+        self,
+        *,
+        task_id: str = "",
+        from_module: str,
+        to_module: str,
+        protocol: str,
+        message_type: str,
+        status: str,
+        latency_ms: int = 0,
+        correlation_id: str = "",
+        payload_ref: str = "",
+        details: dict[str, Any] | None = None,
+        actor: str = "",
+    ) -> dict[str, Any]:
+        src = str(from_module or "").strip()
+        dst = str(to_module or "").strip()
+        proto = str(protocol or "").strip() or "internal"
+        msg_type = str(message_type or "").strip() or "handoff"
+        normalized_status = str(status or "").strip().lower() or "sent"
+        if not src:
+            raise TaskCenterError("from_module cannot be empty")
+        if not dst:
+            raise TaskCenterError("to_module cannot be empty")
+        if normalized_status not in COMMUNICATION_STATUSES:
+            raise TaskCenterError(f"invalid communication status: {normalized_status}")
+
+        row_task_id = str(task_id or "").strip() or None
+        if row_task_id and (not self._task_exists(row_task_id)):
+            raise TaskCenterError(f"task not found: {row_task_id}")
+
+        with self.conn:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO module_communications (
+                    task_id, ts, from_module, to_module, protocol, message_type,
+                    status, latency_ms, correlation_id, payload_ref, details_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row_task_id,
+                    utc_now_iso(),
+                    src,
+                    dst,
+                    proto,
+                    msg_type,
+                    normalized_status,
+                    max(0, int(latency_ms or 0)),
+                    str(correlation_id or "").strip(),
+                    str(payload_ref or "").strip(),
+                    ensure_json(details),
+                ),
+            )
+            comm_id = int(cursor.lastrowid)
+            if row_task_id:
+                self.add_event(
+                    task_id=row_task_id,
+                    actor=(str(actor or "").strip() or src),
+                    event_type="module_communication_recorded",
+                    stage="communication",
+                    details={
+                        "from_module": src,
+                        "to_module": dst,
+                        "protocol": proto,
+                        "message_type": msg_type,
+                        "status": normalized_status,
+                        "latency_ms": max(0, int(latency_ms or 0)),
+                        "correlation_id": str(correlation_id or "").strip(),
+                    },
+                )
+        return self.get_module_communication(comm_id)
+
+    def list_module_communications(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit or 200), 2000))
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM module_communications
+            WHERE task_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (task_id, limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["details"] = parse_json(item.pop("details_json", ""))
+            out.append(item)
+        out.reverse()
+        return out
+
+    def get_agent_task_report(self, report_id: int) -> dict[str, Any]:
+        row = self.conn.execute("SELECT * FROM agent_task_reports WHERE id = ?", (int(report_id),)).fetchone()
+        if not row:
+            raise TaskCenterError(f"agent_task_report not found: {report_id}")
+        item = dict(row)
+        item["solved"] = bool(item.get("solved"))
+        item["notify_chat"] = bool(item.get("notify_chat"))
+        item["resolved_issues"] = split_text_list(item.get("resolved_issues"))
+        item["resolution_steps"] = split_text_list(item.get("resolution_steps"))
+        item["failed_items"] = split_text_list(item.get("failed_items"))
+        item["details"] = parse_json(item.pop("details_json", ""))
+        return item
+
+    def upsert_agent_task_report(
+        self,
+        *,
+        task_id: str,
+        agent_id: str,
+        planner_id: str,
+        status: str,
+        solved: bool,
+        resolved_issues: list[str] | str | tuple[str, ...] = (),
+        resolution_summary: str = "",
+        resolution_steps: list[str] | str | tuple[str, ...] = (),
+        failed_items: list[str] | str | tuple[str, ...] = (),
+        failure_count: int = 0,
+        duration_ms: int = 0,
+        model_id: str = "",
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cost_estimate: float = 0.0,
+        quality_score: float | None = None,
+        quality_grade: str = "",
+        notify_chat: bool = False,
+        details: dict[str, Any] | None = None,
+        actor: str = "",
+    ) -> dict[str, Any]:
+        if not self._task_exists(task_id):
+            raise TaskCenterError(f"task not found: {task_id}")
+
+        normalized_agent = str(agent_id or "").strip()
+        normalized_planner = str(planner_id or "").strip()
+        normalized_status = str(status or "").strip().lower()
+        if not normalized_agent:
+            raise TaskCenterError("agent_id cannot be empty")
+        if not normalized_planner:
+            raise TaskCenterError("planner_id cannot be empty")
+        if normalized_status not in AGENT_REPORT_STATUSES:
+            raise TaskCenterError(f"invalid agent report status: {normalized_status}")
+
+        normalized_resolved_issues = normalize_text_list(resolved_issues)
+        normalized_resolution_steps = normalize_text_list(resolution_steps)
+        normalized_failed_items = normalize_text_list(failed_items)
+        input_token_count = max(0, int(input_tokens or 0))
+        output_token_count = max(0, int(output_tokens or 0))
+        total_tokens = input_token_count + output_token_count
+        duration = max(0, int(duration_ms or 0))
+        fail_count = max(0, int(failure_count or 0))
+        quality = float(quality_score) if quality_score is not None else None
+        quality_level = str(quality_grade or "").strip().lower()
+        ts = utc_now_iso()
+
+        payload = {
+            "task_id": task_id,
+            "ts": ts,
+            "agent_id": normalized_agent,
+            "planner_id": normalized_planner,
+            "status": normalized_status,
+            "solved": 1 if solved else 0,
+            "resolved_issues": normalized_resolved_issues,
+            "resolution_summary": str(resolution_summary or "").strip(),
+            "resolution_steps": normalized_resolution_steps,
+            "failed_items": normalized_failed_items,
+            "failure_count": fail_count,
+            "duration_ms": duration,
+            "model_id": str(model_id or "").strip(),
+            "input_tokens": input_token_count,
+            "output_tokens": output_token_count,
+            "total_tokens": total_tokens,
+            "cost_estimate": float(cost_estimate or 0.0),
+            "quality_score": quality,
+            "quality_grade": quality_level,
+            "notify_chat": 1 if notify_chat else 0,
+            "details_json": ensure_json(details),
+        }
+
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO agent_task_reports (
+                    task_id, ts, agent_id, planner_id, status, solved,
+                    resolved_issues, resolution_summary, resolution_steps,
+                    failed_items, failure_count, duration_ms, model_id,
+                    input_tokens, output_tokens, total_tokens, cost_estimate,
+                    quality_score, quality_grade, notify_chat, details_json
+                ) VALUES (
+                    :task_id, :ts, :agent_id, :planner_id, :status, :solved,
+                    :resolved_issues, :resolution_summary, :resolution_steps,
+                    :failed_items, :failure_count, :duration_ms, :model_id,
+                    :input_tokens, :output_tokens, :total_tokens, :cost_estimate,
+                    :quality_score, :quality_grade, :notify_chat, :details_json
+                )
+                ON CONFLICT(task_id, agent_id, planner_id) DO UPDATE SET
+                    ts = excluded.ts,
+                    status = excluded.status,
+                    solved = excluded.solved,
+                    resolved_issues = excluded.resolved_issues,
+                    resolution_summary = excluded.resolution_summary,
+                    resolution_steps = excluded.resolution_steps,
+                    failed_items = excluded.failed_items,
+                    failure_count = excluded.failure_count,
+                    duration_ms = excluded.duration_ms,
+                    model_id = excluded.model_id,
+                    input_tokens = excluded.input_tokens,
+                    output_tokens = excluded.output_tokens,
+                    total_tokens = excluded.total_tokens,
+                    cost_estimate = excluded.cost_estimate,
+                    quality_score = excluded.quality_score,
+                    quality_grade = excluded.quality_grade,
+                    notify_chat = excluded.notify_chat,
+                    details_json = excluded.details_json
+                """,
+                payload,
+            )
+
+            report_row = self.conn.execute(
+                """
+                SELECT id
+                FROM agent_task_reports
+                WHERE task_id = ? AND agent_id = ? AND planner_id = ?
+                """,
+                (task_id, normalized_agent, normalized_planner),
+            ).fetchone()
+            if not report_row:
+                raise TaskCenterError("failed to locate upserted agent task report")
+            report_id = int(report_row["id"])
+            self.add_event(
+                task_id=task_id,
+                actor=(str(actor or "").strip() or normalized_agent),
+                event_type="agent_task_reported",
+                stage="report",
+                details={
+                    "report_id": report_id,
+                    "agent_id": normalized_agent,
+                    "planner_id": normalized_planner,
+                    "status": normalized_status,
+                    "solved": bool(solved),
+                    "failure_count": fail_count,
+                    "duration_ms": duration,
+                    "total_tokens": total_tokens,
+                    "model_id": str(model_id or "").strip(),
+                    "quality_score": quality,
+                    "quality_grade": quality_level,
+                    "notify_chat": bool(notify_chat),
+                },
+            )
+        return self.get_agent_task_report(report_id)
+
+    def list_agent_task_reports(
+        self,
+        *,
+        task_id: str = "",
+        planner_id: str = "",
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit or 200), 2000))
+        clauses: list[str] = []
+        params: list[Any] = []
+        if str(task_id or "").strip():
+            clauses.append("task_id = ?")
+            params.append(str(task_id).strip())
+        if str(planner_id or "").strip():
+            clauses.append("planner_id = ?")
+            params.append(str(planner_id).strip())
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT *
+            FROM agent_task_reports
+            {where_sql}
+            ORDER BY ts DESC, id DESC
+            LIMIT ?
+            """,
+            [*params, limit],
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["solved"] = bool(item.get("solved"))
+            item["notify_chat"] = bool(item.get("notify_chat"))
+            item["resolved_issues"] = split_text_list(item.get("resolved_issues"))
+            item["resolution_steps"] = split_text_list(item.get("resolution_steps"))
+            item["failed_items"] = split_text_list(item.get("failed_items"))
             item["details"] = parse_json(item.pop("details_json", ""))
             out.append(item)
         return out
@@ -971,18 +1587,192 @@ class TaskCenter:
         return out
 
     def task_report(self, task_id: str, event_limit: int = 200) -> dict[str, Any]:
+        stage_runs = self.list_stage_runs(task_id)
+        module_logs = self.list_module_logs(task_id, limit=min(max(50, event_limit), 1000))
+        communications = self.list_module_communications(task_id, limit=min(max(50, event_limit), 1000))
+        agent_reports = self.list_agent_task_reports(task_id=task_id, limit=min(max(50, event_limit), 1000))
+        module_failures = [
+            row
+            for row in module_logs
+            if str(row.get("level", "")).lower() in {"error"}
+            or str(row.get("status", "")).lower() in {"failed", "timeout"}
+        ]
+        communication_failures = [
+            row for row in communications if str(row.get("status", "")).lower() in {"failed", "timeout"}
+        ]
+        stage_failures = [row for row in stage_runs if str(row.get("status", "")).lower() in {"failed"}]
         return {
             "task": self.get_task(task_id),
             "token_usage": self.task_token_summary(task_id),
-            "stage_runs": self.list_stage_runs(task_id),
+            "stage_runs": stage_runs,
+            "module_logs": module_logs,
+            "module_communications": communications,
+            "agent_reports": agent_reports,
             "events": self.list_task_events(task_id, limit=event_limit),
+            "diagnostics": {
+                "module_failure_count": len(module_failures),
+                "communication_failure_count": len(communication_failures),
+                "flow_failure_count": len(stage_failures),
+                "module_failures": module_failures[:20],
+                "communication_failures": communication_failures[:20],
+                "flow_failures": stage_failures[:20],
+            },
         }
 
     def unresolved_tasks(self) -> list[dict[str, Any]]:
         rows = self.conn.execute(
-            "SELECT * FROM tasks WHERE status IN ('pending', 'running', 'failed') ORDER BY created_at ASC"
+            """
+            SELECT *
+            FROM tasks
+            WHERE status IN ('pending', 'running', 'failed')
+            ORDER BY
+                CASE
+                    WHEN scheduled_at IS NULL OR TRIM(scheduled_at) = '' OR scheduled_at <= ? THEN 0
+                    ELSE 1
+                END ASC,
+                COALESCE(NULLIF(TRIM(scheduled_at), ''), created_at) ASC,
+                created_at ASC
+            """,
+            (utc_now_iso(),),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def planner_summary(
+        self,
+        *,
+        planner_id: str,
+        since: str = "",
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        normalized_planner = str(planner_id or "").strip()
+        if not normalized_planner:
+            raise TaskCenterError("planner_id cannot be empty")
+
+        normalized_since = str(since or "").strip()
+        if normalized_since:
+            parsed_since = parse_utc_iso(normalized_since)
+            if parsed_since is None:
+                raise TaskCenterError(f"invalid since datetime: {normalized_since}")
+            normalized_since = parsed_since.isoformat()
+
+        normalized_limit = max(1, min(int(limit or 100), 1000))
+        filters = ["planner_id = ?"]
+        params: list[Any] = [normalized_planner]
+        if normalized_since:
+            filters.append("ts >= ?")
+            params.append(normalized_since)
+        where_sql = " AND ".join(filters)
+
+        report_rows = self.conn.execute(
+            f"""
+            SELECT *
+            FROM agent_task_reports
+            WHERE {where_sql}
+            ORDER BY ts DESC, id DESC
+            LIMIT ?
+            """,
+            [*params, normalized_limit],
+        ).fetchall()
+
+        reports: list[dict[str, Any]] = []
+        by_status: dict[str, int] = {}
+        total_tokens = 0
+        total_cost = 0.0
+        total_duration_ms = 0
+        solved_count = 0
+        quality_sum = 0.0
+        quality_cnt = 0
+        unique_tasks: set[str] = set()
+        resolved_tasks: set[str] = set()
+        failed_tasks: set[str] = set()
+
+        for row in report_rows:
+            item = dict(row)
+            status = str(item.get("status", "")).lower()
+            solved = bool(item.get("solved"))
+            by_status[status] = by_status.get(status, 0) + 1
+            if solved:
+                solved_count += 1
+            task_id = str(item.get("task_id", "")).strip()
+            if task_id:
+                unique_tasks.add(task_id)
+                if solved and status in {"passed", "partial"}:
+                    resolved_tasks.add(task_id)
+                if (not solved) or status in {"failed", "escalated"}:
+                    failed_tasks.add(task_id)
+            total_tokens += int(item.get("total_tokens") or 0)
+            total_cost += float(item.get("cost_estimate") or 0.0)
+            total_duration_ms += int(item.get("duration_ms") or 0)
+            q_score = item.get("quality_score")
+            if q_score is not None:
+                try:
+                    quality_sum += float(q_score)
+                    quality_cnt += 1
+                except (TypeError, ValueError):
+                    pass
+
+            item["solved"] = solved
+            item["notify_chat"] = bool(item.get("notify_chat"))
+            item["resolved_issues"] = split_text_list(item.get("resolved_issues"))
+            item["resolution_steps"] = split_text_list(item.get("resolution_steps"))
+            item["failed_items"] = split_text_list(item.get("failed_items"))
+            item["details"] = parse_json(item.pop("details_json", ""))
+            reports.append(item)
+
+        by_agent_rows = self.conn.execute(
+            f"""
+            SELECT
+                agent_id,
+                COUNT(*) AS report_count,
+                SUM(CASE WHEN solved = 1 THEN 1 ELSE 0 END) AS solved_count,
+                SUM(CASE WHEN solved = 0 OR status IN ('failed', 'escalated') THEN 1 ELSE 0 END) AS failed_count,
+                SUM(total_tokens) AS total_tokens,
+                SUM(cost_estimate) AS total_cost,
+                SUM(duration_ms) AS total_duration_ms,
+                AVG(quality_score) AS avg_quality_score
+            FROM agent_task_reports
+            WHERE {where_sql}
+            GROUP BY agent_id
+            ORDER BY report_count DESC, total_tokens DESC
+            """,
+            params,
+        ).fetchall()
+        by_agent = []
+        for row in by_agent_rows:
+            by_agent.append(
+                {
+                    "agent_id": str(row["agent_id"]),
+                    "report_count": int(row["report_count"] or 0),
+                    "solved_count": int(row["solved_count"] or 0),
+                    "failed_count": int(row["failed_count"] or 0),
+                    "total_tokens": int(row["total_tokens"] or 0),
+                    "cost_estimate": round(float(row["total_cost"] or 0.0), 6),
+                    "total_duration_ms": int(row["total_duration_ms"] or 0),
+                    "avg_quality_score": (
+                        round(float(row["avg_quality_score"]), 4) if row["avg_quality_score"] is not None else None
+                    ),
+                }
+            )
+
+        return {
+            "planner_id": normalized_planner,
+            "since": normalized_since,
+            "report_count": len(reports),
+            "task_count": len(unique_tasks),
+            "resolved_task_count": len(resolved_tasks),
+            "failed_task_count": len(failed_tasks),
+            "solved_count": solved_count,
+            "solved_ratio_pct": round((solved_count / len(reports)) * 100.0, 2) if reports else 0.0,
+            "status_counts": by_status,
+            "total_tokens": total_tokens,
+            "total_tokens_m": round(total_tokens / 1_000_000.0, 6),
+            "total_cost_estimate": round(total_cost, 6),
+            "total_duration_ms": total_duration_ms,
+            "avg_duration_ms": round(total_duration_ms / len(reports), 2) if reports else 0.0,
+            "avg_quality_score": round(quality_sum / quality_cnt, 4) if quality_cnt > 0 else None,
+            "by_agent": by_agent,
+            "reports": reports,
+        }
 
     def daily_summary(self, target_date: date) -> dict[str, Any]:
         tr = iso_day_range(target_date)
@@ -1111,6 +1901,100 @@ class TaskCenter:
                 }
             )
 
+        module_log_rows = self.conn.execute(
+            """
+            SELECT
+              module_name,
+              level,
+              status,
+              COUNT(*) AS cnt
+            FROM module_logs
+            WHERE ts >= ? AND ts < ?
+            GROUP BY module_name, level, status
+            ORDER BY cnt DESC, module_name
+            """,
+            (tr.start, tr.end),
+        ).fetchall()
+        module_log_metrics: list[dict[str, Any]] = []
+        module_failure_count = 0
+        for row in module_log_rows:
+            level = str(row["level"])
+            status = str(row["status"])
+            cnt = int(row["cnt"] or 0)
+            if level == "error" or status in {"failed", "timeout"}:
+                module_failure_count += cnt
+            module_log_metrics.append(
+                {
+                    "module_name": str(row["module_name"]),
+                    "level": level,
+                    "status": status,
+                    "count": cnt,
+                }
+            )
+
+        communication_rows = self.conn.execute(
+            """
+            SELECT
+              from_module,
+              to_module,
+              status,
+              COUNT(*) AS cnt
+            FROM module_communications
+            WHERE ts >= ? AND ts < ?
+            GROUP BY from_module, to_module, status
+            ORDER BY cnt DESC, from_module, to_module
+            """,
+            (tr.start, tr.end),
+        ).fetchall()
+        communication_metrics: list[dict[str, Any]] = []
+        communication_failure_count = 0
+        for row in communication_rows:
+            status = str(row["status"])
+            cnt = int(row["cnt"] or 0)
+            if status in {"failed", "timeout"}:
+                communication_failure_count += cnt
+            communication_metrics.append(
+                {
+                    "from_module": str(row["from_module"]),
+                    "to_module": str(row["to_module"]),
+                    "status": status,
+                    "count": cnt,
+                }
+            )
+
+        agent_report_rows = self.conn.execute(
+            """
+            SELECT
+              planner_id,
+              agent_id,
+              status,
+              COUNT(*) AS report_count,
+              SUM(total_tokens) AS total_tokens,
+              SUM(cost_estimate) AS total_cost,
+              AVG(quality_score) AS avg_quality_score
+            FROM agent_task_reports
+            WHERE ts >= ? AND ts < ?
+            GROUP BY planner_id, agent_id, status
+            ORDER BY report_count DESC, planner_id, agent_id
+            """,
+            (tr.start, tr.end),
+        ).fetchall()
+        agent_report_metrics: list[dict[str, Any]] = []
+        for row in agent_report_rows:
+            agent_report_metrics.append(
+                {
+                    "planner_id": str(row["planner_id"]),
+                    "agent_id": str(row["agent_id"]),
+                    "status": str(row["status"]),
+                    "report_count": int(row["report_count"] or 0),
+                    "total_tokens": int(row["total_tokens"] or 0),
+                    "cost_estimate": round(float(row["total_cost"] or 0.0), 6),
+                    "avg_quality_score": (
+                        round(float(row["avg_quality_score"]), 4) if row["avg_quality_score"] is not None else None
+                    ),
+                }
+            )
+
         return {
             "date": target_date.isoformat(),
             "task_counts": by_status,
@@ -1131,6 +2015,15 @@ class TaskCenter:
                 "by_agent": by_agent,
             },
             "stage_metrics": stage_metrics,
+            "module_observability": {
+                "failure_count": module_failure_count,
+                "rows": module_log_metrics,
+            },
+            "communication_observability": {
+                "failure_count": communication_failure_count,
+                "rows": communication_metrics,
+            },
+            "agent_report_metrics": agent_report_metrics,
             "escalated": escalated,
             "escalated_count": escalated_count,
             "failure_over_limit": failure_over_limit,
@@ -1195,6 +2088,51 @@ def format_daily_summary_markdown(summary: dict[str, Any]) -> str:
             )
     else:
         lines.append("- no stage runs")
+    lines.append("")
+
+    module_observability = summary.get("module_observability", {})
+    module_rows = module_observability.get("rows", [])
+    lines.append("## Module Observability")
+    lines.append(f"- module_failure_count: {module_observability.get('failure_count', 0)}")
+    if module_rows:
+        for item in module_rows[:20]:
+            lines.append(
+                "- "
+                + f"{item.get('module_name', '-')}/{item.get('level', '-')}/{item.get('status', '-')}: "
+                + f"count={item.get('count', 0)}"
+            )
+    else:
+        lines.append("- no module logs")
+    lines.append("")
+
+    communication_observability = summary.get("communication_observability", {})
+    communication_rows = communication_observability.get("rows", [])
+    lines.append("## Communication Observability")
+    lines.append(f"- communication_failure_count: {communication_observability.get('failure_count', 0)}")
+    if communication_rows:
+        for item in communication_rows[:20]:
+            lines.append(
+                "- "
+                + f"{item.get('from_module', '-')}>{item.get('to_module', '-')}/{item.get('status', '-')}: "
+                + f"count={item.get('count', 0)}"
+            )
+    else:
+        lines.append("- no communication logs")
+    lines.append("")
+
+    agent_report_metrics = summary.get("agent_report_metrics", [])
+    lines.append("## Agent Reports")
+    if agent_report_metrics:
+        for item in agent_report_metrics[:20]:
+            lines.append(
+                "- "
+                + f"planner={item.get('planner_id', '-')}, agent={item.get('agent_id', '-')}, "
+                + f"status={item.get('status', '-')}, count={item.get('report_count', 0)}, "
+                + f"tokens={item.get('total_tokens', 0)}, cost={item.get('cost_estimate', 0)}, "
+                + f"avg_quality={item.get('avg_quality_score', 'n/a')}"
+            )
+    else:
+        lines.append("- no agent reports")
     lines.append("")
 
     failure_over_limit = summary.get("failure_over_limit", [])

@@ -11,6 +11,10 @@
 - 评分闭环：`raw_score = result_score * 0.70 + stability_score * 0.30`。
 - token/cost 门禁：未记录 token/cost 的任务不能 `complete-task`。
 - 可观测记录：任务、阶段、token、事件全部入库并可导出报告。
+- 模块与通信日志：统一记录模块内部状态与模块间通信状态，支持故障归因（模块/通信/流程）。
+- Agent 回报闭环：agent 完成后回传规划者（完成度、解决项、失败项、token、时长、质量评分、模型）。
+- 异常通知策略：默认仅异常回报触发聊天消息，正常完成仅回传规划者与任务中心。
+- TODO 调度规则：按“无可执行时间 or 到点可执行”优先，再排未来任务。
 - 日报模板：按 agent+全局统计 token/cost，附高风险占比、升级数、失败>=3明细。
 - 身份留痕：所有发送消息脚本与任务事件统一标注 `sender_identity/actor`。
 
@@ -21,6 +25,7 @@
 - `policy-config.json`：硬约束策略配置。
 - `routing-rules.json`：任务路由规则（可在线增量更新）。
 - `token-pricing.json`：本地价格表（单位 `per_1m_tokens`）。
+- `FIELD_DICTIONARY.md`：日志/通信/回报/统计字段标准字典（多 agent 统一接入）。
 - `runtime.env.example`：环境变量模板（避免路径写死）。
 - `bootstrap_multi_project.py`：多项目自适应安装器。
 - `project_index_maintainer.py`：`project-agent` 项目索引维护器（可选 git pull），并维护动态文档知识索引（stack/API endpoints/official docs update checks/direct-fetch cache/search-index）。
@@ -84,6 +89,64 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py record-token \
   --output-tokens 8000
 ```
 
+记录模块运行日志（标准化）：
+
+```bash
+python3 scripts/openclaw-ops/policy/policy_enforcer.py log-module \
+  --task-id wf-20260302-demo \
+  --module-name planner \
+  --phase dispatch \
+  --level info \
+  --status running \
+  --message "planner dispatch task to backend-dev" \
+  --duration-ms 180
+```
+
+记录模块间通信日志（标准化）：
+
+```bash
+python3 scripts/openclaw-ops/policy/policy_enforcer.py log-communication \
+  --task-id wf-20260302-demo \
+  --from-module planner \
+  --to-module backend-dev \
+  --protocol internal-event \
+  --message-type task_handoff \
+  --status acked \
+  --latency-ms 72 \
+  --correlation-id corr-20260302-001
+```
+
+Agent 完成任务后回报规划者（异常才发聊天）：
+
+```bash
+python3 scripts/openclaw-ops/policy/policy_enforcer.py report-agent-result \
+  --task-id wf-20260302-demo \
+  --agent-id backend-dev \
+  --planner-id coordinator \
+  --status passed \
+  --solved true \
+  --resolved-issues "cron timeout,retry policy" \
+  --resolution-summary "统一超时阈值并修复重试参数" \
+  --resolution-steps "定位日志,修改配置,灰度验证" \
+  --failure-count 0 \
+  --duration-ms 248000 \
+  --model kimicode/Doubao-Seed-2.0-Code \
+  --input-tokens 12000 \
+  --output-tokens 8000 \
+  --cost-estimate 0.36 \
+  --quality-score 92 \
+  --quality-grade a
+```
+
+规划者统计（任务完成情况/agent完成质量）：
+
+```bash
+python3 scripts/openclaw-ops/policy/policy_enforcer.py planner-summary \
+  --planner-id coordinator \
+  --since 2026-03-01T00:00:00+00:00 \
+  --limit 200
+```
+
 完成任务（评分闭环）：
 
 ```bash
@@ -111,6 +174,10 @@ TODO 队列按时间 FIFO 拉取（限流）：
 ```bash
 python3 scripts/openclaw-ops/policy/policy_enforcer.py next-todo --limit 3
 ```
+
+规则说明：
+- `scheduled_at` 为空或已到达当前时间的任务优先返回。
+- 未到时间的未来任务仍会排在后面，避免遗漏 backlog。
 
 动态更新风险规则（聊天驱动）：
 
@@ -176,4 +243,3 @@ python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py \
 ## Context Gate
 
 See CONTEXT_GATE.md for request_source split, AI context completeness gate, and clarification workflow.
-

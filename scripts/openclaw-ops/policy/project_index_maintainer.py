@@ -8,11 +8,13 @@ import hashlib
 import json
 import os
 import re
+import sqlite3
 import subprocess
+import sys
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -96,6 +98,77 @@ def run_cmd(cmd: list[str], cwd: Path, timeout: int = 30) -> tuple[int, str, str
         return 124, "", "timeout"
     except Exception as exc:  # pragma: no cover
         return 127, "", str(exc)
+
+
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            data = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            return data
+    try:
+        data = json.loads(raw)
+    except Exception:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def policy_enforcer_path() -> Path:
+    custom = str(os.environ.get("POLICY_ENFORCER_PY", "")).strip()
+    if custom:
+        return Path(custom).expanduser()
+    return Path(__file__).resolve().parent / "policy_enforcer.py"
+
+
+def task_exists_in_db(db_path: Path, task_id: str) -> bool:
+    normalized = str(task_id or "").strip()
+    if not normalized:
+        return False
+    if not db_path.exists():
+        return False
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT 1 AS ok FROM tasks WHERE task_id = ?", (normalized,)).fetchone()
+        conn.close()
+        return bool(row)
+    except Exception:
+        return False
+
+
+def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
+    script = policy_enforcer_path()
+    if not script.exists():
+        return False, {}, f"policy_enforcer_missing:{script}"
+    cmd = [sys.executable, str(script), "--db", str(db_path), *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        return False, payload or {}, f"policy_enforcer_failed:{err_text}"
+    if not isinstance(payload, dict):
+        return False, {}, "policy_enforcer_invalid_json_output"
+    if not bool(payload.get("ok", False)):
+        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+    return True, payload, ""
 
 
 def should_ignore(path: Path) -> bool:
@@ -761,6 +834,7 @@ def write_task_event(task_db: str, task_id: str, actor: str, report: dict[str, A
 
 
 def main() -> int:
+    run_started_at = datetime.now(tz=UTC)
     parser = argparse.ArgumentParser(description="Maintain project index docs for multi-project workflows")
     parser.add_argument("--registry", required=True, help="registry json path")
     parser.add_argument("--git-pull", action="store_true", help="perform git pull on each project if git repo")
@@ -810,14 +884,216 @@ def main() -> int:
         "changed_count": len([x for x in results if x.changed]),
         "projects": [x.to_dict() for x in results],
     }
+    run_duration_ms = max(0, int((datetime.now(tz=UTC) - run_started_at).total_seconds() * 1000))
+    report["run_duration_ms"] = run_duration_ms
+
+    policy_observability: dict[str, Any] = {"enabled": False, "db": "", "task_bound": False, "errors": []}
+    if args.task_db:
+        task_db_path = Path(args.task_db).expanduser()
+        policy_observability["enabled"] = task_db_path.exists()
+        policy_observability["db"] = str(task_db_path)
+        bound_task_id = ""
+        if str(args.task_id or "").strip() and task_exists_in_db(task_db_path, str(args.task_id or "").strip()):
+            bound_task_id = str(args.task_id or "").strip()
+            policy_observability["task_bound"] = True
+        elif str(args.task_id or "").strip():
+            policy_observability["errors"].append(f"task_not_found_for_report:{str(args.task_id or '').strip()}")
+
+        if task_db_path.exists():
+            err_items: list[str] = []
+            for item in report.get("projects", []):
+                if not isinstance(item, dict):
+                    continue
+                for err in item.get("errors", []) if isinstance(item.get("errors"), list) else []:
+                    text = str(err).strip()
+                    if text:
+                        err_items.append(text)
+
+            module_args = [
+                "log-module",
+                "--module-name",
+                "project-agent/project-index-maintainer",
+                "--phase",
+                "project-index",
+                "--level",
+                ("error" if not report.get("ok", False) else "info"),
+                "--status",
+                ("failed" if not report.get("ok", False) else "passed"),
+                "--message",
+                (
+                    "project index maintain completed: "
+                    + f"projects={report.get('project_count', 0)} changed={report.get('changed_count', 0)}"
+                ),
+                "--duration-ms",
+                str(run_duration_ms),
+                "--details-json",
+                json.dumps(
+                    {
+                        "registry": str(registry),
+                        "project_count": report.get("project_count", 0),
+                        "changed_count": report.get("changed_count", 0),
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                str(args.actor or "project-agent"),
+            ]
+            if bound_task_id:
+                module_args.extend(["--task-id", bound_task_id])
+            ok_module, _payload_module, err_module = invoke_policy_enforcer(task_db_path, module_args, timeout=30)
+            policy_observability["log_module_ok"] = ok_module
+            if not ok_module and err_module:
+                policy_observability["errors"].append(err_module)
+
+            comm_args = [
+                "log-communication",
+                "--from-module",
+                "project-agent/project-index-maintainer",
+                "--to-module",
+                "coordinator",
+                "--protocol",
+                "policy-enforcer",
+                "--message-type",
+                "project_context_update",
+                "--status",
+                ("acked" if report.get("ok", False) else "failed"),
+                "--latency-ms",
+                str(run_duration_ms),
+                "--correlation-id",
+                str(report.get("generated_at", "")),
+                "--payload-ref",
+                str(args.output or ""),
+                "--details-json",
+                json.dumps(
+                    {
+                        "project_count": report.get("project_count", 0),
+                        "changed_count": report.get("changed_count", 0),
+                        "ok": bool(report.get("ok", False)),
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                str(args.actor or "project-agent"),
+            ]
+            if bound_task_id:
+                comm_args.extend(["--task-id", bound_task_id])
+            ok_comm, _payload_comm, err_comm = invoke_policy_enforcer(task_db_path, comm_args, timeout=30)
+            policy_observability["log_communication_ok"] = ok_comm
+            if not ok_comm and err_comm:
+                policy_observability["errors"].append(err_comm)
+
+            if bound_task_id:
+                report_args = [
+                    "report-agent-result",
+                    "--task-id",
+                    bound_task_id,
+                    "--agent-id",
+                    "project-agent",
+                    "--planner-id",
+                    "coordinator",
+                    "--status",
+                    ("passed" if report.get("ok", False) else "failed"),
+                    "--solved",
+                    ("true" if report.get("ok", False) else "false"),
+                    "--resolved-issues",
+                    (
+                        "project_index_updated"
+                        if int(report.get("changed_count", 0) or 0) > 0
+                        else "index_checked_no_change"
+                    ),
+                    "--resolution-summary",
+                    (
+                        "project index refreshed for coordinator planning"
+                        if report.get("ok", False)
+                        else "project index maintenance failed"
+                    ),
+                    "--resolution-steps",
+                    "scan,build_index,write_outputs",
+                    "--failed-items",
+                    ",".join(err_items[:20]),
+                    "--failure-count",
+                    str(len(err_items)),
+                    "--duration-ms",
+                    str(run_duration_ms),
+                    "--input-tokens",
+                    "0",
+                    "--output-tokens",
+                    "0",
+                    "--cost-estimate",
+                    "0",
+                    "--quality-score",
+                    ("96" if report.get("ok", False) else "45"),
+                    "--quality-grade",
+                    ("a" if report.get("ok", False) else "d"),
+                    "--notify-chat",
+                    ("false" if report.get("ok", False) else "true"),
+                    "--details-json",
+                    json.dumps(
+                        {
+                            "project_count": report.get("project_count", 0),
+                            "changed_count": report.get("changed_count", 0),
+                            "registry": str(registry),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    "--actor",
+                    str(args.actor or "project-agent"),
+                ]
+                ok_report, payload_report, err_report = invoke_policy_enforcer(task_db_path, report_args, timeout=35)
+                policy_observability["report_agent_result_ok"] = ok_report
+                if ok_report and isinstance(payload_report, dict):
+                    result_payload = payload_report.get("result")
+                    if isinstance(result_payload, dict):
+                        planner_payload = result_payload.get("planner_payload")
+                        if isinstance(planner_payload, dict):
+                            policy_observability["agent_report"] = {
+                                "report_status": planner_payload.get("report_status"),
+                                "notify_chat": planner_payload.get("notify_chat"),
+                                "failure_count": planner_payload.get("failure_count"),
+                            }
+                if not ok_report and err_report:
+                    policy_observability["errors"].append(err_report)
+
+            since_24h = (datetime.now(tz=UTC) - timedelta(hours=24)).replace(microsecond=0).isoformat()
+            ok_summary, payload_summary, err_summary = invoke_policy_enforcer(
+                task_db_path,
+                [
+                    "planner-summary",
+                    "--planner-id",
+                    "coordinator",
+                    "--since",
+                    since_24h,
+                    "--limit",
+                    "60",
+                ],
+                timeout=30,
+            )
+            policy_observability["planner_summary_ok"] = ok_summary
+            if ok_summary and isinstance(payload_summary, dict):
+                summary = payload_summary.get("summary")
+                if isinstance(summary, dict):
+                    report["planner_summary"] = {
+                        "planner_id": summary.get("planner_id"),
+                        "report_count": summary.get("report_count", 0),
+                        "task_count": summary.get("task_count", 0),
+                        "resolved_task_count": summary.get("resolved_task_count", 0),
+                        "failed_task_count": summary.get("failed_task_count", 0),
+                        "solved_ratio_pct": summary.get("solved_ratio_pct", 0.0),
+                        "total_tokens": summary.get("total_tokens", 0),
+                        "total_cost_estimate": summary.get("total_cost_estimate", 0.0),
+                    }
+            if not ok_summary and err_summary:
+                policy_observability["errors"].append(err_summary)
+
+    report["policy_observability"] = policy_observability
+
+    if args.task_db and args.task_id:
+        write_task_event(task_db=args.task_db, task_id=args.task_id, actor=args.actor, report=report)
 
     if args.output:
         out = Path(args.output).expanduser()
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-    if args.task_db and args.task_id:
-        write_task_event(task_db=args.task_db, task_id=args.task_id, actor=args.actor, report=report)
 
     if args.emit_json:
         print(json.dumps(report, ensure_ascii=False))

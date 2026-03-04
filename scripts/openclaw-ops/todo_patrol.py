@@ -589,6 +589,7 @@ def format_dispatch_message(
     db_path: Path,
     state_file: Path,
     dispatch_errors: list[str],
+    planner_summary: dict[str, Any] | None = None,
 ) -> str:
     if not dispatched and skipped_count == 0 and not dispatch_errors:
         return "NO_REPLY"
@@ -666,6 +667,19 @@ def format_dispatch_message(
     if skipped_count > 0:
         lines.append(f"skipped_reason: max-dispatch reached, remaining={skipped_count}")
 
+    summary = planner_summary if isinstance(planner_summary, dict) else {}
+    if summary:
+        lines.append("")
+        lines.append("planner_summary_24h:")
+        lines.append(f"- planner_id: {summary.get('planner_id', '-')}")
+        lines.append(f"- report_count: {summary.get('report_count', 0)}")
+        lines.append(f"- task_count: {summary.get('task_count', 0)}")
+        lines.append(f"- resolved_task_count: {summary.get('resolved_task_count', 0)}")
+        lines.append(f"- failed_task_count: {summary.get('failed_task_count', 0)}")
+        lines.append(f"- solved_ratio_pct: {summary.get('solved_ratio_pct', 0.0)}")
+        lines.append(f"- total_tokens: {summary.get('total_tokens', 0)}")
+        lines.append(f"- total_cost_estimate: {summary.get('total_cost_estimate', 0.0)}")
+
     return "\n".join(lines).strip()
 
 
@@ -705,6 +719,95 @@ def build_policy_assign_args(task_id: str, assignee: str, actor: str) -> SimpleN
         assignee=to_text(assignee),
         reason="todo_patrol_route",
         actor=to_text(actor) or "coordinator",
+    )
+
+
+def build_policy_log_module_args(
+    *,
+    task_id: str,
+    actor: str,
+    phase: str,
+    level: str,
+    status: str,
+    message: str,
+    duration_ms: int,
+    details: dict[str, Any] | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        task_id=to_text(task_id),
+        module_name="coordinator/todo-patrol",
+        phase=to_text(phase) or "dispatch",
+        level=to_text(level) or "info",
+        status=to_text(status) or "running",
+        message=to_text(message),
+        duration_ms=max(0, int(duration_ms or 0)),
+        details_json=json.dumps(details or {}, ensure_ascii=False),
+        actor=to_text(actor) or "coordinator",
+    )
+
+
+def build_policy_log_communication_args(
+    *,
+    task_id: str,
+    actor: str,
+    to_module: str,
+    status: str,
+    correlation_id: str,
+    payload_ref: str,
+    details: dict[str, Any] | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        task_id=to_text(task_id),
+        from_module="coordinator/todo-patrol",
+        to_module=to_text(to_module) or "coordinator",
+        protocol="policy-enforcer",
+        message_type="task_dispatch",
+        status=to_text(status) or "sent",
+        latency_ms=0,
+        correlation_id=to_text(correlation_id),
+        payload_ref=to_text(payload_ref),
+        details_json=json.dumps(details or {}, ensure_ascii=False),
+        actor=to_text(actor) or "coordinator",
+    )
+
+
+def build_policy_report_result_args(
+    *,
+    task_id: str,
+    actor: str,
+    assignee: str,
+    context_completeness: float,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        task_id=to_text(task_id),
+        agent_id="coordinator",
+        planner_id="coordinator",
+        status="partial",
+        solved="false",
+        resolved_issues="task_dispatched",
+        resolution_summary=f"task dispatched to {to_text(assignee) or 'unassigned'}",
+        resolution_steps="route,create_task,assign_task",
+        failed_items="",
+        failure_count="0",
+        duration_ms="0",
+        model="",
+        input_tokens="0",
+        output_tokens="0",
+        cost_estimate="0",
+        quality_score=str(round(float(context_completeness or 0.0), 2)),
+        quality_grade="b",
+        notify_chat="false",
+        details_json=json.dumps({"dispatch_stage": True}, ensure_ascii=False),
+        actor=to_text(actor) or "coordinator",
+    )
+
+
+def build_policy_planner_summary_args(actor: str) -> SimpleNamespace:
+    since = (datetime.now(tz=timezone.utc) - timedelta(hours=24)).replace(microsecond=0).isoformat()
+    return SimpleNamespace(
+        planner_id=to_text(actor) or "coordinator",
+        since=since,
+        limit="60",
     )
 
 
@@ -797,6 +900,8 @@ def main() -> int:
     lines = todo_content.splitlines()
     dispatched: list[dict[str, Any]] = []
     dispatch_errors: list[str] = []
+    planner_summary_snapshot: dict[str, Any] = {}
+    run_started_at = now_tz()
 
     def make_task_row(payload: dict[str, Any]) -> dict[str, Any]:
         return {
@@ -869,6 +974,25 @@ def main() -> int:
             )
             cmd_init(paths=runtime_paths, force=False)
             enforcer = PolicyEnforcer(runtime_paths)
+            try:
+                enforcer.log_module(
+                    build_policy_log_module_args(
+                        task_id="",
+                        actor=str(args.actor),
+                        phase="dispatch",
+                        level="info",
+                        status="started",
+                        message=f"todo patrol started candidates={len(dispatch_candidates)}",
+                        duration_ms=0,
+                        details={
+                            "task": str(args.task),
+                            "todo_file": str(todo_file),
+                            "max_dispatch": int(max_dispatch),
+                        },
+                    )
+                )
+            except Exception as exc:
+                dispatch_errors.append(f"log_module_start_failed:{exc}")
 
             for item in dispatch_candidates:
                 request_source = infer_request_source(item, routing, args.default_request_source)
@@ -934,6 +1058,36 @@ def main() -> int:
                         "information_flow": payload.get("context_payload", {}).get("information_flow", {}),
                     },
                 )
+                try:
+                    enforcer.log_communication(
+                        build_policy_log_communication_args(
+                            task_id=task_id,
+                            actor=str(args.actor),
+                            to_module=to_text(task_row.get("assignee")) or "coordinator",
+                            status="sent",
+                            correlation_id=item.item_id,
+                            payload_ref=str(todo_file),
+                            details={
+                                "route_assignee": to_text(task_row.get("assignee")) or payload.get("assignee"),
+                                "priority": payload.get("priority"),
+                                "risk_level": payload.get("risk_level"),
+                                "request_source": request_source,
+                            },
+                        )
+                    )
+                except Exception as exc:
+                    dispatch_errors.append(f"task={task_id} log_communication_failed={exc}")
+                try:
+                    enforcer.report_agent_result(
+                        build_policy_report_result_args(
+                            task_id=task_id,
+                            actor=str(args.actor),
+                            assignee=to_text(task_row.get("assignee")) or payload.get("assignee", ""),
+                            context_completeness=float(task_row.get("context_completeness", 0.0) or 0.0),
+                        )
+                    )
+                except Exception as exc:
+                    dispatch_errors.append(f"task={task_id} report_agent_result_failed={exc}")
 
                 item_state = state["items"].setdefault(item.item_id, {})
                 item_state.update(
@@ -966,6 +1120,45 @@ def main() -> int:
             dispatch_errors.append(str(exc))
         finally:
             if enforcer is not None:
+                run_duration_ms = max(0, int((now_tz() - run_started_at).total_seconds() * 1000))
+                try:
+                    summary_raw = enforcer.planner_summary(build_policy_planner_summary_args(str(args.actor)))
+                    if isinstance(summary_raw, dict):
+                        planner_summary_snapshot = {
+                            "planner_id": summary_raw.get("planner_id"),
+                            "report_count": summary_raw.get("report_count", 0),
+                            "task_count": summary_raw.get("task_count", 0),
+                            "resolved_task_count": summary_raw.get("resolved_task_count", 0),
+                            "failed_task_count": summary_raw.get("failed_task_count", 0),
+                            "solved_ratio_pct": summary_raw.get("solved_ratio_pct", 0.0),
+                            "total_tokens": summary_raw.get("total_tokens", 0),
+                            "total_cost_estimate": summary_raw.get("total_cost_estimate", 0.0),
+                        }
+                except Exception as exc:
+                    dispatch_errors.append(f"planner_summary_failed:{exc}")
+                try:
+                    enforcer.log_module(
+                        build_policy_log_module_args(
+                            task_id="",
+                            actor=str(args.actor),
+                            phase="dispatch",
+                            level=("error" if dispatch_errors else "info"),
+                            status=("failed" if dispatch_errors else "passed"),
+                            message=(
+                                "todo patrol finished: "
+                                + f"dispatched={len(dispatched)} skipped={skipped_count} errors={len(dispatch_errors)}"
+                            ),
+                            duration_ms=run_duration_ms,
+                            details={
+                                "task": str(args.task),
+                                "dispatched_count": len(dispatched),
+                                "skipped_count": skipped_count,
+                                "ops_incident_skipped_count": ops_incident_skipped_count,
+                            },
+                        )
+                    )
+                except Exception as exc:
+                    dispatch_errors.append(f"log_module_finish_failed:{exc}")
                 enforcer.close()
 
     if dispatched and not args.dry_run:
@@ -984,6 +1177,7 @@ def main() -> int:
         db_path=task_db,
         state_file=state_file,
         dispatch_errors=dispatch_errors,
+        planner_summary=planner_summary_snapshot,
     )
     print(msg)
     return 0
@@ -991,9 +1185,6 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
 
 
 

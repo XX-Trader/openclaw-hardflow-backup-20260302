@@ -1,0 +1,95 @@
+{
+  "run_id": "a1839235aaf5",
+  "sender_identity": "ops-agent/ops-cron-runner:incremental",
+  "task_id": "todo-4a1a29fedcbf3639",
+  "mode": "incremental",
+  "time": "2026-03-04T08:54:28+08:00",
+  "notify": true,
+  "normal_log_mode": "silent",
+  "risk_reasons": [
+    "system_anomaly=1",
+    "token_monitor_error=1"
+  ],
+  "change_reasons": [],
+  "major_reasons": [
+    "system_anomaly=1",
+    "token_monitor_error=1"
+  ],
+  "job_name": "ops_incremental",
+  "risk_level": "high",
+  "priority": "high",
+  "run_duration_ms": 268,
+  "risk_signature": "d2a2c683c6a3da00dd4dcd327c83feafd7d0d367",
+  "risk_notify_suppressed": false,
+  "risk_notify_suppressed_reason": "",
+  "full_mode": false,
+  "fallback_used": false,
+  "fallback_reasons": [],
+  "logs_scanned": 0,
+  "bytes_read": 0,
+  "findings": 0,
+  "scan_errors": [],
+  "issue_stats": {
+    "new": 0,
+    "new_high": 0,
+    "reopened": 0,
+    "reopened_high": 0,
+    "resolved": 0,
+    "open_total": 0,
+    "open_high_total": 0
+  },
+  "service_delta": {
+    "added": [],
+    "removed": [],
+    "changed": [],
+    "service_error": ""
+  },
+  "metrics": {
+    "disk": [],
+    "cpu_percent": 52.9,
+    "memory_percent": 96.3,
+    "anomalies": [
+      "memory>90.0%:96.30%"
+    ]
+  },
+  "workflow_health": {
+    "enabled": true,
+    "jobs_file": "C:\\Users\\superma\\.openclaw\\cron\\jobs.json",
+    "jobs_total": 2,
+    "jobs_enabled": 0,
+    "failed_count": 0,
+    "stale_failed_count": 0,
+    "stale_error_minutes": 30,
+    "new_failed_count": 0,
+    "recovered_count": 0,
+    "failed_jobs": [],
+    "errors": []
+  },
+  "token_usage": {
+    "enabled": true,
+    "db_path": "C:\\Users\\superma\\.openclaw\\ops\\task-center\\task_center.db",
+    "source": "task_center_db",
+    "window_hours": 24,
+    "rows": 0,
+    "total_tokens": 0,
+    "total_tokens_m": 0.0,
+    "cost_estimate": 0.0,
+    "by_agent": [],
+    "errors": [
+      "cron_runs_dir_missing:C:\\Users\\superma\\.openclaw\\cron\\runs"
+    ],
+    "cron_runs_dir": "C:\\Users\\superma\\.openclaw\\cron\\runs"
+  },
+  "handoff_summary": {
+    "enabled": false,
+    "mode": "todo_only",
+    "todo_file": "",
+    "high_risk_direct_human": false,
+    "todo_new": 0,
+    "todo_items": [],
+    "active_high_risk_items": 0,
+    "errors": []
+  },
+  "top_open_issues": [],
+  "cost_estimate": 0.0
+}

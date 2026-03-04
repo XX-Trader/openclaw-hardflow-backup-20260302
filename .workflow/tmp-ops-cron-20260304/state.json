@@ -1,0 +1,30 @@
+{
+  "schema_version": "2026-03-02",
+  "updated_at": "2026-03-04T08:56:25+08:00",
+  "runs": {
+    "incremental": 3,
+    "full": 0,
+    "daily": 0
+  },
+  "checkpoints": {},
+  "issues": {},
+  "services": {},
+  "known_logs": [],
+  "last_full_scan_at": "",
+  "last_run_record": ".workflow\\tmp-ops-cron-20260304\\runs\\20260304_085625_incremental_88441ee2f8e0.json",
+  "workflow_job_status": {
+    "5797cd5b-5539-4e95-8d58-dc65a4633ec5": "",
+    "1a45d6d8-8dde-4fc7-b25e-45c3f57ec31e": ""
+  },
+  "workflow_monitor_meta": {
+    "updated_at": "2026-03-04T08:56:25+08:00",
+    "jobs_file": "C:\\Users\\superma\\.openclaw\\cron\\jobs.json",
+    "jobs_total": 2,
+    "jobs_enabled": 0,
+    "failed_count": 0
+  },
+  "notify_state": {
+    "risk_signature_incremental": "d2a2c683c6a3da00dd4dcd327c83feafd7d0d367",
+    "risk_notified_at_incremental": "2026-03-04T08:54:28+08:00"
+  }
+}
