@@ -328,6 +328,43 @@ async function main() {
   if (!injected) {
     throw new Error("hardflow-experience-recall did not inject bootstrap memory");
   }
+  const runtimeRecallFile = path.join(
+    testWorkspace,
+    ".workflow",
+    "experience",
+    "runtime",
+    "selftest-main.json",
+  );
+  await mustExist(runtimeRecallFile);
+  const runtimeRecallRaw = await readFile(runtimeRecallFile, "utf8");
+  const runtimeRecall = JSON.parse(runtimeRecallRaw);
+  if (!runtimeRecall?.queryKey || !Array.isArray(runtimeRecall?.cardIds) || runtimeRecall.cardIds.length === 0) {
+    throw new Error("hardflow-experience-recall did not persist runtime queryKey/cardIds");
+  }
+  const linkGraphFile = path.join(
+    testWorkspace,
+    ".workflow",
+    "experience",
+    "linkgraph",
+    "events.jsonl",
+  );
+  await mustExist(linkGraphFile);
+  const linkGraphAfterRecallRaw = await readFile(linkGraphFile, "utf8");
+  const linkGraphAfterRecallRows = linkGraphAfterRecallRaw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const hasAttemptEvent = linkGraphAfterRecallRows.some((line) => {
+    try {
+      const row = JSON.parse(line);
+      return row?.type === "attempt";
+    } catch {
+      return false;
+    }
+  });
+  if (!hasAttemptEvent) {
+    throw new Error("hardflow-experience-recall did not append attempt linkgraph event");
+  }
 
   const evolveEvent = {
     type: "command",
@@ -352,6 +389,22 @@ async function main() {
   );
   if (!hasSuccess) {
     throw new Error("hardflow-experience-evolve did not update successCount");
+  }
+  const linkGraphAfterEvolveRaw = await readFile(linkGraphFile, "utf8");
+  const linkGraphAfterEvolveRows = linkGraphAfterEvolveRaw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const hasOutcomeEvent = linkGraphAfterEvolveRows.some((line) => {
+    try {
+      const row = JSON.parse(line);
+      return row?.type === "outcome";
+    } catch {
+      return false;
+    }
+  });
+  if (!hasOutcomeEvent) {
+    throw new Error("hardflow-experience-evolve did not append outcome linkgraph event");
   }
 
   const maintainScript = fileURLToPath(new URL("./experience-maintain.mjs", import.meta.url));

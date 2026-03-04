@@ -1,9 +1,12 @@
 import {
+  appendLinkGraphEvent,
+  buildSignalKeyFromQuery,
   ensureStatsRecord,
   loadStats,
   rankCards,
   readPriorityBucketCards,
   readCards,
+  readLinkGraphBoosts,
   readQueryHint,
   resolveAgentId,
   resolveHookOptions,
@@ -52,11 +55,18 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
     }
     const stats = await loadStats(workspaceDir);
     const query = await readQueryHint(workspaceDir);
+    const queryKey = buildSignalKeyFromQuery(query);
+    const graphBoosts = await readLinkGraphBoosts({
+      workspaceDir,
+      queryKey,
+      agentId,
+    });
     const selected = rankCards({
       cards,
       stats,
       query,
       topK,
+      graphBoosts,
     });
     const selectedIds = selected.map((c) => c.id);
     if (selectedIds.length === 0) {
@@ -74,6 +84,20 @@ export default async function hardflowExperienceRecall(event: any): Promise<void
       sessionKey: event?.sessionKey || "unknown",
       cardIds: selectedIds,
       query,
+      queryKey,
+      agentId,
+    });
+    await appendLinkGraphEvent({
+      workspaceDir,
+      event: {
+        type: "attempt",
+        ts: nowIso(),
+        sessionKey: event?.sessionKey || "unknown",
+        agentId,
+        queryKey,
+        query,
+        cardIds: selectedIds,
+      },
     });
 
     for (const cardId of selectedIds) {

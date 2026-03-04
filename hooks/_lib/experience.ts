@@ -10,6 +10,8 @@ const STATS_REL = path.join(EXPERIENCE_ROOT_REL, "stats.json");
 const RECALL_DOC_REL = path.join(EXPERIENCE_ROOT_REL, "EXPERIENCE_RECALL.md");
 const MAINTENANCE_REL = path.join(EXPERIENCE_ROOT_REL, "maintenance");
 const PRIORITY_BUCKETS_REL = path.join(MAINTENANCE_REL, "priority-buckets.json");
+const LINKGRAPH_REL = path.join(EXPERIENCE_ROOT_REL, "linkgraph");
+const LINKGRAPH_EVENTS_REL = path.join(LINKGRAPH_REL, "events.jsonl");
 
 export type MemoryTier = "reflex" | "long_term" | "recent" | "archive";
 
@@ -76,6 +78,44 @@ type PriorityBucketsFile = {
   global?: Partial<Record<MemoryTier, ExperienceCard[]>>;
   byAgent?: Record<string, Partial<Record<MemoryTier, ExperienceCard[]>>>;
 };
+
+export type RuntimeRecallPayload = {
+  sessionKey: string;
+  cardIds: string[];
+  query: string;
+  queryKey: string;
+  recalledAt: string;
+  agentId?: string;
+};
+
+type LinkGraphEvent = {
+  type: "attempt" | "outcome";
+  ts: string;
+  sessionKey: string;
+  agentId: string;
+  queryKey: string;
+  query: string;
+  cardIds: string[];
+  outcome?: "success" | "failure" | "unknown";
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function dedupeStringArray(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of values) {
+    const value = String(raw || "").trim();
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
 
 export function safeSessionKey(sessionKey: string): string {
   const normalized = (sessionKey || "unknown").replace(/[^a-zA-Z0-9._-]+/g, "_");
@@ -523,6 +563,16 @@ function overlapScore(a: string, b: string): number {
   return hits / Math.max(ta.size, tb.size);
 }
 
+export function buildSignalKeyFromQuery(query: string): string {
+  const normalized = shortText(String(query || ""), 1200);
+  const tokens = Array.from(new Set(tokenize(normalized))).sort();
+  if (tokens.length === 0) {
+    return "empty";
+  }
+  const payload = tokens.slice(0, 24).join("|");
+  return createHash("sha1").update(payload).digest("hex").slice(0, 20);
+}
+
 export async function readQueryHint(workspaceDir: string): Promise<string> {
   const candidates = ["todo.md", "done.md"];
   const chunks: string[] = [];
@@ -545,8 +595,9 @@ export function rankCards(params: {
   stats: StatsFile;
   query: string;
   topK: number;
+  graphBoosts?: Record<string, number>;
 }): ExperienceCard[] {
-  const { cards, stats, query, topK } = params;
+  const { cards, stats, query, topK, graphBoosts } = params;
   const now = Date.now();
   const scored = cards
     .map((card) => {
@@ -581,6 +632,7 @@ export function rankCards(params: {
               : 0.5,
         ),
       );
+      const graphBoost = clamp(Number(graphBoosts?.[card.id] || 0), -1, 1);
       const score =
         relevance * 0.5 +
         confidence * 0.2 +
@@ -588,6 +640,7 @@ export function rankCards(params: {
         quality * 0.2 +
         lifecycleBias(lifecycle) +
         memoryTierBias(tier) +
+        graphBoost * 0.25 +
         Math.max(
           0,
           Math.min(
@@ -736,6 +789,137 @@ export async function readPriorityBucketCards(params: {
   return picked;
 }
 
+function normalizeLinkGraphEvent(raw: unknown): LinkGraphEvent | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const item = raw as Record<string, unknown>;
+  const type = item.type === "attempt" || item.type === "outcome" ? item.type : null;
+  if (!type) {
+    return null;
+  }
+  const query = shortText(String(item.query || ""), 800);
+  const queryKeyRaw = String(item.queryKey || "").trim();
+  const queryKey = queryKeyRaw || buildSignalKeyFromQuery(query);
+  const cardIds = dedupeStringArray(
+    Array.isArray(item.cardIds)
+      ? item.cardIds.map((x) => String(x || ""))
+      : [],
+  );
+  if (cardIds.length === 0) {
+    return null;
+  }
+  const agentId = String(item.agentId || "unknown").trim() || "unknown";
+  const sessionKey = String(item.sessionKey || "unknown").trim() || "unknown";
+  const ts = String(item.ts || "").trim() || nowIso();
+  const outcome =
+    item.outcome === "success" || item.outcome === "failure" || item.outcome === "unknown"
+      ? item.outcome
+      : undefined;
+  return {
+    type,
+    ts,
+    sessionKey,
+    agentId,
+    queryKey,
+    query,
+    cardIds,
+    outcome,
+  };
+}
+
+function recencyWeightByTs(ts: string, nowMs: number): number {
+  const tsMs = Number(new Date(ts).getTime());
+  if (!Number.isFinite(tsMs) || tsMs <= 0) {
+    return 0.35;
+  }
+  const ageDays = Math.max(0, (nowMs - tsMs) / (1000 * 3600 * 24));
+  return Math.exp(-ageDays / 30);
+}
+
+export async function appendLinkGraphEvent(params: {
+  workspaceDir: string;
+  event: LinkGraphEvent;
+}): Promise<void> {
+  const filePath = path.join(params.workspaceDir, LINKGRAPH_EVENTS_REL);
+  const normalized = normalizeLinkGraphEvent(params.event);
+  if (!normalized) {
+    return;
+  }
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await appendFile(filePath, `${JSON.stringify(normalized)}\n`, "utf8");
+}
+
+export async function readLinkGraphBoosts(params: {
+  workspaceDir: string;
+  queryKey: string;
+  agentId?: string;
+  maxEvents?: number;
+}): Promise<Record<string, number>> {
+  const filePath = path.join(params.workspaceDir, LINKGRAPH_EVENTS_REL);
+  if (!(await existsFile(filePath))) {
+    return {};
+  }
+  const queryKey = String(params.queryKey || "").trim();
+  if (!queryKey) {
+    return {};
+  }
+  const raw = await readFile(filePath, "utf8");
+  const rows = raw.split("\n").filter(Boolean);
+  if (rows.length === 0) {
+    return {};
+  }
+
+  const maxEvents =
+    typeof params.maxEvents === "number" && params.maxEvents > 0 ? params.maxEvents : 2000;
+  const start = Math.max(0, rows.length - maxEvents);
+  const normalizedAgent = String(params.agentId || "").trim();
+  const nowMs = Date.now();
+  const boosts = new Map<string, number>();
+
+  const addBoost = (cardId: string, delta: number): void => {
+    const current = boosts.get(cardId) || 0;
+    boosts.set(cardId, clamp(current + delta, -1, 1));
+  };
+
+  for (let idx = start; idx < rows.length; idx += 1) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(rows[idx]);
+    } catch {
+      continue;
+    }
+    const event = normalizeLinkGraphEvent(parsed);
+    if (!event || event.queryKey !== queryKey) {
+      continue;
+    }
+
+    const sameAgent = normalizedAgent && event.agentId === normalizedAgent;
+    const weight = recencyWeightByTs(event.ts, nowMs);
+    let base = 0;
+    if (event.type === "attempt") {
+      base = sameAgent ? 0.05 : 0.02;
+    } else if (event.outcome === "success") {
+      base = sameAgent ? 0.5 : 0.28;
+    } else if (event.outcome === "failure") {
+      base = sameAgent ? -0.55 : -0.32;
+    } else {
+      base = sameAgent ? 0.02 : 0.01;
+    }
+
+    const delta = clamp(base * weight, -0.8, 0.8);
+    for (const cardId of event.cardIds) {
+      addBoost(cardId, delta);
+    }
+  }
+
+  const out: Record<string, number> = {};
+  for (const [cardId, value] of boosts.entries()) {
+    out[cardId] = clamp(value, -1, 1);
+  }
+  return out;
+}
+
 export async function writeRecallDoc(params: {
   workspaceDir: string;
   cards: ExperienceCard[];
@@ -799,40 +983,69 @@ export async function writeRuntimeRecall(params: {
   sessionKey: string;
   cardIds: string[];
   query: string;
+  queryKey?: string;
+  agentId?: string;
 }): Promise<void> {
   const filePath = path.join(
     params.workspaceDir,
     RUNTIME_REL,
     `${safeSessionKey(params.sessionKey)}.json`,
   );
+  const query = shortText(params.query, 600);
+  const queryKey = String(params.queryKey || "").trim() || buildSignalKeyFromQuery(query);
   const data = {
     sessionKey: params.sessionKey,
-    cardIds: params.cardIds,
-    query: shortText(params.query, 600),
+    cardIds: dedupeStringArray(params.cardIds || []),
+    query,
+    queryKey,
     recalledAt: nowIso(),
+    agentId: String(params.agentId || "").trim() || undefined,
   };
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
+}
+
+export async function readRuntimeRecallPayload(
+  workspaceDir: string,
+  sessionKey: string,
+): Promise<RuntimeRecallPayload | null> {
+  const filePath = path.join(workspaceDir, RUNTIME_REL, `${safeSessionKey(sessionKey)}.json`);
+  if (!(await existsFile(filePath))) {
+    return null;
+  }
+  try {
+    const raw = await readFile(filePath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const cardIds = dedupeStringArray(
+      Array.isArray(parsed.cardIds) ? parsed.cardIds.map((x) => String(x || "")) : [],
+    );
+    if (cardIds.length === 0) {
+      return null;
+    }
+    const query = shortText(String(parsed.query || ""), 600);
+    const queryKey =
+      String(parsed.queryKey || "").trim() || buildSignalKeyFromQuery(query || "empty");
+    const recalledAt = String(parsed.recalledAt || "").trim() || nowIso();
+    const agentIdRaw = String(parsed.agentId || "").trim();
+    return {
+      sessionKey: String(parsed.sessionKey || sessionKey),
+      cardIds,
+      query,
+      queryKey,
+      recalledAt,
+      agentId: agentIdRaw || undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function readRuntimeRecall(
   workspaceDir: string,
   sessionKey: string,
 ): Promise<string[]> {
-  const filePath = path.join(workspaceDir, RUNTIME_REL, `${safeSessionKey(sessionKey)}.json`);
-  if (!(await existsFile(filePath))) {
-    return [];
-  }
-  try {
-    const raw = await readFile(filePath, "utf8");
-    const parsed = JSON.parse(raw) as { cardIds?: string[] };
-    if (!Array.isArray(parsed.cardIds)) {
-      return [];
-    }
-    return parsed.cardIds.filter((x) => typeof x === "string" && x.length > 0);
-  } catch {
-    return [];
-  }
+  const payload = await readRuntimeRecallPayload(workspaceDir, sessionKey);
+  return payload?.cardIds || [];
 }
 
 export async function clearRuntimeRecall(workspaceDir: string, sessionKey: string): Promise<void> {

@@ -1,9 +1,12 @@
 import {
+  appendLinkGraphEvent,
+  buildSignalKeyFromQuery,
   clearRuntimeRecall,
   ensureStatsRecord,
   findSessionRef,
   loadStats,
-  readRuntimeRecall,
+  readRuntimeRecallPayload,
+  resolveAgentId,
   resolveOutcome,
   resolveWorkspaceDir,
   saveStats,
@@ -17,12 +20,15 @@ export default async function hardflowExperienceEvolve(event: any): Promise<void
   }
   const workspaceDir = resolveWorkspaceDir(event);
   const sessionKey = event?.sessionKey || "unknown";
+  const fallbackAgentId = resolveAgentId(event);
 
   try {
-    const recalledIds = await readRuntimeRecall(workspaceDir, sessionKey);
+    const runtimeRecall = await readRuntimeRecallPayload(workspaceDir, sessionKey);
+    const recalledIds = runtimeRecall?.cardIds || [];
     if (recalledIds.length === 0) {
       return;
     }
+
     const sessionRef = findSessionRef(event);
     const outcome = await resolveOutcome({
       workspaceDir,
@@ -42,10 +48,23 @@ export default async function hardflowExperienceEvolve(event: any): Promise<void
       record.lastOutcomeAt = now;
     }
     await saveStats(workspaceDir, stats);
+    await appendLinkGraphEvent({
+      workspaceDir,
+      event: {
+        type: "outcome",
+        ts: now,
+        sessionKey: runtimeRecall?.sessionKey || sessionKey,
+        agentId: runtimeRecall?.agentId || fallbackAgentId,
+        queryKey: runtimeRecall?.queryKey || buildSignalKeyFromQuery(runtimeRecall?.query || ""),
+        query: runtimeRecall?.query || "",
+        cardIds: recalledIds,
+        outcome,
+      },
+    });
     await clearRuntimeRecall(workspaceDir, sessionKey);
 
     if (Array.isArray(event.messages)) {
-      event.messages.push(`📈 Experience evolved: ${outcome} (${recalledIds.length} cards)`);
+      event.messages.push(`Experience evolved: ${outcome} (${recalledIds.length} cards)`);
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
