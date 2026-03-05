@@ -8,6 +8,7 @@ import json
 import os
 import re
 import sys
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -150,6 +151,16 @@ DEFAULT_POLICY: dict[str, Any] = {
         "quality_weight": 0.75,
         "timeliness_weight": 0.25,
         "planner_share": 0.35,
+        "planner_scoring_mode": "dispatch_count",
+        "planner_dispatch_points_by_priority": {
+            "low": 1.0,
+            "medium": 1.5,
+            "high": 2.0,
+        },
+        "planner_dispatch_risk_multiplier": {
+            "low": 1.0,
+            "high": 1.1,
+        },
         "minimum_quality_for_positive": 70.0,
         "base_points_by_priority": {
             "low": 4.0,
@@ -638,6 +649,18 @@ class PolicyEnforcer:
         multiplier = float(risk_map.get(risk_level, 1.0) or 1.0)
         return max(0.0, base * multiplier)
 
+    def _planner_dispatch_points(self, priority: str, risk_level: str) -> float:
+        policy = self.points_policy()
+        base_map = policy.get("planner_dispatch_points_by_priority", {})
+        if not isinstance(base_map, dict):
+            base_map = {}
+        risk_map = policy.get("planner_dispatch_risk_multiplier", {})
+        if not isinstance(risk_map, dict):
+            risk_map = {}
+        base = float(base_map.get(priority, 1.0) or 1.0)
+        multiplier = float(risk_map.get(risk_level, 1.0) or 1.0)
+        return round(max(0.0, base * multiplier), 6)
+
     def _quality_factor(
         self,
         quality_score: float | None,
@@ -722,6 +745,110 @@ class PolicyEnforcer:
         if any(token in hint for token in {"agent", "bot", "cron", "auto", "automation", "patrol", "audit", "ops"}):
             return "ai"
         return "human"
+
+    def suggest_task_id(self, prefix: str = "task") -> str:
+        raw_prefix = str(prefix or "task").strip().lower()
+        normalized_prefix = re.sub(r"[^a-z0-9_-]+", "-", raw_prefix).strip("-")
+        if not normalized_prefix:
+            normalized_prefix = "task"
+        return f"{normalized_prefix}-{datetime.now(tz=UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
+
+    def default_need_human_confirm(self, *, request_source: str, risk_level: str) -> bool:
+        if str(request_source or "").strip().lower() == "human":
+            return True
+        if str(risk_level or "").strip().lower() != "high":
+            return False
+        return parse_bool(self.policy.get("high_risk_requires_human_confirm", True), True)
+
+    def _task_confirmation_reason(self, task: dict[str, Any]) -> str:
+        if bool(task.get("needs_clarification")):
+            return "clarification_required"
+        if not bool(task.get("need_human_confirm")):
+            return "none"
+        request_source = self.normalize_request_source(
+            str(task.get("request_source", "")),
+            str(task.get("source", "")),
+        )
+        if request_source == "human":
+            return "human_intent_confirmation"
+        if str(task.get("risk_level", "")).strip().lower() == "high":
+            return "high_risk_confirmation"
+        return "manual_confirmation_required"
+
+    def task_confirmation_snapshot(self, task: dict[str, Any]) -> dict[str, Any]:
+        reason_code = self._task_confirmation_reason(task)
+        need_human_confirm = bool(task.get("need_human_confirm"))
+        human_confirmed = bool(task.get("human_confirmed"))
+        needs_clarification = bool(task.get("needs_clarification"))
+        state = "ready"
+        if needs_clarification:
+            state = "blocked_clarification"
+        elif need_human_confirm and not human_confirmed:
+            state = "waiting_human_confirm"
+        return {
+            "state": state,
+            "reason_code": reason_code,
+            "need_human_confirm": need_human_confirm,
+            "human_confirmed": human_confirmed,
+            "needs_clarification": needs_clarification,
+            "task_id": str(task.get("task_id", "")).strip(),
+            "confirm_command": (
+                "python3 scripts/openclaw-ops/policy/policy_enforcer.py "
+                + f"confirm-risk --task-id {str(task.get('task_id', '')).strip()} --confirmed true --actor human"
+                if need_human_confirm and (not human_confirmed)
+                else ""
+            ),
+        }
+
+    def task_tracking_snapshot(self, task: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "task_id": str(task.get("task_id", "")).strip(),
+            "status": str(task.get("status", "")).strip(),
+            "pool": str(task.get("pool", "")).strip(),
+            "assignee": str(task.get("assignee", "")).strip(),
+            "request_source": self.normalize_request_source(
+                str(task.get("request_source", "")),
+                str(task.get("source", "")),
+            ),
+            "created_at": str(task.get("created_at", "")).strip(),
+            "scheduled_at": str(task.get("scheduled_at", "")).strip(),
+            "started_at": str(task.get("started_at", "")).strip(),
+            "completed_at": str(task.get("completed_at", "")).strip(),
+        }
+
+    def task_timing_snapshot(self, task: dict[str, Any]) -> dict[str, Any]:
+        created_at_text = str(task.get("created_at", "")).strip()
+        started_at_text = str(task.get("started_at", "")).strip()
+        completed_at_text = str(task.get("completed_at", "")).strip()
+
+        def parse_optional_iso(text: str) -> datetime | None:
+            if not text:
+                return None
+            try:
+                return datetime.fromisoformat(text)
+            except ValueError:
+                return None
+
+        created_dt = parse_optional_iso(created_at_text)
+        started_dt = parse_optional_iso(started_at_text)
+        completed_dt = parse_optional_iso(completed_at_text)
+
+        elapsed_ms: int | None = None
+        execution_ms: int | None = None
+        if created_dt and completed_dt:
+            elapsed_ms = max(0, int((completed_dt - created_dt).total_seconds() * 1000))
+        if started_dt and completed_dt:
+            execution_ms = max(0, int((completed_dt - started_dt).total_seconds() * 1000))
+
+        return {
+            "created_at": created_at_text,
+            "started_at": started_at_text,
+            "completed_at": completed_at_text,
+            "elapsed_ms": elapsed_ms,
+            "elapsed_min": round((elapsed_ms / 60000.0), 2) if elapsed_ms is not None else None,
+            "execution_ms": execution_ms,
+            "execution_min": round((execution_ms / 60000.0), 2) if execution_ms is not None else None,
+        }
 
     def parse_context_json_arg(self, raw: str) -> dict[str, Any]:
         text = str(raw or "").strip()
@@ -951,15 +1078,21 @@ class PolicyEnforcer:
             raise PolicyError(f"only dispatcher can assign task: actor={actor}, required={dispatcher}")
 
     def assert_risk_confirmed(self, task: dict[str, Any]) -> None:
-        if not parse_bool(self.policy.get("high_risk_requires_human_confirm", True), True):
-            return
-        if str(task.get("risk_level")) != "high":
-            return
-
         need_human = bool(task.get("need_human_confirm"))
         confirmed = bool(task.get("human_confirmed"))
-        if need_human and not confirmed:
+        if (not need_human) or confirmed:
+            return
+
+        request_source = self.normalize_request_source(
+            str(task.get("request_source", "")),
+            str(task.get("source", "")),
+        )
+        risk_level = str(task.get("risk_level", "")).strip().lower()
+        if request_source == "human":
+            raise PolicyError("human-submitted task requires confirmation before execution")
+        if risk_level == "high" and parse_bool(self.policy.get("high_risk_requires_human_confirm", True), True):
             raise PolicyError("high-risk task requires human confirmation")
+        raise PolicyError("task requires human confirmation before execution")
 
     def assert_agent_stage_allowed(self, agent_id: str, stage: str) -> None:
         blocked_agents = self.policy.get("blocked_direct_code_agents", [])
@@ -1210,7 +1343,11 @@ class PolicyEnforcer:
         if not clarification_reason:
             clarification_reason = str(context_eval.get("clarification_reason", "")).strip()
 
-        need_human_confirm = parse_bool(args.need_human_confirm, risk_level == "high")
+        default_need_confirm = self.default_need_human_confirm(
+            request_source=request_source,
+            risk_level=risk_level,
+        )
+        need_human_confirm = parse_bool(args.need_human_confirm, default_need_confirm)
         scheduled_at = str(args.scheduled_at or "").strip()
         if pool == "todo" and self.todo_require_scheduled_at() and not scheduled_at:
             scheduled_at = now_iso()
@@ -1279,6 +1416,8 @@ class PolicyEnforcer:
                 stage="intake",
                 details={"entry_agent": entry_agent, "allowed": True},
             )
+        created["confirmation"] = self.task_confirmation_snapshot(created)
+        created["tracking"] = self.task_tracking_snapshot(created)
         return created
 
     def assign_task(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -1292,6 +1431,41 @@ class PolicyEnforcer:
             fallback_used = True
 
         assigned = self.db.assign_task(task_id=args.task_id, assignee=assignee, actor=args.actor)
+        planner_points_info: dict[str, Any] = {"enabled": False}
+        if self.points_enabled():
+            task_priority = str(assigned.get("priority", "medium") or "medium").strip().lower()
+            if task_priority not in {"low", "medium", "high"}:
+                task_priority = "medium"
+            task_risk = str(assigned.get("risk_level", "low") or "low").strip().lower()
+            if task_risk not in {"low", "high"}:
+                task_risk = "low"
+            dispatch_points = self._planner_dispatch_points(task_priority, task_risk)
+            planner_record = self.db.upsert_agent_points(
+                task_id=args.task_id,
+                actor_type="planner",
+                actor_id=str(args.actor),
+                planner_id=str(args.actor),
+                status="dispatched",
+                solved=True,
+                points=dispatch_points,
+                base_points=dispatch_points,
+                quality_factor=1.0,
+                timeliness_factor=1.0,
+                details={
+                    "scoring_mode": "dispatch_count",
+                    "task_priority": task_priority,
+                    "task_risk_level": task_risk,
+                    "assignee": assignee,
+                    "fallback_used": bool(fallback_used),
+                },
+                event_actor=str(args.actor),
+            )
+            planner_points_info = {
+                "enabled": True,
+                "scoring_mode": "dispatch_count",
+                "dispatch_points": dispatch_points,
+                "planner_record_id": planner_record.get("id"),
+            }
         if fallback_used:
             with self.db.conn:
                 self.db.add_event(
@@ -1305,6 +1479,7 @@ class PolicyEnforcer:
                         "reason": str(args.reason or "dispatcher_unable_to_route").strip(),
                     },
                 )
+        assigned["planner_points"] = planner_points_info
         return assigned
 
     def confirm_risk(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -1683,6 +1858,7 @@ class PolicyEnforcer:
             "input_tokens": input_tokens,
             "output_tokens": output_tokens,
             "total_tokens": total_tokens,
+            "total_tokens_m": round(total_tokens / 1_000_000.0, 6),
             "cost_estimate": round(cost_estimate, 6),
             "quality_score": quality_score,
             "quality_grade": str(args.quality_grade or ""),
@@ -1690,6 +1866,10 @@ class PolicyEnforcer:
             "report_id": report.get("id"),
             "report_ts": report.get("ts"),
         }
+        planner_payload["task_token_usage"] = self.db.task_token_summary(task_id)
+        planner_payload["task_timing"] = self.task_timing_snapshot(task_after)
+        planner_payload["confirmation"] = self.task_confirmation_snapshot(task_after)
+        planner_payload["tracking"] = self.task_tracking_snapshot(task_after)
 
         points_result: dict[str, Any] = {}
         if self.points_enabled():
@@ -1716,8 +1896,6 @@ class PolicyEnforcer:
             performance_factor = quality_weight * quality_factor + timeliness_weight * timeliness_factor
             status_multiplier = self._status_multiplier(status, solved)
             agent_points = round(base_points * performance_factor * status_multiplier, 6)
-            planner_share = max(0.0, min(1.0, float(policy.get("planner_share", 0.35) or 0.35)))
-            planner_points = round(agent_points * planner_share, 6)
 
             agent_points_record = self.db.upsert_agent_points(
                 task_id=task_id,
@@ -1742,39 +1920,21 @@ class PolicyEnforcer:
                 },
                 event_actor=task_actor,
             )
-            planner_points_record = self.db.upsert_agent_points(
-                task_id=task_id,
-                actor_type="planner",
-                actor_id=str(args.planner_id or "coordinator"),
-                planner_id=str(args.planner_id or "coordinator"),
-                status=status,
-                solved=solved,
-                points=planner_points,
-                base_points=base_points * planner_share,
-                quality_factor=quality_factor,
-                timeliness_factor=timeliness_factor,
-                details={
-                    "agent_id": str(args.agent_id),
-                    "task_priority": task_priority,
-                    "task_risk_level": task_risk,
-                    "planner_share": planner_share,
-                    "agent_points": agent_points,
-                    "quality_score": quality_score,
-                    "duration_ms": duration_ms,
-                },
-                event_actor=task_actor,
-            )
             points_result = {
                 "enabled": True,
+                "scoring_mode": {
+                    "agent": "completion_based",
+                    "planner": "dispatch_count_based",
+                },
                 "base_points": round(base_points, 6),
                 "quality_factor": round(quality_factor, 6),
                 "timeliness_factor": round(timeliness_factor, 6),
                 "performance_factor": round(performance_factor, 6),
                 "status_multiplier": round(status_multiplier, 6),
                 "agent_points": agent_points,
-                "planner_points": planner_points,
+                "planner_points": None,
                 "agent_record_id": agent_points_record.get("id"),
-                "planner_record_id": planner_points_record.get("id"),
+                "planner_record_id": None,
             }
         else:
             points_result = {"enabled": False}
@@ -1792,7 +1952,8 @@ class PolicyEnforcer:
                 f"- failure_count: {planner_payload['failure_count']}",
                 f"- duration_ms: {planner_payload['duration_ms']}",
                 f"- model: {planner_payload['model_id'] or '-'}",
-                f"- tokens: in={planner_payload['input_tokens']}, out={planner_payload['output_tokens']}, total={planner_payload['total_tokens']}",
+                f"- tokens: in={planner_payload['input_tokens']}, out={planner_payload['output_tokens']}, "
+                + f"total={planner_payload['total_tokens']} ({planner_payload['total_tokens_m']}M)",
                 f"- cost_estimate: {planner_payload['cost_estimate']}",
                 f"- quality_score: {planner_payload['quality_score'] if planner_payload['quality_score'] is not None else 'n/a'}",
                 f"- quality_grade: {planner_payload['quality_grade'] or 'n/a'}",
@@ -1959,6 +2120,14 @@ class PolicyEnforcer:
                 limit=200,
             )
             summary["points_since"] = points_since
+            agent_points_map = summary.get("points_agent", {}).get("actor_points", {})
+            by_agent_rows = summary.get("by_agent", [])
+            if isinstance(by_agent_rows, list):
+                for item in by_agent_rows:
+                    if not isinstance(item, dict):
+                        continue
+                    agent_id = str(item.get("agent_id", "")).strip()
+                    item["score_points"] = round(float(agent_points_map.get(agent_id, 0.0) or 0.0), 6)
         return summary
 
     def daily_summary(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -2191,12 +2360,21 @@ class PolicyEnforcer:
                     if priority == "low":
                         priority = "medium"
 
-        need_human_confirm = risk_level == "high" and parse_bool(
-            self.policy.get("high_risk_requires_human_confirm", True),
-            True,
+        need_human_confirm = self.default_need_human_confirm(
+            request_source=request_source,
+            risk_level=risk_level,
+        )
+        confirmation_reason = "none"
+        if needs_clarification:
+            confirmation_reason = "clarification_required"
+        elif need_human_confirm:
+            confirmation_reason = "human_intent_confirmation" if request_source == "human" else "high_risk_confirmation"
+        task_id_suggested = self.suggest_task_id(
+            "human-task" if request_source == "human" else "ai-task"
         )
 
         return {
+            "task_id_suggested": task_id_suggested,
             "description": effective_text,
             "raw_description": text,
             "source": args.source,
@@ -2213,6 +2391,26 @@ class PolicyEnforcer:
             "need_human_confirm": need_human_confirm,
             "needs_clarification": needs_clarification,
             "clarification_reason": clarification_reason,
+            "execution_strategy": {
+                "mode": (
+                    "clarify_then_confirm"
+                    if needs_clarification
+                    else (
+                        "confirm_before_execute"
+                        if need_human_confirm
+                        else "direct_low_risk_execution"
+                    )
+                ),
+                "confirmation_required": bool(need_human_confirm),
+                "confirmation_reason": confirmation_reason,
+                "clarification_required": bool(needs_clarification),
+                "confirm_command_after_create": (
+                    "python3 scripts/openclaw-ops/policy/policy_enforcer.py "
+                    + "confirm-risk --task-id <task_id> --confirmed true --actor human"
+                    if need_human_confirm
+                    else ""
+                ),
+            },
             "code_dispatch_forced": code_dispatch_forced,
             "code_dispatch_target": code_dispatch_target,
             "code_dispatch_reason": code_dispatch_reason,

@@ -656,7 +656,14 @@ def collect_metrics(
     return metrics
 
 
-def build_candidates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+def build_candidates(
+    metrics: dict[str, Any],
+    *,
+    low_score_guarantee_enabled: bool = True,
+    low_score_guarantee_min_agents: int = 2,
+    low_score_guarantee_max_agents: int = 6,
+    low_score_guarantee_threshold: float | None = None,
+) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     since = str(metrics.get("since", ""))
     agent_health = metrics.get("agent_health", []) if isinstance(metrics.get("agent_health"), list) else []
@@ -664,8 +671,73 @@ def build_candidates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
     heavy_tasks = metrics.get("heavy_tasks", []) if isinstance(metrics.get("heavy_tasks"), list) else []
     agent_scorecards = metrics.get("agent_scorecards", []) if isinstance(metrics.get("agent_scorecards"), list) else []
     score_threshold = clamp_score(float(metrics.get("agent_score_threshold", 70.0) or 70.0))
+    low_score_threshold = (
+        score_threshold if low_score_guarantee_threshold is None else clamp_score(float(low_score_guarantee_threshold))
+    )
+    guarantee_enabled = bool(low_score_guarantee_enabled)
+    guarantee_min_agents = max(1, int(low_score_guarantee_min_agents))
+    guarantee_max_agents = max(guarantee_min_agents, int(low_score_guarantee_max_agents))
 
-    low_score_agents = [x for x in agent_scorecards if bool(x.get("needs_optimization"))]
+    low_score_agents: list[dict[str, Any]] = []
+    for item in agent_scorecards:
+        if not isinstance(item, dict):
+            continue
+        score = clamp_score(float(item.get("comprehensive_score", 0.0) or 0.0))
+        if bool(item.get("needs_optimization")) or (score <= low_score_threshold):
+            low_score_agents.append(item)
+    low_score_agents.sort(
+        key=lambda item: (
+            float(item.get("comprehensive_score", 0.0) or 0.0),
+            -int(item.get("report_count", 0) or 0),
+        )
+    )
+
+    guarantee_targets: list[dict[str, Any]] = []
+    if guarantee_enabled and low_score_agents:
+        guarantee_targets = low_score_agents[:guarantee_max_agents]
+        for item in guarantee_targets:
+            agent_id = str(item.get("agent_id", "")).strip()
+            if not agent_id:
+                continue
+            reasons_raw = item.get("reasons", [])
+            reasons = []
+            if isinstance(reasons_raw, list):
+                reasons = [str(x).strip() for x in reasons_raw if str(x).strip()]
+            score = round(clamp_score(float(item.get("comprehensive_score", 0.0) or 0.0)), 2)
+            quality = round(clamp_score(float(item.get("avg_quality_score", 0.0) or 0.0)), 2)
+            failure_pct = round(clamp_score(float(item.get("failure_ratio_pct", 0.0) or 0.0)), 2)
+            solved_pct = round(clamp_score(float(item.get("solved_ratio_pct", 0.0) or 0.0)), 2)
+            risk_fail_pct = round(
+                max(0.0, min(float(item.get("risk_fail_ratio", 0.0) or 0.0), 1.0)) * 100.0,
+                2,
+            )
+            requirement = (
+                f"Review window: {since}\n"
+                f"Target agent: {agent_id}\n"
+                f"Comprehensive score: {score} (guarantee threshold: {round(low_score_threshold, 2)})\n"
+                f"Quality={quality}, Failure={failure_pct}%, Solved={solved_pct}%, HighRiskFailure={risk_fail_pct}%\n"
+                f"Scorecard reasons: {', '.join(reasons[:6]) if reasons else 'score_below_threshold'}\n"
+                "Generate an optimization task package with measurable actions, risk controls, and rollback strategy; "
+                "submit to TODO only and do not auto-apply workflow changes."
+            )
+            candidates.append(
+                {
+                    "title": f"Weekly low-score guarantee optimization for {agent_id}",
+                    "reason": "Low score agent selected by self-evolution guarantee policy",
+                    "requirement": requirement,
+                    "assignee": "optimization-agent",
+                }
+            )
+    metrics["low_score_guarantee"] = {
+        "enabled": guarantee_enabled,
+        "threshold": round(low_score_threshold, 2),
+        "min_agents": guarantee_min_agents,
+        "max_agents": guarantee_max_agents,
+        "candidate_pool_count": len(low_score_agents),
+        "selected_count": len(guarantee_targets),
+        "selected_agents": [str(item.get("agent_id", "")).strip() for item in guarantee_targets],
+        "guarantee_hit": len(guarantee_targets) >= guarantee_min_agents,
+    }
     if low_score_agents:
         top = "; ".join(
             (
@@ -850,6 +922,10 @@ def main() -> int:
     parser.add_argument("--agent-score-threshold", type=float, default=70.0)
     parser.add_argument("--agent-score-min-reports", type=int, default=3)
     parser.add_argument("--agent-score-top-n", type=int, default=12)
+    parser.add_argument("--low-score-guarantee-enabled", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--low-score-guarantee-min-agents", type=int, default=2)
+    parser.add_argument("--low-score-guarantee-max-agents", type=int, default=6)
+    parser.add_argument("--low-score-guarantee-threshold", type=float, default=70.0)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
@@ -886,7 +962,13 @@ def main() -> int:
                     agent_score_min_reports=int(args.agent_score_min_reports),
                     agent_score_top_n=int(args.agent_score_top_n),
                 )
-                candidates = build_candidates(metrics)
+                candidates = build_candidates(
+                    metrics,
+                    low_score_guarantee_enabled=bool(args.low_score_guarantee_enabled),
+                    low_score_guarantee_min_agents=max(1, int(args.low_score_guarantee_min_agents)),
+                    low_score_guarantee_max_agents=max(1, int(args.low_score_guarantee_max_agents)),
+                    low_score_guarantee_threshold=float(args.low_score_guarantee_threshold),
+                )
                 created, skipped = create_todo_tasks(
                     tc,
                     candidates=candidates,
@@ -911,6 +993,10 @@ def main() -> int:
         "agent_score_threshold": round(clamp_score(float(args.agent_score_threshold)), 2),
         "agent_score_min_reports": max(1, int(args.agent_score_min_reports)),
         "agent_score_top_n": max(1, int(args.agent_score_top_n)),
+        "low_score_guarantee_enabled": bool(args.low_score_guarantee_enabled),
+        "low_score_guarantee_min_agents": max(1, int(args.low_score_guarantee_min_agents)),
+        "low_score_guarantee_max_agents": max(1, int(args.low_score_guarantee_max_agents)),
+        "low_score_guarantee_threshold": round(clamp_score(float(args.low_score_guarantee_threshold)), 2),
         "candidates_count": len(candidates),
         "created_count": len(created),
         "created": created,

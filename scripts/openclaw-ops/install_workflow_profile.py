@@ -14,8 +14,8 @@ from typing import Any
 
 
 PROFILES = {"core", "all"}
-CORE_TASKS = [1, 2, 3, 4, 5, 7, 8]
-ALL_TASKS = [1, 2, 3, 4, 5, 6, 7, 8]
+CORE_TASKS = [1, 2, 3, 4, 5, 7, 8, 9]
+ALL_TASKS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
 def render_cmd(cmd: list[str]) -> str:
@@ -78,9 +78,14 @@ def build_cron_setup_cmd(
     daily_summary_expr: str,
     daily_work_expr: str,
     self_evolution_expr: str,
+    self_evolution_low_score_guarantee_enabled: bool,
+    self_evolution_low_score_guarantee_min_agents: int,
+    self_evolution_low_score_guarantee_max_agents: int,
+    self_evolution_low_score_guarantee_threshold: float,
     conversation_every_ms: int,
     governance_every_ms: int,
     git_sync_every_ms: int,
+    auto_update_install_every_ms: int,
     github_web_every_ms: int,
     include_github_web: bool,
     channel: str,
@@ -163,6 +168,17 @@ def build_cron_setup_cmd(
         "3",
         "--self-evolution-agent-score-top-n",
         "12",
+        (
+            "--self-evolution-low-score-guarantee-enabled"
+            if bool(self_evolution_low_score_guarantee_enabled)
+            else "--no-self-evolution-low-score-guarantee-enabled"
+        ),
+        "--self-evolution-low-score-guarantee-min-agents",
+        str(max(1, int(self_evolution_low_score_guarantee_min_agents))),
+        "--self-evolution-low-score-guarantee-max-agents",
+        str(max(1, int(self_evolution_low_score_guarantee_max_agents))),
+        "--self-evolution-low-score-guarantee-threshold",
+        str(max(1.0, min(float(self_evolution_low_score_guarantee_threshold), 100.0))),
         "--install-conversation-evolution-job",
         "--conversation-evolution-py",
         str(Path(ops_home) / "conversation_evolution_runner.py"),
@@ -246,6 +262,31 @@ def build_cron_setup_cmd(
         "MEMORY.md",
         "--git-sync-require-remote-url",
         "github.com/XX-Trader/openclaw-hardflow-backup-20260302",
+        "--install-auto-update-install-job",
+        "--auto-update-install-py",
+        str(Path(ops_home) / "auto_update_install_runner.py"),
+        "--auto-update-install-repo-path",
+        workflow_repo_path,
+        "--auto-update-install-every-ms",
+        str(max(600000, int(auto_update_install_every_ms))),
+        "--auto-update-install-log-mode",
+        "silent",
+        "--auto-update-install-remote",
+        "origin",
+        "--auto-update-install-report-dir",
+        str(Path(ops_home) / "update-install-runs"),
+        "--auto-update-install-install-cmd",
+        (
+            "python3 $HOME/.openclaw/ops/install_workflow_profile.py "
+            "--profile core "
+            "--openclaw-home $HOME/.openclaw "
+            "--workflow-repo-path ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302} "
+            "--emit-json"
+        ),
+        "--auto-update-install-require-remote-url",
+        "https://github.com/XX-Trader/openclaw-hardflow-backup-20260302",
+        "--auto-update-install-require-remote-url",
+        "https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git",
     ]
     if include_github_web:
         cmd.extend(
@@ -320,9 +361,14 @@ def main() -> None:
     parser.add_argument("--daily-summary-expr", default="5 0 * * *")
     parser.add_argument("--daily-work-expr", default="15 0 * * *")
     parser.add_argument("--self-evolution-expr", default="30 3 * * 1")
+    parser.add_argument("--self-evolution-low-score-guarantee-enabled", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--self-evolution-low-score-guarantee-min-agents", type=int, default=2)
+    parser.add_argument("--self-evolution-low-score-guarantee-max-agents", type=int, default=6)
+    parser.add_argument("--self-evolution-low-score-guarantee-threshold", type=float, default=70.0)
     parser.add_argument("--conversation-every-ms", type=int, default=21600000)
     parser.add_argument("--governance-every-ms", type=int, default=21600000)
     parser.add_argument("--git-sync-every-ms", type=int, default=21600000)
+    parser.add_argument("--auto-update-install-every-ms", type=int, default=3600000)
     parser.add_argument("--github-web-every-ms", type=int, default=43200000)
     parser.add_argument("--reviewer-daily-expr", default="0 4 * * *")
     parser.add_argument("--reviewer-weekly-expr", default="40 4 * * 1")
@@ -389,9 +435,14 @@ def main() -> None:
         daily_summary_expr=str(args.daily_summary_expr),
         daily_work_expr=str(args.daily_work_expr),
         self_evolution_expr=str(args.self_evolution_expr),
+        self_evolution_low_score_guarantee_enabled=bool(args.self_evolution_low_score_guarantee_enabled),
+        self_evolution_low_score_guarantee_min_agents=max(1, int(args.self_evolution_low_score_guarantee_min_agents)),
+        self_evolution_low_score_guarantee_max_agents=max(1, int(args.self_evolution_low_score_guarantee_max_agents)),
+        self_evolution_low_score_guarantee_threshold=float(args.self_evolution_low_score_guarantee_threshold),
         conversation_every_ms=int(args.conversation_every_ms),
         governance_every_ms=int(args.governance_every_ms),
         git_sync_every_ms=int(args.git_sync_every_ms),
+        auto_update_install_every_ms=int(args.auto_update_install_every_ms),
         github_web_every_ms=int(args.github_web_every_ms),
         include_github_web=(profile == "all"),
         channel=str(args.channel),
@@ -446,7 +497,7 @@ def main() -> None:
         ("install_todo_patrol_job (task#1)", install_todo_cmd),
         ("install_project_index_job (task#3)", install_index_cmd),
         (
-            "cron_setup core bundle (task#2,#4,#5,#7"
+            "cron_setup core bundle (task#2,#4,#5,#7,#9"
             + (",#6" if profile == "all" else "")
             + ")",
             cron_setup_cmd,

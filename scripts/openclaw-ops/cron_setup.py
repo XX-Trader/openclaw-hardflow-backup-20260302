@@ -47,6 +47,7 @@ PROFILE_BASELINE: dict[str, dict[str, int | str]] = {
     "legacy": {},
     "minimal": {
         "incremental_every_ms": 1800000,
+        "auto_update_install_every_ms": 3600000,
         "full_expr": "23 */12 * * *",
         "conversation_every_ms": 28800000,
         "governance_every_ms": 28800000,
@@ -54,6 +55,7 @@ PROFILE_BASELINE: dict[str, dict[str, int | str]] = {
     },
     "standard": {
         "incremental_every_ms": 1200000,
+        "auto_update_install_every_ms": 3600000,
         "full_expr": "23 */8 * * *",
         "conversation_every_ms": 21600000,
         "governance_every_ms": 21600000,
@@ -61,6 +63,7 @@ PROFILE_BASELINE: dict[str, dict[str, int | str]] = {
     },
     "aggressive": {
         "incremental_every_ms": 900000,
+        "auto_update_install_every_ms": 3600000,
         "full_expr": "23 */6 * * *",
         "conversation_every_ms": 14400000,
         "governance_every_ms": 14400000,
@@ -198,9 +201,24 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
         repo_path = Path(repo_raw).expanduser()
         return script_ok and repo_path.is_dir() and (repo_path / ".git").exists()
 
+    def auto_update_install_ready_for_install() -> bool:
+        script_ok = Path(str(args.auto_update_install_py)).expanduser().is_file()
+        repo_raw = str(args.auto_update_install_repo_path or "").strip()
+        if not repo_raw:
+            fallback = str(args.governance_evolution_repo_path or "").strip()
+            if fallback:
+                set_arg("auto_update_install_repo_path", fallback)
+                repo_raw = fallback
+        if not repo_raw:
+            return False
+        repo_path = Path(repo_raw).expanduser()
+        install_cmd_ok = bool(str(args.auto_update_install_install_cmd or "").strip())
+        return script_ok and repo_path.is_dir() and (repo_path / ".git").exists() and install_cmd_ok
+
     if profile == "minimal":
         baseline = PROFILE_BASELINE["minimal"]
         ensure_minimum("incremental_every_ms", int(baseline["incremental_every_ms"]))
+        set_arg("auto_update_install_every_ms", int(baseline["auto_update_install_every_ms"]))
         set_arg("full_expr", str(baseline["full_expr"]))
         ensure_minimum("governance_evolution_every_ms", int(baseline["governance_every_ms"]))
         ensure_minimum("conversation_evolution_every_ms", int(baseline["conversation_every_ms"]))
@@ -222,9 +240,15 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             when=git_sync_ready_for_install(),
             reason="install_git_sync_job skipped: git-sync script missing or repo-path not git",
         )
+        enable_flag(
+            "install_auto_update_install_job",
+            when=auto_update_install_ready_for_install(),
+            reason="install_auto_update_install_job skipped: updater script/repo/install-cmd missing",
+        )
     elif profile == "standard":
         baseline = PROFILE_BASELINE["standard"]
         ensure_minimum("incremental_every_ms", int(baseline["incremental_every_ms"]))
+        set_arg("auto_update_install_every_ms", int(baseline["auto_update_install_every_ms"]))
         set_arg("full_expr", str(baseline["full_expr"]))
         ensure_minimum("governance_evolution_every_ms", int(baseline["governance_every_ms"]))
         ensure_minimum("conversation_evolution_every_ms", int(baseline["conversation_every_ms"]))
@@ -254,9 +278,15 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             when=git_sync_ready_for_install(),
             reason="install_git_sync_job skipped: git-sync script missing or repo-path not git",
         )
+        enable_flag(
+            "install_auto_update_install_job",
+            when=auto_update_install_ready_for_install(),
+            reason="install_auto_update_install_job skipped: updater script/repo/install-cmd missing",
+        )
     elif profile == "aggressive":
         baseline = PROFILE_BASELINE["aggressive"]
         ensure_minimum("incremental_every_ms", int(baseline["incremental_every_ms"]))
+        set_arg("auto_update_install_every_ms", int(baseline["auto_update_install_every_ms"]))
         set_arg("full_expr", str(baseline["full_expr"]))
         ensure_minimum("governance_evolution_every_ms", int(baseline["governance_every_ms"]))
         ensure_minimum("conversation_evolution_every_ms", int(baseline["conversation_every_ms"]))
@@ -293,6 +323,11 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             "install_git_sync_job",
             when=git_sync_ready_for_install(),
             reason="install_git_sync_job skipped: git-sync script missing or repo-path not git",
+        )
+        enable_flag(
+            "install_auto_update_install_job",
+            when=auto_update_install_ready_for_install(),
+            reason="install_auto_update_install_job skipped: updater script/repo/install-cmd missing",
         )
 
     return {"profile": profile, "changes": changes, "skipped": skipped}
@@ -845,6 +880,10 @@ def build_self_evolution_job(
     agent_score_threshold: float,
     agent_score_min_reports: int,
     agent_score_top_n: int,
+    low_score_guarantee_enabled: bool,
+    low_score_guarantee_min_agents: int,
+    low_score_guarantee_max_agents: int,
+    low_score_guarantee_threshold: float,
 ) -> dict[str, Any]:
     ts = now_ms()
     cmd = (
@@ -855,7 +894,11 @@ def build_self_evolution_job(
         f"--max-tasks-per-run {max(1, int(max_tasks_per_run))} "
         f"--agent-score-threshold {max(1.0, min(float(agent_score_threshold), 100.0))} "
         f"--agent-score-min-reports {max(1, int(agent_score_min_reports))} "
-        f"--agent-score-top-n {max(1, int(agent_score_top_n))}"
+        f"--agent-score-top-n {max(1, int(agent_score_top_n))} "
+        f"--{'low-score-guarantee-enabled' if bool(low_score_guarantee_enabled) else 'no-low-score-guarantee-enabled'} "
+        f"--low-score-guarantee-min-agents {max(1, int(low_score_guarantee_min_agents))} "
+        f"--low-score-guarantee-max-agents {max(1, int(low_score_guarantee_max_agents))} "
+        f"--low-score-guarantee-threshold {max(1.0, min(float(low_score_guarantee_threshold), 100.0))}"
     )
     return {
         "id": "9cf2677f-0ea1-4f07-a8cb-7dff4ff7c52b",
@@ -1136,6 +1179,65 @@ def build_git_sync_job(
     }
 
 
+def build_auto_update_install_job(
+    *,
+    script_py: str,
+    repo_path: str,
+    every_ms: int,
+    log_mode: str,
+    remote: str,
+    branch: str,
+    install_cmd: str,
+    install_on_no_change: bool,
+    git_timeout: int,
+    install_timeout: int,
+    report_dir: str,
+    required_remote_urls: list[str],
+) -> dict[str, Any]:
+    def quote_arg(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    ts = now_ms()
+    remote_value = str(remote or "origin").strip() or "origin"
+    install_cmd_value = str(install_cmd or "").strip()
+    cmd = (
+        f"python3 \"{quote_arg(script_py)}\" "
+        f"--repo-path \"{quote_arg(repo_path)}\" "
+        "--task-id cron:ops-auto-update-install "
+        f"--normal-log-mode {normalize_log_mode(log_mode)} "
+        f"--remote \"{quote_arg(remote_value)}\" "
+        f"--git-timeout {max(30, int(git_timeout))} "
+        f"--install-timeout {max(30, int(install_timeout))} "
+        f"--report-dir \"{quote_arg(report_dir)}\" "
+        f"--install-cmd \"{quote_arg(install_cmd_value)}\" "
+        "--auto-pull"
+    )
+    branch_value = str(branch or "").strip()
+    if branch_value:
+        cmd += f" --branch \"{quote_arg(branch_value)}\""
+    if install_on_no_change:
+        cmd += " --install-on-no-change"
+    else:
+        cmd += " --no-install-on-no-change"
+    for url in required_remote_urls:
+        text = str(url).strip()
+        if text:
+            cmd += f" --require-remote-url \"{quote_arg(text)}\""
+    return {
+        "id": "a4d0b6fb-e1a0-40e4-8ae9-f5b5ebf43d09",
+        "agentId": "ops-agent",
+        "name": "ops_auto_update_install_hourly",
+        "description": "Hourly pull workflow repo and run installer (log-only on failure)",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {"kind": "every", "everyMs": int(every_ms), "anchorMs": ts},
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 3000},
+    }
+
+
 def int_or_default(value: Any, default: int = 0) -> int:
     try:
         return int(value)
@@ -1393,6 +1495,18 @@ def validate_runtime_paths(args: argparse.Namespace) -> dict[str, Any]:
                 errors.append(f"git_sync_repo_not_git:{repo}")
         else:
             errors.append("git_sync_repo_missing:--git-sync-repo-path")
+    if bool(args.install_auto_update_install_job):
+        add_check("auto_update_install_py", str(args.auto_update_install_py), required=True, expect="file")
+        repo_raw = str(args.auto_update_install_repo_path or args.governance_evolution_repo_path or "").strip()
+        if repo_raw:
+            add_check("auto_update_install_repo_path", repo_raw, required=True, expect="dir")
+            repo = Path(repo_raw).expanduser()
+            if not (repo / ".git").exists():
+                errors.append(f"auto_update_install_repo_not_git:{repo}")
+        else:
+            errors.append("auto_update_install_repo_missing:--auto-update-install-repo-path")
+        if not str(args.auto_update_install_install_cmd or "").strip():
+            errors.append("auto_update_install_cmd_missing:--auto-update-install-install-cmd")
     if bool(args.install_github_web_evolution_job):
         add_check("github_web_evolution_py", str(args.github_web_evolution_py), required=True, expect="file")
         add_check("github_web_evolution_openclaw_home", str(args.github_web_evolution_openclaw_home), required=True, expect="dir")
@@ -1466,6 +1580,17 @@ def main() -> int:
         local_ops_dir / "git_sync_push_runner.py",
         home / ".openclaw/ops/git_sync_push_runner.py",
     )
+    default_auto_update_install_py = prefer_existing_path(
+        local_ops_dir / "auto_update_install_runner.py",
+        home / ".openclaw/ops/auto_update_install_runner.py",
+    )
+    default_auto_update_install_cmd = (
+        "python3 $HOME/.openclaw/ops/install_workflow_profile.py "
+        "--profile core "
+        "--openclaw-home $HOME/.openclaw "
+        "--workflow-repo-path ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302} "
+        "--emit-json"
+    )
     parser = argparse.ArgumentParser(description="Install OpenClaw hardflow cron jobs")
     parser.add_argument("--jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
     parser.add_argument("--install-profile", default="legacy", choices=sorted(INSTALL_PROFILES))
@@ -1533,6 +1658,10 @@ def main() -> int:
     parser.add_argument("--self-evolution-agent-score-threshold", type=float, default=70.0)
     parser.add_argument("--self-evolution-agent-score-min-reports", type=int, default=3)
     parser.add_argument("--self-evolution-agent-score-top-n", type=int, default=12)
+    parser.add_argument("--self-evolution-low-score-guarantee-enabled", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--self-evolution-low-score-guarantee-min-agents", type=int, default=2)
+    parser.add_argument("--self-evolution-low-score-guarantee-max-agents", type=int, default=6)
+    parser.add_argument("--self-evolution-low-score-guarantee-threshold", type=float, default=70.0)
 
     parser.add_argument("--install-conversation-evolution-job", action="store_true")
     parser.add_argument("--conversation-evolution-py", default=str(default_conversation_evolution_py))
@@ -1609,6 +1738,23 @@ def main() -> int:
     parser.add_argument("--git-sync-include-prefix", action="append", default=[])
     parser.add_argument("--git-sync-exclude-prefix", action="append", default=[])
     parser.add_argument("--git-sync-require-remote-url", action="append", default=[])
+
+    parser.add_argument("--install-auto-update-install-job", action="store_true")
+    parser.add_argument("--auto-update-install-py", default=str(default_auto_update_install_py))
+    parser.add_argument("--auto-update-install-repo-path", default="")
+    parser.add_argument("--auto-update-install-every-ms", type=int, default=3600000)
+    parser.add_argument("--auto-update-install-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--auto-update-install-remote", default="origin")
+    parser.add_argument("--auto-update-install-branch", default="")
+    parser.add_argument("--auto-update-install-install-cmd", default=default_auto_update_install_cmd)
+    parser.add_argument("--auto-update-install-install-on-no-change", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--auto-update-install-git-timeout", type=int, default=240)
+    parser.add_argument("--auto-update-install-install-timeout", type=int, default=2400)
+    parser.add_argument(
+        "--auto-update-install-report-dir",
+        default=str(home / ".openclaw/ops/update-install-runs"),
+    )
+    parser.add_argument("--auto-update-install-require-remote-url", action="append", default=[])
 
     parser.add_argument("--install-github-web-evolution-job", action="store_true")
     parser.add_argument("--github-web-evolution-py", default=str(default_github_web_evolution_py))
@@ -1765,6 +1911,10 @@ def main() -> int:
                 agent_score_threshold=float(args.self_evolution_agent_score_threshold),
                 agent_score_min_reports=max(1, int(args.self_evolution_agent_score_min_reports)),
                 agent_score_top_n=max(1, int(args.self_evolution_agent_score_top_n)),
+                low_score_guarantee_enabled=bool(args.self_evolution_low_score_guarantee_enabled),
+                low_score_guarantee_min_agents=max(1, int(args.self_evolution_low_score_guarantee_min_agents)),
+                low_score_guarantee_max_agents=max(1, int(args.self_evolution_low_score_guarantee_max_agents)),
+                low_score_guarantee_threshold=float(args.self_evolution_low_score_guarantee_threshold),
             )
         )
     if bool(args.install_conversation_evolution_job):
@@ -1858,6 +2008,35 @@ def main() -> int:
                 include_prefixes=include_prefixes,
                 exclude_prefixes=exclude_prefixes,
                 required_remote_urls=[str(x).strip() for x in (args.git_sync_require_remote_url or []) if str(x).strip()],
+            )
+        )
+    if bool(args.install_auto_update_install_job):
+        auto_update_repo_raw = str(args.auto_update_install_repo_path or args.governance_evolution_repo_path or "").strip()
+        auto_update_repo_path = str(Path(auto_update_repo_raw).expanduser()) if auto_update_repo_raw else ""
+        required_urls = [
+            str(x).strip()
+            for x in (args.auto_update_install_require_remote_url or [])
+            if str(x).strip()
+        ]
+        if not required_urls:
+            required_urls = [
+                "https://github.com/XX-Trader/openclaw-hardflow-backup-20260302",
+                "https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git",
+            ]
+        fresh_jobs.append(
+            build_auto_update_install_job(
+                script_py=str(Path(args.auto_update_install_py).expanduser()),
+                repo_path=auto_update_repo_path,
+                every_ms=max(600000, int(args.auto_update_install_every_ms)),
+                log_mode=args.auto_update_install_log_mode,
+                remote=str(args.auto_update_install_remote).strip() or "origin",
+                branch=str(args.auto_update_install_branch).strip(),
+                install_cmd=str(args.auto_update_install_install_cmd).strip(),
+                install_on_no_change=bool(args.auto_update_install_install_on_no_change),
+                git_timeout=max(30, int(args.auto_update_install_git_timeout)),
+                install_timeout=max(30, int(args.auto_update_install_install_timeout)),
+                report_dir=str(Path(args.auto_update_install_report_dir).expanduser()),
+                required_remote_urls=required_urls,
             )
         )
     if bool(args.install_github_web_evolution_job):
@@ -1958,6 +2137,7 @@ def main() -> int:
             "conversation_evolution_job": bool(args.install_conversation_evolution_job),
             "governance_evolution_job": bool(args.install_governance_evolution_job),
             "git_sync_job": bool(args.install_git_sync_job),
+            "auto_update_install_job": bool(args.install_auto_update_install_job),
             "github_web_evolution_job": bool(args.install_github_web_evolution_job),
         },
     }

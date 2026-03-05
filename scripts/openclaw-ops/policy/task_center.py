@@ -241,6 +241,8 @@ class TaskCenter:
                 cost_estimate_total REAL NOT NULL DEFAULT 0,
                 action TEXT,
                 scheduled_at TEXT,
+                started_at TEXT NOT NULL DEFAULT '',
+                completed_at TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
@@ -404,6 +406,8 @@ class TaskCenter:
             "score_payload": "TEXT NOT NULL DEFAULT '{}'",
             "token_usage_summary": "TEXT NOT NULL DEFAULT '{}'",
             "cost_estimate_total": "REAL NOT NULL DEFAULT 0",
+            "started_at": "TEXT NOT NULL DEFAULT ''",
+            "completed_at": "TEXT NOT NULL DEFAULT ''",
         }
         rows = self.conn.execute("PRAGMA table_info(tasks)").fetchall()
         existing = {str(row["name"]) for row in rows}
@@ -486,6 +490,8 @@ class TaskCenter:
             "cost_estimate_total": float(task.get("cost_estimate_total", 0) or 0),
             "action": str(task.get("action", "")).strip() or None,
             "scheduled_at": task.get("scheduled_at"),
+            "started_at": str(task.get("started_at", "")).strip(),
+            "completed_at": str(task.get("completed_at", "")).strip(),
             "created_at": task.get("created_at") or now,
             "updated_at": now,
         }
@@ -548,7 +554,7 @@ class TaskCenter:
                     observable_outputs, acceptance_thresholds,
                     score_raw, score_normalized, score_payload,
                     token_usage_summary, cost_estimate_total, action,
-                    scheduled_at, created_at, updated_at
+                    scheduled_at, started_at, completed_at, created_at, updated_at
                 ) VALUES (
                     :task_id, :pool, :task_type, :reason, :source, :request_source, :priority, :risk_level,
                     :assignee, :status, :retry_count, :failure_count,
@@ -561,7 +567,7 @@ class TaskCenter:
                     :observable_outputs, :acceptance_thresholds,
                     :score_raw, :score_normalized, :score_payload,
                     :token_usage_summary, :cost_estimate_total, :action,
-                    :scheduled_at, :created_at, :updated_at
+                    :scheduled_at, :started_at, :completed_at, :created_at, :updated_at
                 )
                 """,
                 payload,
@@ -627,6 +633,8 @@ class TaskCenter:
             "cost_estimate_total",
             "action",
             "scheduled_at",
+            "started_at",
+            "completed_at",
         }
 
         updates: dict[str, Any] = {}
@@ -703,6 +711,10 @@ class TaskCenter:
         if "assignee" in updates:
             assignee = str(updates["assignee"] or "").strip()
             updates["assignee"] = assignee or None
+        if "started_at" in updates:
+            updates["started_at"] = str(updates["started_at"] or "").strip()
+        if "completed_at" in updates:
+            updates["completed_at"] = str(updates["completed_at"] or "").strip()
         if (
             "review_status" in updates
             and "reviewed_at" not in updates
@@ -751,6 +763,8 @@ class TaskCenter:
         data["token_usage_summary"] = parse_json(str(data.get("token_usage_summary") or ""))
         data["context_completeness"] = round(float(data.get("context_completeness") or 0.0), 2)
         data["cost_estimate_total"] = round(float(data.get("cost_estimate_total") or 0.0), 6)
+        data["started_at"] = str(data.get("started_at") or "").strip()
+        data["completed_at"] = str(data.get("completed_at") or "").strip()
         return data
 
     def add_event(
@@ -1414,6 +1428,7 @@ class TaskCenter:
     def list_agent_points(
         self,
         *,
+        task_id: str = "",
         actor_type: str = "",
         actor_id: str = "",
         since: str = "",
@@ -1432,6 +1447,10 @@ class TaskCenter:
         if actor_id_norm:
             clauses.append("actor_id = ?")
             params.append(actor_id_norm)
+        task_id_norm = str(task_id or "").strip()
+        if task_id_norm:
+            clauses.append("task_id = ?")
+            params.append(task_id_norm)
         since_norm = str(since or "").strip()
         if since_norm:
             parsed = parse_utc_iso(since_norm)
@@ -1562,10 +1581,20 @@ class TaskCenter:
                 f"status transition blocked: {current_status} -> {normalized_status}, allowed: {sorted(allowed_from)}"
             )
 
+        now_value = utc_now_iso()
+        started_at = str(current.get("started_at", "") or "").strip()
+        completed_at = str(current.get("completed_at", "") or "").strip()
+        if normalized_status == "running" and not started_at:
+            started_at = now_value
+        if normalized_status in {"pending", "running"}:
+            completed_at = ""
+        elif normalized_status in {"passed", "failed", "escalated", "cancelled"}:
+            completed_at = now_value
+
         with self.conn:
             self.conn.execute(
-                "UPDATE tasks SET status = ?, updated_at = ? WHERE task_id = ?",
-                (normalized_status, utc_now_iso(), task_id),
+                "UPDATE tasks SET status = ?, started_at = ?, completed_at = ?, updated_at = ? WHERE task_id = ?",
+                (normalized_status, started_at, completed_at, now_value, task_id),
             )
             merged_details = {"from": current_status, "to": normalized_status}
             if details:
@@ -1593,14 +1622,17 @@ class TaskCenter:
             next_status = "failed"
             next_action = "retry"
 
+        now_value = utc_now_iso()
+        completed_at = now_value if next_status in {"failed", "escalated"} else ""
+
         with self.conn:
             self.conn.execute(
                 """
                 UPDATE tasks
-                SET failure_count = ?, retry_count = ?, status = ?, action = ?, updated_at = ?
+                SET failure_count = ?, retry_count = ?, status = ?, action = ?, completed_at = ?, updated_at = ?
                 WHERE task_id = ?
                 """,
-                (next_failure, next_retry, next_status, next_action, utc_now_iso(), task_id),
+                (next_failure, next_retry, next_status, next_action, completed_at, now_value, task_id),
             )
             self.add_event(
                 task_id,
@@ -1865,11 +1897,109 @@ class TaskCenter:
         out.reverse()
         return out
 
+    def task_timing_summary(self, task: dict[str, Any]) -> dict[str, Any]:
+        created_text = str(task.get("created_at", "") or "").strip()
+        started_text = str(task.get("started_at", "") or "").strip()
+        completed_text = str(task.get("completed_at", "") or "").strip()
+        created_dt = parse_utc_iso(created_text)
+        started_dt = parse_utc_iso(started_text)
+        completed_dt = parse_utc_iso(completed_text)
+        now_dt = datetime.now(tz=UTC).replace(microsecond=0)
+
+        age_ms: int | None = None
+        if created_dt is not None:
+            age_ms = max(0, int((now_dt - created_dt).total_seconds() * 1000))
+
+        elapsed_ms: int | None = None
+        if created_dt is not None and completed_dt is not None:
+            elapsed_ms = max(0, int((completed_dt - created_dt).total_seconds() * 1000))
+
+        execution_ms: int | None = None
+        if started_dt is not None and completed_dt is not None:
+            execution_ms = max(0, int((completed_dt - started_dt).total_seconds() * 1000))
+
+        return {
+            "created_at": created_text,
+            "started_at": started_text,
+            "completed_at": completed_text,
+            "is_completed": bool(completed_text),
+            "age_ms": age_ms,
+            "age_min": round((age_ms / 60000.0), 2) if age_ms is not None else None,
+            "elapsed_ms": elapsed_ms,
+            "elapsed_min": round((elapsed_ms / 60000.0), 2) if elapsed_ms is not None else None,
+            "execution_ms": execution_ms,
+            "execution_min": round((execution_ms / 60000.0), 2) if execution_ms is not None else None,
+        }
+
+    def task_points_summary(self, task_id: str) -> dict[str, Any]:
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM agent_points_ledger
+            WHERE task_id = ?
+            ORDER BY points DESC, ts DESC, id DESC
+            """,
+            (task_id,),
+        ).fetchall()
+        records: list[dict[str, Any]] = []
+        by_actor: dict[str, float] = {}
+        by_actor_type: dict[str, float] = {"agent": 0.0, "planner": 0.0}
+        for row in rows:
+            item = dict(row)
+            item["solved"] = bool(item.get("solved"))
+            item["details"] = parse_json(item.pop("details_json", ""))
+            records.append(item)
+            key = f"{item.get('actor_type', '')}:{item.get('actor_id', '')}"
+            by_actor[key] = round(by_actor.get(key, 0.0) + float(item.get("points") or 0.0), 6)
+            actor_type = str(item.get("actor_type", "")).strip().lower()
+            if actor_type in by_actor_type:
+                by_actor_type[actor_type] = round(
+                    by_actor_type.get(actor_type, 0.0) + float(item.get("points") or 0.0), 6
+                )
+
+        ranked_agent_rows = sorted(
+            (
+                {
+                    "actor_id": str(key.split(":", 1)[1]),
+                    "points": points,
+                }
+                for key, points in by_actor.items()
+                if key.startswith("agent:")
+            ),
+            key=lambda item: item["points"],
+            reverse=True,
+        )
+        top_agent = ranked_agent_rows[0] if ranked_agent_rows else None
+        return {
+            "record_count": len(records),
+            "total_points": round(sum(float(item.get("points") or 0.0) for item in records), 6),
+            "by_actor_type": by_actor_type,
+            "by_actor": by_actor,
+            "top_agent": top_agent,
+            "records": records,
+        }
+
     def task_report(self, task_id: str, event_limit: int = 200) -> dict[str, Any]:
+        task = self.get_task(task_id)
+        token_usage = self.task_token_summary(task_id)
+        timing = self.task_timing_summary(task)
+        points = self.task_points_summary(task_id)
         stage_runs = self.list_stage_runs(task_id)
         module_logs = self.list_module_logs(task_id, limit=min(max(50, event_limit), 1000))
         communications = self.list_module_communications(task_id, limit=min(max(50, event_limit), 1000))
         agent_reports = self.list_agent_task_reports(task_id=task_id, limit=min(max(50, event_limit), 1000))
+        report_input_tokens = sum(int(row.get("input_tokens") or 0) for row in agent_reports)
+        report_output_tokens = sum(int(row.get("output_tokens") or 0) for row in agent_reports)
+        report_total_tokens = report_input_tokens + report_output_tokens
+        report_cost = round(sum(float(row.get("cost_estimate") or 0.0) for row in agent_reports), 6)
+        report_token_usage = {
+            "input_tokens": report_input_tokens,
+            "output_tokens": report_output_tokens,
+            "total_tokens": report_total_tokens,
+            "total_tokens_m": round(report_total_tokens / 1_000_000.0, 6),
+            "cost_estimate": report_cost,
+        }
+        effective_token_usage = token_usage if int(token_usage.get("total_tokens") or 0) > 0 else report_token_usage
         module_failures = [
             row
             for row in module_logs
@@ -1881,8 +2011,12 @@ class TaskCenter:
         ]
         stage_failures = [row for row in stage_runs if str(row.get("status", "")).lower() in {"failed"}]
         return {
-            "task": self.get_task(task_id),
-            "token_usage": self.task_token_summary(task_id),
+            "task": task,
+            "timing": timing,
+            "token_usage": token_usage,
+            "token_usage_from_agent_reports": report_token_usage,
+            "token_usage_effective": effective_token_usage,
+            "agent_points": points,
             "stage_runs": stage_runs,
             "module_logs": module_logs,
             "module_communications": communications,
@@ -2025,6 +2159,7 @@ class TaskCenter:
                     "solved_count": int(row["solved_count"] or 0),
                     "failed_count": int(row["failed_count"] or 0),
                     "total_tokens": int(row["total_tokens"] or 0),
+                    "total_tokens_m": round(int(row["total_tokens"] or 0) / 1_000_000.0, 6),
                     "cost_estimate": round(float(row["total_cost"] or 0.0), 6),
                     "total_duration_ms": int(row["total_duration_ms"] or 0),
                     "avg_quality_score": (
@@ -2129,6 +2264,43 @@ class TaskCenter:
             totals["output_tokens"] += output_tokens
             totals["total_tokens"] += total_tokens
             totals["cost_estimate"] += cost_estimate
+
+        report_token_rows = self.conn.execute(
+            """
+            SELECT
+              agent_id,
+              SUM(input_tokens) AS input_tokens,
+              SUM(output_tokens) AS output_tokens,
+              SUM(total_tokens) AS total_tokens,
+              SUM(cost_estimate) AS cost_estimate
+            FROM agent_task_reports
+            WHERE ts >= ? AND ts < ?
+            GROUP BY agent_id
+            ORDER BY total_tokens DESC
+            """,
+            (tr.start, tr.end),
+        ).fetchall()
+        report_by_agent: list[dict[str, Any]] = []
+        report_totals = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cost_estimate": 0.0}
+        for row in report_token_rows:
+            input_tokens = int(row["input_tokens"] or 0)
+            output_tokens = int(row["output_tokens"] or 0)
+            total_tokens = int(row["total_tokens"] or 0)
+            cost_estimate = float(row["cost_estimate"] or 0.0)
+            report_by_agent.append(
+                {
+                    "agent_id": str(row["agent_id"]),
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "total_tokens": total_tokens,
+                    "total_tokens_m": round(total_tokens / 1_000_000.0, 6),
+                    "cost_estimate": round(cost_estimate, 6),
+                }
+            )
+            report_totals["input_tokens"] += input_tokens
+            report_totals["output_tokens"] += output_tokens
+            report_totals["total_tokens"] += total_tokens
+            report_totals["cost_estimate"] += cost_estimate
 
         escalated_rows = self.conn.execute(
             """
@@ -2274,6 +2446,35 @@ class TaskCenter:
                 }
             )
 
+        points_rows = self.conn.execute(
+            """
+            SELECT
+              actor_type,
+              actor_id,
+              COUNT(*) AS record_count,
+              SUM(points) AS total_points,
+              AVG(points) AS avg_points,
+              SUM(CASE WHEN solved = 1 THEN 1 ELSE 0 END) AS solved_count
+            FROM agent_points_ledger
+            WHERE ts >= ? AND ts < ?
+            GROUP BY actor_type, actor_id
+            ORDER BY total_points DESC, solved_count DESC, actor_type, actor_id
+            """,
+            (tr.start, tr.end),
+        ).fetchall()
+        agent_points: list[dict[str, Any]] = []
+        for row in points_rows:
+            agent_points.append(
+                {
+                    "actor_type": str(row["actor_type"]),
+                    "actor_id": str(row["actor_id"]),
+                    "record_count": int(row["record_count"] or 0),
+                    "solved_count": int(row["solved_count"] or 0),
+                    "total_points": round(float(row["total_points"] or 0.0), 6),
+                    "avg_points": round(float(row["avg_points"] or 0.0), 6),
+                }
+            )
+
         return {
             "date": target_date.isoformat(),
             "task_counts": by_status,
@@ -2293,6 +2494,35 @@ class TaskCenter:
                 },
                 "by_agent": by_agent,
             },
+            "token_usage_from_agent_reports": {
+                "totals": {
+                    "input_tokens": report_totals["input_tokens"],
+                    "output_tokens": report_totals["output_tokens"],
+                    "total_tokens": report_totals["total_tokens"],
+                    "total_tokens_m": round(report_totals["total_tokens"] / 1_000_000.0, 6),
+                    "cost_estimate": round(report_totals["cost_estimate"], 6),
+                },
+                "by_agent": report_by_agent,
+            },
+            "token_usage_effective": {
+                "source": "token_usage" if totals["total_tokens"] > 0 else "agent_task_reports",
+                "totals": {
+                    "input_tokens": totals["input_tokens"] if totals["total_tokens"] > 0 else report_totals["input_tokens"],
+                    "output_tokens": (
+                        totals["output_tokens"] if totals["total_tokens"] > 0 else report_totals["output_tokens"]
+                    ),
+                    "total_tokens": totals["total_tokens"] if totals["total_tokens"] > 0 else report_totals["total_tokens"],
+                    "total_tokens_m": round(
+                        (totals["total_tokens"] if totals["total_tokens"] > 0 else report_totals["total_tokens"])
+                        / 1_000_000.0,
+                        6,
+                    ),
+                    "cost_estimate": round(
+                        totals["cost_estimate"] if totals["total_tokens"] > 0 else report_totals["cost_estimate"],
+                        6,
+                    ),
+                },
+            },
             "stage_metrics": stage_metrics,
             "module_observability": {
                 "failure_count": module_failure_count,
@@ -2303,6 +2533,7 @@ class TaskCenter:
                 "rows": communication_metrics,
             },
             "agent_report_metrics": agent_report_metrics,
+            "agent_points": agent_points,
             "escalated": escalated,
             "escalated_count": escalated_count,
             "failure_over_limit": failure_over_limit,
@@ -2341,6 +2572,15 @@ def format_daily_summary_markdown(summary: dict[str, Any]) -> str:
     lines.append(f"- total_tokens: {totals.get('total_tokens', 0)}")
     lines.append(f"- total_tokens_m: {totals.get('total_tokens_m', 0)}")
     lines.append(f"- cost_estimate: {totals.get('cost_estimate', 0)}")
+    lines.append("")
+
+    effective_usage = summary.get("token_usage_effective", {})
+    effective_totals = effective_usage.get("totals", {})
+    lines.append("## Token Usage Effective")
+    lines.append(f"- source: {effective_usage.get('source', 'token_usage')}")
+    lines.append(f"- total_tokens: {effective_totals.get('total_tokens', 0)}")
+    lines.append(f"- total_tokens_m: {effective_totals.get('total_tokens_m', 0)}")
+    lines.append(f"- cost_estimate: {effective_totals.get('cost_estimate', 0)}")
     lines.append("")
 
     by_agent = usage.get("by_agent", [])
@@ -2412,6 +2652,20 @@ def format_daily_summary_markdown(summary: dict[str, Any]) -> str:
             )
     else:
         lines.append("- no agent reports")
+    lines.append("")
+
+    agent_points = summary.get("agent_points", [])
+    lines.append("## Agent Points")
+    if agent_points:
+        for item in agent_points[:30]:
+            lines.append(
+                "- "
+                + f"{item.get('actor_type', '-')}/{item.get('actor_id', '-')}: "
+                + f"total_points={item.get('total_points', 0)}, avg_points={item.get('avg_points', 0)}, "
+                + f"solved_count={item.get('solved_count', 0)}, records={item.get('record_count', 0)}"
+            )
+    else:
+        lines.append("- no points records")
     lines.append("")
 
     failure_over_limit = summary.get("failure_over_limit", [])
