@@ -354,8 +354,14 @@ def main() -> None:
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
     parser.add_argument("--todo-every-ms", type=int, default=900000)
+    parser.add_argument("--todo-output-mode", default="summary", choices=["summary", "verbose", "silent"])
     parser.add_argument("--project-index-every-ms", type=int, default=1800000)
     parser.add_argument("--local-backup-every-ms", type=int, default=3600000)
+    parser.add_argument(
+        "--local-backup-notify-on",
+        default="errors-only",
+        choices=["errors-only", "on-change", "always"],
+    )
     parser.add_argument("--incremental-every-ms", type=int, default=900000)
     parser.add_argument("--full-expr", default="23 */6 * * *")
     parser.add_argument("--daily-summary-expr", default="5 0 * * *")
@@ -397,6 +403,8 @@ def main() -> None:
         str(Path(ops_home) / "todo_patrol.py"),
         "--every-ms",
         str(max(600000, int(args.todo_every_ms))),
+        "--output-mode",
+        str(args.todo_output_mode),
     ]
     install_todo_cmd.extend(delivery_args(args.channel, args.to))
 
@@ -460,6 +468,8 @@ def main() -> None:
         openclaw_home,
         "--every-ms",
         str(max(600000, int(args.local_backup_every_ms))),
+        "--notify-on",
+        str(args.local_backup_notify_on),
     ]
     install_local_backup_cmd.extend(delivery_args(args.channel, args.to))
 

@@ -549,6 +549,7 @@ def build_message(command: str, extra_rules: list[str] | None = None) -> str:
         f"{rules_text}\n"
         "Return EXACTLY raw stdout/stderr text from the command. "
         "Do not add explanation, greeting, or prefix text. "
+        "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
         "If output is empty, reply NO_REPLY."
     )
 

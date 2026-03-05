@@ -54,6 +54,9 @@ def upsert_job(
     runner_py: str,
     openclaw_home: str,
     task_id: str,
+    notify_on: str,
+    list_changed_files: bool,
+    max_listed_files: int,
     channel: str,
     target: str,
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -75,6 +78,8 @@ def upsert_job(
         f"--repo-path \"{openclaw_home}\" "
         f"--task-id {task_id} "
         "--normal-log-mode silent "
+        f"--notify-on {notify_on} "
+        f"--max-listed-files {max(0, int(max_listed_files))} "
         "--max-files 600 "
         "--exclude-glob \"**/.git/**\" "
         "--exclude-glob \"**/.locks/**\" "
@@ -104,6 +109,8 @@ def upsert_job(
         "--exclude-glob \"**/*.log\" "
         "--commit-prefix \"chore(local-backup): snapshot ~/.openclaw\""
     )
+    if bool(list_changed_files):
+        cmd += " --list-changed-files"
 
     payload = {
         "id": job_id,
@@ -125,8 +132,11 @@ def upsert_job(
             "message": (
                 "You are ops-agent scheduled runner. Run command only:\n"
                 f"{cmd}\n"
+                "Execute the command exactly once. "
+                "Do not run any follow-up command. "
                 "Return EXACTLY raw stdout/stderr text from the command; "
                 "do not add explanation, greeting, or prefix text. "
+                "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
                 "If output is NO_REPLY, reply NO_REPLY."
             ),
             "timeoutSeconds": 1800,
@@ -162,6 +172,9 @@ def main() -> None:
     parser.add_argument("--runner-py", default=str(home / ".openclaw/ops/local_git_backup_runner.py"))
     parser.add_argument("--openclaw-home", default=str(home / ".openclaw"))
     parser.add_argument("--task-id", default="cron:ops-local-openclaw-git-backup")
+    parser.add_argument("--notify-on", default="errors-only", choices=["errors-only", "on-change", "always"])
+    parser.add_argument("--list-changed-files", action="store_true")
+    parser.add_argument("--max-listed-files", type=int, default=20)
     parser.add_argument("--skip-path-check", action="store_true")
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
@@ -201,6 +214,9 @@ def main() -> None:
         runner_py=str(runner_path),
         openclaw_home=str(openclaw_home_path),
         task_id=str(args.task_id or "").strip() or "cron:ops-local-openclaw-git-backup",
+        notify_on=str(args.notify_on),
+        list_changed_files=bool(args.list_changed_files),
+        max_listed_files=int(args.max_listed_files),
         channel=channel,
         target=target,
     )
@@ -213,6 +229,9 @@ def main() -> None:
     print(f"runner_py={runner_path}")
     print(f"openclaw_home={openclaw_home_path}")
     print(f"task_id={str(args.task_id or '').strip() or 'cron:ops-local-openclaw-git-backup'}")
+    print(f"notify_on={args.notify_on}")
+    print(f"list_changed_files={str(bool(args.list_changed_files)).lower()}")
+    print(f"max_listed_files={int(args.max_listed_files)}")
     print(f"delivery={channel}:{target}")
 
 

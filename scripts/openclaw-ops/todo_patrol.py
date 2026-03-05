@@ -710,9 +710,60 @@ def format_dispatch_message(
     state_file: Path,
     dispatch_errors: list[str],
     planner_summary: dict[str, Any] | None = None,
+    output_mode: str = "summary",
 ) -> str:
+    mode = to_text(output_mode).lower() or "summary"
+    if mode not in {"summary", "verbose", "silent"}:
+        mode = "summary"
+
+    if mode == "silent" and not dispatch_errors:
+        return "NO_REPLY"
+
     if not dispatched and skipped_count == 0 and not dispatch_errors:
         return "NO_REPLY"
+
+    if mode == "summary":
+        if not dispatched and not dispatch_errors:
+            return "NO_REPLY"
+
+        lines: list[str] = []
+        lines.append("# todo-patrol")
+        lines.append(f"- task: {task}")
+        lines.append(f"- time: {now_tz().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
+        lines.append(
+            f"- dispatch_result: new={len(dispatched)} skipped={skipped_count} "
+            f"ops_incident_skipped={ops_incident_skipped_count} errors={len(dispatch_errors)}"
+        )
+        lines.append(f"- todo_file: {todo_file}")
+        lines.append(f"- task_center_db: {db_path}")
+        lines.append(f"- state_file: {state_file}")
+        if dispatched:
+            sample_limit = min(5, len(dispatched))
+            lines.append(f"- new_tasks_sample: {sample_limit}/{len(dispatched)}")
+            for row in dispatched[:sample_limit]:
+                task_row = row.get("task", {})
+                if not isinstance(task_row, dict):
+                    task_row = {}
+                lines.append(
+                    "- task: "
+                    f"id={task_row.get('task_id', '-')}, "
+                    f"assignee={task_row.get('assignee') or 'unassigned'}, "
+                    f"priority={task_row.get('priority', '-')}, "
+                    f"risk={task_row.get('risk_level', '-')}, "
+                    f"context={task_row.get('context_completeness', '-')}"
+                )
+        for err in dispatch_errors[:10]:
+            lines.append(f"- error: {err}")
+        summary = planner_summary if isinstance(planner_summary, dict) else {}
+        if summary:
+            lines.append(
+                "- planner_summary_24h: "
+                f"tasks={summary.get('task_count', 0)}, "
+                f"resolved={summary.get('resolved_task_count', 0)}, "
+                f"failed={summary.get('failed_task_count', 0)}, "
+                f"ratio={summary.get('solved_ratio_pct', 0.0)}"
+            )
+        return "\n".join(lines).strip()
 
     lines: list[str] = []
     lines.append("sender_identity: ops-agent/todo-patrol")
@@ -958,6 +1009,7 @@ def main() -> int:
     parser.add_argument("--no-auto-assign", action="store_true")
     parser.add_argument("--skip-ops-incidents", dest="skip_ops_incidents", action="store_true", default=True)
     parser.add_argument("--allow-ops-incidents", dest="skip_ops_incidents", action="store_false")
+    parser.add_argument("--output-mode", default="summary", choices=["summary", "verbose", "silent"])
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
@@ -1013,6 +1065,7 @@ def main() -> int:
             db_path=task_db,
             state_file=state_file,
             dispatch_errors=[],
+            output_mode=args.output_mode,
         )
         print(msg)
         return 0
@@ -1304,6 +1357,7 @@ def main() -> int:
         state_file=state_file,
         dispatch_errors=dispatch_errors,
         planner_summary=planner_summary_snapshot,
+        output_mode=args.output_mode,
     )
     print(msg)
     return 0

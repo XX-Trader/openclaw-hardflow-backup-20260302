@@ -13,6 +13,7 @@ from typing import Any
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
+NOTIFY_MODES = {"errors-only", "on-change", "always"}
 
 DEFAULT_INCLUDE_PREFIXES = (
     "openclaw.json",
@@ -91,6 +92,11 @@ def now_iso() -> str:
 def normalize_log_mode(value: str, default: str = "silent") -> str:
     mode = str(value or "").strip().lower()
     return mode if mode in LOG_MODES else default
+
+
+def normalize_notify_mode(value: str, default: str = "errors-only") -> str:
+    mode = str(value or "").strip().lower()
+    return mode if mode in NOTIFY_MODES else default
 
 
 def normalize_rel(path: str) -> str:
@@ -246,6 +252,9 @@ def main() -> int:
     parser.add_argument("--repo-path", default=str(Path.home() / ".openclaw"))
     parser.add_argument("--task-id", default="")
     parser.add_argument("--normal-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--notify-on", default="errors-only", choices=sorted(NOTIFY_MODES))
+    parser.add_argument("--list-changed-files", action="store_true")
+    parser.add_argument("--max-listed-files", type=int, default=20)
     parser.add_argument("--author-name", default="openclaw-local-backup")
     parser.add_argument("--author-email", default="openclaw@local")
     parser.add_argument("--commit-prefix", default="chore(local-backup): snapshot ~/.openclaw")
@@ -260,6 +269,7 @@ def main() -> int:
 
     repo = Path(str(args.repo_path or ".")).expanduser().resolve()
     log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
+    notify_mode = normalize_notify_mode(args.notify_on, default="errors-only")
     include_prefixes = [normalize_rel(x) for x in args.include_prefix if str(x).strip()]
     exclude_prefixes = [normalize_rel(x) for x in args.exclude_prefix if str(x).strip()]
     include_globs = [normalize_rel(x) for x in args.include_glob if str(x).strip()]
@@ -274,6 +284,7 @@ def main() -> int:
         "task_id": str(args.task_id or "").strip(),
         "repo": str(repo),
         "normal_log_mode": log_mode,
+        "notify_on": notify_mode,
         "initialized": False,
         "gitignore_updated": False,
         "committed": False,
@@ -351,9 +362,16 @@ def main() -> int:
                 if rc2 == 0 and str(sha).strip():
                     result["commit_sha"] = str(sha).strip()
 
-    notify = bool(result["errors"]) or bool(result["committed"]) or bool(result["initialized"]) or bool(
-        result["gitignore_updated"]
-    )
+    notify = False
+    if notify_mode == "always":
+        notify = True
+    elif notify_mode == "on-change":
+        notify = bool(result["errors"]) or bool(result["committed"]) or bool(result["initialized"]) or bool(
+            result["gitignore_updated"]
+        )
+    else:
+        notify = bool(result["errors"])
+
     output = "NO_REPLY"
     if notify:
         lines = [
@@ -367,13 +385,17 @@ def main() -> int:
             f"- eligible_files: {len(result['eligible_files'])}",
             f"- skipped_files: {len(result['skipped_files'])}",
             f"- error_count: {len(result['errors'])}",
+            f"- notify_on: {notify_mode}",
         ]
         if str(result.get("commit_sha", "")).strip():
             lines.append(f"- commit_sha: {result['commit_sha']}")
         for err in result["errors"][:10]:
             lines.append(f"- error: {err}")
-        for path in result["eligible_files"][:20]:
-            lines.append(f"- changed: {path}")
+        if bool(args.list_changed_files):
+            max_listed_files = max(0, int(args.max_listed_files or 0))
+            if max_listed_files > 0:
+                for path in result["eligible_files"][:max_listed_files]:
+                    lines.append(f"- changed: {path}")
         output = "\n".join(lines)
 
     if bool(args.emit_json):

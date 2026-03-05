@@ -60,10 +60,12 @@ def build_message(
     default_request_source: str,
     ai_context_min_pct: float,
     skip_ops_incidents: bool,
+    output_mode: str,
 ) -> str:
     command = (
         f"python3 {ops_script} --task cron:todo-patrol --max-dispatch {int(max_dispatch)} "
-        f"--default-request-source {default_request_source} --ai-context-min-pct {float(ai_context_min_pct)}"
+        f"--default-request-source {default_request_source} --ai-context-min-pct {float(ai_context_min_pct)} "
+        f"--output-mode {output_mode}"
     )
     if skip_ops_incidents:
         command += " --skip-ops-incidents"
@@ -72,8 +74,11 @@ def build_message(
     return (
         "You are ops-agent scheduled runner. Run command only:\n"
         f"{command}\n"
+        "Execute the command exactly once. "
+        "Do not run any follow-up command. "
         "Return EXACTLY raw stdout/stderr text from the command; "
         "do not add explanation, greeting, or prefix text. "
+        "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
         "If output is empty, reply NO_REPLY."
     )
 
@@ -87,6 +92,7 @@ def upsert_job(
     default_request_source: str,
     ai_context_min_pct: float,
     skip_ops_incidents: bool,
+    output_mode: str,
     channel: str,
     target: str,
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -123,6 +129,7 @@ def upsert_job(
                 default_request_source=default_request_source,
                 ai_context_min_pct=ai_context_min_pct,
                 skip_ops_incidents=skip_ops_incidents,
+                output_mode=output_mode,
             ),
             "timeoutSeconds": 1200,
         },
@@ -159,6 +166,7 @@ def main() -> None:
     parser.add_argument("--ai-context-min-pct", type=float, default=100.0)
     parser.add_argument("--skip-ops-incidents", dest="skip_ops_incidents", action="store_true", default=True)
     parser.add_argument("--allow-ops-incidents", dest="skip_ops_incidents", action="store_false")
+    parser.add_argument("--output-mode", default="summary", choices=["summary", "verbose", "silent"])
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
     args = parser.parse_args()
@@ -193,6 +201,7 @@ def main() -> None:
         default_request_source=str(args.default_request_source),
         ai_context_min_pct=float(args.ai_context_min_pct),
         skip_ops_incidents=bool(args.skip_ops_incidents),
+        output_mode=str(args.output_mode),
         channel=channel,
         target=target,
     )
@@ -213,6 +222,7 @@ def main() -> None:
     print(f"default_request_source={args.default_request_source}")
     print(f"ai_context_min_pct={float(args.ai_context_min_pct)}")
     print(f"skip_ops_incidents={str(bool(args.skip_ops_incidents)).lower()}")
+    print(f"output_mode={args.output_mode}")
     print(f"delivery={channel}:{target}")
 
 
