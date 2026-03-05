@@ -566,7 +566,7 @@ class ProjectAssessment:
             "id": slugify(self.name),
             "name": self.name,
             "path": str(self.path),
-            "index_dir": ".workflow/project-index",
+            "index_dir": ".workflow/project-index-local",
             "auto_pull": True,
             "git_remote": self.remote_name or "origin",
             "git_branch": self.branch or "main",

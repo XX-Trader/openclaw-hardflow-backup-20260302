@@ -4,7 +4,7 @@
       "id": "project-a",
       "name": "project-a",
       "path": "/srv/project-a",
-      "index_dir": ".workflow/project-index",
+      "index_dir": ".workflow/project-index-local",
       "auto_pull": true,
       "git_remote": "origin",
       "git_branch": "main",
@@ -27,11 +27,10 @@
       "id": "project-b",
       "name": "project-b",
       "path": "/srv/project-b",
-      "index_dir": ".workflow/project-index",
+      "index_dir": ".workflow/project-index-local",
       "auto_pull": true,
       "git_remote": "origin",
       "git_branch": "master"
     }
   ]
 }
-

@@ -1,0 +1,419 @@
+#!/usr/bin/env python3
+"""Git sync + commit + push runner for OpenClaw self-evolution flow.
+
+Goals:
+1) Keep local repository synced with remote via fetch/pull --ff-only.
+2) Commit eligible local changes produced by automation.
+3) Push to remote repository.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+UTC = timezone.utc
+LOG_MODES = {"silent", "chat"}
+DEFAULT_EXCLUDE_PREFIXES = (
+    ".workflow/project-index/",
+    ".workflow/project-index-local/",
+    ".workflow/experience/",
+    ".workflow/sessions/",
+    "scripts/openclaw-ops/policy/runtime/",
+    "openclaw-memory/",
+    "memory/",
+)
+
+
+def now_iso() -> str:
+    return datetime.now(tz=UTC).replace(microsecond=0).isoformat()
+
+
+def normalize_log_mode(value: str, default: str = "silent") -> str:
+    mode = str(value or "").strip().lower()
+    return mode if mode in LOG_MODES else default
+
+
+def normalize_rel(path: str) -> str:
+    return str(path or "").replace("\\", "/").lstrip("/")
+
+
+def normalize_remote_url(url: str) -> str:
+    text = str(url or "").strip()
+    while text.endswith("/"):
+        text = text[:-1]
+    if text.lower().endswith(".git"):
+        text = text[:-4]
+    return text.strip().lower()
+
+
+def run_git(
+    repo: Path,
+    args: list[str],
+    *,
+    timeout: int = 60,
+) -> tuple[int, str, str]:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=str(repo),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return 127, "", str(exc)
+    return proc.returncode, (proc.stdout or "").strip(), (proc.stderr or "").strip()
+
+
+def parse_status_porcelain(raw: str) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    for line in str(raw or "").splitlines():
+        text = line.rstrip("\n")
+        if not text:
+            continue
+        # format: XY<space>path or XY<space>old -> new
+        if len(text) < 4:
+            continue
+        status = text[:2]
+        path_raw = text[3:]
+        if " -> " in path_raw:
+            path_raw = path_raw.split(" -> ", 1)[1]
+        path = normalize_rel(path_raw)
+        if not path:
+            continue
+        out.append({"status": status, "path": path})
+    return out
+
+
+def should_include(
+    path: str,
+    *,
+    include_prefixes: list[str],
+    exclude_prefixes: list[str],
+) -> bool:
+    rel = normalize_rel(path)
+    if not rel:
+        return False
+    low = rel.lower()
+    for prefix in exclude_prefixes:
+        p = normalize_rel(prefix).lower()
+        if p and low.startswith(p):
+            return False
+    if not include_prefixes:
+        return True
+    for prefix in include_prefixes:
+        p = normalize_rel(prefix).lower()
+        if p and low.startswith(p):
+            return True
+    return False
+
+
+def resolve_branch(repo: Path, branch_arg: str) -> tuple[str, str]:
+    wanted = str(branch_arg or "").strip()
+    if wanted:
+        return wanted, ""
+    rc, out, err = run_git(repo, ["rev-parse", "--abbrev-ref", "HEAD"], timeout=20)
+    if rc != 0 or not out:
+        return "", f"branch_detect_failed:{err or rc}"
+    branch = str(out).strip()
+    if branch in {"", "HEAD"}:
+        return "", "detached_head_not_supported"
+    return branch, ""
+
+
+def resolve_upstream(repo: Path, remote: str, branch: str) -> str:
+    rc, out, _err = run_git(repo, ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], timeout=20)
+    if rc == 0 and str(out).strip():
+        return str(out).strip()
+    candidate = f"{remote}/{branch}"
+    rc2, _out2, _err2 = run_git(repo, ["rev-parse", "--verify", candidate], timeout=20)
+    if rc2 == 0:
+        return candidate
+    return ""
+
+
+def ahead_behind(repo: Path, upstream: str) -> tuple[int, int]:
+    if not str(upstream or "").strip():
+        return 0, 0
+    rc, out, _err = run_git(repo, ["rev-list", "--left-right", "--count", f"HEAD...{upstream}"], timeout=20)
+    if rc != 0:
+        return 0, 0
+    parts = str(out).split()
+    ahead = int(parts[0]) if len(parts) >= 1 and parts[0].isdigit() else 0
+    behind = int(parts[1]) if len(parts) >= 2 and parts[1].isdigit() else 0
+    return ahead, behind
+
+
+def chunked(values: list[str], size: int) -> list[list[str]]:
+    out: list[list[str]] = []
+    step = max(1, int(size))
+    for idx in range(0, len(values), step):
+        out.append(values[idx : idx + step])
+    return out
+
+
+def classify_pull_blockers(
+    changes: list[dict[str, str]],
+    *,
+    include_prefixes: list[str],
+    exclude_prefixes: list[str],
+) -> tuple[list[str], list[str]]:
+    """Return (blocking_files, ignored_untracked_files) before pull.
+
+    Blocking rules:
+    1) Any tracked local change blocks pull.
+    2) Any untracked change that falls into include scope blocks pull.
+    3) Untracked excluded/runtime files are ignored for pull pre-check.
+    """
+
+    blocking: list[str] = []
+    ignored_untracked: list[str] = []
+    for item in changes:
+        path = str(item.get("path", "")).strip()
+        if not path:
+            continue
+        status = str(item.get("status", "")).strip()
+        is_untracked = status == "??"
+        if not is_untracked:
+            blocking.append(path)
+            continue
+        if should_include(path, include_prefixes=include_prefixes, exclude_prefixes=exclude_prefixes):
+            blocking.append(path)
+        else:
+            ignored_untracked.append(path)
+    return sorted(set(blocking)), sorted(set(ignored_untracked))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Sync local git repository and push self-evolution changes")
+    parser.add_argument("--repo-path", default=".", help="target git repository path")
+    parser.add_argument("--task-id", default="")
+    parser.add_argument("--normal-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--remote", default="origin")
+    parser.add_argument("--branch", default="")
+    parser.add_argument("--auto-pull", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--push", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--require-remote-url", action="append", default=[])
+    parser.add_argument("--commit-prefix", default="chore(self-evolution): sync updates")
+    parser.add_argument("--commit-message", default="")
+    parser.add_argument("--include-prefix", action="append", default=[])
+    parser.add_argument("--exclude-prefix", action="append", default=[])
+    parser.add_argument("--max-files", type=int, default=200)
+    parser.add_argument("--emit-json", action="store_true")
+    args = parser.parse_args()
+
+    repo = Path(str(args.repo_path or ".")).expanduser().resolve()
+    remote = str(args.remote or "origin").strip() or "origin"
+    log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
+    include_prefixes = [normalize_rel(x) for x in args.include_prefix if str(x).strip()]
+    exclude_prefixes = [normalize_rel(x) for x in args.exclude_prefix if str(x).strip()]
+    if not exclude_prefixes:
+        exclude_prefixes = [normalize_rel(x) for x in DEFAULT_EXCLUDE_PREFIXES]
+
+    result: dict[str, Any] = {
+        "time": now_iso(),
+        "task_id": str(args.task_id or "").strip(),
+        "repo": str(repo),
+        "remote": remote,
+        "remote_url": "",
+        "required_remote_urls": [],
+        "normal_log_mode": log_mode,
+        "branch": "",
+        "upstream": "",
+        "fetch_ok": False,
+        "pull_ok": False,
+        "pulled": False,
+        "committed": False,
+        "commit_sha": "",
+        "pushed": False,
+        "ahead": 0,
+        "behind": 0,
+        "pull_blocking_files": [],
+        "pull_ignored_untracked": [],
+        "eligible_files": [],
+        "skipped_files": [],
+        "errors": [],
+    }
+
+    if not repo.exists() or (not repo.is_dir()):
+        result["errors"].append(f"repo_invalid:{repo}")
+    else:
+        rc, out, err = run_git(repo, ["rev-parse", "--is-inside-work-tree"], timeout=20)
+        if rc != 0 or str(out).strip().lower() != "true":
+            result["errors"].append(f"not_git_repo:{err or out or repo}")
+
+    branch = ""
+    if not result["errors"]:
+        branch, branch_err = resolve_branch(repo, str(args.branch or ""))
+        if branch_err:
+            result["errors"].append(branch_err)
+        else:
+            result["branch"] = branch
+        rc, remote_url, err = run_git(repo, ["remote", "get-url", remote], timeout=20)
+        if rc != 0 or not str(remote_url).strip():
+            result["errors"].append(f"remote_get_url_failed:{err or rc}")
+        else:
+            remote_url_text = str(remote_url).strip()
+            result["remote_url"] = remote_url_text
+            required_urls = [str(x).strip() for x in args.require_remote_url if str(x).strip()]
+            result["required_remote_urls"] = required_urls
+            if required_urls:
+                got = normalize_remote_url(remote_url_text)
+                allow = {normalize_remote_url(x) for x in required_urls if normalize_remote_url(x)}
+                if got not in allow:
+                    result["errors"].append(
+                        "remote_url_not_allowed:"
+                        + f"got={remote_url_text}"
+                    )
+
+    if not result["errors"]:
+        rc, _out, err = run_git(repo, ["fetch", "--all", "--prune"], timeout=180)
+        result["fetch_ok"] = rc == 0
+        if rc != 0:
+            result["errors"].append(f"git_fetch_failed:{err or rc}")
+
+    upstream = ""
+    if not result["errors"]:
+        upstream = resolve_upstream(repo, remote=remote, branch=branch)
+        result["upstream"] = upstream
+        ahead, behind = ahead_behind(repo, upstream)
+        result["ahead"] = ahead
+        result["behind"] = behind
+
+    if not result["errors"] and bool(args.auto_pull) and int(result.get("behind", 0)) > 0:
+        rc, status_out, status_err = run_git(repo, ["status", "--porcelain", "--untracked-files=all"], timeout=20)
+        if rc != 0:
+            result["errors"].append(f"git_status_failed:{status_err or rc}")
+        else:
+            changes_before_pull = parse_status_porcelain(status_out)
+            blockers, ignored_untracked = classify_pull_blockers(
+                changes_before_pull,
+                include_prefixes=include_prefixes,
+                exclude_prefixes=exclude_prefixes,
+            )
+            result["pull_blocking_files"] = blockers
+            result["pull_ignored_untracked"] = ignored_untracked
+            if blockers:
+                result["errors"].append("behind_with_local_changes_requires_manual_rebase")
+            else:
+                rc, _out, err = run_git(repo, ["pull", "--ff-only", remote, branch], timeout=240)
+                result["pull_ok"] = rc == 0
+                result["pulled"] = rc == 0
+                if rc != 0:
+                    result["errors"].append(f"git_pull_ff_only_failed:{err or rc}")
+                else:
+                    ahead, behind = ahead_behind(repo, upstream or f"{remote}/{branch}")
+                    result["ahead"] = ahead
+                    result["behind"] = behind
+
+    if not result["errors"]:
+        rc, status_out, err = run_git(repo, ["status", "--porcelain", "--untracked-files=all"], timeout=30)
+        if rc != 0:
+            result["errors"].append(f"git_status_failed:{err or rc}")
+        else:
+            changes = parse_status_porcelain(status_out)
+            eligible: list[str] = []
+            skipped: list[str] = []
+            for item in changes:
+                path = str(item.get("path", "")).strip()
+                if should_include(path, include_prefixes=include_prefixes, exclude_prefixes=exclude_prefixes):
+                    eligible.append(path)
+                else:
+                    skipped.append(path)
+            max_files = max(1, int(args.max_files))
+            if len(eligible) > max_files:
+                skipped.extend(eligible[max_files:])
+                eligible = eligible[:max_files]
+            result["eligible_files"] = sorted(set(eligible))
+            result["skipped_files"] = sorted(set(skipped))
+
+    if not result["errors"] and result["eligible_files"]:
+        for group in chunked(list(result["eligible_files"]), 80):
+            rc, _out, err = run_git(repo, ["add", "--", *group], timeout=60)
+            if rc != 0:
+                result["errors"].append(f"git_add_failed:{err or rc}")
+                break
+
+    if not result["errors"] and result["eligible_files"]:
+        rc, staged_out, err = run_git(repo, ["diff", "--cached", "--name-only"], timeout=20)
+        if rc != 0:
+            result["errors"].append(f"git_diff_cached_failed:{err or rc}")
+        elif not str(staged_out).strip():
+            result["eligible_files"] = []
+        else:
+            commit_message = str(args.commit_message or "").strip()
+            if not commit_message:
+                commit_prefix = str(args.commit_prefix or "").strip() or "chore(self-evolution): sync updates"
+                ts = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
+                task_suffix = f" [{result['task_id']}]" if result["task_id"] else ""
+                commit_message = f"{commit_prefix}{task_suffix} ({ts})"
+            rc, _out, err = run_git(repo, ["commit", "-m", commit_message], timeout=120)
+            if rc != 0:
+                result["errors"].append(f"git_commit_failed:{err or rc}")
+            else:
+                result["committed"] = True
+                rc2, sha, _err2 = run_git(repo, ["rev-parse", "HEAD"], timeout=20)
+                if rc2 == 0 and str(sha).strip():
+                    result["commit_sha"] = str(sha).strip()
+
+    if not result["errors"]:
+        upstream_after = resolve_upstream(repo, remote=remote, branch=branch)
+        result["upstream"] = upstream_after or result["upstream"]
+        ahead, behind = ahead_behind(repo, upstream_after)
+        result["ahead"] = ahead
+        result["behind"] = behind
+
+    should_push = bool(args.push)
+    if not result["errors"] and should_push and int(result.get("ahead", 0)) > 0:
+        rc, _out, err = run_git(repo, ["push", "-u", remote, branch], timeout=240)
+        if rc != 0:
+            result["errors"].append(f"git_push_failed:{err or rc}")
+        else:
+            result["pushed"] = True
+
+    notify = bool(result["errors"]) or bool(result["committed"]) or bool(result["pushed"]) or bool(result["pulled"])
+    output = "NO_REPLY"
+    if notify:
+        lines = [
+            "# git-sync-push",
+            f"- task: {result['task_id'] or '-'}",
+            f"- time: {result['time']}",
+            f"- repo: {result['repo']}",
+            f"- branch: {result['branch'] or '-'}",
+            f"- remote_url: {result['remote_url'] or '-'}",
+            f"- upstream: {result['upstream'] or '-'}",
+            f"- fetch_ok: {result['fetch_ok']}",
+            f"- pulled: {result['pulled']}",
+            f"- committed: {result['committed']}",
+            f"- pushed: {result['pushed']}",
+            f"- ahead: {result['ahead']}",
+            f"- behind: {result['behind']}",
+            f"- eligible_files: {len(result['eligible_files'])}",
+            f"- skipped_files: {len(result['skipped_files'])}",
+            f"- error_count: {len(result['errors'])}",
+        ]
+        if str(result.get("commit_sha", "")).strip():
+            lines.append(f"- commit_sha: {result['commit_sha']}")
+        for err in result["errors"][:10]:
+            lines.append(f"- error: {err}")
+        for path in result["eligible_files"][:20]:
+            lines.append(f"- changed: {path}")
+        output = "\n".join(lines)
+
+    if bool(args.emit_json):
+        print(json.dumps({"notify": notify, "output": output, "result": result}, ensure_ascii=False))
+    else:
+        print(output if notify else "NO_REPLY")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

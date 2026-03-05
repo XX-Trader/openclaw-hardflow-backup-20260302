@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -55,6 +56,14 @@ DEFAULT_SCRIPT_GLOBS = [
     ".workflow/**/*.sh",
     ".workflow/**/*.py",
 ]
+
+DEFAULT_INDEX_DIR = ".workflow/project-index-local"
+LEGACY_INDEX_DIR = ".workflow/project-index"
+SAFE_PULL_UNTRACKED_PREFIXES = (
+    f"{LEGACY_INDEX_DIR}/",
+    f"{DEFAULT_INDEX_DIR}/",
+    "scripts/openclaw-ops/policy/runtime/",
+)
 
 DEFAULT_IGNORE_DIRS = {
     ".git",
@@ -769,10 +778,103 @@ def collect_git_info(root: Path, timeout: int, do_pull: bool, remote: str, branc
         info["pull_attempted"] = True
         target_branch = branch or str(info["branch"] or "HEAD")
         rc, _, err = run_cmd(["git", "pull", "--ff-only", remote, target_branch], cwd=root, timeout=timeout)
-        info["pull_ok"] = rc == 0
-        if rc != 0:
-            errors.append(f"git pull failed: {err or rc}")
+        if rc == 0:
+            info["pull_ok"] = True
+        else:
+            conflict_paths = extract_untracked_overwrite_paths(err)
+            safe_conflicts = [p for p in conflict_paths if is_safe_pull_untracked_path(p)]
+            info["pull_conflict_untracked"] = conflict_paths
+            retry_attempted = False
+            if conflict_paths and len(safe_conflicts) == len(conflict_paths):
+                retry_attempted = True
+                moved, backup_dir, move_errors = backup_untracked_for_pull(root, safe_conflicts)
+                info["pull_retry_attempted"] = True
+                info["pull_retry_moved_untracked"] = moved
+                if backup_dir:
+                    info["pull_retry_backup_dir"] = backup_dir
+                if move_errors:
+                    info["pull_retry_move_errors"] = move_errors
+                if moved:
+                    rc2, _, err2 = run_cmd(["git", "pull", "--ff-only", remote, target_branch], cwd=root, timeout=timeout)
+                    info["pull_ok"] = rc2 == 0
+                    if rc2 != 0:
+                        errors.append(f"git pull failed after auto-cleanup: {err2 or rc2}")
+                else:
+                    errors.append(f"git pull failed: {err or rc}")
+            if not retry_attempted:
+                info["pull_ok"] = False
+                errors.append(f"git pull failed: {err or rc}")
     return info, errors
+
+
+def normalize_rel_path(path: str) -> str:
+    text = str(path or "").replace("\\", "/").strip()
+    while text.startswith("./"):
+        text = text[2:]
+    return text
+
+
+def is_safe_pull_untracked_path(path: str) -> bool:
+    rel = normalize_rel_path(path).lower()
+    if not rel:
+        return False
+    for prefix in SAFE_PULL_UNTRACKED_PREFIXES:
+        p = normalize_rel_path(prefix).lower()
+        if p and rel.startswith(p):
+            return True
+    return False
+
+
+def extract_untracked_overwrite_paths(error_text: str) -> list[str]:
+    paths: list[str] = []
+    collecting = False
+    for raw_line in str(error_text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "would be overwritten by merge" in line.lower():
+            collecting = True
+            continue
+        if not collecting:
+            continue
+        lower = line.lower()
+        if lower.startswith("please move or remove") or lower.startswith("aborting"):
+            break
+        paths.append(normalize_rel_path(line))
+    uniq: list[str] = []
+    seen: set[str] = set()
+    for item in paths:
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        uniq.append(item)
+    return uniq
+
+
+def backup_untracked_for_pull(root: Path, rel_paths: list[str]) -> tuple[list[str], str, list[str]]:
+    moved: list[str] = []
+    errors: list[str] = []
+    backup_root = root / DEFAULT_INDEX_DIR / "_autobackup-untracked" / datetime.now().strftime("%Y%m%d_%H%M%S")
+    for rel in rel_paths:
+        rel_norm = normalize_rel_path(rel)
+        if not rel_norm:
+            continue
+        source = root / rel_norm
+        if not source.exists():
+            continue
+        target = backup_root / rel_norm
+        target.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.move(str(source), str(target))
+            moved.append(rel_norm)
+        except Exception as exc:
+            errors.append(f"{rel_norm}:{exc}")
+    return moved, str(backup_root) if moved else "", errors
+
+
+def is_git_tracked_path(root: Path, rel_path: str, timeout: int = 15) -> bool:
+    rc, _out, _err = run_cmd(["git", "ls-files", "--error-unmatch", rel_path], cwd=root, timeout=max(5, int(timeout)))
+    return rc == 0
 
 
 def normalize_project_id(value: str) -> str:
@@ -803,7 +905,12 @@ def maintain_project(
     if not root.exists() or not root.is_dir():
         return ProjectResult(project_id, name, str(root), False, False, False, False, False, ["project path invalid"], [])
 
-    index_dir = str(item.get("index_dir", ".workflow/project-index")).strip() or ".workflow/project-index"
+    configured_index_dir = str(item.get("index_dir", DEFAULT_INDEX_DIR)).strip() or DEFAULT_INDEX_DIR
+    index_dir = configured_index_dir
+    # If legacy index path is tracked by repository, route runtime artifacts to local-only index dir.
+    if configured_index_dir == LEGACY_INDEX_DIR and is_git_tracked_path(root, f"{LEGACY_INDEX_DIR}/PROJECT_INDEX.md", timeout=timeout):
+        index_dir = DEFAULT_INDEX_DIR
+        outputs.append(f"index_dir_auto_switch:{configured_index_dir}->{index_dir}")
     index_root = root / index_dir
 
     git_pull = bool(item.get("auto_pull", True)) and git_pull_flag

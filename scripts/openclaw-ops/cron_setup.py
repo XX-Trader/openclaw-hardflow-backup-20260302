@@ -185,6 +185,19 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             repo_ok = repo_path.is_dir() and (repo_path / ".git").exists()
         return script_ok and (registry_ok or repo_ok)
 
+    def git_sync_ready_for_install() -> bool:
+        script_ok = Path(str(args.git_sync_py)).expanduser().is_file()
+        repo_raw = str(args.git_sync_repo_path or "").strip()
+        if not repo_raw:
+            fallback = str(args.governance_evolution_repo_path or "").strip()
+            if fallback:
+                set_arg("git_sync_repo_path", fallback)
+                repo_raw = fallback
+        if not repo_raw:
+            return False
+        repo_path = Path(repo_raw).expanduser()
+        return script_ok and repo_path.is_dir() and (repo_path / ".git").exists()
+
     if profile == "minimal":
         baseline = PROFILE_BASELINE["minimal"]
         ensure_minimum("incremental_every_ms", int(baseline["incremental_every_ms"]))
@@ -203,6 +216,11 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             "install_self_evolution_job",
             when=Path(str(args.self_evolution_py)).expanduser().is_file(),
             reason="install_self_evolution_job skipped: self-evolution script missing",
+        )
+        enable_flag(
+            "install_git_sync_job",
+            when=git_sync_ready_for_install(),
+            reason="install_git_sync_job skipped: git-sync script missing or repo-path not git",
         )
     elif profile == "standard":
         baseline = PROFILE_BASELINE["standard"]
@@ -230,6 +248,11 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             "install_self_evolution_job",
             when=Path(str(args.self_evolution_py)).expanduser().is_file(),
             reason="install_self_evolution_job skipped: self-evolution script missing",
+        )
+        enable_flag(
+            "install_git_sync_job",
+            when=git_sync_ready_for_install(),
+            reason="install_git_sync_job skipped: git-sync script missing or repo-path not git",
         )
     elif profile == "aggressive":
         baseline = PROFILE_BASELINE["aggressive"]
@@ -265,6 +288,11 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             "install_self_evolution_job",
             when=Path(str(args.self_evolution_py)).expanduser().is_file(),
             reason="install_self_evolution_job skipped: self-evolution script missing",
+        )
+        enable_flag(
+            "install_git_sync_job",
+            when=git_sync_ready_for_install(),
+            reason="install_git_sync_job skipped: git-sync script missing or repo-path not git",
         )
 
     return {"profile": profile, "changes": changes, "skipped": skipped}
@@ -1031,6 +1059,75 @@ def build_github_web_evolution_job(
     }
 
 
+def build_git_sync_job(
+    *,
+    script_py: str,
+    repo_path: str,
+    every_ms: int,
+    log_mode: str,
+    remote: str,
+    branch: str,
+    max_files: int,
+    commit_prefix: str,
+    auto_pull: bool,
+    push: bool,
+    include_prefixes: list[str],
+    exclude_prefixes: list[str],
+    required_remote_urls: list[str],
+) -> dict[str, Any]:
+    def quote_arg(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    ts = now_ms()
+    remote_value = str(remote or "origin").strip() or "origin"
+    commit_prefix_value = str(commit_prefix or "chore(self-evolution): sync updates").strip() or "chore(self-evolution): sync updates"
+    cmd = (
+        f"python3 \"{quote_arg(script_py)}\" "
+        f"--repo-path \"{quote_arg(repo_path)}\" "
+        "--task-id cron:ops-git-sync-push "
+        f"--normal-log-mode {normalize_log_mode(log_mode)} "
+        f"--remote \"{quote_arg(remote_value)}\" "
+        f"--max-files {max(1, int(max_files))} "
+        f"--commit-prefix \"{quote_arg(commit_prefix_value)}\""
+    )
+    branch_value = str(branch or "").strip()
+    if branch_value:
+        cmd += f" --branch \"{quote_arg(branch_value)}\""
+    if auto_pull:
+        cmd += " --auto-pull"
+    else:
+        cmd += " --no-auto-pull"
+    if push:
+        cmd += " --push"
+    else:
+        cmd += " --no-push"
+    for prefix in include_prefixes:
+        text = str(prefix).strip()
+        if text:
+            cmd += f" --include-prefix \"{quote_arg(text)}\""
+    for prefix in exclude_prefixes:
+        text = str(prefix).strip()
+        if text:
+            cmd += f" --exclude-prefix \"{quote_arg(text)}\""
+    for url in required_remote_urls:
+        text = str(url).strip()
+        if text:
+            cmd += f" --require-remote-url \"{quote_arg(text)}\""
+    return {
+        "id": "5dd96c0a-5cd2-4b31-b9a6-75f6ef4f3339",
+        "agentId": "optimization-agent",
+        "name": "ops_git_sync_push",
+        "description": "Auto sync local repo and push self-evolution changes to remote git",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {"kind": "every", "everyMs": int(every_ms), "anchorMs": ts},
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
+    }
+
+
 def int_or_default(value: Any, default: int = 0) -> int:
     try:
         return int(value)
@@ -1278,6 +1375,16 @@ def validate_runtime_paths(args: argparse.Namespace) -> dict[str, Any]:
             registry = Path(str(args.governance_evolution_project_registry or "")).expanduser()
             if not registry.exists():
                 errors.append("governance_evolution_repo_resolve_missing:repo_path_or_project_registry")
+    if bool(args.install_git_sync_job):
+        add_check("git_sync_py", str(args.git_sync_py), required=True, expect="file")
+        repo_raw = str(args.git_sync_repo_path or args.governance_evolution_repo_path or "").strip()
+        if repo_raw:
+            add_check("git_sync_repo_path", repo_raw, required=True, expect="dir")
+            repo = Path(repo_raw).expanduser()
+            if not (repo / ".git").exists():
+                errors.append(f"git_sync_repo_not_git:{repo}")
+        else:
+            errors.append("git_sync_repo_missing:--git-sync-repo-path")
     if bool(args.install_github_web_evolution_job):
         add_check("github_web_evolution_py", str(args.github_web_evolution_py), required=True, expect="file")
         add_check("github_web_evolution_openclaw_home", str(args.github_web_evolution_openclaw_home), required=True, expect="dir")
@@ -1346,6 +1453,10 @@ def main() -> int:
     default_github_web_evolution_py = prefer_existing_path(
         local_ops_dir / "github_web_evolution_runner.py",
         home / ".openclaw/ops/github_web_evolution_runner.py",
+    )
+    default_git_sync_py = prefer_existing_path(
+        local_ops_dir / "git_sync_push_runner.py",
+        home / ".openclaw/ops/git_sync_push_runner.py",
     )
     parser = argparse.ArgumentParser(description="Install OpenClaw hardflow cron jobs")
     parser.add_argument("--jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
@@ -1472,6 +1583,21 @@ def main() -> int:
     parser.add_argument("--governance-evolution-reviewer-gh-user", default="")
     parser.add_argument("--governance-evolution-push-before-pr", action=argparse.BooleanOptionalAction, default=False)
 
+    parser.add_argument("--install-git-sync-job", action="store_true")
+    parser.add_argument("--git-sync-py", default=str(default_git_sync_py))
+    parser.add_argument("--git-sync-repo-path", default="")
+    parser.add_argument("--git-sync-every-ms", type=int, default=21600000)
+    parser.add_argument("--git-sync-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--git-sync-remote", default="origin")
+    parser.add_argument("--git-sync-branch", default="")
+    parser.add_argument("--git-sync-max-files", type=int, default=200)
+    parser.add_argument("--git-sync-commit-prefix", default="chore(self-evolution): sync updates")
+    parser.add_argument("--git-sync-auto-pull", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--git-sync-push", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--git-sync-include-prefix", action="append", default=[])
+    parser.add_argument("--git-sync-exclude-prefix", action="append", default=[])
+    parser.add_argument("--git-sync-require-remote-url", action="append", default=[])
+
     parser.add_argument("--install-github-web-evolution-job", action="store_true")
     parser.add_argument("--github-web-evolution-py", default=str(default_github_web_evolution_py))
     parser.add_argument("--github-web-evolution-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
@@ -1554,6 +1680,7 @@ def main() -> int:
             "self_evolution": args.self_evolution_log_mode,
             "conversation_evolution": args.conversation_evolution_log_mode,
             "governance_evolution": args.governance_evolution_log_mode,
+            "git_sync": args.git_sync_log_mode,
             "github_web_evolution": args.github_web_evolution_log_mode,
         },
     )
@@ -1678,6 +1805,45 @@ def main() -> int:
                 push_before_pr=bool(args.governance_evolution_push_before_pr),
             )
         )
+    if bool(args.install_git_sync_job):
+        git_sync_repo_raw = str(args.git_sync_repo_path or args.governance_evolution_repo_path or "").strip()
+        git_sync_repo_path = str(Path(git_sync_repo_raw).expanduser()) if git_sync_repo_raw else ""
+        include_prefixes = [str(x).strip() for x in (args.git_sync_include_prefix or []) if str(x).strip()]
+        if not include_prefixes:
+            include_prefixes = [
+                "scripts/openclaw-ops/",
+                "hooks/",
+                "skills/",
+                "agents/",
+            ]
+        exclude_prefixes = [str(x).strip() for x in (args.git_sync_exclude_prefix or []) if str(x).strip()]
+        if not exclude_prefixes:
+            exclude_prefixes = [
+                ".workflow/project-index/",
+                ".workflow/project-index-local/",
+                ".workflow/experience/",
+                ".workflow/sessions/",
+                "scripts/openclaw-ops/policy/runtime/",
+                "openclaw-memory/",
+                "memory/",
+            ]
+        fresh_jobs.append(
+            build_git_sync_job(
+                script_py=str(Path(args.git_sync_py).expanduser()),
+                repo_path=git_sync_repo_path,
+                every_ms=max(600000, int(args.git_sync_every_ms)),
+                log_mode=args.git_sync_log_mode,
+                remote=str(args.git_sync_remote).strip() or "origin",
+                branch=str(args.git_sync_branch).strip(),
+                max_files=max(1, int(args.git_sync_max_files)),
+                commit_prefix=str(args.git_sync_commit_prefix).strip() or "chore(self-evolution): sync updates",
+                auto_pull=bool(args.git_sync_auto_pull),
+                push=bool(args.git_sync_push),
+                include_prefixes=include_prefixes,
+                exclude_prefixes=exclude_prefixes,
+                required_remote_urls=[str(x).strip() for x in (args.git_sync_require_remote_url or []) if str(x).strip()],
+            )
+        )
     if bool(args.install_github_web_evolution_job):
         fresh_jobs.append(
             build_github_web_evolution_job(
@@ -1775,6 +1941,7 @@ def main() -> int:
             "self_evolution_job": bool(args.install_self_evolution_job),
             "conversation_evolution_job": bool(args.install_conversation_evolution_job),
             "governance_evolution_job": bool(args.install_governance_evolution_job),
+            "git_sync_job": bool(args.install_git_sync_job),
             "github_web_evolution_job": bool(args.install_github_web_evolution_job),
         },
     }

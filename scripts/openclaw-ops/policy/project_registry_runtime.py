@@ -101,7 +101,7 @@ def merge_with_local_path(local_item: dict[str, Any], ref_item: dict[str, Any] |
             merged[key] = value
 
     # Ensure common fields exist.
-    merged.setdefault("index_dir", ".workflow/project-index")
+    merged.setdefault("index_dir", ".workflow/project-index-local")
     if "auto_pull" not in merged:
         merged["auto_pull"] = True
     merged.setdefault("git_remote", "origin")

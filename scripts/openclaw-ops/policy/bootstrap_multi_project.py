@@ -327,7 +327,7 @@ def bootstrap_project(
                     "id": project_id,
                     "name": name,
                     "path": str(root),
-                    "index_dir": ".workflow/project-index",
+                    "index_dir": ".workflow/project-index-local",
                     "auto_pull": True,
                     "git_remote": remote_name,
                     "git_branch": "main",
