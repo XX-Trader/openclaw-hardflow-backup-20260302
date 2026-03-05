@@ -204,6 +204,27 @@ def default_config() -> dict[str, Any]:
             "process_cpu_warn_percent": 95.0,
             "top_n_processes": 5,
         },
+        "app_usage_monitor": {
+            "enabled": True,
+            "paths": [
+                {"name": "openclaw_home", "path": str(home / ".openclaw"), "warn_gb": 8.0},
+                {
+                    "name": "openclaw_workflow_repo",
+                    "path": str(home / "openclaw-hardflow-backup-20260302"),
+                    "warn_gb": 5.0,
+                },
+                {"name": "market_center", "path": str(home / "DabaiMarketCenter"), "warn_gb": 20.0},
+                {
+                    "name": "subscription_website",
+                    "path": str(home / "Dabai-Polymarket-Subscription-Website"),
+                    "warn_gb": 10.0,
+                },
+            ],
+            "top_n": 5,
+            "warn_total_gb": 60.0,
+            "collect_timeout_seconds": 15,
+            "python_walk_max_files": 200000,
+        },
         "daily": {
             "major_only": True,
             "window_hours": 24,
@@ -663,6 +684,159 @@ def update_issues(state: dict[str, Any], findings: list[dict[str, Any]], resolve
     }
 
 
+def _default_app_usage_items() -> list[dict[str, Any]]:
+    home = Path.home()
+    return [
+        {"name": "openclaw_home", "path": str(home / ".openclaw"), "warn_gb": 8.0},
+        {"name": "openclaw_workflow_repo", "path": str(home / "openclaw-hardflow-backup-20260302"), "warn_gb": 5.0},
+        {"name": "market_center", "path": str(home / "DabaiMarketCenter"), "warn_gb": 20.0},
+        {"name": "subscription_website", "path": str(home / "Dabai-Polymarket-Subscription-Website"), "warn_gb": 10.0},
+    ]
+
+
+def _parse_app_usage_items(value: Any) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    if not isinstance(value, list):
+        return out
+    for raw in value:
+        if isinstance(raw, str):
+            path = str(raw).strip()
+            if not path:
+                continue
+            p = Path(path).expanduser()
+            name = p.name or p.as_posix().rstrip("/").split("/")[-1] or "app"
+            out.append({"name": safe_slug(name, 48), "path": str(p), "warn_gb": 0.0})
+            continue
+        if not isinstance(raw, dict):
+            continue
+        path = str(raw.get("path", "")).strip()
+        if not path:
+            continue
+        p = Path(path).expanduser()
+        name = str(raw.get("name", "")).strip() or (p.name or "app")
+        try:
+            warn_gb = float(raw.get("warn_gb", 0.0) or 0.0)
+        except Exception:
+            warn_gb = 0.0
+        out.append({"name": safe_slug(name, 48), "path": str(p), "warn_gb": max(0.0, warn_gb)})
+    return out
+
+
+def _dir_size_bytes(path: Path, *, timeout: int, walk_max_files: int) -> tuple[int | None, str]:
+    if not path.exists():
+        return None, "path_missing"
+    if path.is_file():
+        try:
+            return int(path.stat().st_size), ""
+        except Exception as exc:
+            return None, f"stat_failed:{exc}"
+
+    if os.name != "nt":
+        for cmd, scale in ((["du", "-sb", str(path)], 1), (["du", "-sk", str(path)], 1024)):
+            try:
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=max(2, int(timeout)),
+                    check=False,
+                )
+            except Exception:
+                proc = None
+            if proc is None or proc.returncode != 0:
+                continue
+            token = str(proc.stdout or "").strip().split()[0] if str(proc.stdout or "").strip() else ""
+            if token.isdigit():
+                return int(token) * scale, ""
+
+    total = 0
+    seen = 0
+    try:
+        for root, _dirs, files in os.walk(path):
+            for fn in files:
+                seen += 1
+                if seen > max(1000, int(walk_max_files)):
+                    return None, f"walk_file_limit_exceeded:{walk_max_files}"
+                fp = Path(root) / fn
+                try:
+                    total += int(fp.stat().st_size)
+                except Exception:
+                    continue
+    except Exception as exc:
+        return None, f"walk_failed:{exc}"
+    return total, ""
+
+
+def collect_app_usage(cfg: dict[str, Any]) -> dict[str, Any]:
+    monitor = cfg.get("app_usage_monitor")
+    if not isinstance(monitor, dict):
+        monitor = {}
+    enabled = bool(monitor.get("enabled", True))
+    top_n = max(1, int(monitor.get("top_n", 5) or 5))
+    warn_total_gb = max(0.0, float(monitor.get("warn_total_gb", 60.0) or 0.0))
+    collect_timeout = max(2, int(monitor.get("collect_timeout_seconds", 15) or 15))
+    walk_max_files = max(1000, int(monitor.get("python_walk_max_files", 200000) or 200000))
+
+    items = _parse_app_usage_items(monitor.get("paths"))
+    if not items:
+        items = _default_app_usage_items()
+
+    result: dict[str, Any] = {
+        "enabled": enabled,
+        "total_bytes": 0,
+        "total_gb": 0.0,
+        "warn_total_gb": warn_total_gb,
+        "warn_total_exceeded": False,
+        "items": [],
+        "top": [],
+        "warn_items": [],
+        "errors": [],
+    }
+    if not enabled:
+        return result
+
+    total_bytes = 0
+    rows: list[dict[str, Any]] = []
+    warn_rows: list[dict[str, Any]] = []
+    for item in items:
+        path = Path(str(item.get("path", "")).strip()).expanduser()
+        if not path.exists():
+            continue
+        size_bytes, err = _dir_size_bytes(path, timeout=collect_timeout, walk_max_files=walk_max_files)
+        if err and size_bytes is None:
+            result["errors"].append(f"{item.get('name')}:{path}:{err}")
+            continue
+        size_bytes = int(size_bytes or 0)
+        size_gb = round(size_bytes / (1024.0 ** 3), 3)
+        warn_gb = max(0.0, float(item.get("warn_gb", 0.0) or 0.0))
+        warn_exceeded = warn_gb > 0 and size_gb >= warn_gb
+        row = {
+            "name": str(item.get("name", "")).strip() or path.name or "app",
+            "path": str(path),
+            "size_bytes": size_bytes,
+            "size_gb": size_gb,
+            "warn_gb": warn_gb,
+            "warn_exceeded": warn_exceeded,
+        }
+        rows.append(row)
+        total_bytes += size_bytes
+        if warn_exceeded:
+            warn_rows.append(row)
+
+    rows.sort(key=lambda x: int(x.get("size_bytes", 0) or 0), reverse=True)
+    warn_rows.sort(key=lambda x: float(x.get("size_gb", 0.0) or 0.0), reverse=True)
+    total_gb = round(total_bytes / (1024.0 ** 3), 3)
+    result["total_bytes"] = total_bytes
+    result["total_gb"] = total_gb
+    result["warn_total_exceeded"] = warn_total_gb > 0 and total_gb >= warn_total_gb
+    result["items"] = rows
+    result["top"] = rows[:top_n]
+    result["warn_items"] = warn_rows
+    return result
+
+
 def collect_system_metrics(cfg: dict[str, Any]) -> dict[str, Any]:
     sys_cfg = cfg.get("system_monitor") or {}
     if not sys_cfg.get("enabled", True):
@@ -694,6 +868,19 @@ def collect_system_metrics(cfg: dict[str, Any]) -> dict[str, Any]:
             payload["anomalies"].append(f"memory>{mem_warn}%:{payload['memory_percent']:.2f}%")
     except Exception:
         pass
+
+    app_usage = collect_app_usage(cfg)
+    payload["app_usage"] = app_usage
+    warn_items = app_usage.get("warn_items", []) if isinstance(app_usage.get("warn_items", []), list) else []
+    for row in warn_items[:6]:
+        name = str((row or {}).get("name", "")).strip() or str((row or {}).get("path", "unknown"))
+        warn_gb = float((row or {}).get("warn_gb", 0.0) or 0.0)
+        size_gb = float((row or {}).get("size_gb", 0.0) or 0.0)
+        payload["anomalies"].append(f"app_storage>{warn_gb:.1f}GB:{name}={size_gb:.2f}GB")
+    if bool(app_usage.get("warn_total_exceeded", False)):
+        warn_total_gb = float(app_usage.get("warn_total_gb", 0.0) or 0.0)
+        total_gb = float(app_usage.get("total_gb", 0.0) or 0.0)
+        payload["anomalies"].append(f"app_storage_total>{warn_total_gb:.1f}GB:{total_gb:.2f}GB")
 
     return payload
 
@@ -1496,6 +1683,9 @@ def run_scan(
         risk_reasons.append(f"workflow_monitor_error={len(workflow_health.get('errors') or [])}")
     if token_usage_summary.get("errors"):
         risk_reasons.append(f"token_monitor_error={len(token_usage_summary.get('errors') or [])}")
+    app_usage = metrics.get("app_usage") if isinstance(metrics.get("app_usage"), dict) else {}
+    if app_usage.get("errors"):
+        risk_reasons.append(f"app_usage_monitor_error={len(app_usage.get('errors') or [])}")
 
     change_reasons: list[str] = []
     if issue_stats["new"] > 0:
@@ -1603,6 +1793,25 @@ def run_scan(
         if int(workflow_health.get("failed_count", 0) or 0) > 0:
             lines.append(f"workflow_health: failed={workflow_health.get('failed_count', 0)}, stale_failed={workflow_health.get('stale_failed_count', 0)}, recovered={workflow_health.get('recovered_count', 0)}")
         lines.append(f"token_24h: total={token_usage_summary.get('total_tokens', 0)}, total_m={token_usage_summary.get('total_tokens_m', 0)}, cost={token_usage_summary.get('cost_estimate', 0)}, rows={token_usage_summary.get('rows', 0)}")
+        if app_usage:
+            lines.append(
+                f"app_usage_total: total_gb={app_usage.get('total_gb', 0.0)}, "
+                f"apps={len(app_usage.get('items', []) if isinstance(app_usage.get('items', []), list) else [])}"
+            )
+            app_top = app_usage.get("top", []) if isinstance(app_usage.get("top", []), list) else []
+            if app_top:
+                top_pairs = [
+                    f"{str(x.get('name', 'app'))}:{float(x.get('size_gb', 0.0) or 0.0):.2f}GB"
+                    for x in app_top[:3]
+                ]
+                lines.append(f"app_usage_top: {', '.join(top_pairs)}")
+            warn_items = app_usage.get("warn_items", []) if isinstance(app_usage.get("warn_items", []), list) else []
+            if warn_items:
+                warn_pairs = [
+                    f"{str(x.get('name', 'app'))}:{float(x.get('size_gb', 0.0) or 0.0):.2f}/{float(x.get('warn_gb', 0.0) or 0.0):.2f}GB"
+                    for x in warn_items[:3]
+                ]
+                lines.append(f"app_usage_warn: {', '.join(warn_pairs)}")
         top_agents = token_usage_summary.get("by_agent") or []
         if isinstance(top_agents, list) and top_agents:
             top = top_agents[0]
@@ -1731,6 +1940,8 @@ def build_daily_report(
     open_issues = sorted_open_issues(state, limit=100)
     top = open_issues[:8]
     open_high = [x for x in open_issues if str(x.get("severity")) == "high"]
+    metrics = collect_system_metrics(cfg)
+    app_usage = metrics.get("app_usage") if isinstance(metrics.get("app_usage"), dict) else {}
     workflow_health = collect_workflow_health(cfg, state)
     token_usage_summary = collect_token_usage_summary(cfg)
 
@@ -1747,6 +1958,13 @@ def build_daily_report(
         risk_reasons.append(f"workflow_monitor_error={len(workflow_health.get('errors') or [])}")
     if token_usage_summary.get("errors"):
         risk_reasons.append(f"token_monitor_error={len(token_usage_summary.get('errors') or [])}")
+    if app_usage.get("errors"):
+        risk_reasons.append(f"app_usage_monitor_error={len(app_usage.get('errors') or [])}")
+    warn_items = app_usage.get("warn_items", []) if isinstance(app_usage.get("warn_items", []), list) else []
+    if warn_items:
+        risk_reasons.append(f"app_storage_warn={len(warn_items)}")
+    if bool(app_usage.get("warn_total_exceeded", False)):
+        risk_reasons.append("app_storage_total_warn")
 
     change_reasons: list[str] = []
     if major > 0:
@@ -1801,6 +2019,7 @@ def build_daily_report(
                 "major_reasons": [],
                 "run_duration_ms": max(0, int((now() - run_started_at).total_seconds() * 1000)),
                 "daily": {"total_runs_24h": total, "major_runs_24h": major, "failed_runs_24h": failed},
+                "metrics": metrics,
                 "workflow_health": workflow_health,
                 "token_usage": token_usage_summary,
             },
@@ -1840,6 +2059,24 @@ def build_daily_report(
         f"cost={token_usage_summary.get('cost_estimate', 0)} "
         f"(rows={token_usage_summary.get('rows', 0)})"
     )
+    if app_usage:
+        lines.append(
+            f"app_usage_total: total_gb={app_usage.get('total_gb', 0.0)}, "
+            f"apps={len(app_usage.get('items', []) if isinstance(app_usage.get('items', []), list) else [])}"
+        )
+        app_top = app_usage.get("top", []) if isinstance(app_usage.get("top", []), list) else []
+        if app_top:
+            top_pairs = [
+                f"{str(x.get('name', 'app'))}:{float(x.get('size_gb', 0.0) or 0.0):.2f}GB"
+                for x in app_top[:3]
+            ]
+            lines.append(f"app_usage_top: {', '.join(top_pairs)}")
+        if warn_items:
+            warn_pairs = [
+                f"{str(x.get('name', 'app'))}:{float(x.get('size_gb', 0.0) or 0.0):.2f}/{float(x.get('warn_gb', 0.0) or 0.0):.2f}GB"
+                for x in warn_items[:3]
+            ]
+            lines.append(f"app_usage_warn: {', '.join(warn_pairs)}")
     lines.append(f"handoff_24h: todo_new={todo_new_24h}, active_high_risk={active_high_risk_24h}, target=coordinator")
     if int(workflow_health.get("failed_count", 0) or 0) > 0:
         lines.append(
@@ -1887,6 +2124,7 @@ def build_daily_report(
             "daily": {"total_runs_24h": total, "major_runs_24h": major, "failed_runs_24h": failed},
             "open_issue_count": len(open_issues),
             "handoff_24h": {"todo_new": todo_new_24h, "active_high_risk_items": active_high_risk_24h},
+            "metrics": metrics,
             "workflow_health": workflow_health,
             "token_usage": token_usage_summary,
             "cost_estimate": float(token_usage_summary.get("cost_estimate", 0.0) or 0.0),

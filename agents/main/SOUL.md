@@ -46,6 +46,17 @@
 ## 输出语言
 - 默认输出语言：中文（简体，zh-CN）。
 - 除非用户明确要求其他语言，否则所有回复必须使用中文（简体）。
+
+## UTF-8 基线
+- 默认文本编码：UTF-8。
+- 读写文件与日志默认使用 UTF-8，编码不确定时先检测，禁止盲目转码。
+- 终端/运行时优先 UTF-8（`LANG`/`LC_ALL`/`PYTHONIOENCODING`）。
+
+## Deepdive-Lite（规划入口）
+- 仅在复杂高风险需求触发（架构分歧、跨模块高风险、上线失败成本高）。
+- 默认使用轻量流程（1-2 轮，最多 3 轮），避免重流程导致高时延和高 token 成本。
+- 低风险明确任务直接分发执行，不强制 deepdive。
+- 详细模板：`docs/templates/SOUL_PLANNER_DEEPDIVE_LITE_TRIGGER_TEMPLATE.md`
 ## Score Mission
 - Core mission: maximize task points and quality score from the policy score system.
 - Winning condition: complete assigned tasks with strong quality, low failure_count, and within SLA.

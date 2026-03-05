@@ -11,6 +11,10 @@ TASK="${HARD_FLOW_TASK:-manual-task}"
 MAX_RETRIES="${MAX_RETRIES:-3}"
 ALERT_CMD="${ALERT_CMD:-}"
 LOBSTER_RUN_CMD="${LOBSTER_RUN_CMD:-}"
+UTF8_MODE="${HARD_FLOW_UTF8_MODE:-1}" # 1 | 0
+UTF8_LANG="${HARD_FLOW_LANG:-C.UTF-8}"
+UTF8_LC_ALL="${HARD_FLOW_LC_ALL:-${UTF8_LANG}}"
+UTF8_LC_CTYPE="${HARD_FLOW_LC_CTYPE:-${UTF8_LANG}}"
 
 usage() {
   cat <<'EOF'
@@ -28,6 +32,10 @@ Env:
   MAX_RETRIES
   ALERT_CMD                   # optional command when workflow exits non-zero
   LOBSTER_RUN_CMD             # required when --mode lobster
+  HARD_FLOW_UTF8_MODE         # 1 | 0, default 1
+  HARD_FLOW_LANG              # default C.UTF-8
+  HARD_FLOW_LC_ALL            # default follows HARD_FLOW_LANG
+  HARD_FLOW_LC_CTYPE          # default follows HARD_FLOW_LANG
 EOF
 }
 
@@ -100,9 +108,17 @@ case "${subcmd}" in
 #!/usr/bin/env bash
 set -euo pipefail
 cd "${ROOT_DIR}"
+if [[ "${UTF8_MODE}" == "1" ]]; then
+  export LANG="${UTF8_LANG}"
+  export LC_ALL="${UTF8_LC_ALL}"
+  export LC_CTYPE="${UTF8_LC_CTYPE}"
+  export PYTHONUTF8=1
+  export PYTHONIOENCODING="\${PYTHONIOENCODING:-utf-8}"
+  export LESSCHARSET="\${LESSCHARSET:-utf-8}"
+fi
 {
   echo "[hardflow-tmux] start: \\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "[hardflow-tmux] mode=${RUN_MODE}, task=${TASK}, session=${SESSION_NAME}"
+  echo "[hardflow-tmux] mode=${RUN_MODE}, task=${TASK}, session=${SESSION_NAME}, utf8=${UTF8_MODE}"
   ${RUN_CMD}
   echo "[hardflow-tmux] done: \\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 } >> "${SESSION_LOG}" 2>&1 || {
