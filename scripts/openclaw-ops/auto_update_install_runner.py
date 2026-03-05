@@ -89,6 +89,27 @@ def run_shell(command: str, *, cwd: Path, timeout: int) -> tuple[int, str, str]:
     return proc.returncode, (proc.stdout or ""), (proc.stderr or "")
 
 
+def repo_is_dirty(repo: Path) -> tuple[bool, str]:
+    rc, out, err = run_git(repo, ["status", "--porcelain"], timeout=20)
+    if rc != 0:
+        return False, f"git_status_failed:{err or rc}"
+    return bool(str(out).strip()), ""
+
+
+def stash_local_changes(repo: Path, label: str, *, timeout: int) -> tuple[bool, str]:
+    rc, out, err = run_git(
+        repo,
+        ["stash", "push", "--include-untracked", "--message", label],
+        timeout=timeout,
+    )
+    if rc != 0:
+        return False, f"git_stash_failed:{err or out or rc}"
+    text = str(out or err or "").strip()
+    if "No local changes to save" in text:
+        return False, ""
+    return True, ""
+
+
 def resolve_branch(repo: Path, branch_arg: str) -> tuple[str, str]:
     wanted = str(branch_arg or "").strip()
     if wanted:
@@ -141,6 +162,7 @@ def main() -> int:
     parser.add_argument("--require-remote-url", action="append", default=[])
     parser.add_argument("--install-cmd", default="")
     parser.add_argument("--install-on-no-change", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--auto-stash-before-pull", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--git-timeout", type=int, default=240)
     parser.add_argument("--install-timeout", type=int, default=2400)
     parser.add_argument("--report-dir", default=str(Path.home() / ".openclaw/ops/update-install-runs"))
@@ -173,6 +195,9 @@ def main() -> int:
         "install_ran": False,
         "install_ok": False,
         "install_returncode": None,
+        "repo_dirty_before_pull": False,
+        "stashed_before_pull": False,
+        "stash_label": "",
         "stdout_log": str(stdout_file),
         "stderr_log": str(stderr_file),
         "report_file": str(report_file),
@@ -219,6 +244,25 @@ def main() -> int:
         result["behind"] = behind
 
     if not result["errors"] and bool(args.auto_pull) and int(result.get("behind", 0)) > 0:
+        if bool(args.auto_stash_before_pull):
+            dirty, dirty_err = repo_is_dirty(repo)
+            if dirty_err:
+                result["errors"].append(dirty_err)
+            else:
+                result["repo_dirty_before_pull"] = bool(dirty)
+                if dirty:
+                    stash_label = f"auto-update-install:{now_compact()}"
+                    stashed, stash_err = stash_local_changes(
+                        repo,
+                        stash_label,
+                        timeout=int(args.git_timeout),
+                    )
+                    if stash_err:
+                        result["errors"].append(stash_err)
+                    else:
+                        result["stashed_before_pull"] = bool(stashed)
+                        if stashed:
+                            result["stash_label"] = stash_label
         rc, _out, err = run_git(
             repo,
             ["pull", "--ff-only", result["remote"], branch],
@@ -273,6 +317,8 @@ def main() -> int:
             f"- fetch_ok: {result['fetch_ok']}",
             f"- pulled: {result['pulled']}",
             f"- behind: {result['behind']}",
+            f"- repo_dirty_before_pull: {result['repo_dirty_before_pull']}",
+            f"- stashed_before_pull: {result['stashed_before_pull']}",
             f"- install_ran: {result['install_ran']}",
             f"- install_ok: {result['install_ok']}",
             f"- report_file: {result['report_file']}",
@@ -293,4 +339,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
