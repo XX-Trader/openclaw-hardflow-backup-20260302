@@ -97,8 +97,12 @@ python3 scripts/openclaw-ops/cron_setup.py \
   --daily-work-expr "15 0 * * *" \
   --install-self-evolution-job \
   --self-evolution-expr "30 3 * * 1" \
+  --self-evolution-lookback-days 30 \
   --self-evolution-min-interval-days 7 \
   --self-evolution-max-tasks-per-run 3 \
+  --self-evolution-agent-score-threshold 70 \
+  --self-evolution-agent-score-min-reports 3 \
+  --self-evolution-agent-score-top-n 12 \
   --install-governance-evolution-job \
   --governance-evolution-openclaw-config ~/.openclaw/openclaw.json \
   --governance-evolution-project-registry ~/.openclaw/ops/task-center/project-registry.json \
@@ -165,8 +169,12 @@ python3 scripts/openclaw-ops/daily_work_report.py \
 # 手动执行一次周度自我进化复盘（只产出 TODO 任务包）
 python3 scripts/openclaw-ops/self_evolution_todo.py \
   --db ~/.openclaw/ops/task-center/task_center.db \
+  --lookback-days 30 \
   --min-review-interval-days 7 \
   --max-tasks-per-run 3 \
+  --agent-score-threshold 70 \
+  --agent-score-min-reports 3 \
+  --agent-score-top-n 12 \
   --normal-log-mode silent
 
 # 手动执行一次治理进化增量扫描（可选创建 reviewer 任务）

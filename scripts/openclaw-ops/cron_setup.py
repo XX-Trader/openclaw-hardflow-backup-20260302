@@ -839,15 +839,23 @@ def build_self_evolution_job(
     expr: str,
     tz_name: str,
     log_mode: str,
+    lookback_days: int,
     min_review_interval_days: int,
     max_tasks_per_run: int,
+    agent_score_threshold: float,
+    agent_score_min_reports: int,
+    agent_score_top_n: int,
 ) -> dict[str, Any]:
     ts = now_ms()
     cmd = (
         f"python3 {script_py} --db {db_file} --state-file {state_file} --report-dir {report_dir} "
         f"--task-id cron:ops-self-evolution --normal-log-mode {normalize_log_mode(log_mode)} "
+        f"--lookback-days {max(1, int(lookback_days))} "
         f"--min-review-interval-days {max(1, int(min_review_interval_days))} "
-        f"--max-tasks-per-run {max(1, int(max_tasks_per_run))}"
+        f"--max-tasks-per-run {max(1, int(max_tasks_per_run))} "
+        f"--agent-score-threshold {max(1.0, min(float(agent_score_threshold), 100.0))} "
+        f"--agent-score-min-reports {max(1, int(agent_score_min_reports))} "
+        f"--agent-score-top-n {max(1, int(agent_score_top_n))}"
     )
     return {
         "id": "9cf2677f-0ea1-4f07-a8cb-7dff4ff7c52b",
@@ -1519,8 +1527,12 @@ def main() -> int:
     parser.add_argument("--self-evolution-report-dir", default=str(home / ".openclaw/ops/self-evolution/reports"))
     parser.add_argument("--self-evolution-expr", default="30 3 * * 1")
     parser.add_argument("--self-evolution-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--self-evolution-lookback-days", type=int, default=30)
     parser.add_argument("--self-evolution-min-interval-days", type=int, default=7)
     parser.add_argument("--self-evolution-max-tasks-per-run", type=int, default=3)
+    parser.add_argument("--self-evolution-agent-score-threshold", type=float, default=70.0)
+    parser.add_argument("--self-evolution-agent-score-min-reports", type=int, default=3)
+    parser.add_argument("--self-evolution-agent-score-top-n", type=int, default=12)
 
     parser.add_argument("--install-conversation-evolution-job", action="store_true")
     parser.add_argument("--conversation-evolution-py", default=str(default_conversation_evolution_py))
@@ -1747,8 +1759,12 @@ def main() -> int:
                 expr=str(args.self_evolution_expr),
                 tz_name=str(args.tz),
                 log_mode=args.self_evolution_log_mode,
+                lookback_days=max(1, int(args.self_evolution_lookback_days)),
                 min_review_interval_days=int(args.self_evolution_min_interval_days),
                 max_tasks_per_run=int(args.self_evolution_max_tasks_per_run),
+                agent_score_threshold=float(args.self_evolution_agent_score_threshold),
+                agent_score_min_reports=max(1, int(args.self_evolution_agent_score_min_reports)),
+                agent_score_top_n=max(1, int(args.self_evolution_agent_score_top_n)),
             )
         )
     if bool(args.install_conversation_evolution_job):

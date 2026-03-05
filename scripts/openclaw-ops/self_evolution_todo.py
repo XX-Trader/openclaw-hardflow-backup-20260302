@@ -306,9 +306,256 @@ def infer_next_schedule_base(tc: TaskCenter) -> datetime:
     return base
 
 
-def collect_metrics(tc: TaskCenter, lookback_days: int) -> dict[str, Any]:
+def clamp_score(value: float) -> float:
+    return max(0.0, min(float(value), 100.0))
+
+
+def build_agent_scorecards(
+    tc: TaskCenter,
+    *,
+    since: str,
+    score_threshold: float,
+    min_reports: int,
+    top_n: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    min_reports_norm = max(1, int(min_reports))
+    top_n_norm = max(1, int(top_n))
+
+    report_rows = tc.conn.execute(
+        """
+        SELECT
+          agent_id,
+          COUNT(*) AS report_count,
+          SUM(CASE WHEN solved = 1 THEN 1 ELSE 0 END) AS solved_count,
+          SUM(CASE WHEN solved = 0 OR status IN ('failed', 'escalated') THEN 1 ELSE 0 END) AS failed_count,
+          AVG(COALESCE(quality_score, 0)) AS avg_quality_score,
+          SUM(total_tokens) AS total_tokens,
+          SUM(cost_estimate) AS total_cost,
+          AVG(COALESCE(duration_ms, 0)) AS avg_duration_ms
+        FROM agent_task_reports
+        WHERE ts >= ?
+        GROUP BY agent_id
+        ORDER BY report_count DESC, total_tokens DESC
+        """,
+        (since,),
+    ).fetchall()
+    report_map: dict[str, dict[str, Any]] = {}
+    for row in report_rows:
+        report_map[str(row["agent_id"] or "")] = {
+            "report_count": int(row["report_count"] or 0),
+            "solved_count": int(row["solved_count"] or 0),
+            "failed_count": int(row["failed_count"] or 0),
+            "avg_quality_score": float(row["avg_quality_score"] or 0.0),
+            "total_tokens": int(row["total_tokens"] or 0),
+            "total_cost": float(row["total_cost"] or 0.0),
+            "avg_duration_ms": int(float(row["avg_duration_ms"] or 0.0)),
+        }
+
+    points_rows = tc.conn.execute(
+        """
+        SELECT
+          actor_id AS agent_id,
+          COUNT(*) AS point_records,
+          SUM(points) AS total_points,
+          AVG(points) AS avg_points
+        FROM agent_points_ledger
+        WHERE actor_type = 'agent' AND ts >= ?
+        GROUP BY actor_id
+        ORDER BY total_points DESC
+        """,
+        (since,),
+    ).fetchall()
+    points_map: dict[str, dict[str, Any]] = {}
+    for row in points_rows:
+        points_map[str(row["agent_id"] or "")] = {
+            "point_records": int(row["point_records"] or 0),
+            "total_points": float(row["total_points"] or 0.0),
+            "avg_points": float(row["avg_points"] or 0.0),
+        }
+
+    task_rows = tc.conn.execute(
+        """
+        SELECT
+          COALESCE(NULLIF(assignee, ''), 'unassigned') AS assignee,
+          COUNT(*) AS task_count,
+          SUM(CASE WHEN status IN ('failed', 'escalated') THEN 1 ELSE 0 END) AS failed_task_count
+        FROM tasks
+        WHERE created_at >= ?
+        GROUP BY COALESCE(NULLIF(assignee, ''), 'unassigned')
+        ORDER BY task_count DESC
+        """,
+        (since,),
+    ).fetchall()
+    task_map: dict[str, dict[str, Any]] = {}
+    for row in task_rows:
+        task_map[str(row["assignee"] or "")] = {
+            "task_count": int(row["task_count"] or 0),
+            "failed_task_count": int(row["failed_task_count"] or 0),
+        }
+
+    risk_rows = tc.conn.execute(
+        """
+        SELECT
+          COALESCE(NULLIF(assignee, ''), 'unassigned') AS assignee,
+          SUM(CASE WHEN risk_level = 'high' THEN 1 ELSE 0 END) AS high_risk_total,
+          SUM(CASE WHEN risk_level = 'high' AND status IN ('failed', 'escalated') THEN 1 ELSE 0 END) AS high_risk_failed
+        FROM tasks
+        WHERE created_at >= ?
+        GROUP BY COALESCE(NULLIF(assignee, ''), 'unassigned')
+        """,
+        (since,),
+    ).fetchall()
+    risk_map: dict[str, dict[str, Any]] = {}
+    for row in risk_rows:
+        risk_map[str(row["assignee"] or "")] = {
+            "high_risk_total": int(row["high_risk_total"] or 0),
+            "high_risk_failed": int(row["high_risk_failed"] or 0),
+        }
+
+    agent_ids = sorted(set(report_map) | set(points_map) | set(task_map) | set(risk_map))
+    max_points = 0.0
+    for info in points_map.values():
+        max_points = max(max_points, float(info.get("total_points", 0.0) or 0.0))
+
+    score_threshold_norm = clamp_score(score_threshold)
+    cards: list[dict[str, Any]] = []
+    for agent_id in agent_ids:
+        if not agent_id:
+            continue
+        report_info = report_map.get(agent_id, {})
+        points_info = points_map.get(agent_id, {})
+        task_info = task_map.get(agent_id, {})
+        risk_info = risk_map.get(agent_id, {})
+
+        report_count = int(report_info.get("report_count", 0))
+        solved_count = int(report_info.get("solved_count", 0))
+        failed_count = int(report_info.get("failed_count", 0))
+        quality_avg = clamp_score(float(report_info.get("avg_quality_score", 0.0) or 0.0))
+        total_tokens = int(report_info.get("total_tokens", 0))
+        total_cost = float(report_info.get("total_cost", 0.0) or 0.0)
+        avg_duration_ms = int(report_info.get("avg_duration_ms", 0))
+
+        point_records = int(points_info.get("point_records", 0))
+        total_points = float(points_info.get("total_points", 0.0) or 0.0)
+        avg_points = float(points_info.get("avg_points", 0.0) or 0.0)
+
+        task_count = int(task_info.get("task_count", 0))
+        failed_task_count = int(task_info.get("failed_task_count", 0))
+        high_risk_total = int(risk_info.get("high_risk_total", 0))
+        high_risk_failed = int(risk_info.get("high_risk_failed", 0))
+
+        if report_count <= 0 and point_records <= 0 and task_count <= 0:
+            continue
+
+        has_enough_data = bool(report_count >= min_reports_norm or task_count >= min_reports_norm)
+
+        if report_count > 0:
+            solved_ratio = safe_ratio(solved_count, report_count)
+            failure_ratio = safe_ratio(failed_count, report_count)
+            quality_score = quality_avg
+        else:
+            solved_ratio = 0.0
+            failure_ratio = safe_ratio(failed_task_count, max(1, task_count))
+            quality_score = 60.0
+
+        risk_fail_ratio = safe_ratio(high_risk_failed, high_risk_total) if high_risk_total > 0 else 0.0
+        risk_control_score = 100.0 if high_risk_total <= 0 else clamp_score((1.0 - risk_fail_ratio) * 100.0)
+
+        points_norm = 60.0
+        if max_points > 0:
+            points_norm = clamp_score((total_points / max_points) * 100.0)
+
+        solved_score = clamp_score(solved_ratio * 100.0)
+        reliability_score = clamp_score((1.0 - failure_ratio) * 100.0)
+        comprehensive = clamp_score(
+            quality_score * 0.35
+            + solved_score * 0.20
+            + reliability_score * 0.20
+            + risk_control_score * 0.15
+            + points_norm * 0.10
+        )
+
+        reasons: list[str] = []
+        if comprehensive < score_threshold_norm:
+            reasons.append(f"comprehensive<{score_threshold_norm:.1f}")
+        if failure_ratio >= 0.30:
+            reasons.append(f"failure_ratio={failure_ratio:.2f}")
+        if quality_score < 70.0:
+            reasons.append(f"quality<{70.0:.1f}")
+        if (report_count >= min_reports_norm) and solved_score < 70.0:
+            reasons.append(f"solved_ratio={solved_ratio:.2f}")
+        if high_risk_total >= 2 and risk_fail_ratio >= 0.40:
+            reasons.append(f"high_risk_fail_ratio={risk_fail_ratio:.2f}")
+
+        cards.append(
+            {
+                "agent_id": agent_id,
+                "report_count": report_count,
+                "task_count": task_count,
+                "point_records": point_records,
+                "avg_quality_score": round(quality_score, 2),
+                "solved_ratio": round(solved_ratio, 4),
+                "failure_ratio": round(failure_ratio, 4),
+                "solved_ratio_pct": round(solved_score, 2),
+                "failure_ratio_pct": round(failure_ratio * 100.0, 2),
+                "high_risk_total": high_risk_total,
+                "high_risk_failed": high_risk_failed,
+                "risk_fail_ratio": round(risk_fail_ratio, 4),
+                "risk_control_score": round(risk_control_score, 2),
+                "total_points": round(total_points, 4),
+                "avg_points": round(avg_points, 4),
+                "points_norm_score": round(points_norm, 2),
+                "total_tokens": total_tokens,
+                "total_tokens_m": round(total_tokens / 1_000_000.0, 6),
+                "total_cost": round(total_cost, 6),
+                "avg_duration_ms": avg_duration_ms,
+                "comprehensive_score": round(comprehensive, 2),
+                "comprehensive_grade": quality_grade_from_score(comprehensive),
+                "has_enough_data": has_enough_data,
+                "needs_optimization": bool(reasons) and has_enough_data,
+                "reasons": reasons,
+            }
+        )
+
+    cards.sort(
+        key=lambda item: (
+            0 if bool(item.get("needs_optimization")) else 1,
+            float(item.get("comprehensive_score", 0.0)),
+            -int(item.get("report_count", 0)),
+        )
+    )
+    reviewed = len(cards)
+    needs_opt_count = sum(1 for item in cards if bool(item.get("needs_optimization")))
+    avg_score = (
+        round(sum(float(item.get("comprehensive_score", 0.0)) for item in cards) / reviewed, 2)
+        if reviewed > 0
+        else 0.0
+    )
+    summary = {
+        "agent_count_reviewed": reviewed,
+        "agent_count_needs_optimization": needs_opt_count,
+        "average_comprehensive_score": avg_score,
+        "score_threshold": round(score_threshold_norm, 2),
+        "min_reports": min_reports_norm,
+    }
+    return cards[:top_n_norm], summary
+
+
+def collect_metrics(
+    tc: TaskCenter,
+    lookback_days: int,
+    *,
+    agent_score_threshold: float,
+    agent_score_min_reports: int,
+    agent_score_top_n: int,
+) -> dict[str, Any]:
     since = (now() - timedelta(days=max(1, int(lookback_days)))).isoformat()
-    metrics: dict[str, Any] = {"since": since}
+    metrics: dict[str, Any] = {
+        "since": since,
+        "agent_score_threshold": round(clamp_score(agent_score_threshold), 2),
+        "agent_score_min_reports": max(1, int(agent_score_min_reports)),
+        "agent_score_top_n": max(1, int(agent_score_top_n)),
+    }
 
     agent_rows = tc.conn.execute(
         """
@@ -396,15 +643,53 @@ def collect_metrics(tc: TaskCenter, lookback_days: int) -> dict[str, Any]:
         )
     metrics["heavy_tasks"] = heavy_tasks
 
+    scorecards, score_summary = build_agent_scorecards(
+        tc,
+        since=since,
+        score_threshold=float(agent_score_threshold),
+        min_reports=int(agent_score_min_reports),
+        top_n=int(agent_score_top_n),
+    )
+    metrics["agent_scorecards"] = scorecards
+    metrics["agent_score_summary"] = score_summary
+
     return metrics
 
 
-def build_candidates(metrics: dict[str, Any]) -> list[dict[str, str]]:
-    candidates: list[dict[str, str]] = []
+def build_candidates(metrics: dict[str, Any]) -> list[dict[str, Any]]:
+    candidates: list[dict[str, Any]] = []
     since = str(metrics.get("since", ""))
     agent_health = metrics.get("agent_health", []) if isinstance(metrics.get("agent_health"), list) else []
     stage_health = metrics.get("stage_health", []) if isinstance(metrics.get("stage_health"), list) else []
     heavy_tasks = metrics.get("heavy_tasks", []) if isinstance(metrics.get("heavy_tasks"), list) else []
+    agent_scorecards = metrics.get("agent_scorecards", []) if isinstance(metrics.get("agent_scorecards"), list) else []
+    score_threshold = clamp_score(float(metrics.get("agent_score_threshold", 70.0) or 70.0))
+
+    low_score_agents = [x for x in agent_scorecards if bool(x.get("needs_optimization"))]
+    if low_score_agents:
+        top = "; ".join(
+            (
+                f"{x.get('agent_id')}:score={x.get('comprehensive_score')},"
+                f"quality={x.get('avg_quality_score')},fail={x.get('failure_ratio_pct')}%,"
+                f"solve={x.get('solved_ratio_pct')}%,risk_fail={round(float(x.get('risk_fail_ratio', 0.0)) * 100.0, 2)}%"
+            )
+            for x in low_score_agents[:8]
+        )
+        requirement = (
+            f"周度复盘窗口: {since}\n"
+            f"Agent 综合评估触发阈值: {score_threshold}\n"
+            f"低分/高风险 agent: {top}\n"
+            "请先完成“全面评估”（质量、稳定性、风险、积分、token成本、时效），"
+            "再输出针对性优化任务包（策略/流程/技能/路由），禁止自动改配置；仅生成 TODO 待人工确认。"
+        )
+        candidates.append(
+            {
+                "title": "周度Agent综合评分与全量评估优化包",
+                "reason": "自我进化复盘发现agent综合评分偏低或高风险失败偏高，需要先评估再优化",
+                "requirement": requirement,
+                "assignee": "optimization-agent",
+            }
+        )
 
     unstable_agents = [x for x in agent_health if float(x.get("failure_ratio", 0)) >= 0.30]
     if unstable_agents:
@@ -421,6 +706,7 @@ def build_candidates(metrics: dict[str, Any]) -> list[dict[str, str]]:
                 "title": "周度Agent稳定性优化建议包",
                 "reason": "自我进化复盘发现部分agent失败率偏高，需要人工确认后优化",
                 "requirement": requirement,
+                "assignee": "optimization-agent",
             }
         )
 
@@ -440,6 +726,7 @@ def build_candidates(metrics: dict[str, Any]) -> list[dict[str, str]]:
                 "title": "周度工作流瓶颈与错误热点建议包",
                 "reason": "自我进化复盘发现流程阶段异常，需要先任务化再优化",
                 "requirement": requirement,
+                "assignee": "coordinator",
             }
         )
 
@@ -455,6 +742,7 @@ def build_candidates(metrics: dict[str, Any]) -> list[dict[str, str]]:
                 "title": "周度成本与路由优化建议包",
                 "reason": "自我进化复盘发现token成本偏高，需要人工确认后推进",
                 "requirement": requirement,
+                "assignee": "optimization-agent",
             }
         )
 
@@ -467,6 +755,7 @@ def build_candidates(metrics: dict[str, Any]) -> list[dict[str, str]]:
                     f"周度复盘窗口: {since}\n"
                     "总结可复用经验、流程改进点、技能治理建议；仅产出任务包到 TODO，不自动改配置。"
                 ),
+                "assignee": "coordinator",
             }
         )
     return candidates
@@ -475,7 +764,7 @@ def build_candidates(metrics: dict[str, Any]) -> list[dict[str, str]]:
 def create_todo_tasks(
     tc: TaskCenter,
     *,
-    candidates: list[dict[str, str]],
+    candidates: list[dict[str, Any]],
     max_tasks_per_run: int,
     schedule_gap_minutes: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -490,6 +779,7 @@ def create_todo_tasks(
         title = str(candidate.get("title", "")).strip()
         reason = str(candidate.get("reason", "")).strip()
         requirement_raw = str(candidate.get("requirement", "")).strip()
+        assignee = str(candidate.get("assignee", "coordinator")).strip() or "coordinator"
         if not title or not requirement_raw:
             continue
 
@@ -511,7 +801,7 @@ def create_todo_tasks(
             "source": "self-evolution-agent",
             "priority": "low",
             "risk_level": "high",
-            "assignee": "coordinator",
+            "assignee": assignee,
             "status": "pending",
             "need_human_confirm": True,
             "human_confirmed": False,
@@ -530,7 +820,15 @@ def create_todo_tasks(
             stage="weekly_review",
             details={"fingerprint": fp, "scheduled_at": schedule_at},
         )
-        created.append({"task_id": task["task_id"], "fingerprint": fp, "scheduled_at": schedule_at, "title": title})
+        created.append(
+            {
+                "task_id": task["task_id"],
+                "fingerprint": fp,
+                "scheduled_at": schedule_at,
+                "title": title,
+                "assignee": assignee,
+            }
+        )
         open_fingerprints.add(fp)
     return created, skipped
 
@@ -549,6 +847,9 @@ def main() -> int:
     parser.add_argument("--min-review-interval-days", type=int, default=7)
     parser.add_argument("--max-tasks-per-run", type=int, default=3)
     parser.add_argument("--schedule-gap-minutes", type=int, default=120)
+    parser.add_argument("--agent-score-threshold", type=float, default=70.0)
+    parser.add_argument("--agent-score-min-reports", type=int, default=3)
+    parser.add_argument("--agent-score-top-n", type=int, default=12)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
@@ -578,7 +879,13 @@ def main() -> int:
             tc = TaskCenter(Path(args.db).expanduser())
             try:
                 tc.init_schema()
-                metrics = collect_metrics(tc, lookback_days=int(args.lookback_days))
+                metrics = collect_metrics(
+                    tc,
+                    lookback_days=int(args.lookback_days),
+                    agent_score_threshold=float(args.agent_score_threshold),
+                    agent_score_min_reports=int(args.agent_score_min_reports),
+                    agent_score_top_n=int(args.agent_score_top_n),
+                )
                 candidates = build_candidates(metrics)
                 created, skipped = create_todo_tasks(
                     tc,
@@ -601,6 +908,9 @@ def main() -> int:
         "lookback_days": int(args.lookback_days),
         "min_review_interval_days": int(args.min_review_interval_days),
         "max_tasks_per_run": int(args.max_tasks_per_run),
+        "agent_score_threshold": round(clamp_score(float(args.agent_score_threshold)), 2),
+        "agent_score_min_reports": max(1, int(args.agent_score_min_reports)),
+        "agent_score_top_n": max(1, int(args.agent_score_top_n)),
         "candidates_count": len(candidates),
         "created_count": len(created),
         "created": created,
