@@ -23,7 +23,7 @@ HOURLY_JOB_ID = "d3859fd5-3ea2-4ee5-ab1d-7fd526f26722"
 DAILY_JOB_ID = "0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a"
 BI_DAILY_JOB_ID = "a9c4a133-bf5b-4b91-8d89-ec97995f95f9"
 WEEKLY_JOB_ID = "771fda88-c8ff-49dc-a4da-6f57167c1d26"
-REVIEWER_PROFILES = {"legacy", "minimal", "standard", "aggressive"}
+REVIEWER_PROFILES = {"legacy", "minimal", "standard", "aggressive", "techdebt"}
 REVIEWER_PROFILE_BASELINE: dict[str, dict[str, int | bool]] = {
     "legacy": {
         "hourly_every_ms": 3600000,
@@ -51,6 +51,13 @@ REVIEWER_PROFILE_BASELINE: dict[str, dict[str, int | bool]] = {
         "enable_hourly": True,
         "enable_daily": True,
         "enable_bi_daily": True,
+        "enable_weekly": True,
+    },
+    "techdebt": {
+        "hourly_every_ms": 3600000,
+        "enable_hourly": False,
+        "enable_daily": True,
+        "enable_bi_daily": False,
         "enable_weekly": True,
     },
 }
@@ -98,6 +105,14 @@ def build_message(command: str) -> str:
         "do not add explanation, greeting, or prefix text. "
         "If output is NO_REPLY, reply NO_REPLY."
     )
+
+
+def normalize_shell_path(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    expanded = os.path.expanduser(raw)
+    return expanded.replace("\\", "/")
 
 
 def apply_reviewer_profile(args: argparse.Namespace) -> dict[str, Any]:
@@ -343,10 +358,10 @@ def main() -> None:
         raise SystemExit("--hourly-allow-merge requires --hourly-merge-approval-file")
 
     fresh_jobs = build_jobs(
-        runner_py=str(Path(args.runner_py).expanduser()),
-        workspace=str(Path(args.workspace).expanduser()),
-        state_file=str(Path(args.state_file).expanduser()),
-        history_dir=str(Path(args.history_dir).expanduser()),
+        runner_py=normalize_shell_path(args.runner_py),
+        workspace=normalize_shell_path(args.workspace),
+        state_file=normalize_shell_path(args.state_file),
+        history_dir=normalize_shell_path(args.history_dir),
         tz_name=str(args.tz).strip() or "Asia/Shanghai",
         hourly_every_ms=max(600000, int(args.hourly_every_ms)),
         daily_expr=str(args.daily_expr).strip() or "0 4 * * *",
@@ -362,9 +377,9 @@ def main() -> None:
         hourly_check_pr=bool(args.hourly_check_pr),
         hourly_allow_merge=bool(args.hourly_allow_merge),
         hourly_push_after_merge=bool(args.hourly_push_after_merge),
-        hourly_merge_approval_file=str(Path(args.hourly_merge_approval_file).expanduser()),
+        hourly_merge_approval_file=normalize_shell_path(args.hourly_merge_approval_file),
         project_context_gate=bool(args.project_context_gate),
-        project_context_db=str(Path(args.project_context_db).expanduser()),
+        project_context_db=normalize_shell_path(args.project_context_db),
         project_context_assignee=str(args.project_context_assignee).strip() or "project-agent",
     )
 
@@ -385,10 +400,10 @@ def main() -> None:
     )
 
     print(f"jobs_file={jobs_path}")
-    print(f"runner_py={args.runner_py}")
-    print(f"workspace={args.workspace}")
-    print(f"state_file={args.state_file}")
-    print(f"history_dir={args.history_dir}")
+    print(f"runner_py={normalize_shell_path(args.runner_py)}")
+    print(f"workspace={normalize_shell_path(args.workspace)}")
+    print(f"state_file={normalize_shell_path(args.state_file)}")
+    print(f"history_dir={normalize_shell_path(args.history_dir)}")
     print(f"delivery={channel}:{target}")
     print(f"reviewer_profile={profile_result.get('profile', 'legacy')}")
     if profile_result.get("changes"):
@@ -404,10 +419,10 @@ def main() -> None:
     print(f"hourly_git_fetch={bool(args.hourly_git_fetch)}")
     print(f"hourly_check_pr={bool(args.hourly_check_pr)}")
     print(f"hourly_allow_merge={bool(args.hourly_allow_merge)}")
-    print(f"hourly_merge_approval_file={Path(args.hourly_merge_approval_file).expanduser()}")
+    print(f"hourly_merge_approval_file={normalize_shell_path(args.hourly_merge_approval_file)}")
     print(f"hourly_push_after_merge={bool(args.hourly_push_after_merge)}")
     print(f"project_context_gate={bool(args.project_context_gate)}")
-    print(f"project_context_db={Path(args.project_context_db).expanduser()}")
+    print(f"project_context_db={normalize_shell_path(args.project_context_db)}")
     print(f"project_context_assignee={str(args.project_context_assignee).strip() or 'project-agent'}")
     for jid in [HOURLY_JOB_ID, DAILY_JOB_ID, BI_DAILY_JOB_ID, WEEKLY_JOB_ID]:
         print(f"{jid}={status.get(jid, 'unknown')}")

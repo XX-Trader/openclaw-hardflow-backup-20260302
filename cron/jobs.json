@@ -549,7 +549,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are reviewer scheduled runner. Run command only:\npython3 \\home\\ubuntu\\.openclaw\\ops\\reviewer_cron_runner.py --workspace \\home\\ubuntu\\.openclaw\\workspace --state-file \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-state.json --history-dir \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-runs --normal-log-mode silent --mode hourly_git --task-id cron:reviewer-hourly-git --git-fetch --check-pr\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
+        "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode hourly_git --task-id cron:reviewer-hourly-git --git-fetch --check-pr\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
         "timeoutSeconds": 1200
       },
       "state": {
@@ -566,7 +566,7 @@
       "agentId": "reviewer",
       "name": "reviewer_incremental_daily_4am",
       "description": "Daily 04:00 incremental review with optional fix command",
-      "enabled": false,
+      "enabled": true,
       "createdAtMs": 1772473929944,
       "updatedAtMs": 1772642376140,
       "schedule": {
@@ -578,7 +578,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are reviewer scheduled runner. Run command only:\npython3 \\home\\ubuntu\\.openclaw\\ops\\reviewer_cron_runner.py --workspace \\home\\ubuntu\\.openclaw\\workspace --state-file \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-state.json --history-dir \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-runs --normal-log-mode silent --mode daily_incremental --task-id cron:reviewer-daily-incremental --fix --fix-command \"python3 /home/ubuntu/.openclaw/ops/policy_enforcer.py next-todo --limit 5\"\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
+        "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode daily_incremental --task-id cron:reviewer-daily-incremental --fix --fix-command \"python3 $HOME/.openclaw/ops/policy_enforcer.py next-todo --limit 5\"\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
         "timeoutSeconds": 1800
       },
       "state": {},
@@ -605,7 +605,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are reviewer scheduled runner. Run command only:\npython3 \\home\\ubuntu\\.openclaw\\ops\\reviewer_cron_runner.py --workspace \\home\\ubuntu\\.openclaw\\workspace --state-file \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-state.json --history-dir \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-runs --normal-log-mode silent --mode bi_daily_recurring --task-id cron:reviewer-bi-daily-recurring\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
+        "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode bi_daily_recurring --task-id cron:reviewer-bi-daily-recurring\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
         "timeoutSeconds": 1800
       },
       "state": {},
@@ -620,7 +620,7 @@
       "agentId": "reviewer",
       "name": "reviewer_weekly_structure_review",
       "description": "Weekly structure review: coupling, duplication, config dispersion, boundary clarity",
-      "enabled": false,
+      "enabled": true,
       "createdAtMs": 1772473929944,
       "updatedAtMs": 1772642376140,
       "schedule": {
@@ -632,7 +632,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are reviewer scheduled runner. Run command only:\npython3 \\home\\ubuntu\\.openclaw\\ops\\reviewer_cron_runner.py --workspace \\home\\ubuntu\\.openclaw\\workspace --state-file \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-state.json --history-dir \\home\\ubuntu\\.openclaw\\ops\\reviewer-scan-runs --normal-log-mode silent --mode weekly_structure --task-id cron:reviewer-weekly-structure\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
+        "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode weekly_structure --task-id cron:reviewer-weekly-structure\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
         "timeoutSeconds": 1800
       },
       "state": {},

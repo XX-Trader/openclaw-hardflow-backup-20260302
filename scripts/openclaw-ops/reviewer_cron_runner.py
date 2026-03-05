@@ -54,6 +54,10 @@ REVIEW_SKIP_PREFIXES = (
     "openclaw-memory/",
 )
 REVIEW_SKIP_NAME_SET = {"memory.md", "experience_recall.md"}
+TECHDEBT_TASK_TYPE = "reviewer_technical_debt"
+TECHDEBT_OPEN_STATUSES = {"pending", "running", "failed", "escalated"}
+SEVERITY_RANK = {"medium": 1, "high": 2}
+FRONTEND_SUFFIXES = {".js", ".jsx", ".ts", ".tsx", ".vue", ".css", ".scss", ".less", ".sass"}
 DATA_FUNC_HINTS = ("process", "transform", "compute", "calculate", "parse", "normalize", "aggregate", "clean")
 JS_DATA_FUNC_HINTS = DATA_FUNC_HINTS
 COMMON_DUP_NAMES = {"main", "run", "handler", "init", "setup", "test", "render", "create", "update", "delete"}
@@ -1064,6 +1068,269 @@ def update_issues(state: dict[str, Any], *, findings: list[dict[str, Any]], mode
         "recurring_open_total": recurring_total,
     }
 
+
+def severity_meets_threshold(severity: str, min_severity: str) -> bool:
+    sev = str(severity or "medium").strip().lower()
+    minimum = str(min_severity or "medium").strip().lower()
+    return SEVERITY_RANK.get(sev, 0) >= SEVERITY_RANK.get(minimum, 1)
+
+
+def infer_techdebt_assignee(path: str, fallback_assignee: str) -> str:
+    candidate = str(fallback_assignee or "").strip()
+    if candidate:
+        return candidate
+    normalized = str(path or "").strip().lower().replace("\\", "/")
+    suffix = Path(normalized).suffix.lower()
+    if suffix in FRONTEND_SUFFIXES or "/frontend/" in normalized or normalized.startswith("src/"):
+        return "frontend-dev"
+    return "backend-dev"
+
+
+def list_open_debt_tasks_for_issue(tc: Any, issue_id: str) -> list[dict[str, Any]]:
+    rows = tc.conn.execute(
+        """
+        SELECT task_id, status, assignee, updated_at
+        FROM tasks
+        WHERE task_type = ?
+          AND change_id = ?
+          AND status IN ('pending', 'running', 'failed', 'escalated')
+        ORDER BY updated_at DESC
+        """,
+        (TECHDEBT_TASK_TYPE, issue_id),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def query_latest_debt_task(tc: Any, issue_id: str) -> dict[str, Any] | None:
+    row = tc.conn.execute(
+        """
+        SELECT task_id, status, assignee, updated_at, review_status
+        FROM tasks
+        WHERE task_type = ?
+          AND change_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+        """,
+        (TECHDEBT_TASK_TYPE, issue_id),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def sync_resolved_techdebt_tasks(*, tc: Any, state: dict[str, Any], mode: str, actor: str) -> dict[str, Any]:
+    result = {"closed": 0, "errors": [], "task_ids": []}
+    issues = state.get("issues", {})
+    if not isinstance(issues, dict):
+        return result
+
+    for issue_id, issue in issues.items():
+        if not isinstance(issue, dict):
+            continue
+        if str(issue.get("mode", "")).strip() != mode:
+            continue
+        if str(issue.get("status", "")).strip().lower() != "resolved":
+            continue
+        for row in list_open_debt_tasks_for_issue(tc, str(issue_id).strip()):
+            task_id = str(row.get("task_id", "")).strip()
+            if not task_id:
+                continue
+            try:
+                tc.update_task(
+                    task_id,
+                    actor=actor,
+                    fields={
+                        "status": "passed",
+                        "review_status": "fix_verified",
+                        "review_mode": mode,
+                        "reviewed_at": now_iso(),
+                    },
+                )
+                result["closed"] += 1
+                result["task_ids"].append(task_id)
+            except Exception as exc:
+                result["errors"].append(f"close_failed:{task_id}:{exc}")
+    return result
+
+
+def create_or_reopen_techdebt_tasks(
+    *,
+    args: argparse.Namespace,
+    state: dict[str, Any],
+    mode: str,
+    findings: list[dict[str, Any]],
+    run_id: str,
+) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "enabled": bool(args.create_techdebt_task),
+        "mode": mode,
+        "created": 0,
+        "reopened": 0,
+        "deduped_open": 0,
+        "closed": 0,
+        "skipped_low_severity": 0,
+        "skipped_no_key": 0,
+        "errors": [],
+        "task_ids": [],
+    }
+    if not bool(args.create_techdebt_task):
+        return result
+    if TaskCenter is None:
+        result["errors"].append("task_center_unavailable")
+        return result
+
+    db_path = Path(str(args.project_context_db or "")).expanduser()
+    if not db_path.exists():
+        result["errors"].append(f"task_db_missing:{db_path}")
+        return result
+
+    max_tasks = max(1, int(args.techdebt_max_tasks_per_run or 1))
+    min_severity = str(args.techdebt_min_severity or "medium").strip().lower()
+    actor = "reviewer-cron-runner"
+    unique_findings: dict[str, dict[str, Any]] = {}
+    for item in findings:
+        if not isinstance(item, dict):
+            continue
+        issue_id = str(item.get("key", "")).strip()
+        if not issue_id:
+            result["skipped_no_key"] += 1
+            continue
+        # Keep the highest-severity version when the same key appears repeatedly.
+        prev = unique_findings.get(issue_id)
+        if prev is None:
+            unique_findings[issue_id] = item
+            continue
+        cur_rank = SEVERITY_RANK.get(str(item.get("severity", "medium")).lower(), 1)
+        prev_rank = SEVERITY_RANK.get(str(prev.get("severity", "medium")).lower(), 1)
+        if cur_rank > prev_rank:
+            unique_findings[issue_id] = item
+
+    tc = TaskCenter(db_path)
+    tc.init_schema()
+    try:
+        resolve_sync = sync_resolved_techdebt_tasks(tc=tc, state=state, mode=mode, actor=actor)
+        result["closed"] = int(resolve_sync.get("closed", 0) or 0)
+        if isinstance(resolve_sync.get("task_ids"), list):
+            result["task_ids"].extend(str(x) for x in resolve_sync.get("task_ids", []) if str(x).strip())
+        if isinstance(resolve_sync.get("errors"), list):
+            result["errors"].extend(str(x) for x in resolve_sync.get("errors", []) if str(x).strip())
+
+        created_or_reopened = 0
+        for issue_id, item in unique_findings.items():
+            severity = str(item.get("severity", "medium")).strip().lower()
+            if not severity_meets_threshold(severity, min_severity):
+                result["skipped_low_severity"] += 1
+                continue
+            if created_or_reopened >= max_tasks:
+                break
+
+            open_rows = list_open_debt_tasks_for_issue(tc, issue_id)
+            if open_rows:
+                result["deduped_open"] += 1
+                continue
+
+            latest = query_latest_debt_task(tc, issue_id)
+            path = str(item.get("path", "")).strip()
+            category = str(item.get("category", "")).strip()
+            title = str(item.get("title", "")).strip()
+            detail = str(item.get("detail", "")).strip()
+            repo = str(item.get("repo", "")).strip()
+            repo_head = str(item.get("repo_head", "")).strip()
+            assignee = infer_techdebt_assignee(path, str(args.techdebt_assignee or "").strip())
+            priority = "high" if severity == "high" else "medium"
+            risk_level = "high" if severity == "high" else "low"
+
+            try:
+                if latest and str(latest.get("status", "")).strip().lower() in {"passed", "cancelled"}:
+                    task_id = str(latest.get("task_id", "")).strip()
+                    if task_id:
+                        tc.update_task(
+                            task_id,
+                            actor=actor,
+                            fields={
+                                "status": "pending",
+                                "priority": priority,
+                                "risk_level": risk_level,
+                                "assignee": assignee,
+                                "review_status": "fix_required",
+                                "review_mode": mode,
+                                "review_head": repo_head,
+                                "reviewed_at": now_iso(),
+                                "reason": f"[TECHDEBT_REOPEN] {title or category or issue_id}",
+                            },
+                        )
+                        result["reopened"] += 1
+                        created_or_reopened += 1
+                        result["task_ids"].append(task_id)
+                        continue
+
+                requirement_lines = [
+                    f"[issue_key:{issue_id}]",
+                    f"审查模式: {mode}",
+                    f"仓库: {repo or '-'}",
+                    f"路径: {path or '-'}",
+                    f"类别: {category or '-'}",
+                    f"严重度: {severity}",
+                    f"问题: {title or '-'}",
+                    "",
+                    "修复要求:",
+                    "- 明确根因并给出最小修复改动",
+                    "- 提供可复现的验证命令或测试步骤",
+                    "- 避免引入跨模块耦合与边界破坏",
+                    f"- 参考线索: {detail or '-'}",
+                ]
+                created = tc.create_task(
+                    {
+                        "task_id": f"todo-techdebt-{datetime.now(TZ).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}",
+                        "pool": "todo",
+                        "task_type": TECHDEBT_TASK_TYPE,
+                        "reason": f"[TECHDEBT] {title or category or issue_id}",
+                        "source": "reviewer-cron-runner",
+                        "request_source": "ai",
+                        "priority": priority,
+                        "risk_level": risk_level,
+                        "assignee": assignee,
+                        "status": "pending",
+                        "need_human_confirm": False,
+                        "human_confirmed": False,
+                        "review_status": "fix_required",
+                        "review_mode": mode,
+                        "review_head": repo_head,
+                        "reviewed_at": now_iso(),
+                        "owner": "reviewer",
+                        "change_id": issue_id,
+                        "requirement": "\n".join(requirement_lines),
+                        "result_output": "提交修复说明、关键变更点和验证结果。",
+                        "acceptance": "问题不再复现，且 reviewer 后续扫描不再命中同 issue_key。",
+                        "observable_outputs": "commit diff, verification commands, reviewer evidence",
+                        "acceptance_thresholds": "至少1条验证命令通过；issue_key在后续扫描中关闭",
+                        "scheduled_at": (datetime.now(TZ) + timedelta(minutes=2)).isoformat(timespec="seconds"),
+                        "context_payload": {
+                            "issue_key": issue_id,
+                            "mode": mode,
+                            "run_id": run_id,
+                            "repo": repo,
+                            "repo_head": repo_head,
+                            "path": path,
+                            "category": category,
+                            "severity": severity,
+                            "title": title,
+                            "detail": detail,
+                            "assignee_recommendation": assignee,
+                        },
+                    },
+                    actor=actor,
+                )
+                task_id = str(created.get("task_id", "")).strip()
+                if task_id:
+                    result["task_ids"].append(task_id)
+                result["created"] += 1
+                created_or_reopened += 1
+            except Exception as exc:
+                result["errors"].append(f"create_or_reopen_failed:{issue_id}:{exc}")
+    finally:
+        tc.close()
+    return result
+
+
 def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_mode: str) -> RunResult:
     run_started_at = datetime.now(TZ)
     repos = discover_git_repos(Path(args.workspace).expanduser())
@@ -1204,6 +1471,7 @@ def run_quality_scan(
     run_fix_command: bool,
 ) -> RunResult:
     run_started_at = datetime.now(TZ)
+    run_id = uuid.uuid4().hex[:12]
     repos = discover_git_repos(Path(args.workspace).expanduser())
     context_gate = ensure_project_context_gate(args, mode, repos)
     if not bool(context_gate.get("ok", True)):
@@ -1307,7 +1575,12 @@ def run_quality_scan(
             repo_state[key] = rec
 
         repo_findings, _function_index, metrics, io_missing = scan_paths(mode=mode, repo=repo, paths=paths, state=state, skip_unchanged=full_scan_skip_unchanged)
-        findings.extend(repo_findings)
+        for item in repo_findings:
+            if not isinstance(item, dict):
+                continue
+            item.setdefault("repo", key)
+            item.setdefault("repo_head", head)
+            findings.append(item)
         total_io_missing += io_missing
         total_files_scanned += int(metrics.get("files_scanned", 0))
         total_files_skipped += int(metrics.get("files_skipped", 0))
@@ -1320,6 +1593,13 @@ def run_quality_scan(
             findings.append({"key": issue_key("fix_command.failed", mode, "", str(rc)), "category": "fix_command.failed", "severity": "high", "path": str(Path(args.workspace).expanduser()), "title": f"Fix command failed in mode={mode}", "detail": (err or out or f"exit_code={rc}")[:180]})
 
     issue_stats = update_issues(state, findings=findings, mode=mode)
+    techdebt_result = create_or_reopen_techdebt_tasks(
+        args=args,
+        state=state,
+        mode=mode,
+        findings=findings,
+        run_id=run_id,
+    )
 
     risk_reasons: list[str] = []
     change_reasons: list[str] = []
@@ -1337,12 +1617,20 @@ def run_quality_scan(
         change_reasons.append(f"io_contract_missing={total_io_missing}")
     if mode == "bi_daily_recurring" and issue_stats["recurring_open_total"] > 0:
         change_reasons.append(f"recurring_open={issue_stats['recurring_open_total']}")
+    if int(techdebt_result.get("created", 0) or 0) > 0:
+        change_reasons.append(f"techdebt_created={techdebt_result['created']}")
+    if int(techdebt_result.get("reopened", 0) or 0) > 0:
+        change_reasons.append(f"techdebt_reopened={techdebt_result['reopened']}")
+    if int(techdebt_result.get("closed", 0) or 0) > 0:
+        change_reasons.append(f"techdebt_closed={techdebt_result['closed']}")
+    techdebt_errors = techdebt_result.get("errors", [])
+    if isinstance(techdebt_errors, list) and techdebt_errors:
+        risk_reasons.append(f"techdebt_sync_error={len(techdebt_errors)}")
 
     # Exception-only notifications: only high-risk reasons trigger chat.
     notify = bool(risk_reasons)
 
     run_duration_ms = max(0, int((datetime.now(TZ) - run_started_at).total_seconds() * 1000))
-    run_id = uuid.uuid4().hex[:12]
     job_name = str(args.task_id or "").split(":", 1)[-1] if ":" in str(args.task_id or "") else f"reviewer_{mode}"
     risk_level = "high" if risk_reasons else "low"
     priority = "high" if risk_reasons else ("medium" if change_reasons else "low")
@@ -1363,6 +1651,7 @@ def run_quality_scan(
             f"files: scanned={total_files_scanned}, skipped={total_files_skipped}",
             f"issue_summary: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}, recurring_open={issue_stats['recurring_open_total']}",
             f"io_contract_missing: {total_io_missing} (planner should create TODO/request info before edits)",
+            f"techdebt: created={techdebt_result.get('created', 0)}, reopened={techdebt_result.get('reopened', 0)}, closed={techdebt_result.get('closed', 0)}, deduped_open={techdebt_result.get('deduped_open', 0)}",
         ]
         if risk_reasons:
             lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
@@ -1393,6 +1682,7 @@ def run_quality_scan(
         "summary": summary[:80],
         "context_gate": context_gate,
         "fix_result": fix_result,
+        "techdebt": techdebt_result,
         "token_usage": {"input_tokens": 0, "output_tokens": 0},
         "cost_estimate": 0.0,
     }
@@ -1654,6 +1944,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project-context-gate", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--project-context-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument("--project-context-assignee", default="project-agent")
+    parser.add_argument("--create-techdebt-task", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--techdebt-min-severity", choices=["high", "medium"], default="medium")
+    parser.add_argument("--techdebt-max-tasks-per-run", type=int, default=8)
+    parser.add_argument("--techdebt-assignee", default="")
     return parser
 
 

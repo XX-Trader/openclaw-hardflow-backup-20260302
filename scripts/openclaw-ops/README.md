@@ -501,3 +501,33 @@ python3 scripts/openclaw-ops/cron_setup.py \
   - `--enable-bi-daily/--no-enable-bi-daily`
   - `--enable-weekly/--no-enable-weekly`
 - `minimal` 默认关闭 bi-daily 并降低 hourly 频率，减少定时任务噪音。
+
+## 本地 OpenClaw Git 备份（仅本地提交，不推远程）
+
+新增脚本：
+- `scripts/openclaw-ops/local_git_backup_runner.py`
+- `scripts/openclaw-ops/install_local_openclaw_backup_job.py`
+
+用途：
+- 将 `~/.openclaw` 作为本地 git 仓库维护。
+- 定时执行 `git add/commit`，不执行任何 `push`。
+- 默认过滤高频日志与会话目录，避免仓库膨胀过快。
+
+安装定时任务：
+
+```bash
+python3 scripts/openclaw-ops/install_local_openclaw_backup_job.py \
+  --jobs-file ~/.openclaw/cron/jobs.json \
+  --runner-py ~/.openclaw/ops/local_git_backup_runner.py \
+  --openclaw-home ~/.openclaw \
+  --every-ms 3600000
+```
+
+手动执行一次（用于首轮初始化）：
+
+```bash
+python3 scripts/openclaw-ops/local_git_backup_runner.py \
+  --repo-path ~/.openclaw \
+  --task-id manual:openclaw-local-backup \
+  --normal-log-mode silent
+```

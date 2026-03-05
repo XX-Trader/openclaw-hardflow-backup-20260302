@@ -26,6 +26,7 @@ TASK_POOLS = {"todo", "jobs"}
 TASK_PRIORITIES = {"low", "medium", "high"}
 TASK_RISK_LEVELS = {"low", "high"}
 TASK_REQUEST_SOURCES = {"human", "ai"}
+TASK_REVIEW_STATUSES = {"unreviewed", "in_review", "reviewed", "fix_required", "fix_verified"}
 STAGE_RUN_STATUSES = {"running", "passed", "failed"}
 MODULE_LOG_LEVELS = {"debug", "info", "warn", "error"}
 MODULE_RUN_STATUSES = {"started", "running", "passed", "failed", "timeout", "skipped"}
@@ -81,6 +82,13 @@ def normalize_request_source(value: Any, default: str = "human") -> str:
     if any(token in raw for token in {"agent", "bot", "cron", "auto", "automation", "patrol", "audit", "ops"}):
         return "ai"
     return default if default in TASK_REQUEST_SOURCES else "human"
+
+
+def normalize_review_status(value: Any, default: str = "unreviewed") -> str:
+    raw = str(value or "").strip().lower()
+    if raw in TASK_REVIEW_STATUSES:
+        return raw
+    return default if default in TASK_REVIEW_STATUSES else "unreviewed"
 
 
 def normalize_context_missing_fields(value: Any) -> str:
@@ -215,6 +223,10 @@ class TaskCenter:
                 context_fields_missing TEXT NOT NULL DEFAULT '',
                 context_fields_recommended_missing TEXT NOT NULL DEFAULT '',
                 context_payload TEXT NOT NULL DEFAULT '{}',
+                review_status TEXT NOT NULL DEFAULT 'unreviewed',
+                review_mode TEXT NOT NULL DEFAULT '',
+                review_head TEXT NOT NULL DEFAULT '',
+                reviewed_at TEXT NOT NULL DEFAULT '',
                 owner TEXT NOT NULL DEFAULT '',
                 change_id TEXT NOT NULL DEFAULT '',
                 requirement TEXT NOT NULL,
@@ -381,6 +393,10 @@ class TaskCenter:
             "context_fields_missing": "TEXT NOT NULL DEFAULT ''",
             "context_fields_recommended_missing": "TEXT NOT NULL DEFAULT ''",
             "context_payload": "TEXT NOT NULL DEFAULT '{}'",
+            "review_status": "TEXT NOT NULL DEFAULT 'unreviewed'",
+            "review_mode": "TEXT NOT NULL DEFAULT ''",
+            "review_head": "TEXT NOT NULL DEFAULT ''",
+            "reviewed_at": "TEXT NOT NULL DEFAULT ''",
             "owner": "TEXT NOT NULL DEFAULT ''",
             "change_id": "TEXT NOT NULL DEFAULT ''",
             "observable_outputs": "TEXT NOT NULL DEFAULT ''",
@@ -421,6 +437,12 @@ class TaskCenter:
         context_fields_recommended_missing = normalize_context_missing_fields(
             task.get("context_fields_recommended_missing")
         )
+        review_status = normalize_review_status(task.get("review_status"), default="unreviewed")
+        review_mode = str(task.get("review_mode", "")).strip()
+        review_head = str(task.get("review_head", "")).strip()
+        reviewed_at = str(task.get("reviewed_at", "")).strip()
+        if (not reviewed_at) and review_status in {"reviewed", "fix_verified"}:
+            reviewed_at = now
         owner = str(task.get("owner", "")).strip()
         change_id = str(task.get("change_id", "")).strip()
 
@@ -446,6 +468,10 @@ class TaskCenter:
             "context_fields_missing": context_fields_missing,
             "context_fields_recommended_missing": context_fields_recommended_missing,
             "context_payload": ensure_json(context_payload_raw),
+            "review_status": review_status,
+            "review_mode": review_mode,
+            "review_head": review_head,
+            "reviewed_at": reviewed_at,
             "owner": owner,
             "change_id": change_id,
             "requirement": str(task.get("requirement", "")).strip(),
@@ -474,6 +500,8 @@ class TaskCenter:
             raise TaskCenterError(f"invalid request_source: {normalized['request_source']}")
         if normalized["status"] not in TASK_STATUSES:
             raise TaskCenterError(f"invalid status: {normalized['status']}")
+        if normalized["review_status"] not in TASK_REVIEW_STATUSES:
+            raise TaskCenterError(f"invalid review_status: {normalized['review_status']}")
 
         required_text_fields = [
             "task_type",
@@ -514,6 +542,7 @@ class TaskCenter:
                     needs_clarification, clarification_reason,
                     need_human_confirm, human_confirmed,
                     context_completeness, context_fields_missing, context_fields_recommended_missing, context_payload,
+                    review_status, review_mode, review_head, reviewed_at,
                     owner, change_id,
                     requirement, result_output, acceptance,
                     observable_outputs, acceptance_thresholds,
@@ -526,6 +555,7 @@ class TaskCenter:
                     :needs_clarification, :clarification_reason,
                     :need_human_confirm, :human_confirmed,
                     :context_completeness, :context_fields_missing, :context_fields_recommended_missing, :context_payload,
+                    :review_status, :review_mode, :review_head, :reviewed_at,
                     :owner, :change_id,
                     :requirement, :result_output, :acceptance,
                     :observable_outputs, :acceptance_thresholds,
@@ -547,6 +577,8 @@ class TaskCenter:
                     "risk_level": payload["risk_level"],
                     "request_source": payload["request_source"],
                     "needs_clarification": bool(payload["needs_clarification"]),
+                    "review_status": payload.get("review_status", "unreviewed"),
+                    "review_mode": payload.get("review_mode", ""),
                     "owner": payload.get("owner", ""),
                     "change_id": payload.get("change_id", ""),
                 },
@@ -577,6 +609,10 @@ class TaskCenter:
             "context_fields_missing",
             "context_fields_recommended_missing",
             "context_payload",
+            "review_status",
+            "review_mode",
+            "review_head",
+            "reviewed_at",
             "owner",
             "change_id",
             "requirement",
@@ -616,6 +652,14 @@ class TaskCenter:
             updates["status"] = str(updates["status"]).strip().lower()
             if updates["status"] not in TASK_STATUSES:
                 raise TaskCenterError(f"invalid status: {updates['status']}")
+        if "review_status" in updates:
+            updates["review_status"] = normalize_review_status(updates["review_status"], default="unreviewed")
+        if "review_mode" in updates:
+            updates["review_mode"] = str(updates["review_mode"] or "").strip()
+        if "review_head" in updates:
+            updates["review_head"] = str(updates["review_head"] or "").strip()
+        if "reviewed_at" in updates:
+            updates["reviewed_at"] = str(updates["reviewed_at"] or "").strip()
         if "request_source" in updates:
             updates["request_source"] = normalize_request_source(updates["request_source"], default="human")
         if "needs_clarification" in updates:
@@ -659,6 +703,12 @@ class TaskCenter:
         if "assignee" in updates:
             assignee = str(updates["assignee"] or "").strip()
             updates["assignee"] = assignee or None
+        if (
+            "review_status" in updates
+            and "reviewed_at" not in updates
+            and str(updates.get("review_status", "")).strip().lower() in {"reviewed", "fix_verified"}
+        ):
+            updates["reviewed_at"] = utc_now_iso()
 
         updates["updated_at"] = utc_now_iso()
         cols = [f"{name} = ?" for name in updates.keys()]
@@ -689,6 +739,10 @@ class TaskCenter:
         data["human_confirmed"] = bool(data["human_confirmed"])
         data["needs_clarification"] = bool(data.get("needs_clarification"))
         data["context_payload"] = parse_json(str(data.get("context_payload") or ""))
+        data["review_status"] = normalize_review_status(data.get("review_status"), default="unreviewed")
+        data["review_mode"] = str(data.get("review_mode") or "").strip()
+        data["review_head"] = str(data.get("review_head") or "").strip()
+        data["reviewed_at"] = str(data.get("reviewed_at") or "").strip()
         missing_fields = str(data.get("context_fields_missing") or "").strip()
         data["context_fields_missing"] = [x for x in missing_fields.split(",") if x]
         recommended_missing_fields = str(data.get("context_fields_recommended_missing") or "").strip()
