@@ -34,6 +34,48 @@
     "fix",
     "deploy"
   ],
+  "project_dispatch_policy": {
+    "enabled": true,
+    "force_dispatch_code_tasks": true,
+    "code_task_keywords": [
+      "write code",
+      "coding",
+      "implement",
+      "bugfix",
+      "fix bug",
+      "refactor",
+      "开发",
+      "写代码",
+      "修复",
+      "实现",
+      "代码"
+    ],
+    "frontend_keywords": [
+      "frontend",
+      "ui",
+      "页面",
+      "前端",
+      "样式",
+      "交互"
+    ],
+    "backend_keywords": [
+      "backend",
+      "api",
+      "服务端",
+      "后端",
+      "数据库",
+      "接口"
+    ],
+    "tester_keywords": [
+      "test",
+      "qa",
+      "测试",
+      "回归",
+      "验收",
+      "playwright"
+    ],
+    "default_code_assignee": "backend-dev"
+  },
   "required_task_fields": [
     "reason",
     "requirement",
@@ -132,6 +174,25 @@
     "require_human_confirm": true,
     "max_tasks_per_run": 3,
     "schedule_gap_minutes": 120
+  },
+  "post_deploy_test_policy": {
+    "enabled": true,
+    "deploy_stage_names": [
+      "deploy"
+    ],
+    "post_test_stage_names": [
+      "post-test",
+      "post_test",
+      "postdeploy-test",
+      "postdeploy_test"
+    ],
+    "require_post_test_after_deploy": true,
+    "missing_post_test_action": "post_deploy_test_required",
+    "failed_post_test_action": "retry_fix_after_post_deploy_test"
+  },
+  "agent_output_policy": {
+    "default_language": "zh-CN",
+    "require_chinese_output": true
   },
   "status_flow": {
     "pending": [

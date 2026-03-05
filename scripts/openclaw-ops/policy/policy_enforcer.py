@@ -47,6 +47,48 @@ DEFAULT_POLICY: dict[str, Any] = {
     "dispatcher_fallback_self_execute": True,
     "blocked_direct_code_agents": ["coordinator", "project-agent"],
     "code_execution_stages": ["implement", "fix", "deploy"],
+    "project_dispatch_policy": {
+        "enabled": True,
+        "force_dispatch_code_tasks": True,
+        "code_task_keywords": [
+            "write code",
+            "coding",
+            "implement",
+            "bugfix",
+            "fix bug",
+            "refactor",
+            "开发",
+            "写代码",
+            "修复",
+            "实现",
+            "代码",
+        ],
+        "frontend_keywords": [
+            "frontend",
+            "ui",
+            "页面",
+            "前端",
+            "样式",
+            "交互",
+        ],
+        "backend_keywords": [
+            "backend",
+            "api",
+            "服务端",
+            "后端",
+            "数据库",
+            "接口",
+        ],
+        "tester_keywords": [
+            "test",
+            "qa",
+            "测试",
+            "回归",
+            "验收",
+            "playwright",
+        ],
+        "default_code_assignee": "backend-dev",
+    },
     "required_task_fields": [
         "reason",
         "requirement",
@@ -145,6 +187,18 @@ DEFAULT_POLICY: dict[str, Any] = {
         "require_human_confirm": True,
         "max_tasks_per_run": 3,
         "schedule_gap_minutes": 120,
+    },
+    "post_deploy_test_policy": {
+        "enabled": True,
+        "deploy_stage_names": ["deploy"],
+        "post_test_stage_names": ["post-test", "post_test", "postdeploy-test", "postdeploy_test"],
+        "require_post_test_after_deploy": True,
+        "missing_post_test_action": "post_deploy_test_required",
+        "failed_post_test_action": "retry_fix_after_post_deploy_test",
+    },
+    "agent_output_policy": {
+        "default_language": "zh-CN",
+        "require_chinese_output": True,
     },
     "status_flow": {
         "pending": ["running", "cancelled", "escalated"],
@@ -425,6 +479,110 @@ class PolicyEnforcer:
 
     def pass_line_raw(self) -> float:
         return float(self.policy.get("pass_line_raw", 75.0) or 75.0)
+
+    def project_dispatch_policy(self) -> dict[str, Any]:
+        raw = self.policy.get("project_dispatch_policy", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        defaults = DEFAULT_POLICY.get("project_dispatch_policy", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+        return merge_missing_keys(raw, defaults)
+
+    def post_deploy_test_policy(self) -> dict[str, Any]:
+        raw = self.policy.get("post_deploy_test_policy", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        defaults = DEFAULT_POLICY.get("post_deploy_test_policy", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+        return merge_missing_keys(raw, defaults)
+
+    @staticmethod
+    def _keyword_hits(text_norm: str, keywords_raw: Any) -> list[str]:
+        if not isinstance(keywords_raw, list):
+            return []
+        hits: list[str] = []
+        for item in keywords_raw:
+            token = str(item or "").strip().lower()
+            if token and token in text_norm:
+                hits.append(token)
+        return hits
+
+    @staticmethod
+    def _normalize_stage_names(stage_names_raw: Any, fallback: list[str]) -> set[str]:
+        values = stage_names_raw if isinstance(stage_names_raw, list) else fallback
+        names = {str(x or "").strip().lower() for x in values if str(x or "").strip()}
+        return names or {str(x).strip().lower() for x in fallback if str(x).strip()}
+
+    def evaluate_post_deploy_test_state(self, task_id: str) -> dict[str, Any]:
+        cfg = self.post_deploy_test_policy()
+        enabled = parse_bool(cfg.get("enabled", True), True)
+        require_after_deploy = parse_bool(cfg.get("require_post_test_after_deploy", True), True)
+        if not enabled or not require_after_deploy:
+            return {
+                "enabled": enabled,
+                "required": False,
+                "state": "disabled",
+                "reason": "policy_disabled",
+            }
+
+        deploy_names = self._normalize_stage_names(cfg.get("deploy_stage_names"), ["deploy"])
+        post_test_names = self._normalize_stage_names(
+            cfg.get("post_test_stage_names"),
+            ["post-test", "post_test", "postdeploy-test", "postdeploy_test"],
+        )
+        stage_runs = self.db.list_stage_runs(task_id)
+        deploy_passed = [
+            row
+            for row in stage_runs
+            if str(row.get("stage", "")).strip().lower() in deploy_names
+            and str(row.get("status", "")).strip().lower() == "passed"
+        ]
+        if not deploy_passed:
+            return {
+                "enabled": enabled,
+                "required": False,
+                "state": "not_deployed",
+                "reason": "deploy_passed_stage_not_found",
+            }
+
+        latest_deploy = deploy_passed[-1]
+        latest_deploy_id = int(latest_deploy.get("id", 0) or 0)
+        post_after_deploy = [
+            row
+            for row in stage_runs
+            if str(row.get("stage", "")).strip().lower() in post_test_names
+            and int(row.get("id", 0) or 0) > latest_deploy_id
+        ]
+        if not post_after_deploy:
+            return {
+                "enabled": enabled,
+                "required": True,
+                "state": "missing",
+                "reason": "post_deploy_test_missing",
+                "latest_deploy_stage_run_id": latest_deploy_id,
+            }
+
+        latest_post = post_after_deploy[-1]
+        post_status = str(latest_post.get("status", "")).strip().lower()
+        if post_status == "passed":
+            state = "passed"
+            reason = "post_deploy_test_passed"
+        elif post_status == "failed":
+            state = "failed"
+            reason = "post_deploy_test_failed"
+        else:
+            state = "running"
+            reason = "post_deploy_test_running"
+        return {
+            "enabled": enabled,
+            "required": True,
+            "state": state,
+            "reason": reason,
+            "latest_deploy_stage_run_id": latest_deploy_id,
+            "latest_post_test_stage_run_id": int(latest_post.get("id", 0) or 0),
+        }
 
     def points_policy(self) -> dict[str, Any]:
         raw = self.policy.get("agent_points_policy", {})
@@ -916,6 +1074,26 @@ class PolicyEnforcer:
             solved=solved,
             failure_count=failure_count,
         )
+        post_deploy_guard = self.evaluate_post_deploy_test_state(task_id)
+        if bool(post_deploy_guard.get("required")):
+            post_cfg = self.post_deploy_test_policy()
+            missing_action = str(
+                post_cfg.get("missing_post_test_action", "post_deploy_test_required")
+            ).strip() or "post_deploy_test_required"
+            failed_action = str(
+                post_cfg.get("failed_post_test_action", "retry_fix_after_post_deploy_test")
+            ).strip() or "retry_fix_after_post_deploy_test"
+            guard_state = str(post_deploy_guard.get("state", "")).strip().lower()
+            if guard_state in {"missing", "running"}:
+                target_status = "running"
+                target_action = missing_action
+            elif guard_state == "failed":
+                if max(0, int(failure_count or 0)) >= self.max_failure_before_escalate():
+                    target_status = "escalated"
+                    target_action = "escalate_human"
+                else:
+                    target_status = "failed"
+                    target_action = failed_action
 
         sync_info: dict[str, Any] = {
             "task_status_before": current_status,
@@ -927,6 +1105,7 @@ class PolicyEnforcer:
             "task_status_updated": False,
             "task_action_updated": False,
             "sync_skipped_reason": "",
+            "post_deploy_guard": post_deploy_guard,
         }
 
         # Keep terminal statuses stable unless report agrees with current status.
@@ -1488,6 +1667,7 @@ class PolicyEnforcer:
             "task_status_updated": bool(status_sync.get("task_status_updated")),
             "task_action_updated": bool(status_sync.get("task_action_updated")),
             "task_sync_skipped_reason": str(status_sync.get("sync_skipped_reason", "")),
+            "post_deploy_guard": status_sync.get("post_deploy_guard", {}),
             "task_reason": str(task_after.get("reason", "")),
             "agent_id": str(args.agent_id),
             "planner_id": str(args.planner_id or "coordinator"),
@@ -1950,6 +2130,10 @@ class PolicyEnforcer:
         change_id = str(context_payload.get("change_id", "")).strip()
         needs_clarification = bool(context_eval.get("needs_clarification"))
         clarification_reason = str(context_eval.get("clarification_reason", "")).strip()
+        code_task_hits: list[str] = []
+        code_dispatch_forced = False
+        code_dispatch_target = ""
+        code_dispatch_reason = ""
         if needs_clarification:
             entry_agent = "project-agent"
             assignee = self.clarification_assignee()
@@ -1957,6 +2141,55 @@ class PolicyEnforcer:
             pool = "todo"
             if priority == "low":
                 priority = "medium"
+        else:
+            project_dispatch = self.project_dispatch_policy()
+            if (
+                assignee == "project-agent"
+                and parse_bool(project_dispatch.get("enabled", True), True)
+                and parse_bool(project_dispatch.get("force_dispatch_code_tasks", True), True)
+            ):
+                code_task_hits = self._keyword_hits(
+                    effective_norm,
+                    project_dispatch.get("code_task_keywords", []),
+                )
+                if code_task_hits:
+                    frontend_hits = self._keyword_hits(
+                        effective_norm,
+                        project_dispatch.get("frontend_keywords", []),
+                    )
+                    backend_hits = self._keyword_hits(
+                        effective_norm,
+                        project_dispatch.get("backend_keywords", []),
+                    )
+                    tester_hits = self._keyword_hits(
+                        effective_norm,
+                        project_dispatch.get("tester_keywords", []),
+                    )
+                    target = str(
+                        project_dispatch.get("default_code_assignee", "backend-dev")
+                    ).strip() or "backend-dev"
+                    if backend_hits:
+                        target = "backend-dev"
+                        code_dispatch_reason = "code_task_dispatch:backend"
+                    elif frontend_hits and not backend_hits:
+                        target = "frontend-dev"
+                        code_dispatch_reason = "code_task_dispatch:frontend"
+                    elif tester_hits:
+                        target = "tester"
+                        code_dispatch_reason = "code_task_dispatch:tester"
+                    elif frontend_hits:
+                        target = "frontend-dev"
+                        code_dispatch_reason = "code_task_dispatch:frontend"
+                    else:
+                        code_dispatch_reason = "code_task_dispatch:default"
+
+                    assignee = target
+                    code_dispatch_target = target
+                    code_dispatch_forced = True
+                    bypass_dispatcher = False
+                    pool = "jobs" if priority == "high" else "todo"
+                    if priority == "low":
+                        priority = "medium"
 
         need_human_confirm = risk_level == "high" and parse_bool(
             self.policy.get("high_risk_requires_human_confirm", True),
@@ -1980,6 +2213,9 @@ class PolicyEnforcer:
             "need_human_confirm": need_human_confirm,
             "needs_clarification": needs_clarification,
             "clarification_reason": clarification_reason,
+            "code_dispatch_forced": code_dispatch_forced,
+            "code_dispatch_target": code_dispatch_target,
+            "code_dispatch_reason": code_dispatch_reason,
             "context_completeness": float(context_eval.get("context_completeness", 100.0) or 100.0),
             "context_fields_missing": list(context_eval.get("missing_fields", [])),
             "context_fields_recommended_missing": list(context_eval.get("missing_recommended_fields", [])),
@@ -1992,6 +2228,7 @@ class PolicyEnforcer:
                 "assignee_hit": assignee_hit,
                 "project_requirement": project_requirement,
                 "project_hits": project_hits,
+                "code_task_hits": code_task_hits,
                 "direct_route_prefix": str(direct_route.get("alias_prefix", "")) if direct_route else "",
             },
         }

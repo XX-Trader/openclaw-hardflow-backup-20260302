@@ -23,3 +23,9 @@
 
 ## 统一状态
 `pass / reject / need_fix / need_confirm / blocked`
+
+
+## 输出语言
+- 默认输出语言：中文（简体，zh-CN）。
+- 除非用户明确要求其他语言，否则所有回复必须使用中文（简体）。
+

@@ -56,6 +56,47 @@ DEFAULT_PROJECT_KEYWORDS = [
     "项目经理",
 ]
 
+DEFAULT_CODE_TASK_KEYWORDS = [
+    "write code",
+    "coding",
+    "implement",
+    "bugfix",
+    "fix bug",
+    "refactor",
+    "开发",
+    "写代码",
+    "修复",
+    "实现",
+    "代码",
+]
+
+DEFAULT_FRONTEND_CODE_KEYWORDS = [
+    "frontend",
+    "ui",
+    "页面",
+    "前端",
+    "样式",
+    "交互",
+]
+
+DEFAULT_BACKEND_CODE_KEYWORDS = [
+    "backend",
+    "api",
+    "服务端",
+    "后端",
+    "数据库",
+    "接口",
+]
+
+DEFAULT_TEST_CODE_KEYWORDS = [
+    "test",
+    "qa",
+    "测试",
+    "回归",
+    "验收",
+    "playwright",
+]
+
 AI_REQUIRED_CONTEXT_FIELDS = [
     "problem",
     "location",
@@ -247,6 +288,12 @@ def load_routing(path: Path) -> dict[str, Any]:
         "project_keywords": DEFAULT_PROJECT_KEYWORDS,
         "ai_source_keywords": DEFAULT_AI_SOURCE_KEYWORDS,
         "human_source_keywords": DEFAULT_HUMAN_SOURCE_KEYWORDS,
+        "force_dispatch_code_tasks": True,
+        "code_task_keywords": DEFAULT_CODE_TASK_KEYWORDS,
+        "frontend_code_keywords": DEFAULT_FRONTEND_CODE_KEYWORDS,
+        "backend_code_keywords": DEFAULT_BACKEND_CODE_KEYWORDS,
+        "test_code_keywords": DEFAULT_TEST_CODE_KEYWORDS,
+        "default_code_assignee": "backend-dev",
     }
     data = load_json(path, default)
     if not isinstance(data, dict):
@@ -339,6 +386,55 @@ def route_item(item: TodoItem, routing: dict[str, Any], request_source: str) -> 
         if priority == "low":
             priority = "medium"
 
+    code_task_hits = [
+        k for k in normalize_keywords(routing.get("code_task_keywords"), DEFAULT_CODE_TASK_KEYWORDS) if k in text_norm
+    ]
+    code_dispatch_forced = False
+    code_dispatch_target = ""
+    if (
+        assignee == "project-agent"
+        and bool(routing.get("force_dispatch_code_tasks", True))
+        and code_task_hits
+    ):
+        frontend_hits = [
+            k
+            for k in normalize_keywords(
+                routing.get("frontend_code_keywords"),
+                DEFAULT_FRONTEND_CODE_KEYWORDS,
+            )
+            if k in text_norm
+        ]
+        backend_hits = [
+            k
+            for k in normalize_keywords(
+                routing.get("backend_code_keywords"),
+                DEFAULT_BACKEND_CODE_KEYWORDS,
+            )
+            if k in text_norm
+        ]
+        test_hits = [
+            k
+            for k in normalize_keywords(
+                routing.get("test_code_keywords"),
+                DEFAULT_TEST_CODE_KEYWORDS,
+            )
+            if k in text_norm
+        ]
+        target = to_text(routing.get("default_code_assignee", "backend-dev")) or "backend-dev"
+        if backend_hits:
+            target = "backend-dev"
+        elif frontend_hits and not backend_hits:
+            target = "frontend-dev"
+        elif test_hits:
+            target = "tester"
+        elif frontend_hits:
+            target = "frontend-dev"
+        assignee = target
+        code_dispatch_forced = True
+        code_dispatch_target = target
+        if priority == "low":
+            priority = "medium"
+
     pool = "jobs" if priority == "high" else "todo"
     due_hours = calc_due_hours(priority)
     due_at = (now_tz() + timedelta(hours=due_hours)).isoformat(timespec="seconds")
@@ -355,6 +451,9 @@ def route_item(item: TodoItem, routing: dict[str, Any], request_source: str) -> 
         "high_priority_hits": high_priority_hits,
         "low_priority_hits": low_priority_hits,
         "project_hits": project_hits,
+        "code_task_hits": code_task_hits,
+        "code_dispatch_forced": code_dispatch_forced,
+        "code_dispatch_target": code_dispatch_target,
     }
 
 
@@ -525,6 +624,11 @@ def build_task_payload(
     context_payload["context_contract"] = {
         "required_fields": AI_REQUIRED_CONTEXT_FIELDS,
         "recommended_fields": AI_RECOMMENDED_CONTEXT_FIELDS,
+    }
+    context_payload["output_language_policy"] = {
+        "default_language": "zh-CN",
+        "require_chinese_output": True,
+        "allow_override_by_user": True,
     }
 
     risk_points: list[str] = []
@@ -1207,5 +1311,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

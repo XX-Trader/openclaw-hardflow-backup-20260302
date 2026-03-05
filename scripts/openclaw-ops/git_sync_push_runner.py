@@ -44,6 +44,29 @@ def normalize_rel(path: str) -> str:
 
 def normalize_remote_url(url: str) -> str:
     text = str(url or "").strip()
+    # Handle git@host:owner/repo(.git)
+    if text.startswith("git@"):
+        text = text[4:]
+        if ":" in text:
+            host, path = text.split(":", 1)
+            text = f"{host}/{path}"
+
+    # Handle scheme URL: https://host/owner/repo(.git), ssh://git@host/owner/repo
+    if "://" in text:
+        text = text.split("://", 1)[1]
+
+    # Drop optional user part before host: git@github.com/owner/repo
+    first_part, sep, rest = text.partition("/")
+    if "@" in first_part:
+        first_part = first_part.split("@", 1)[1]
+    text = f"{first_part}{sep}{rest}" if sep else first_part
+
+    # Drop host port if present: github.com:443/owner/repo
+    host, sep, path = text.partition("/")
+    if ":" in host:
+        host = host.split(":", 1)[0]
+    text = f"{host}{sep}{path}" if sep else host
+
     while text.endswith("/"):
         text = text[:-1]
     if text.lower().endswith(".git"):
@@ -70,20 +93,60 @@ def run_git(
         )
     except Exception as exc:
         return 127, "", str(exc)
-    return proc.returncode, (proc.stdout or "").strip(), (proc.stderr or "").strip()
+    stdout = (proc.stdout or "").replace("\r\n", "\n")
+    stderr = (proc.stderr or "").strip()
+    return proc.returncode, stdout, stderr
 
 
 def parse_status_porcelain(raw: str) -> list[dict[str, str]]:
+    if "\x00" in str(raw or ""):
+        out_z: list[dict[str, str]] = []
+        parts = [x for x in str(raw or "").split("\x00") if x]
+        idx = 0
+        while idx < len(parts):
+            token = str(parts[idx] or "")
+            if len(token) < 2:
+                idx += 1
+                continue
+            if len(token) >= 3 and token[2] == " ":
+                status = token[:2]
+                path_raw = token[3:]
+            elif len(token) >= 2 and token[1] == " ":
+                # Defensive path: tolerate accidentally trimmed leading space in first record.
+                status = f" {token[0]}"
+                path_raw = token[2:]
+            else:
+                idx += 1
+                continue
+            path = normalize_rel(path_raw)
+            if status[:1] in {"R", "C"} and idx + 1 < len(parts):
+                renamed_to = normalize_rel(parts[idx + 1])
+                if renamed_to:
+                    path = renamed_to
+                idx += 2
+            else:
+                idx += 1
+            if not path:
+                continue
+            out_z.append({"status": status, "path": path})
+        return out_z
+
     out: list[dict[str, str]] = []
     for line in str(raw or "").splitlines():
         text = line.rstrip("\n")
         if not text:
             continue
         # format: XY<space>path or XY<space>old -> new
-        if len(text) < 4:
+        if len(text) < 2:
             continue
-        status = text[:2]
-        path_raw = text[3:]
+        if len(text) >= 3 and text[2] == " ":
+            status = text[:2]
+            path_raw = text[3:]
+        elif len(text) >= 2 and text[1] == " ":
+            status = f" {text[0]}"
+            path_raw = text[2:]
+        else:
+            continue
         if " -> " in path_raw:
             path_raw = path_raw.split(" -> ", 1)[1]
         path = normalize_rel(path_raw)
@@ -289,7 +352,7 @@ def main() -> int:
         result["behind"] = behind
 
     if not result["errors"] and bool(args.auto_pull) and int(result.get("behind", 0)) > 0:
-        rc, status_out, status_err = run_git(repo, ["status", "--porcelain", "--untracked-files=all"], timeout=20)
+        rc, status_out, status_err = run_git(repo, ["status", "--porcelain", "-z", "--untracked-files=all"], timeout=20)
         if rc != 0:
             result["errors"].append(f"git_status_failed:{status_err or rc}")
         else:
@@ -315,7 +378,7 @@ def main() -> int:
                     result["behind"] = behind
 
     if not result["errors"]:
-        rc, status_out, err = run_git(repo, ["status", "--porcelain", "--untracked-files=all"], timeout=30)
+        rc, status_out, err = run_git(repo, ["status", "--porcelain", "-z", "--untracked-files=all"], timeout=30)
         if rc != 0:
             result["errors"].append(f"git_status_failed:{err or rc}")
         else:

@@ -100,6 +100,12 @@
         "maxConcurrent": 8,
         "maxSpawnDepth": 2,
         "maxChildrenPerAgent": 5
+      },
+      "outputPolicy": {
+        "defaultLanguage": "zh-CN",
+        "defaultLanguageName": "中文（简体）",
+        "requireChineseByDefault": true,
+        "allowOverrideByUser": true
       }
     },
     "list": [
