@@ -9,7 +9,7 @@ Modes:
 
 Output contract:
 - Print `NO_REPLY` when no notification is required.
-- Otherwise print concise markdown + evidence file path.
+- Otherwise print concise human-readable markdown only.
 """
 
 from __future__ import annotations
@@ -114,6 +114,24 @@ def humanize_reviewer_reason(reason: str) -> str:
     text = str(reason or "").strip()
     if not text:
         return "未提供异常原因"
+    prefix_mapping = {
+        "policy_enforcer_missing:": "策略执行器缺失",
+        "policy_enforcer_exec_failed:": "策略执行器启动失败",
+        "policy_enforcer_failed:": "策略执行器执行失败",
+        "policy_enforcer_invalid_json_output": "策略执行器返回了无效 JSON",
+        "policy_enforcer_return_not_ok": "策略执行器返回非成功状态",
+        "git_fetch_failed:": "Git 拉取远端信息失败",
+        "git_rev_parse_failed:": "Git HEAD 解析失败",
+        "gh_pr_json_parse_failed": "GitHub PR 返回解析失败",
+        "close_failed:": "关闭旧任务失败",
+        "create_or_reopen_failed:": "创建或重新打开任务失败",
+    }
+    for prefix, label in prefix_mapping.items():
+        if text == prefix.rstrip(":"):
+            return label
+        if text.startswith(prefix):
+            detail = text[len(prefix):].strip()
+            return f"{label}（{detail}）" if detail else label
     head, sep, tail = text.partition("=")
     detail = tail.strip() if sep else ""
     mapping = {
@@ -177,6 +195,52 @@ def build_reviewer_exception_output(
     if manual_action:
         lines.append(f"- 处理建议: {manual_action}")
     return "\n".join(lines)
+
+
+def build_reviewer_exception_fallback_output(
+    *,
+    mode: str,
+    task_id: str,
+    run_id: str,
+    run_duration_ms: int,
+    normal_log_mode: str,
+    exception_reasons: list[str],
+) -> str:
+    detail_lines: list[str] = []
+    if exception_reasons:
+        detail_lines.append("- 详情: " + "；".join(humanize_reviewer_reason(item) for item in exception_reasons[:6]))
+    return build_reviewer_exception_output(
+        mode=mode,
+        task_id=task_id,
+        run_id=run_id,
+        run_duration_ms=run_duration_ms,
+        priority="high",
+        risk_level="high",
+        normal_log_mode=normal_log_mode,
+        risk_reasons=exception_reasons[:6],
+        change_reasons=[],
+        detail_lines=detail_lines,
+        manual_action="请先查看本机 reviewer 运行记录与 policy 日志，再按问题类型处理。",
+    )
+
+
+def explain_context_gate(context_gate: dict[str, Any]) -> str:
+    blocked = int(context_gate.get("blocked", 0) or 0)
+    created = int(context_gate.get("created", 0) or 0)
+    pending = int(context_gate.get("pending", 0) or 0)
+    ready = int(context_gate.get("ready", 0) or 0)
+    if pending > 0:
+        return (
+            "已有上下文任务处于 pending/running，说明 project-agent 还没有产出 reviewer 所需的上下文包，"
+            "现在继续审查会缺少项目上下文。"
+        )
+    if created > 0 and ready == 0:
+        return "本轮刚创建上下文任务，但上下文包还没生成完成，需要先等待 project-agent 产出结果。"
+    if blocked > 0 and ready > 0:
+        return "上下文包显示已有 ready 项但门禁仍未放行，通常是任务状态、绑定关系或门禁判定还存在异常。"
+    if blocked > 0:
+        return "存在被门禁阻塞的仓库，通常表示上下文任务缺失、未完成，或上下文状态异常。"
+    return "项目上下文尚未满足 reviewer 执行条件。"
 
 
 def load_json(path: Path, default: Any) -> Any:
@@ -1570,6 +1634,7 @@ def run_quality_scan(
                     f"blocked={context_gate.get('blocked', 0)}，created={context_gate.get('created', 0)}，"
                     f"pending={context_gate.get('pending', 0)}，ready={context_gate.get('ready', 0)}"
                 ),
+                f"- 原因解析: {explain_context_gate(context_gate)}",
             ],
             manual_action="project-agent 需先产出上下文包，reviewer 再执行全量审查。",
         ).splitlines()
@@ -2073,23 +2138,14 @@ def main() -> int:
 
     if result.notify:
         if str(result.output or "").strip() in {"", "NO_REPLY"}:
-            lines = [
-                f"# reviewer-cron/{args.mode}",
-                f"agent: {DEFAULT_SENDER_PREFIX}:{args.mode}",
-                f"task_id: {args.task_id or '-'}",
-                f"run_id: {run_id}",
-                f"time: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
-                f"exception_count: {len(exception_reasons)}",
-            ]
-            for reason in exception_reasons[:12]:
-                lines.append(f"- exception: {reason}")
-            result.output = "\n".join(lines)
-        else:
-            lines = str(result.output).splitlines()
-            lines.append(f"exception_count: {len(exception_reasons)}")
-            for reason in exception_reasons[:12]:
-                lines.append(f"- exception: {reason}")
-            result.output = "\n".join(lines)
+            result.output = build_reviewer_exception_fallback_output(
+                mode=args.mode,
+                task_id=args.task_id or "-",
+                run_id=run_id,
+                run_duration_ms=int(result.record.get("run_duration_ms", 0) or 0),
+                normal_log_mode=normal_log_mode,
+                exception_reasons=exception_reasons,
+            )
 
     save_json(run_file, result.record)
     state["updated_at"] = now_iso()
@@ -2101,7 +2157,7 @@ def main() -> int:
         return 0
 
     if result.notify:
-        print(f"{result.output}\n- evidence: {run_file}")
+        print(result.output)
     else:
         print("NO_REPLY")
     return 0

@@ -100,9 +100,14 @@ def infer_delivery(jobs: list[dict[str, Any]], preferred_agents: list[str]) -> t
 def build_message(command: str) -> str:
     return (
         "You are reviewer scheduled runner. Run command only:\n"
-        f"{command}\n"
+        f"{str(command or '').strip()}\n"
+        "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
+        "Do not inspect files, list directories, or run any other command. "
+        "Execute the command exactly once. "
+        "Do not run any follow-up command. "
         "Return EXACTLY raw stdout/stderr text from the command; "
         "do not add explanation, greeting, or prefix text. "
+        "Never output sentences like 'Let's run ...', 'Now let's execute ...', or 'Okay, ...'. "
         "If output is NO_REPLY, reply NO_REPLY."
     )
 

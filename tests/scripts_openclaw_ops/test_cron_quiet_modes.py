@@ -1,3 +1,5 @@
+import contextlib
+import io
 import importlib.util
 import subprocess
 import sys
@@ -282,8 +284,55 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertTrue(result.notify)
         self.assertEqual(result.output.splitlines()[0], "代码审查巡检异常")
         self.assertIn("项目上下文门禁阻塞", result.output)
+        self.assertIn("原因解析", result.output)
+        self.assertIn("project-agent", result.output)
         self.assertIn("task center unavailable", result.output)
         self.assertNotIn("# reviewer-cron/", result.output)
+
+    def test_reviewer_main_output_hides_machine_fields(self):
+        module = load_module(
+            "reviewer_cron_runner",
+            "scripts/openclaw-ops/reviewer_cron_runner.py",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_file = Path(tmpdir) / "state.json"
+            history_dir = Path(tmpdir) / "runs"
+            module.run_mode = lambda _args, _state, _normal_log_mode: SimpleNamespace(
+                notify=False,
+                output="NO_REPLY",
+                record={
+                    "run_id": "run-test-1",
+                    "run_duration_ms": 22,
+                    "risk_reasons": ["project_context_gate_blocked"],
+                },
+            )
+            module.emit_policy_observability = lambda _args, _result, _run_file: ({"errors": []}, {})
+            argv_backup = list(sys.argv)
+            sys.argv = [
+                "reviewer_cron_runner.py",
+                "--mode",
+                "daily_incremental",
+                "--task-id",
+                "cron:reviewer-daily-incremental",
+                "--state-file",
+                str(state_file),
+                "--history-dir",
+                str(history_dir),
+            ]
+            stdout = io.StringIO()
+            try:
+                with contextlib.redirect_stdout(stdout):
+                    rc = module.main()
+            finally:
+                sys.argv = argv_backup
+            self.assertEqual(rc, 0)
+            output = stdout.getvalue()
+        self.assertIn("代码审查巡检异常", output)
+        self.assertIn("项目上下文门禁阻塞", output)
+        self.assertNotIn("# reviewer-cron/", output)
+        self.assertNotIn("exception_count", output)
+        self.assertNotIn("- exception:", output)
+        self.assertNotIn("evidence:", output)
 
     def test_project_index_command_omits_git_pull_by_default(self):
         module = load_module(
@@ -320,6 +369,18 @@ class CronQuietModeTests(unittest.TestCase):
         )
         message = jobs[0]["payload"]["message"]
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
+        self.assertIn("Do not run any follow-up command", message)
+        self.assertIn("Never output sentences like 'Let's run ...'", message)
+
+    def test_reviewer_install_message_blocks_follow_up_chatter(self):
+        module = load_module(
+            "install_reviewer_scan_jobs",
+            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
+        )
+        message = module.build_message("python3 /tmp/reviewer_cron_runner.py --mode daily_incremental")
+        self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
+        self.assertIn("Do not run any follow-up command", message)
+        self.assertIn("Never output sentences like 'Let's run ...'", message)
 
     def test_task_executor_message_uses_notify_on_error(self):
         module = load_module(
