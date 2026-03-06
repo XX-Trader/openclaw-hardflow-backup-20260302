@@ -184,6 +184,27 @@ class CronQuietModeTests(unittest.TestCase):
         )
         self.assertNotIn("--git-pull", command)
 
+    def test_project_index_job_prompt_requires_single_exec_call(self):
+        module = load_module(
+            "install_project_index_job",
+            "scripts/openclaw-ops/install_project_index_job.py",
+        )
+        jobs, _ = module.upsert_job(
+            jobs=[],
+            job_id="job-project-index",
+            every_ms=1800000,
+            maintainer_py="/home/ubuntu/.openclaw/ops/policy/project_index_maintainer.py",
+            registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
+            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
+            task_id="cron:project-index-maintainer-30m",
+            actor="project-agent",
+            git_pull=False,
+            channel="telegram",
+            target="-1003333097130",
+        )
+        message = jobs[0]["payload"]["message"]
+        self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
+
     def test_task_executor_message_uses_notify_on_error(self):
         module = load_module(
             "install_task_executor_job",
@@ -220,6 +241,14 @@ class CronQuietModeTests(unittest.TestCase):
         result = module.harden_known_jobs(jobs, Path("/home/ubuntu/.openclaw"))
         self.assertEqual(result["status"]["project_index_maintainer_30m"], "hardened")
         self.assertNotIn("--git-pull", jobs[0]["payload"]["message"])
+
+    def test_cron_setup_prompt_requires_single_exec_call(self):
+        module = load_module(
+            "cron_setup",
+            "scripts/openclaw-ops/cron_setup.py",
+        )
+        message = module.build_message("python3 /tmp/demo.py")
+        self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
 
     def test_install_workflow_profile_task_executor_cmd_pins_error_only_notify(self):
         module = load_module(

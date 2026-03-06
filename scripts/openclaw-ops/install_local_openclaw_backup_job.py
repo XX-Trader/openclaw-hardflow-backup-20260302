@@ -132,6 +132,7 @@ def upsert_job(
             "message": (
                 "You are ops-agent scheduled runner. Run command only:\n"
                 f"{cmd}\n"
+                "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
                 "Execute the command exactly once. "
                 "Do not run any follow-up command. "
                 "Return EXACTLY raw stdout/stderr text from the command; "

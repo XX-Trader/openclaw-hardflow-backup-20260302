@@ -559,6 +559,7 @@ def build_message(command: str, extra_rules: list[str] | None = None) -> str:
     return (
         "You are scheduled runner. Run command only:\n"
         f"{cmd}\n"
+        "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
         "Do not write, edit, create, move, or delete any file. "
         "Do not execute any other command. "
         f"{rules_text}\n"

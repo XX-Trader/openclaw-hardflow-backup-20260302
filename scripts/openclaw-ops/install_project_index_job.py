@@ -132,8 +132,10 @@ def upsert_job(
             "message": (
                 "You are project-index maintainer. Run command only:\n"
                 f"{build_runner_command(maintainer_py, registry, task_db, task_id, actor, git_pull)}\n"
+                "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
                 "Return EXACTLY raw stdout/stderr text from the command; "
                 "do not add explanation, greeting, or prefix text. "
+                "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
                 "If output is NO_REPLY, reply NO_REPLY."
             ),
             "timeoutSeconds": 1800,

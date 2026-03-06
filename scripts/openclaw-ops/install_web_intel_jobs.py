@@ -69,9 +69,11 @@ def build_message(command: str) -> str:
     return (
         "You are scheduled runner. Run command only:\n"
         f"{command}\n"
+        "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
         "Execute exactly once. "
         "Return EXACTLY raw stdout/stderr text from the command; "
         "do not add explanation, greeting, or prefix text. "
+        "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
         "If output is empty, reply NO_REPLY."
     )
 
