@@ -78,7 +78,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
     "agentDir": null,
-    "model": "openai-codex/gpt-5.3-codex",
+    "model": "openai-codex/gpt-5.4",
     "allowAgents": []
   },
   {
@@ -130,7 +130,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
     "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-    "model": "openai-codex/gpt-5.3-codex",
+    "model": "openai-codex/gpt-5.4",
     "allowAgents": [
       "project-agent",
       "web-agent"

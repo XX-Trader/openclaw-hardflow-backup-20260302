@@ -59,6 +59,10 @@
   "pdf": [
     "doc-writer"
   ],
+  "playwright-interactive": [
+    "frontend-dev",
+    "tester"
+  ],
   "pptx": [
     "doc-writer"
   ],

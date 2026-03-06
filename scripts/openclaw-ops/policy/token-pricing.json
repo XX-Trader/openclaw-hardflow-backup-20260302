@@ -11,7 +11,7 @@
       "input": 0,
       "output": 0
     },
-    "openai-codex/gpt-5.3-codex": {
+    "openai-codex/gpt-5.4": {
       "input": 0,
       "output": 0
     },
@@ -20,6 +20,10 @@
       "output": 0
     },
     "glmcode/glm-4.7": {
+      "input": 0,
+      "output": 0
+    },
+    "volcengine/kimi-k2.5": {
       "input": 0,
       "output": 0
     }

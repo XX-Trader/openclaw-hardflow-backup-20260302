@@ -1,0 +1,22 @@
+{
+  "ok": true,
+  "run_id": "exec-20260306_095446-03d9cde7",
+  "started_at": "2026-03-06T09:54:46+00:00",
+  "tasks_selected": 0,
+  "tasks_executed": 0,
+  "tasks_skipped": 0,
+  "tasks_failed": 0,
+  "bridge": {
+    "trigger_surfaces": [
+      "cron",
+      "hooks",
+      "webhook"
+    ],
+    "machine_output": "json",
+    "vendor_state_policy": "no-direct-vendor-private-state-writes"
+  },
+  "executor_model": "kimicode/Doubao-Seed-2.0-Code",
+  "executor_model_source": "policy-primary",
+  "results": [],
+  "finished_at": "2026-03-06T09:54:46+00:00"
+}

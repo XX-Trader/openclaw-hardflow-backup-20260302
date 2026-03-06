@@ -45,7 +45,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-reviewer
 - agentDir: None
-- model: openai-codex/gpt-5.3-codex
+- model: openai-codex/gpt-5.4
 - allowAgentsCount: 0
 
 ## tester
@@ -85,7 +85,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-optimization-agent
 - agentDir: /home/ubuntu/.openclaw/agents/optimization-agent/agent
-- model: openai-codex/gpt-5.3-codex
+- model: openai-codex/gpt-5.4
 - allowAgentsCount: 2
 
 ## project-agent

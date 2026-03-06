@@ -1,8 +1,8 @@
 # frontend-dev
 
-- skills_count: 7
-- source.matrix_count: 7
-- source.soul_count: 7
+- skills_count: 8
+- source.matrix_count: 8
+- source.soul_count: 8
 
 ## Skills
 
@@ -11,6 +11,6 @@
 - ui-ux-pro-max (present)
 - verification-before-completion (present)
 - auto-fix (present)
+- playwright-interactive (present)
 - webapp-testing (present)
 - using-git-worktrees (present)
-

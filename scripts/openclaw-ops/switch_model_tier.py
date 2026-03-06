@@ -25,7 +25,7 @@ BACKUP_ROOT = REPO_ROOT / ".tmp" / "model-switch-backups"
 PROFILE_SNAPSHOT_ROOT = REPO_ROOT / ".tmp" / "model-switch-profiles"
 
 MODEL_ALIAS_MAP: dict[str, str] = {
-    "openai-codex/gpt-5.3-codex": "codex",
+    "openai-codex/gpt-5.4": "codex",
     "openai-codex/gpt-5.3-codex-spark": "codexspark",
     "kimicode/Doubao-Seed-2.0-Code": "doubao",
     "glmcode/glm-5": "glm",

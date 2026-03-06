@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "run_id": "exec-20260306_045455-1810eb84",
+  "started_at": "2026-03-06T04:54:55+00:00",
+  "tasks_selected": 1,
+  "tasks_executed": 0,
+  "tasks_skipped": 0,
+  "tasks_failed": 1,
+  "results": [
+    {
+      "task_id": "task-20260306045426-95466976",
+      "assignee": "coordinator",
+      "stage": "implement",
+      "status": "failed",
+      "reason": "pre_stage_failed:agent coordinator is not allowed to execute code stage implement"
+    }
+  ],
+  "finished_at": "2026-03-06T04:55:20+00:00"
+}

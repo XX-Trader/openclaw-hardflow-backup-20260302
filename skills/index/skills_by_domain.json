@@ -11,6 +11,7 @@
     "feature-development",
     "frontend-design",
     "mcp-builder",
+    "playwright-interactive",
     "systematic-debugging",
     "ui-ux-pro-max",
     "using-git-worktrees",
@@ -39,6 +40,7 @@
     "using-superpowers"
   ],
   "quality": [
+    "playwright-interactive",
     "receiving-code-review",
     "requesting-code-review",
     "verification-before-completion"

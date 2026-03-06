@@ -40,12 +40,12 @@ Windows 也可直接使用：
 
 ## Tier Rules
 
-- 顶级：`openai-codex/gpt-5.3-codex`
+- 顶级：`openai-codex/gpt-5.4`
   - 回退：`kimicode/Doubao-Seed-2.0-Code`, `glmcode/glm-5`, `glmcode/glm-4.7`
   - thinkingDefault：`xhigh`
 - 高级：`kimicode/Doubao-Seed-2.0-Code`
   - 回退：`glmcode/glm-5`, `glmcode/glm-4.7`, `openai-codex/gpt-5.3-codex-spark`
-  - agent 覆盖：`reviewer -> openai-codex/gpt-5.3-codex`，`optimization-agent -> openai-codex/gpt-5.3-codex`
+  - agent 覆盖：`reviewer -> openai-codex/gpt-5.4`，`optimization-agent -> openai-codex/gpt-5.4`
   - thinkingDefault：`high`
 - 中级：`glmcode/glm-5`
   - 回退：`glmcode/glm-4.7`

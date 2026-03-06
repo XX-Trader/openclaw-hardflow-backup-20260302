@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "run_id": "exec-20260306_050959-349b6617",
+  "started_at": "2026-03-06T05:09:59+00:00",
+  "tasks_selected": 1,
+  "tasks_executed": 1,
+  "tasks_skipped": 0,
+  "tasks_failed": 0,
+  "results": [
+    {
+      "task_id": "task-20260306050019-82c85ad6",
+      "assignee": "backend-dev",
+      "stage": "implement",
+      "status": "executed",
+      "reason": "",
+      "task_status_after": "running",
+      "report_status": "partial",
+      "solved": false,
+      "quality_score": 70.0,
+      "duration_ms": 25837,
+      "input_tokens": 0,
+      "output_tokens": 0
+    }
+  ],
+  "finished_at": "2026-03-06T05:10:44+00:00"
+}

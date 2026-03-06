@@ -7,11 +7,7 @@ cd "${REPO_ROOT}"
 
 SSH_CONFIG="${SSH_CONFIG:-}"
 if [[ -z "${SSH_CONFIG}" ]]; then
-  for candidate in \
-    "/d/学习资料/ssh_keys/ssh_config" \
-    "/mnt/d/学习资料/ssh_keys/ssh_config" \
-    "D:/学习资料/ssh_keys/ssh_config"
-  do
+  for candidate in "/d/学习资料/ssh_keys/ssh_config" "/mnt/d/学习资料/ssh_keys/ssh_config" "D:/学习资料/ssh_keys/ssh_config"; do
     if [[ -f "${candidate}" ]]; then
       SSH_CONFIG="${candidate}"
       break
@@ -76,7 +72,7 @@ def get_model_ref():
         return copy.deepcopy(defaults_model)
     if isinstance(defaults_model, str) and defaults_model.strip():
         return {"primary": defaults_model.strip()}
-    return {"primary": "openai-codex/gpt-5.3-codex"}
+    return {"primary": "openai-codex/gpt-5.4"}
 
 model_ref = get_model_ref()
 web_agent_model = {"primary": "glmcode/glm-4.7"}

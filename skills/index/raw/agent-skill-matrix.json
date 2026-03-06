@@ -2,12 +2,12 @@
   "meta": {
     "version": "1.1",
     "updatedBy": "openclaw-config",
-    "updatedAt": "2026-02-27T21:00:00+08:00",
-    "notes": "Multi-agent 技能映射：用于 codex bridge + 手工核查统一口径"
+    "updatedAt": "2026-03-06T20:55:00+08:00",
+    "notes": "Multi-agent skill mapping for codex bridge and manual review."
   },
   "agents": {
     "main": {
-      "label": "大总管（入口/分流）",
+      "label": "main",
       "skills": [
         "agent-manager",
         "requirements-clarity",
@@ -20,7 +20,7 @@
       ]
     },
     "coordinator": {
-      "label": "任务协调",
+      "label": "coordinator",
       "skills": [
         "task-decomposer",
         "smart-workflow",
@@ -31,7 +31,7 @@
       ]
     },
     "doc-writer": {
-      "label": "文档治理",
+      "label": "doc-writer",
       "skills": [
         "writing-plans",
         "docx",
@@ -45,19 +45,20 @@
       ]
     },
     "frontend-dev": {
-      "label": "前端开发",
+      "label": "frontend-dev",
       "skills": [
         "frontend-design",
         "feature-development",
         "ui-ux-pro-max",
         "verification-before-completion",
         "auto-fix",
+        "playwright-interactive",
         "webapp-testing",
         "using-git-worktrees"
       ]
     },
     "backend-dev": {
-      "label": "后端开发",
+      "label": "backend-dev",
       "skills": [
         "feature-development",
         "systematic-debugging",
@@ -68,7 +69,7 @@
       ]
     },
     "reviewer": {
-      "label": "代码审核",
+      "label": "reviewer",
       "skills": [
         "requesting-code-review",
         "receiving-code-review",
@@ -78,8 +79,9 @@
       ]
     },
     "tester": {
-      "label": "测试验收",
+      "label": "tester",
       "skills": [
+        "playwright-interactive",
         "webapp-testing",
         "auto-fix",
         "deployment-test",
@@ -87,7 +89,7 @@
       ]
     },
     "deployer": {
-      "label": "发布运维",
+      "label": "deployer",
       "skills": [
         "db-deploy",
         "deployment-test",

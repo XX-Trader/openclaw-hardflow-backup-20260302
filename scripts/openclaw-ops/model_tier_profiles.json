@@ -12,7 +12,7 @@
         "codex",
         "xhigh"
       ],
-      "primary_model": "openai-codex/gpt-5.3-codex",
+      "primary_model": "openai-codex/gpt-5.4",
       "fallback_models": [
         "kimicode/Doubao-Seed-2.0-Code",
         "glmcode/glm-5",
@@ -35,8 +35,8 @@
         "openai-codex/gpt-5.3-codex-spark"
       ],
       "agent_model_overrides": {
-        "reviewer": "openai-codex/gpt-5.3-codex",
-        "optimization-agent": "openai-codex/gpt-5.3-codex"
+        "reviewer": "openai-codex/gpt-5.4",
+        "optimization-agent": "openai-codex/gpt-5.4"
       },
       "thinking_default": "high"
     },
