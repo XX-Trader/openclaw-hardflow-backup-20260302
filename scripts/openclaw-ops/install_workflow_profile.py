@@ -15,7 +15,7 @@ from typing import Any
 
 PROFILES = {"core", "all"}
 CORE_TASKS = [1, 2, 3, 4, 5, 7, 8, 9]
-ALL_TASKS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+ALL_TASKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 
 
 def render_cmd(cmd: list[str]) -> str:
@@ -238,6 +238,8 @@ def build_cron_setup_cmd(
         str(max(600000, int(git_sync_every_ms))),
         "--git-sync-log-mode",
         "silent",
+        "--git-sync-notify-on",
+        "error",
         "--git-sync-remote",
         "origin",
         "--git-sync-auto-pull",
@@ -271,6 +273,8 @@ def build_cron_setup_cmd(
         str(max(600000, int(auto_update_install_every_ms))),
         "--auto-update-install-log-mode",
         "silent",
+        "--auto-update-install-notify-on",
+        "error",
         "--auto-update-install-remote",
         "origin",
         "--auto-update-install-report-dir",
@@ -376,6 +380,12 @@ def main() -> None:
     parser.add_argument("--git-sync-every-ms", type=int, default=21600000)
     parser.add_argument("--auto-update-install-every-ms", type=int, default=3600000)
     parser.add_argument("--github-web-every-ms", type=int, default=43200000)
+    parser.add_argument("--web-intel-collect-every-ms", type=int, default=3600000)
+    parser.add_argument("--web-intel-opt-review-every-ms", type=int, default=14400000)
+    parser.add_argument("--web-intel-project-review-every-ms", type=int, default=21600000)
+    parser.add_argument("--web-intel-collect-min-interval-minutes", type=int, default=60)
+    parser.add_argument("--web-intel-review-min-interval-minutes", type=int, default=180)
+    parser.add_argument("--install-web-intel-jobs", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--reviewer-daily-expr", default="0 4 * * *")
     parser.add_argument("--reviewer-weekly-expr", default="40 4 * * 1")
     parser.add_argument("--dry-run", action="store_true")
@@ -503,7 +513,37 @@ def main() -> None:
     ]
     install_reviewer_cmd.extend(delivery_args(args.channel, args.to))
 
-    steps = [
+    install_web_intel_cmd = [
+        args.python_bin,
+        str(here / "install_web_intel_jobs.py"),
+        "--jobs-file",
+        jobs_file,
+        "--python-bin",
+        args.python_bin,
+        "--collector-py",
+        str(Path(ops_home) / "web_intel_collect_runner.py"),
+        "--review-py",
+        str(Path(ops_home) / "web_intel_review_runner.py"),
+        "--openclaw-home",
+        openclaw_home,
+        "--collect-sources-file",
+        str(Path(ops_home) / "web/sources.json"),
+        "--project-doc-sources-file",
+        str(Path(ops_home) / "web/project_docs_sources.json"),
+        "--collect-every-ms",
+        str(max(600000, int(args.web_intel_collect_every_ms))),
+        "--opt-review-every-ms",
+        str(max(600000, int(args.web_intel_opt_review_every_ms))),
+        "--project-review-every-ms",
+        str(max(600000, int(args.web_intel_project_review_every_ms))),
+        "--collect-min-interval-minutes",
+        str(max(1, int(args.web_intel_collect_min_interval_minutes))),
+        "--review-min-interval-minutes",
+        str(max(1, int(args.web_intel_review_min_interval_minutes))),
+    ]
+    install_web_intel_cmd.extend(delivery_args(args.channel, args.to))
+
+    steps: list[tuple[str, list[str]]] = [
         ("install_todo_patrol_job (task#1)", install_todo_cmd),
         ("install_project_index_job (task#3)", install_index_cmd),
         (
@@ -516,7 +556,13 @@ def main() -> None:
         ("install_reviewer_scan_jobs (task#8)", install_reviewer_cmd),
     ]
 
-    expected_tasks = ALL_TASKS if profile == "all" else CORE_TASKS
+    install_web_intel = bool(args.install_web_intel_jobs) or (profile == "all")
+    if install_web_intel:
+        steps.append(("install_web_intel_jobs (task#10-web)", install_web_intel_cmd))
+
+    expected_tasks = list(ALL_TASKS if profile == "all" else CORE_TASKS)
+    if install_web_intel and 10 not in expected_tasks:
+        expected_tasks.append(10)
     print(f"profile={profile}")
     print("expected_tasks=" + ",".join(str(x) for x in expected_tasks))
     print(f"jobs_file={jobs_file}")

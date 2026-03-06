@@ -495,6 +495,7 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
     for key, value in quiet_defaults.items():
         notify_policy.setdefault(key, value)
     data["notify_policy"] = notify_policy
+    data.setdefault("errors_only_notify", True)
 
     incident_handoff = data.get("incident_handoff")
     if not isinstance(incident_handoff, dict):
@@ -1126,6 +1127,7 @@ def build_git_sync_job(
     include_prefixes: list[str],
     exclude_prefixes: list[str],
     required_remote_urls: list[str],
+    notify_on: str,
 ) -> dict[str, Any]:
     def quote_arg(value: Any) -> str:
         return str(value or "").replace("\"", "\\\"")
@@ -1138,6 +1140,7 @@ def build_git_sync_job(
         f"--repo-path \"{quote_arg(repo_path)}\" "
         "--task-id cron:ops-git-sync-push "
         f"--normal-log-mode {normalize_log_mode(log_mode)} "
+        f"--notify-on {str(notify_on or 'error').strip() or 'error'} "
         f"--remote \"{quote_arg(remote_value)}\" "
         f"--max-files {max(1, int(max_files))} "
         f"--commit-prefix \"{quote_arg(commit_prefix_value)}\""
@@ -1194,6 +1197,7 @@ def build_auto_update_install_job(
     install_timeout: int,
     report_dir: str,
     required_remote_urls: list[str],
+    notify_on: str,
 ) -> dict[str, Any]:
     def quote_arg(value: Any) -> str:
         return str(value or "").replace("\"", "\\\"")
@@ -1206,6 +1210,7 @@ def build_auto_update_install_job(
         f"--repo-path \"{quote_arg(repo_path)}\" "
         "--task-id cron:ops-auto-update-install "
         f"--normal-log-mode {normalize_log_mode(log_mode)} "
+        f"--notify-on {str(notify_on or 'error').strip() or 'error'} "
         f"--remote \"{quote_arg(remote_value)}\" "
         f"--git-timeout {max(30, int(git_timeout))} "
         f"--install-timeout {max(30, int(install_timeout))} "
@@ -1730,6 +1735,7 @@ def main() -> int:
     parser.add_argument("--git-sync-repo-path", default="")
     parser.add_argument("--git-sync-every-ms", type=int, default=21600000)
     parser.add_argument("--git-sync-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--git-sync-notify-on", default="error", choices=["error", "all"])
     parser.add_argument("--git-sync-remote", default="origin")
     parser.add_argument("--git-sync-branch", default="")
     parser.add_argument("--git-sync-max-files", type=int, default=200)
@@ -1745,6 +1751,7 @@ def main() -> int:
     parser.add_argument("--auto-update-install-repo-path", default="")
     parser.add_argument("--auto-update-install-every-ms", type=int, default=3600000)
     parser.add_argument("--auto-update-install-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--auto-update-install-notify-on", default="error", choices=["error", "all"])
     parser.add_argument("--auto-update-install-remote", default="origin")
     parser.add_argument("--auto-update-install-branch", default="")
     parser.add_argument("--auto-update-install-install-cmd", default=default_auto_update_install_cmd)
@@ -2009,6 +2016,7 @@ def main() -> int:
                 include_prefixes=include_prefixes,
                 exclude_prefixes=exclude_prefixes,
                 required_remote_urls=[str(x).strip() for x in (args.git_sync_require_remote_url or []) if str(x).strip()],
+                notify_on=str(args.git_sync_notify_on or "error").strip() or "error",
             )
         )
     if bool(args.install_auto_update_install_job):
@@ -2038,6 +2046,7 @@ def main() -> int:
                 install_timeout=max(30, int(args.auto_update_install_install_timeout)),
                 report_dir=str(Path(args.auto_update_install_report_dir).expanduser()),
                 required_remote_urls=required_urls,
+                notify_on=str(args.auto_update_install_notify_on or "error").strip() or "error",
             )
         )
     if bool(args.install_github_web_evolution_job):

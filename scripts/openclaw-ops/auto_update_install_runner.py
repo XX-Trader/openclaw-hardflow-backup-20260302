@@ -13,6 +13,7 @@ from typing import Any
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
+NOTIFY_ON_MODES = {"error", "all"}
 
 
 def now_iso() -> str:
@@ -146,6 +147,37 @@ def ahead_behind(repo: Path, upstream: str) -> tuple[int, int]:
     return ahead, behind
 
 
+def humanize_error(err: str) -> str:
+    text = str(err or "").strip()
+    if not text:
+        return "未知错误"
+    if text.startswith("repo_invalid:"):
+        return f"仓库路径无效：{text.split(':', 1)[1]}"
+    if text.startswith("not_git_repo:"):
+        return f"目标目录不是 Git 仓库：{text.split(':', 1)[1]}"
+    if text.startswith("branch_detect_failed:"):
+        return f"分支识别失败：{text.split(':', 1)[1]}"
+    if text == "detached_head_not_supported":
+        return "当前仓库为 detached HEAD，无法自动更新"
+    if text.startswith("remote_get_url_failed:"):
+        return f"读取远程地址失败：{text.split(':', 1)[1]}"
+    if text.startswith("remote_url_not_allowed:"):
+        return f"远程仓库地址不在允许列表：{text.split(':', 1)[1]}"
+    if text.startswith("git_fetch_failed:"):
+        return f"git fetch 失败：{text.split(':', 1)[1]}"
+    if text.startswith("git_status_failed:"):
+        return f"git status 失败：{text.split(':', 1)[1]}"
+    if text.startswith("git_stash_failed:"):
+        return f"自动暂存失败：{text.split(':', 1)[1]}"
+    if text.startswith("git_pull_ff_only_failed:"):
+        return f"git pull --ff-only 失败：{text.split(':', 1)[1]}"
+    if text == "install_cmd_missing":
+        return "缺少安装命令（install_cmd）"
+    if text.startswith("install_failed:"):
+        return f"安装命令执行失败：{text.split(':', 1)[1]}"
+    return text
+
+
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -166,6 +198,7 @@ def main() -> int:
     parser.add_argument("--git-timeout", type=int, default=240)
     parser.add_argument("--install-timeout", type=int, default=2400)
     parser.add_argument("--report-dir", default=str(Path.home() / ".openclaw/ops/update-install-runs"))
+    parser.add_argument("--notify-on", default="error", choices=sorted(NOTIFY_ON_MODES))
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
 
@@ -304,30 +337,40 @@ def main() -> int:
     write_text(stderr_file, install_stderr)
     write_text(report_file, json.dumps(result, ensure_ascii=False, indent=2))
 
-    notify = bool(result["errors"]) or bool(result["pulled"]) or bool(result["install_ran"])
+    notify_on = str(args.notify_on or "error").strip().lower()
+    if notify_on not in NOTIFY_ON_MODES:
+        notify_on = "error"
+    notify = bool(result["errors"])
+    if notify_on == "all":
+        notify = notify or bool(result["pulled"]) or bool(result["install_ran"])
     output = "NO_REPLY"
     if notify:
-        lines = [
-            "# auto-update-install",
-            f"- task: {result['task_id'] or '-'}",
-            f"- time: {result['time']}",
-            f"- repo: {result['repo']}",
-            f"- branch: {result['branch'] or '-'}",
-            f"- remote_url: {result['remote_url'] or '-'}",
-            f"- fetch_ok: {result['fetch_ok']}",
-            f"- pulled: {result['pulled']}",
-            f"- behind: {result['behind']}",
-            f"- repo_dirty_before_pull: {result['repo_dirty_before_pull']}",
-            f"- stashed_before_pull: {result['stashed_before_pull']}",
-            f"- install_ran: {result['install_ran']}",
-            f"- install_ok: {result['install_ok']}",
-            f"- report_file: {result['report_file']}",
-            f"- stdout_log: {result['stdout_log']}",
-            f"- stderr_log: {result['stderr_log']}",
-            f"- error_count: {len(result['errors'])}",
-        ]
-        for err in result["errors"][:10]:
-            lines.append(f"- error: {err}")
+        if result["errors"]:
+            lines = [
+                "# 自动更新安装异常",
+                f"- 任务: {result['task_id'] or '-'}",
+                f"- 时间: {result['time']}",
+                f"- 仓库: {result['repo']}",
+                f"- 分支: {result['branch'] or '-'}",
+                f"- 远程: {result['remote_url'] or '-'}",
+                f"- 错误数量: {len(result['errors'])}",
+            ]
+            for idx, err in enumerate(result["errors"][:10], start=1):
+                lines.append(f"- 异常{idx}: {humanize_error(err)}")
+            lines.append(f"- 详细报告: {result['report_file']}")
+            lines.append(f"- 安装标准输出: {result['stdout_log']}")
+            lines.append(f"- 安装标准错误: {result['stderr_log']}")
+        else:
+            lines = [
+                "# 自动更新安装结果",
+                f"- 任务: {result['task_id'] or '-'}",
+                f"- 时间: {result['time']}",
+                f"- 仓库: {result['repo']}",
+                f"- 分支: {result['branch'] or '-'}",
+                f"- 拉取最新: {'是' if result['pulled'] else '否'}",
+                f"- 安装执行: {'是' if result['install_ran'] else '否'}",
+                f"- 安装成功: {'是' if result['install_ok'] else '否'}",
+            ]
         output = "\n".join(lines)
 
     if bool(args.emit_json):

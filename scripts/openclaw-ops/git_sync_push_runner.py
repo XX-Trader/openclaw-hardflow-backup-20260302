@@ -18,6 +18,7 @@ from typing import Any
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
+NOTIFY_ON_MODES = {"error", "all"}
 DEFAULT_EXCLUDE_PREFIXES = (
     ".workflow/project-index/",
     ".workflow/project-index-local/",
@@ -223,6 +224,41 @@ def chunked(values: list[str], size: int) -> list[list[str]]:
     return out
 
 
+def humanize_error(err: str) -> str:
+    text = str(err or "").strip()
+    if not text:
+        return "未知错误"
+    if text.startswith("repo_invalid:"):
+        return f"仓库路径无效：{text.split(':', 1)[1]}"
+    if text.startswith("not_git_repo:"):
+        return f"目标目录不是 Git 仓库：{text.split(':', 1)[1]}"
+    if text.startswith("branch_detect_failed:"):
+        return f"分支识别失败：{text.split(':', 1)[1]}"
+    if text == "detached_head_not_supported":
+        return "当前仓库为 detached HEAD，无法自动同步"
+    if text.startswith("remote_get_url_failed:"):
+        return f"读取远程地址失败：{text.split(':', 1)[1]}"
+    if text.startswith("remote_url_not_allowed:"):
+        return f"远程仓库地址不在允许列表：{text.split(':', 1)[1]}"
+    if text.startswith("git_fetch_failed:"):
+        return f"git fetch 失败：{text.split(':', 1)[1]}"
+    if text == "behind_with_local_changes_requires_manual_rebase":
+        return "本地有未处理改动且落后远端，需人工处理后再 pull"
+    if text.startswith("git_pull_ff_only_failed:"):
+        return f"git pull --ff-only 失败：{text.split(':', 1)[1]}"
+    if text.startswith("git_status_failed:"):
+        return f"git status 失败：{text.split(':', 1)[1]}"
+    if text.startswith("git_add_failed:"):
+        return f"git add 失败：{text.split(':', 1)[1]}"
+    if text.startswith("git_diff_cached_failed:"):
+        return f"读取暂存区变更失败：{text.split(':', 1)[1]}"
+    if text.startswith("git_commit_failed:"):
+        return f"git commit 失败：{text.split(':', 1)[1]}"
+    if text.startswith("git_push_failed:"):
+        return f"git push 失败：{text.split(':', 1)[1]}"
+    return text
+
+
 def classify_pull_blockers(
     changes: list[dict[str, str]],
     *,
@@ -270,6 +306,7 @@ def main() -> int:
     parser.add_argument("--include-prefix", action="append", default=[])
     parser.add_argument("--exclude-prefix", action="append", default=[])
     parser.add_argument("--max-files", type=int, default=200)
+    parser.add_argument("--notify-on", default="error", choices=sorted(NOTIFY_ON_MODES))
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
 
@@ -442,33 +479,41 @@ def main() -> int:
         else:
             result["pushed"] = True
 
-    notify = bool(result["errors"]) or bool(result["committed"]) or bool(result["pushed"]) or bool(result["pulled"])
+    notify_on = str(args.notify_on or "error").strip().lower()
+    if notify_on not in NOTIFY_ON_MODES:
+        notify_on = "error"
+    notify = bool(result["errors"])
+    if notify_on == "all":
+        notify = notify or bool(result["committed"]) or bool(result["pushed"]) or bool(result["pulled"])
     output = "NO_REPLY"
     if notify:
-        lines = [
-            "# git-sync-push",
-            f"- task: {result['task_id'] or '-'}",
-            f"- time: {result['time']}",
-            f"- repo: {result['repo']}",
-            f"- branch: {result['branch'] or '-'}",
-            f"- remote_url: {result['remote_url'] or '-'}",
-            f"- upstream: {result['upstream'] or '-'}",
-            f"- fetch_ok: {result['fetch_ok']}",
-            f"- pulled: {result['pulled']}",
-            f"- committed: {result['committed']}",
-            f"- pushed: {result['pushed']}",
-            f"- ahead: {result['ahead']}",
-            f"- behind: {result['behind']}",
-            f"- eligible_files: {len(result['eligible_files'])}",
-            f"- skipped_files: {len(result['skipped_files'])}",
-            f"- error_count: {len(result['errors'])}",
-        ]
-        if str(result.get("commit_sha", "")).strip():
-            lines.append(f"- commit_sha: {result['commit_sha']}")
-        for err in result["errors"][:10]:
-            lines.append(f"- error: {err}")
-        for path in result["eligible_files"][:20]:
-            lines.append(f"- changed: {path}")
+        if result["errors"]:
+            lines = [
+                "# Git 同步异常",
+                f"- 任务: {result['task_id'] or '-'}",
+                f"- 时间: {result['time']}",
+                f"- 仓库: {result['repo']}",
+                f"- 分支: {result['branch'] or '-'}",
+                f"- 远程: {result['remote_url'] or '-'}",
+                f"- 上游: {result['upstream'] or '-'}",
+                f"- 错误数量: {len(result['errors'])}",
+            ]
+            for idx, err in enumerate(result["errors"][:10], start=1):
+                lines.append(f"- 异常{idx}: {humanize_error(err)}")
+        else:
+            lines = [
+                "# Git 同步结果",
+                f"- 任务: {result['task_id'] or '-'}",
+                f"- 时间: {result['time']}",
+                f"- 仓库: {result['repo']}",
+                f"- 分支: {result['branch'] or '-'}",
+                f"- fetch: {'成功' if result['fetch_ok'] else '失败'}",
+                f"- pull: {'已执行' if result['pulled'] else '未执行'}",
+                f"- commit: {'已提交' if result['committed'] else '无变更'}",
+                f"- push: {'已推送' if result['pushed'] else '未推送'}",
+            ]
+            if str(result.get("commit_sha", "")).strip():
+                lines.append(f"- 提交哈希: {result['commit_sha']}")
         output = "\n".join(lines)
 
     if bool(args.emit_json):

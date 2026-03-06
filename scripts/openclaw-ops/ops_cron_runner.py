@@ -44,11 +44,11 @@ ERROR_KEYWORDS = (
     "traceback",
     "failed",
     "timeout",
-    "拒绝",
-    "异常",
-    "错误",
-    "失败",
-    "超时",
+    "\u9519\u8bef",
+    "\u5f02\u5e38",
+    "\u5931\u8d25",
+    "\u8d85\u65f6",
+    "\u544a\u8b66",
 )
 HIGH_KEYWORDS = ("fatal", "panic", "segfault", "oom", "critical", "database", "data_loss", "corruption")
 VOLATILE_PATTERNS = (
@@ -91,6 +91,37 @@ def compact_reason(reason: str) -> str:
     if "=" in text:
         return text.split("=", 1)[0].strip()
     return text
+
+
+def humanize_risk_reason(reason: str) -> str:
+    text = str(reason or "").strip()
+    if not text:
+        return "\u672a\u77e5\u98ce\u9669"
+    head, sep, tail = text.partition("=")
+    num = tail if sep else ""
+    mapping = {
+        "new_high_issue": "\u51fa\u73b0\u65b0\u7684\u9ad8\u98ce\u9669\u95ee\u9898",
+        "reopened_high_issue": "\u9ad8\u98ce\u9669\u95ee\u9898\u518d\u6b21\u51fa\u73b0",
+        "scan_error": "\u65e5\u5fd7\u626b\u63cf\u5931\u8d25",
+        "system_anomaly": "\u7cfb\u7edf\u6307\u6807\u5f02\u5e38",
+        "service_monitor_error": "\u8fdb\u7a0b\u6216\u670d\u52a1\u76d1\u63a7\u5f02\u5e38",
+        "workflow_job_error": "\u5de5\u4f5c\u6d41\u4efb\u52a1\u5931\u8d25",
+        "workflow_job_error_stale": "\u5de5\u4f5c\u6d41\u4efb\u52a1\u6301\u7eed\u5931\u8d25\uff08\u8d85\u65f6\u672a\u6062\u590d\uff09",
+        "workflow_monitor_error": "\u5de5\u4f5c\u6d41\u76d1\u63a7\u6a21\u5757\u5f02\u5e38",
+        "token_monitor_error": "Token \u7edf\u8ba1\u6a21\u5757\u5f02\u5e38",
+        "app_usage_monitor_error": "\u7a7a\u95f4\u7edf\u8ba1\u6a21\u5757\u5f02\u5e38",
+        "handoff_error": "\u544a\u8b66\u4ea4\u63a5\u5199\u5165\u5f02\u5e38",
+        "failed_runs_24h": "24 \u5c0f\u65f6\u5931\u8d25\u4efb\u52a1\u6570\u5f02\u5e38",
+        "open_high_issues": "\u5f53\u524d\u9ad8\u98ce\u9669\u672a\u95ed\u73af\u95ee\u9898\u8fc7\u591a",
+        "app_storage_warn": "\u5e94\u7528\u76ee\u5f55\u7a7a\u95f4\u5360\u7528\u8d85\u9608\u503c",
+        "app_storage_total_warn": "\u603b\u78c1\u76d8\u5360\u7528\u8d85\u9608\u503c",
+    }
+    label = mapping.get(head, text)
+    if num and num.isdigit():
+        return f"{label}\uff08{num}\uff09"
+    return label
+
+
 
 
 def safe_slug(value: str, max_len: int = 32) -> str:
@@ -249,6 +280,8 @@ def default_config() -> dict[str, Any]:
             "full": {"normal_log_mode": "silent", "risk_always_notify": True},
             "daily": {"normal_log_mode": "silent", "risk_always_notify": True},
         },
+        # Only notify when errors are detected.
+        "errors_only_notify": True,
         "notify_policy": {
             # In silent mode, only risk notifications should be sent.
             "silent_notify_on_change": False,
@@ -1718,6 +1751,7 @@ def run_scan(
     notify_policy = cfg.get("notify_policy")
     if not isinstance(notify_policy, dict):
         notify_policy = {}
+    errors_only_notify = parse_bool(cfg.get("errors_only_notify"), True)
     silent_notify_on_change = parse_bool(notify_policy.get("silent_notify_on_change"), False)
     chat_notify_on_change = parse_bool(notify_policy.get("chat_notify_on_change"), False)
     chat_notify_on_no_change = parse_bool(notify_policy.get("chat_notify_on_no_change"), False)
@@ -1750,12 +1784,12 @@ def run_scan(
             state["notify_state"] = notify_state
 
     notify = bool(risk_reasons) and (not risk_notify_suppressed)
-    if not notify and change_reasons:
+    if (not notify) and (not errors_only_notify) and change_reasons:
         if log_mode == "chat":
             notify = chat_notify_on_change
         else:
             notify = silent_notify_on_change
-    elif not notify and log_mode == "chat":
+    elif (not notify) and (not errors_only_notify) and log_mode == "chat":
         notify = chat_notify_on_no_change
 
     run_duration_ms = max(0, int((now() - run_started_at).total_seconds() * 1000))
@@ -1768,104 +1802,45 @@ def run_scan(
     output = "NO_REPLY"
     if notify:
         lines: list[str] = []
-        lines.append(f"# ops-cron/{mode}")
-        lines.append(f"agent: {sender_identity}")
-        lines.append(f"job: {job_name}")
-        lines.append(f"task_id: {task_id or '-'}")
-        lines.append(f"run_id: {run_id}")
-        lines.append(f"time: {now().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
-        lines.append(f"run_duration_ms: {run_duration_ms}")
-        lines.append(f"priority: {priority}")
-        lines.append(f"risk_level: {risk_level}")
-        lines.append(f"normal_log_mode: {log_mode}")
+        lines.append("# \u8fd0\u7ef4\u5de1\u68c0\u5f02\u5e38")
+        lines.append(f"- \u6a21\u5f0f: {mode}")
+        lines.append(f"- \u65f6\u95f4: {now().strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)")
+        lines.append(f"- \u4efb\u52a1: {task_id or '-'}")
+        lines.append(f"- \u8fd0\u884c\u7f16\u53f7: {run_id}")
         if risk_reasons:
-            lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
-        if change_reasons:
-            lines.append(f"change_reasons: {', '.join(change_reasons)}")
-        lines.append(f"issue_summary: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}")
-        lines.append(f"scan_summary: logs={len(log_files)}, bytes_read={read_bytes}, findings={len(findings)}")
-        if fallback_used:
-            lines.append(f"fallback: true ({', '.join(sorted(set(fallback_reasons)))})")
-        if added or removed or changed:
-            lines.append(f"service_delta: added={len(added)}, removed={len(removed)}, changed={len(changed)}")
-        if metrics.get("anomalies"):
-            lines.append(f"system_anomalies: {'; '.join(metrics['anomalies'][:4])}")
-        if int(workflow_health.get("failed_count", 0) or 0) > 0:
-            lines.append(f"workflow_health: failed={workflow_health.get('failed_count', 0)}, stale_failed={workflow_health.get('stale_failed_count', 0)}, recovered={workflow_health.get('recovered_count', 0)}")
-        lines.append(f"token_24h: total={token_usage_summary.get('total_tokens', 0)}, total_m={token_usage_summary.get('total_tokens_m', 0)}, cost={token_usage_summary.get('cost_estimate', 0)}, rows={token_usage_summary.get('rows', 0)}")
-        if app_usage:
-            lines.append(
-                f"app_usage_total: total_gb={app_usage.get('total_gb', 0.0)}, "
-                f"apps={len(app_usage.get('items', []) if isinstance(app_usage.get('items', []), list) else [])}"
-            )
-            app_top = app_usage.get("top", []) if isinstance(app_usage.get("top", []), list) else []
-            if app_top:
-                top_pairs = [
-                    f"{str(x.get('name', 'app'))}:{float(x.get('size_gb', 0.0) or 0.0):.2f}GB"
-                    for x in app_top[:3]
-                ]
-                lines.append(f"app_usage_top: {', '.join(top_pairs)}")
-            warn_items = app_usage.get("warn_items", []) if isinstance(app_usage.get("warn_items", []), list) else []
-            if warn_items:
-                warn_pairs = [
-                    f"{str(x.get('name', 'app'))}:{float(x.get('size_gb', 0.0) or 0.0):.2f}/{float(x.get('warn_gb', 0.0) or 0.0):.2f}GB"
-                    for x in warn_items[:3]
-                ]
-                lines.append(f"app_usage_warn: {', '.join(warn_pairs)}")
-        top_agents = token_usage_summary.get("by_agent") or []
-        if isinstance(top_agents, list) and top_agents:
-            top = top_agents[0]
-            lines.append(f"token_top_agent: {top.get('agent_id')} tokens={top.get('total_tokens', 0)} cost={top.get('cost_estimate', 0)}")
+            lines.append("- \u98ce\u9669\u539f\u56e0:")
+            for idx, reason in enumerate(risk_reasons[:8], start=1):
+                lines.append(f"  {idx}. {humanize_risk_reason(reason)}")
         if open_issue_rows:
-            lines.append("key_incidents:")
-            for idx, item in enumerate(open_issue_rows, start=1):
+            lines.append("- \u5173\u952e\u5f02\u5e38:")
+            for idx, item in enumerate(open_issue_rows[:3], start=1):
                 lines.append(
-                    f"{idx}. severity={item.get('severity')} occurrences={item.get('occurrences', 0)} "
-                    f"first_seen={iso_to_local_text(item.get('first_seen'))} "
-                    f"last_seen={iso_to_local_text(item.get('last_seen'))}"
+                    f"  {idx}. [{item.get('severity')}] {str(item.get('title', ''))[:120]} "
+                    f"(\u6700\u8fd1: {iso_to_local_text(item.get('last_seen'))})"
                 )
-                lines.append(f"   cause_evidence: {str(item.get('title', ''))[:150]}")
-                lines.append(f"   source: {str(item.get('source', ''))[:180]}")
-                lines.append(f"   issue_key: {item.get('key')}")
         if workflow_failed_rows:
-            lines.append("failed_jobs:")
-            for idx, item in enumerate(workflow_failed_rows[:2], start=1):
+            lines.append("- \u5931\u8d25\u5de5\u4f5c\u6d41:")
+            for idx, item in enumerate(workflow_failed_rows[:3], start=1):
                 lines.append(
-                    f"{idx}. job_id={item.get('id')} name={item.get('name')} status={item.get('last_status')} "
-                    f"consecutive={item.get('consecutive_errors')} stale_min={item.get('stale_minutes')}"
+                    f"  {idx}. {item.get('id')} / {item.get('name')} "
+                    f"(\u8fde\u7eed\u5931\u8d25: {item.get('consecutive_errors')}, \u72b6\u6001: {item.get('last_status')})"
                 )
                 if str(item.get("last_error", "")).strip():
-                    lines.append(f"   last_error_evidence: {str(item.get('last_error', ''))[:160]}")
-        handoff_target = "coordinator" if bool(handoff_summary.get("high_risk_direct_human", False)) else "route_based"
-        lines.append(
-            "handoff: "
-            + f"mode={handoff_summary.get('mode', 'todo_only')} "
-            + f"todo_new={handoff_summary.get('todo_new', 0)} "
-            + f"active_high_risk={handoff_summary.get('active_high_risk_items', 0)} "
-            + f"high_risk_direct_human={str(bool(handoff_summary.get('high_risk_direct_human', False))).lower()} "
-            + f"target={handoff_target}"
-        )
-        lines.append(f"handoff_to_agent: {handoff_target}")
-        if str(handoff_summary.get("todo_file", "")).strip():
-            lines.append(f"handoff_todo_file: {handoff_summary.get('todo_file')}")
-        if handoff_summary.get("todo_items"):
-            lines.append("handoff_items:")
-            for idx, row in enumerate(handoff_summary.get("todo_items", [])[:3], start=1):
-                lines.append(
-                    f"{idx}. key={row.get('handoff_key')} assignee={row.get('assignee')} "
-                    f"priority={row.get('priority')} risk={row.get('risk_level')} entity={row.get('entity')}"
-                )
+                    lines.append(f"     \u9519\u8bef: {str(item.get('last_error', ''))[:140]}")
+        if scan_errors:
+            lines.append("- \u626b\u63cf\u9519\u8bef:")
+            for idx, err in enumerate(scan_errors[:3], start=1):
+                lines.append(f"  {idx}. {str(err)[:180]}")
+        if bool(handoff_summary.get("todo_new", 0)):
+            lines.append(f"- \u5df2\u5199\u5165\u5f85\u529e: {int(handoff_summary.get('todo_new', 0) or 0)} \u6761")
         if handoff_summary.get("errors"):
-            lines.append("handoff_errors:")
+            lines.append("- \u4ea4\u63a5\u5f02\u5e38:")
             for idx, err in enumerate(handoff_summary.get("errors", [])[:3], start=1):
-                lines.append(f"{idx}. {err}")
-        manual_required = bool(risk_reasons)
-        lines.append(f"manual_action_required: {str(manual_required).lower()}")
-        if manual_required:
-            lines.append("manual_action: coordinator 需人工确认高风险并通过 agent-to-agent 分配执行。")
+                lines.append(f"  {idx}. {str(err)[:180]}")
         if risk_notify_suppressed:
-            lines.append(f"notify_suppressed: {risk_notify_suppressed_reason}")
+            lines.append(f"- \u544a\u8b66\u6291\u5236: {risk_notify_suppressed_reason}")
         output = "\n".join(lines)
+
 
     record = {
         "run_id": run_id,
@@ -1875,6 +1850,7 @@ def run_scan(
         "time": now_iso(),
         "notify": notify,
         "normal_log_mode": log_mode,
+        "errors_only_notify": bool(errors_only_notify),
         "risk_reasons": risk_reasons,
         "change_reasons": change_reasons,
         "major_reasons": major_reasons,
@@ -1979,6 +1955,7 @@ def build_daily_report(
     notify_policy = cfg.get("notify_policy")
     if not isinstance(notify_policy, dict):
         notify_policy = {}
+    errors_only_notify = parse_bool(cfg.get("errors_only_notify"), True)
     daily_silent_notify_on_change = parse_bool(
         notify_policy.get("daily_silent_notify_on_change", notify_policy.get("silent_notify_on_change")),
         False,
@@ -1993,12 +1970,12 @@ def build_daily_report(
     )
 
     notify = bool(risk_reasons)
-    if not notify and change_reasons:
+    if (not notify) and (not errors_only_notify) and change_reasons:
         if normal_log_mode == "chat":
             notify = daily_chat_notify_on_change
         else:
             notify = daily_silent_notify_on_change
-    elif not notify and normal_log_mode == "chat":
+    elif (not notify) and (not errors_only_notify) and normal_log_mode == "chat":
         notify = daily_chat_notify_on_no_change
 
     if not notify:
@@ -2014,6 +1991,7 @@ def build_daily_report(
                 "time": now_iso(),
                 "notify": False,
                 "normal_log_mode": normal_log_mode,
+                "errors_only_notify": bool(errors_only_notify),
                 "risk_reasons": [],
                 "change_reasons": [],
                 "major_reasons": [],
@@ -2036,74 +2014,44 @@ def build_daily_report(
     )
 
     lines: list[str] = []
-    lines.append("# ops-cron/daily")
-    lines.append(f"agent: {sender_identity}")
-    lines.append("job: ops_daily_summary")
-    lines.append(f"task_id: {task_id or '-'}")
-    lines.append(f"run_id: {run_id}")
-    lines.append(f"time: {now().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
-    lines.append(f"window: last 24h")
-    lines.append(f"run_duration_ms: {run_duration_ms}")
-    lines.append(f"priority: {priority}")
-    lines.append(f"risk_level: {risk_level}")
-    lines.append(f"normal_log_mode: {normal_log_mode}")
+    lines.append("# \u8fd0\u7ef4\u65e5\u6c47\u603b\u5f02\u5e38")
+    lines.append(f"- \u65f6\u95f4: {now().strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)")
+    lines.append("- \u7a97\u53e3: \u6700\u8fd1 24 \u5c0f\u65f6")
+    lines.append(f"- \u4efb\u52a1: {task_id or '-'}")
+    lines.append(f"- \u8fd0\u884c\u7f16\u53f7: {run_id}")
     if risk_reasons:
-        lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
-    if change_reasons:
-        lines.append(f"change_reasons: {', '.join(change_reasons)}")
-    lines.append(f"runs_24h: total={total}, major={major}, failed={failed}")
-    lines.append(f"open_issues: {len(open_issues)}")
-    lines.append(
-        f"token_24h: total_tokens={token_usage_summary.get('total_tokens', 0)}, "
-        f"total_m={token_usage_summary.get('total_tokens_m', 0)}, "
-        f"cost={token_usage_summary.get('cost_estimate', 0)} "
-        f"(rows={token_usage_summary.get('rows', 0)})"
-    )
-    if app_usage:
-        lines.append(
-            f"app_usage_total: total_gb={app_usage.get('total_gb', 0.0)}, "
-            f"apps={len(app_usage.get('items', []) if isinstance(app_usage.get('items', []), list) else [])}"
-        )
-        app_top = app_usage.get("top", []) if isinstance(app_usage.get("top", []), list) else []
-        if app_top:
-            top_pairs = [
-                f"{str(x.get('name', 'app'))}:{float(x.get('size_gb', 0.0) or 0.0):.2f}GB"
-                for x in app_top[:3]
-            ]
-            lines.append(f"app_usage_top: {', '.join(top_pairs)}")
-        if warn_items:
-            warn_pairs = [
-                f"{str(x.get('name', 'app'))}:{float(x.get('size_gb', 0.0) or 0.0):.2f}/{float(x.get('warn_gb', 0.0) or 0.0):.2f}GB"
-                for x in warn_items[:3]
-            ]
-            lines.append(f"app_usage_warn: {', '.join(warn_pairs)}")
-    lines.append(f"handoff_24h: todo_new={todo_new_24h}, active_high_risk={active_high_risk_24h}, target=coordinator")
+        lines.append("- \u98ce\u9669\u539f\u56e0:")
+        for idx, reason in enumerate(risk_reasons[:10], start=1):
+            lines.append(f"  {idx}. {humanize_risk_reason(reason)}")
+    lines.append(f"- \u7edf\u8ba1: \u603b\u8fd0\u884c={total}\uff0c\u5f02\u5e38\u901a\u77e5={major}\uff0c\u626b\u63cf\u5931\u8d25={failed}")
     if int(workflow_health.get("failed_count", 0) or 0) > 0:
-        lines.append(
-            f"workflow_health: failed={workflow_health.get('failed_count', 0)}, "
-            f"stale_failed={workflow_health.get('stale_failed_count', 0)}, "
-            f"recovered={workflow_health.get('recovered_count', 0)}"
-        )
-        for item in list(workflow_health.get("failed_jobs", []))[:3]:
+        lines.append("- \u5de5\u4f5c\u6d41\u5931\u8d25\u4efb\u52a1:")
+        for idx, item in enumerate(list(workflow_health.get("failed_jobs", []))[:3], start=1):
             lines.append(
-                f"workflow_job[{item.get('id')}|{item.get('name')}]: "
-                f"status={item.get('last_status')} stale_min={item.get('stale_minutes')} "
-                f"consecutive={item.get('consecutive_errors')}"
+                f"  {idx}. {item.get('id')} / {item.get('name')} "
+                f"(\u72b6\u6001: {item.get('last_status')}, \u8fde\u7eed\u5931\u8d25: {item.get('consecutive_errors')})"
             )
             if str(item.get("last_error", "")).strip():
-                lines.append(f"  last_error_evidence: {str(item.get('last_error', ''))[:160]}")
-    for item in top[:5]:
+                lines.append(f"     \u9519\u8bef: {str(item.get('last_error', ''))[:140]}")
+    if top:
+        lines.append("- \u672a\u95ed\u73af\u9ad8\u9891\u95ee\u9898:")
+        for idx, item in enumerate(top[:5], start=1):
+            lines.append(
+                f"  {idx}. [{item.get('severity')}] {str(item.get('title', ''))[:120]} "
+                f"(\u6700\u8fd1: {iso_to_local_text(item.get('last_seen'))})"
+            )
+    if warn_items:
+        lines.append("- \u7a7a\u95f4\u9884\u8b66:")
+        for idx, x in enumerate(warn_items[:3], start=1):
+            lines.append(
+                f"  {idx}. {str(x.get('name', 'app'))}: "
+                f"{float(x.get('size_gb', 0.0) or 0.0):.2f}GB / "
+                f"\u9608\u503c {float(x.get('warn_gb', 0.0) or 0.0):.2f}GB"
+            )
+    if todo_new_24h or active_high_risk_24h:
         lines.append(
-            f"issue[{item.get('severity')}|{item.get('occurrences', 0)}]: "
-            f"{item.get('title', '')[:120]}"
+            f"- \u5f85\u529e\u4ea4\u63a5: \u65b0\u589e\u5f85\u529e={todo_new_24h}\uff0c\u6d3b\u52a8\u9ad8\u98ce\u9669\u9879={active_high_risk_24h}"
         )
-        lines.append(f"  source: {item.get('source', '')[:120]}")
-        lines.append(f"  first_seen: {iso_to_local_text(item.get('first_seen'))}")
-        lines.append(f"  last_seen: {iso_to_local_text(item.get('last_seen'))}")
-    manual_required = bool(risk_reasons) or int(workflow_health.get("failed_count", 0) or 0) > 0
-    lines.append(f"manual_action_required: {str(manual_required).lower()}")
-    if manual_required:
-        lines.append("manual_action: coordinator 需确认高风险待办并明确 assignee/截止时间/验收标准。")
     return RunResult(
         notify=True,
         output="\n".join(lines),
@@ -2115,6 +2063,7 @@ def build_daily_report(
             "time": now_iso(),
             "notify": True,
             "normal_log_mode": normal_log_mode,
+            "errors_only_notify": bool(errors_only_notify),
             "priority": priority,
             "risk_level": risk_level,
             "run_duration_ms": run_duration_ms,
@@ -2415,18 +2364,18 @@ def main() -> int:
         result.notify = True
         if result.output == "NO_REPLY":
             lines = [
-                "# ops-cron-runner-exception",
-                f"- sender_identity: {result.record.get('sender_identity', DEFAULT_SENDER_PREFIX)}",
-                f"- task: {args.task_id or '-'}",
-                f"- time: {now_iso()}",
-                f"- mode: {result.record.get('mode', args.mode)}",
-                f"- exception_count: {len(exception_reasons)}",
+                "# \u7b56\u7565\u6a21\u5757\u8fd0\u884c\u5f02\u5e38",
+                f"- \u53d1\u9001\u65b9: {result.record.get('sender_identity', DEFAULT_SENDER_PREFIX)}",
+                f"- \u4efb\u52a1: {args.task_id or '-'}",
+                f"- \u65f6\u95f4: {now_iso()}",
+                f"- \u6a21\u5f0f: {result.record.get('mode', args.mode)}",
+                f"- \u5f02\u5e38\u6570: {len(exception_reasons)}",
             ]
             result.output = "\n".join(lines)
         else:
-            result.output = f"{result.output}\n- exception_count: {len(exception_reasons)}"
+            result.output = f"{result.output}\n- \u7b56\u7565\u6a21\u5757\u5f02\u5e38\u6570: {len(exception_reasons)}"
         for reason in exception_reasons[:12]:
-            result.output = f"{result.output}\n- exception: {reason}"
+            result.output = f"{result.output}\n- \u5f02\u5e38: {reason}"
     if not result.notify:
         result.output = "NO_REPLY"
     result.record["notify"] = bool(result.notify)
@@ -2438,7 +2387,7 @@ def main() -> int:
         print(json.dumps({"notify": result.notify, "output": result.output, "record": str(run_file)}, ensure_ascii=False))
     else:
         if result.notify:
-            print(f"{result.output}\n- evidence: {run_file}")
+            print(f"{result.output}\n- \u8fd0\u884c\u8bb0\u5f55: {run_file}")
         else:
             print("NO_REPLY")
     return 0

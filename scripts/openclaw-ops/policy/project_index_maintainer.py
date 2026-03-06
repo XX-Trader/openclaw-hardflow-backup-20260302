@@ -1026,6 +1026,28 @@ def detect_issue_code(project: dict[str, Any]) -> str:
     return "unknown_failure"
 
 
+def humanize_issue_code(code: str) -> str:
+    text = str(code or "").strip()
+    if text == "git_pull_failed":
+        return "Git 拉取失败"
+    if text == "project_index_build_failed":
+        return "索引构建失败"
+    return "未知失败"
+
+
+def humanize_error_detail(detail: str) -> str:
+    text = compact_text(detail, 220)
+    if not text:
+        return "未提供错误详情"
+    if "untracked working tree files would be overwritten" in text.lower():
+        return "本地存在未跟踪文件将被远端更新覆盖，已阻止自动拉取，请先清理或归档这些文件"
+    if text.startswith("registry_load_failed:"):
+        return "项目注册表读取失败：" + compact_text(text.split(":", 1)[1], 180)
+    if text.startswith("git pull failed:"):
+        return "Git 拉取失败：" + compact_text(text.split(":", 1)[1], 180)
+    return text
+
+
 def build_failure_output(report: dict[str, Any]) -> str:
     projects = report.get("projects", [])
     if not isinstance(projects, list):
@@ -1040,19 +1062,19 @@ def build_failure_output(report: dict[str, Any]) -> str:
         failed_items.append(item)
 
     lines: list[str] = []
-    lines.append("# project-index-maintainer")
-    lines.append(f"status: {'failed' if failed_items else 'unknown_failure'}")
-    lines.append(f"generated_at: {compact_text(report.get('generated_at', '-'), 64)}")
+    lines.append("# 项目索引异常")
+    lines.append(f"- 状态: {'失败' if failed_items else '未知异常'}")
+    lines.append(f"- 生成时间: {compact_text(report.get('generated_at', '-'), 64)}")
     lines.append(
-        "summary: "
-        + f"projects_total={int(report.get('project_count', 0) or 0)}, "
-        + f"projects_failed={len(failed_items)}, "
-        + f"changed_count={int(report.get('changed_count', 0) or 0)}"
+        "- 汇总: "
+        + f"项目总数={int(report.get('project_count', 0) or 0)}，"
+        + f"失败项目={len(failed_items)}，"
+        + f"发生变更={int(report.get('changed_count', 0) or 0)}"
     )
-    lines.append("failed_modules:")
+    lines.append("- 失败明细:")
 
     if not failed_items:
-        lines.append("- module=project_index_maintainer issue=unknown_failure detail=no_project_level_error_found")
+        lines.append("  - 未找到项目级别的明确错误，请检查原始报告")
         return "\n".join(lines)
 
     for item in failed_items[:8]:
@@ -1068,12 +1090,10 @@ def build_failure_output(report: dict[str, Any]) -> str:
                     break
         if not detail:
             detail = "no_error_detail"
-        lines.append(
-            "- "
-            + f"module=project-index/{project_id} "
-            + f"issue={issue_code} "
-            + f"detail={detail}"
-        )
+        detail_cn = humanize_error_detail(detail)
+        lines.append(f"  - 项目: {project_id}")
+        lines.append(f"    问题: {humanize_issue_code(issue_code)}")
+        lines.append(f"    详情: {detail_cn}")
     return "\n".join(lines)
 
 
