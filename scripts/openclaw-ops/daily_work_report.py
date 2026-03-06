@@ -361,6 +361,48 @@ def summarize_items(items: list[dict[str, Any]], limit: int) -> list[str]:
     return out
 
 
+def humanize_chat_error(reason: str) -> str:
+    raw = str(reason or "").strip()
+    if not raw:
+        return "未知异常"
+    if raw.startswith("dingtalk_post_failed:"):
+        detail = raw.split(":", 1)[1].strip() or raw
+        return f"钉钉发送失败：{detail}"
+    if raw.startswith("webhook_missing:"):
+        detail = raw.split(":", 1)[1].strip() or raw
+        return f"钉钉 Webhook 未配置：{detail}"
+    if raw.startswith("policy_enforcer_failed:"):
+        detail = raw.split(":", 1)[1].strip() or raw
+        return f"策略记录失败：{detail}"
+    if raw.startswith("policy_enforcer_"):
+        return f"策略记录异常：{raw}"
+    return raw
+
+
+def build_chat_output(
+    *,
+    sender_identity: str,
+    task_id: str,
+    run_time: str,
+    exception_reasons: list[str],
+    report_file: Path,
+) -> str:
+    reasons = [str(item).strip() for item in exception_reasons if str(item).strip()]
+    if not reasons:
+        return "NO_REPLY"
+    lines = [
+        "每日工作报告异常",
+        f"• 任务: {str(task_id or '-').strip() or '-'}",
+        f"• 时间: {str(run_time or now_iso()).strip() or now_iso()}",
+        f"• 来源: {str(sender_identity or DEFAULT_SENDER_IDENTITY).strip() or DEFAULT_SENDER_IDENTITY}",
+        f"• 问题数: {len(reasons)}",
+    ]
+    for idx, reason in enumerate(reasons[:8], start=1):
+        lines.append(f"• 异常{idx}: {humanize_chat_error(reason)}")
+    lines.append(f"• 证据: {report_file}")
+    return "\n".join(lines)
+
+
 def main() -> int:
     run_started_at = now()
     home = Path(os.path.expanduser("~"))
@@ -415,8 +457,7 @@ def main() -> int:
     sender_identity = normalize_sender_identity(args.sender_identity)
     run_errors: list[str] = []
 
-    # Only send message when new TODO/DONE records exist.
-    notify = has_new_records
+    should_send_digest = has_new_records
 
     report = {
         "run_id": uuid.uuid4().hex[:12],
@@ -425,7 +466,7 @@ def main() -> int:
         "task_id": str(args.task_id or ""),
         "db": str(db_path),
         "normal_log_mode": normal_log_mode,
-        "notify": notify,
+        "notify": False,
         "new_todo_count": len(new_todo),
         "new_done_count": len(new_done),
         "new_todo_ids": [str(x.get("task_id", "")) for x in new_todo if x.get("task_id")],
@@ -436,7 +477,7 @@ def main() -> int:
 
     dingtalk_status = {"attempted": False, "ok": False, "note": ""}
     output = "NO_REPLY"
-    if notify:
+    if should_send_digest:
         lines: list[str] = []
         title = f"每日工作报告 {now().strftime('%Y-%m-%d')}"
         lines.append(f"# {title}")
@@ -694,53 +735,23 @@ def main() -> int:
     exception_reasons.extend(run_errors)
     if isinstance(policy_observability.get("errors"), list):
         exception_reasons.extend(str(x) for x in policy_observability.get("errors", []) if str(x).strip())
-    notify = bool(has_new_records or exception_reasons)
+    chat_notify = bool(exception_reasons)
+    output = build_chat_output(
+        sender_identity=sender_identity,
+        task_id=str(args.task_id or ""),
+        run_time=now_iso(),
+        exception_reasons=exception_reasons,
+        report_file=report_file,
+    )
 
-    if planner_summary_snapshot:
-        summary_line = (
-            f"- planner_summary: reports={planner_summary_snapshot.get('report_count', 0)}, "
-            f"resolved={planner_summary_snapshot.get('resolved_task_count', 0)}, "
-            f"failed={planner_summary_snapshot.get('failed_task_count', 0)}, "
-            f"tokens={planner_summary_snapshot.get('total_tokens', 0)}"
-        )
-        if output == "NO_REPLY":
-            output = "\n".join(
-                [
-                    "# Daily Work Observability",
-                    f"- sender_identity: {sender_identity}",
-                    f"- task: {args.task_id or '-'}",
-                    f"- time: {now_iso()}",
-                    summary_line,
-                ]
-            )
-        else:
-            output = output + "\n" + summary_line
-    if exception_reasons:
-        if output == "NO_REPLY":
-            output = "\n".join(
-                [
-                    "# Daily Work Exception",
-                    f"- sender_identity: {sender_identity}",
-                    f"- task: {args.task_id or '-'}",
-                    f"- time: {now_iso()}",
-                    f"- exception_count: {len(exception_reasons)}",
-                ]
-            )
-        else:
-            output = output + f"\n- exception_count: {len(exception_reasons)}"
-        for reason in exception_reasons[:12]:
-            output = output + f"\n- exception: {reason}"
-    if not notify:
-        output = "NO_REPLY"
-
-    report["notify"] = notify
+    report["notify"] = chat_notify
     save_json(report_file, report)
 
     if args.emit_json:
-        print(json.dumps({"notify": notify, "output": output, "report": str(report_file)}, ensure_ascii=False))
+        print(json.dumps({"notify": chat_notify, "output": output, "report": str(report_file)}, ensure_ascii=False))
     else:
-        if notify:
-            print(f"{output}\n- evidence: {report_file}")
+        if chat_notify:
+            print(output)
         else:
             print("NO_REPLY")
     return 0
