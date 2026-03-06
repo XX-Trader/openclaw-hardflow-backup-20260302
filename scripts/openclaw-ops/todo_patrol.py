@@ -192,6 +192,33 @@ def infer_default_impact(text: str) -> str:
     return ",".join(hits[:3])
 
 
+def humanize_dispatch_error(raw: str) -> tuple[str, str]:
+    text = to_text(raw)
+    if not text:
+        return "任务巡检执行失败", "未提供错误详情"
+
+    prefix_mapping = {
+        "planner_summary_failed:": "规划器摘要读取失败",
+        "log_module_start_failed:": "模块日志启动失败",
+        "log_module_finish_failed:": "模块日志收尾失败",
+    }
+    for prefix, title in prefix_mapping.items():
+        if text.startswith(prefix):
+            return title, to_text(text[len(prefix) :]) or text
+
+    task_id = extract_labeled_value(text, ["task"])
+    if "assign_failed=" in text:
+        detail = to_text(text.split("assign_failed=", 1)[1]) or text
+        return "任务派发失败", f"task={task_id} | {detail}" if task_id else detail
+    if "log_communication_failed=" in text:
+        detail = to_text(text.split("log_communication_failed=", 1)[1]) or text
+        return "沟通记录写入失败", f"task={task_id} | {detail}" if task_id else detail
+    if "report_agent_result_failed=" in text:
+        detail = to_text(text.split("report_agent_result_failed=", 1)[1]) or text
+        return "Agent 结果回写失败", f"task={task_id} | {detail}" if task_id else detail
+    return "任务巡检执行失败", text
+
+
 def has_value(value: Any) -> bool:
     if isinstance(value, list):
         return any(has_value(v) for v in value)
@@ -723,45 +750,32 @@ def format_dispatch_message(
         return "NO_REPLY"
 
     if mode == "summary":
-        if not dispatched and not dispatch_errors:
+        if not dispatch_errors:
             return "NO_REPLY"
 
         lines: list[str] = []
-        lines.append("# todo-patrol")
-        lines.append(f"- task: {task}")
-        lines.append(f"- time: {now_tz().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
+        lines.append("任务巡检异常")
+        lines.append(f"- 任务: {task}")
+        lines.append(f"- 时间: {now_tz().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
+        lines.append(f"- 待办文件: {todo_file}")
+        lines.append(f"- 任务库: {db_path}")
+        lines.append(f"- 状态文件: {state_file}")
         lines.append(
-            f"- dispatch_result: new={len(dispatched)} skipped={skipped_count} "
-            f"ops_incident_skipped={ops_incident_skipped_count} errors={len(dispatch_errors)}"
+            f"- 调度统计: 新增={len(dispatched)}，跳过={skipped_count}，"
+            f"跳过运维事件={ops_incident_skipped_count}，异常={len(dispatch_errors)}"
         )
-        lines.append(f"- todo_file: {todo_file}")
-        lines.append(f"- task_center_db: {db_path}")
-        lines.append(f"- state_file: {state_file}")
-        if dispatched:
-            sample_limit = min(5, len(dispatched))
-            lines.append(f"- new_tasks_sample: {sample_limit}/{len(dispatched)}")
-            for row in dispatched[:sample_limit]:
-                task_row = row.get("task", {})
-                if not isinstance(task_row, dict):
-                    task_row = {}
-                lines.append(
-                    "- task: "
-                    f"id={task_row.get('task_id', '-')}, "
-                    f"assignee={task_row.get('assignee') or 'unassigned'}, "
-                    f"priority={task_row.get('priority', '-')}, "
-                    f"risk={task_row.get('risk_level', '-')}, "
-                    f"context={task_row.get('context_completeness', '-')}"
-                )
-        for err in dispatch_errors[:10]:
-            lines.append(f"- error: {err}")
+        for idx, err in enumerate(dispatch_errors[:10], start=1):
+            title, detail = humanize_dispatch_error(err)
+            lines.append(f"- 异常{idx}: {title}")
+            lines.append(f"- 详情{idx}: {detail}")
         summary = planner_summary if isinstance(planner_summary, dict) else {}
         if summary:
             lines.append(
-                "- planner_summary_24h: "
-                f"tasks={summary.get('task_count', 0)}, "
-                f"resolved={summary.get('resolved_task_count', 0)}, "
-                f"failed={summary.get('failed_task_count', 0)}, "
-                f"ratio={summary.get('solved_ratio_pct', 0.0)}"
+                "- 规划器摘要(24h): "
+                f"任务={summary.get('task_count', 0)}，"
+                f"已解决={summary.get('resolved_task_count', 0)}，"
+                f"失败={summary.get('failed_task_count', 0)}，"
+                f"解决率={summary.get('solved_ratio_pct', 0.0)}"
             )
         return "\n".join(lines).strip()
 

@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,9 +17,11 @@ def load_module(name: str, rel_path: str):
         spec = importlib.util.spec_from_file_location(name, path)
         module = importlib.util.module_from_spec(spec)
         assert spec and spec.loader
+        sys.modules[name] = module
         spec.loader.exec_module(module)
         return module
     finally:
+        sys.modules.pop(name, None)
         sys.path.pop(0)
 
 
@@ -193,6 +196,94 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("Git 提交失败", output)
         self.assertIn("permission denied", output)
         self.assertNotIn("# local-git-backup", output)
+
+    def test_todo_patrol_stays_quiet_when_only_dispatched_tasks_changed(self):
+        module = load_module(
+            "todo_patrol",
+            "scripts/openclaw-ops/todo_patrol.py",
+        )
+        output = module.format_dispatch_message(
+            task="cron:todo-patrol",
+            todo_file=Path("/tmp/TODO.md"),
+            dispatched=[
+                {
+                    "task": {
+                        "task_id": "todo-1",
+                        "assignee": "backend-dev",
+                        "priority": "medium",
+                        "risk_level": "low",
+                        "context_completeness": 100,
+                    }
+                }
+            ],
+            skipped_count=0,
+            ops_incident_skipped_count=0,
+            skip_ops_incidents=True,
+            db_path=Path("/tmp/task_center.db"),
+            state_file=Path("/tmp/todo_patrol_state.json"),
+            dispatch_errors=[],
+            planner_summary=None,
+            output_mode="summary",
+        )
+        self.assertEqual(output, "NO_REPLY")
+
+    def test_todo_patrol_failure_output_is_human_friendly_chinese(self):
+        module = load_module(
+            "todo_patrol",
+            "scripts/openclaw-ops/todo_patrol.py",
+        )
+        output = module.format_dispatch_message(
+            task="cron:todo-patrol",
+            todo_file=Path("/tmp/TODO.md"),
+            dispatched=[],
+            skipped_count=0,
+            ops_incident_skipped_count=0,
+            skip_ops_incidents=True,
+            db_path=Path("/tmp/task_center.db"),
+            state_file=Path("/tmp/todo_patrol_state.json"),
+            dispatch_errors=["planner_summary_failed:database locked"],
+            planner_summary=None,
+            output_mode="summary",
+        )
+        self.assertEqual(output.splitlines()[0], "任务巡检异常")
+        self.assertIn("规划器摘要读取失败", output)
+        self.assertIn("database locked", output)
+        self.assertNotIn("# todo-patrol", output)
+        self.assertNotIn("- error:", output)
+
+    def test_reviewer_context_gate_failure_output_is_human_friendly_chinese(self):
+        module = load_module(
+            "reviewer_cron_runner",
+            "scripts/openclaw-ops/reviewer_cron_runner.py",
+        )
+        module.discover_git_repos = lambda _workspace: [Path("/tmp/repo-a")]
+        module.ensure_project_context_gate = lambda _args, _mode, _repos: {
+            "ok": False,
+            "blocked": 1,
+            "created": 0,
+            "pending": 1,
+            "ready": 0,
+            "error": "task center unavailable",
+            "items": [{"repo": "repo-a", "status": "blocked", "task_id": "ctx-1"}],
+        }
+        args = SimpleNamespace(
+            workspace="/tmp",
+            task_id="cron:reviewer-daily",
+        )
+        result = module.run_quality_scan(
+            args,
+            state={},
+            normal_log_mode="silent",
+            mode="daily_incremental",
+            incremental_from_head=False,
+            full_scan_skip_unchanged=False,
+            run_fix_command=False,
+        )
+        self.assertTrue(result.notify)
+        self.assertEqual(result.output.splitlines()[0], "代码审查巡检异常")
+        self.assertIn("项目上下文门禁阻塞", result.output)
+        self.assertIn("task center unavailable", result.output)
+        self.assertNotIn("# reviewer-cron/", result.output)
 
     def test_project_index_command_omits_git_pull_by_default(self):
         module = load_module(

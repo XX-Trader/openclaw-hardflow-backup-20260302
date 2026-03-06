@@ -110,6 +110,75 @@ def normalize_log_mode(value: str, default: str = "silent") -> str:
     return mode if mode in {"silent", "chat"} else default
 
 
+def humanize_reviewer_reason(reason: str) -> str:
+    text = str(reason or "").strip()
+    if not text:
+        return "未提供异常原因"
+    head, sep, tail = text.partition("=")
+    detail = tail.strip() if sep else ""
+    mapping = {
+        "branches_behind": "分支落后远端",
+        "merge_failed": "自动合并失败",
+        "high_issue_delta": "新增高风险问题",
+        "project_context_gate_blocked": "项目上下文门禁阻塞",
+        "fix_command_failed": "自动修复命令执行失败",
+        "techdebt_sync_error": "技术债任务同步失败",
+        "repos_head_changed": "仓库远端发生变更",
+        "dirty_repos": "存在未提交仓库",
+        "open_prs": "存在待处理 PR",
+        "new_issue": "发现新问题",
+        "reopened_issue": "历史问题重新出现",
+        "resolved_issue": "已有问题已解决",
+        "io_contract_missing": "存在 I/O 契约缺失",
+        "recurring_open": "存在重复未闭环问题",
+        "techdebt_created": "新增技术债任务",
+        "techdebt_reopened": "重新打开技术债任务",
+        "techdebt_closed": "关闭技术债任务",
+    }
+    label = mapping.get(head, text)
+    if detail:
+        return f"{label}（{detail}）"
+    return label
+
+
+def build_reviewer_exception_output(
+    *,
+    mode: str,
+    task_id: str,
+    run_id: str,
+    run_duration_ms: int,
+    priority: str,
+    risk_level: str,
+    normal_log_mode: str,
+    risk_reasons: list[str],
+    change_reasons: list[str],
+    detail_lines: list[str] | None = None,
+    manual_action: str = "",
+) -> str:
+    lines = [
+        "代码审查巡检异常",
+        f"- 模式: {mode}",
+        f"- 任务: {task_id or '-'}",
+        f"- 运行ID: {run_id}",
+        f"- 时间: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
+        f"- 运行耗时: {max(0, int(run_duration_ms))}ms",
+        f"- 优先级: {priority}",
+        f"- 风险级别: {risk_level}",
+        f"- 日志模式: {normal_log_mode}",
+    ]
+    if risk_reasons:
+        lines.append("- 问题: " + "；".join(humanize_reviewer_reason(item) for item in risk_reasons))
+    if change_reasons:
+        lines.append("- 变化: " + "；".join(humanize_reviewer_reason(item) for item in change_reasons))
+    for line in detail_lines or []:
+        text = str(line or "").strip()
+        if text:
+            lines.append(text)
+    if manual_action:
+        lines.append(f"- 处理建议: {manual_action}")
+    return "\n".join(lines)
+
+
 def load_json(path: Path, default: Any) -> Any:
     if not path.exists():
         return default
@@ -1411,32 +1480,35 @@ def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_m
     priority = "high" if risk_reasons else ("medium" if change_reasons else "low")
     lines = ["NO_REPLY"]
     if notify:
-        lines = [
-            "# reviewer-cron/hourly_git",
-            f"agent: {DEFAULT_SENDER_PREFIX}:hourly_git",
-            f"job: {job_name}",
-            f"task_id: {args.task_id or '-'}",
-            f"run_id: {run_id}",
-            f"time: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
-            f"run_duration_ms: {run_duration_ms}",
-            f"priority: {priority}",
-            f"risk_level: {risk_level}",
-            f"normal_log_mode: {normal_log_mode}",
-            f"repos: total={len(repos)}, head_changed={total_changed_repos}, dirty={total_dirty}",
-            f"branches_behind: {total_behind_branches}",
-            f"prs_open: {pr_open_total}",
-            f"issue_summary: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}",
-            f"approvals: allow_merge={bool(args.allow_merge)}, approval_file={args.merge_approval_file}",
-        ]
-        if risk_reasons:
-            lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
-        if change_reasons:
-            lines.append(f"change_reasons: {', '.join(change_reasons)}")
         manual_required = bool(risk_reasons)
-        lines.append(f"manual_action_required: {str(manual_required).lower()}")
-        if manual_required:
-            lines.append("manual_action: coordinator 需确认分支同步/合并风险后再继续自动执行。")
-
+        lines = build_reviewer_exception_output(
+            mode="hourly_git",
+            task_id=str(args.task_id or ""),
+            run_id=run_id,
+            run_duration_ms=run_duration_ms,
+            priority=priority,
+            risk_level=risk_level,
+            normal_log_mode=normal_log_mode,
+            risk_reasons=risk_reasons,
+            change_reasons=change_reasons,
+            detail_lines=[
+                f"- 仓库统计: 总数={len(repos)}，远端变更={total_changed_repos}，未提交={total_dirty}",
+                f"- 分支落后数: {total_behind_branches}",
+                f"- 打开中的 PR: {pr_open_total}",
+                (
+                    "- 问题汇总: "
+                    f"新增={issue_stats['new']}，重开={issue_stats['reopened']}，"
+                    f"已解决={issue_stats['resolved']}，未关闭={issue_stats['open_total']}，"
+                    f"高风险未关闭={issue_stats['open_high_total']}"
+                ),
+                f"- 合并审批: allow_merge={bool(args.allow_merge)}，approval_file={args.merge_approval_file}",
+            ],
+            manual_action=(
+                "coordinator 需确认分支同步和合并风险后，再继续自动执行。"
+                if manual_required
+                else ""
+            ),
+        ).splitlines()
     record = {
         "run_id": run_id,
         "sender_identity": f"{DEFAULT_SENDER_PREFIX}:hourly_git",
@@ -1482,31 +1554,34 @@ def run_quality_scan(
             if ":" in str(args.task_id or "")
             else f"reviewer_{mode}"
         )
-        lines = [
-            f"# reviewer-cron/{mode}",
-            f"agent: {DEFAULT_SENDER_PREFIX}:{mode}",
-            f"job: {job_name}",
-            f"task_id: {args.task_id or '-'}",
-            f"run_id: {run_id}",
-            f"time: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
-            f"run_duration_ms: {run_duration_ms}",
-            "priority: high",
-            "risk_level: high",
-            f"normal_log_mode: {normal_log_mode}",
-            "context_gate: blocked",
-            f"context_gate_summary: blocked={context_gate.get('blocked', 0)}, created={context_gate.get('created', 0)}, pending={context_gate.get('pending', 0)}, ready={context_gate.get('ready', 0)}",
-            "manual_action_required: true",
-            "manual_action: project-agent 需先产出上下文包，reviewer 再执行全量审查。",
-        ]
+        lines = build_reviewer_exception_output(
+            mode=mode,
+            task_id=str(args.task_id or ""),
+            run_id=run_id,
+            run_duration_ms=run_duration_ms,
+            priority="high",
+            risk_level="high",
+            normal_log_mode=normal_log_mode,
+            risk_reasons=["project_context_gate_blocked"],
+            change_reasons=[],
+            detail_lines=[
+                (
+                    "- 上下文门禁: "
+                    f"blocked={context_gate.get('blocked', 0)}，created={context_gate.get('created', 0)}，"
+                    f"pending={context_gate.get('pending', 0)}，ready={context_gate.get('ready', 0)}"
+                ),
+            ],
+            manual_action="project-agent 需先产出上下文包，reviewer 再执行全量审查。",
+        ).splitlines()
         err = str(context_gate.get("error", "")).strip()
         if err:
-            lines.append(f"context_gate_error: {err}")
+            lines.append(f"- 详情: {err}")
         for item in context_gate.get("items", [])[:12]:
             if not isinstance(item, dict):
                 continue
             lines.append(
-                f"- context_repo: {item.get('repo', '')} | status={item.get('status', '-')}"
-                f" | task={item.get('task_id', '-')}"
+                f"- 仓库: {item.get('repo', '')} | 状态={item.get('status', '-')}"
+                f" | 任务={item.get('task_id', '-')}"
             )
         record = {
             "run_id": run_id,
@@ -1636,33 +1711,44 @@ def run_quality_scan(
     priority = "high" if risk_reasons else ("medium" if change_reasons else "low")
     lines = ["NO_REPLY"]
     if notify:
-        lines = [
-            f"# reviewer-cron/{mode}",
-            f"agent: {DEFAULT_SENDER_PREFIX}:{mode}",
-            f"job: {job_name}",
-            f"task_id: {args.task_id or '-'}",
-            f"run_id: {run_id}",
-            f"time: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
-            f"run_duration_ms: {run_duration_ms}",
-            f"priority: {priority}",
-            f"risk_level: {risk_level}",
-            f"normal_log_mode: {normal_log_mode}",
-            f"repos: {len(repos)}",
-            f"files: scanned={total_files_scanned}, skipped={total_files_skipped}",
-            f"issue_summary: new={issue_stats['new']}, reopened={issue_stats['reopened']}, resolved={issue_stats['resolved']}, open={issue_stats['open_total']}, open_high={issue_stats['open_high_total']}, recurring_open={issue_stats['recurring_open_total']}",
-            f"io_contract_missing: {total_io_missing} (planner should create TODO/request info before edits)",
-            f"techdebt: created={techdebt_result.get('created', 0)}, reopened={techdebt_result.get('reopened', 0)}, closed={techdebt_result.get('closed', 0)}, deduped_open={techdebt_result.get('deduped_open', 0)}",
-        ]
-        if risk_reasons:
-            lines.append(f"risk_reasons: {', '.join(risk_reasons)}")
-        if change_reasons:
-            lines.append(f"change_reasons: {', '.join(change_reasons)}")
-        if fix_result.get("ran"):
-            lines.append(f"fix_command: ok={fix_result.get('ok')}, exit_code={fix_result.get('exit_code')}")
         manual_required = bool(risk_reasons)
-        lines.append(f"manual_action_required: {str(manual_required).lower()}")
-        if manual_required:
-            lines.append("manual_action: coordinator 需确认高风险代码质量问题后再下发修复。")
+        detail_lines = [
+            f"- 仓库数: {len(repos)}",
+            f"- 文件统计: 扫描={total_files_scanned}，跳过={total_files_skipped}",
+            (
+                "- 问题汇总: "
+                f"新增={issue_stats['new']}，重开={issue_stats['reopened']}，"
+                f"已解决={issue_stats['resolved']}，未关闭={issue_stats['open_total']}，"
+                f"高风险未关闭={issue_stats['open_high_total']}，重复未关闭={issue_stats['recurring_open_total']}"
+            ),
+            f"- I/O 契约缺失: {total_io_missing}",
+            (
+                "- 技术债同步: "
+                f"created={techdebt_result.get('created', 0)}，reopened={techdebt_result.get('reopened', 0)}，"
+                f"closed={techdebt_result.get('closed', 0)}，deduped_open={techdebt_result.get('deduped_open', 0)}"
+            ),
+        ]
+        if fix_result.get("ran"):
+            detail_lines.append(
+                f"- 修复命令: ok={fix_result.get('ok')}，exit_code={fix_result.get('exit_code')}"
+            )
+        lines = build_reviewer_exception_output(
+            mode=mode,
+            task_id=str(args.task_id or ""),
+            run_id=run_id,
+            run_duration_ms=run_duration_ms,
+            priority=priority,
+            risk_level=risk_level,
+            normal_log_mode=normal_log_mode,
+            risk_reasons=risk_reasons,
+            change_reasons=change_reasons,
+            detail_lines=detail_lines,
+            manual_action=(
+                "coordinator 需确认高风险代码质量问题后，再下发修复。"
+                if manual_required
+                else ""
+            ),
+        ).splitlines()
 
     record = {
         "run_id": run_id,
