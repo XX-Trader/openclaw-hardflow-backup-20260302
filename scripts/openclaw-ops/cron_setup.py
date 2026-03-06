@@ -80,6 +80,20 @@ def stamp() -> str:
     return datetime.now().strftime("%Y%m%d_%H%M%S")
 
 
+def build_official_cron_surface(job_ids: list[str]) -> dict[str, Any]:
+    normalized = [str(job_id).strip() for job_id in job_ids if str(job_id).strip()]
+    return {
+        "surface": "official-cron",
+        "status_cmd": "openclaw cron status --json",
+        "run_cmds": {job_id: f"openclaw cron run {job_id} --force" for job_id in normalized},
+        "runs_cmds": {job_id: f"openclaw cron runs --id {job_id} --limit 20" for job_id in normalized},
+        "notes": [
+            "业务 job 定义继续保存在 jobs.json。",
+            "安装后的状态查询、启停与触发统一对齐官方 openclaw cron surface。",
+        ],
+    }
+
+
 def normalize_log_mode(value: str, default: str = "silent") -> str:
     mode = str(value or "").strip().lower()
     return mode if mode in LOG_MODES else default
@@ -2127,6 +2141,7 @@ def main() -> int:
         "daily_report_dedupe_policy": daily_report_dedupe_result,
         "job_status": status,
         "job_ids": [item["id"] for item in fresh_jobs],
+        "official_cron_surface": build_official_cron_surface([item["id"] for item in fresh_jobs]),
         "skill_log_switches": cfg.get("skill_log_switches", {}),
         "path_validation": path_validation,
         "audit": {
@@ -2205,6 +2220,11 @@ def main() -> int:
         missing_refs = result.get("harden_known_jobs", {}).get("missing_refs", [])
         if missing_refs:
             print("harden_missing_refs=" + ",".join(str(x) for x in missing_refs))
+        cron_surface = result.get("official_cron_surface", {})
+        print("cron_surface=official-cron")
+        print(f"cron_status_cmd={cron_surface.get('status_cmd', 'openclaw cron status --json')}")
+        print("cron_run_hint=openclaw cron run <job-id> --force")
+        print("cron_runs_hint=openclaw cron runs --id <job-id> --limit 20")
         print(json.dumps(result["installed"], ensure_ascii=False))
         if args.dry_run:
             print("dry_run=true")

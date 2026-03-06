@@ -54,6 +54,20 @@ def infer_delivery(jobs: list[dict[str, Any]], preferred_agents: list[str]) -> t
     return "telegram", ""
 
 
+def build_official_cron_surface(job_ids: list[str]) -> dict[str, Any]:
+    normalized = [str(job_id).strip() for job_id in job_ids if str(job_id).strip()]
+    return {
+        "surface": "official-cron",
+        "status_cmd": "openclaw cron status --json",
+        "run_cmds": {job_id: f"openclaw cron run {job_id} --force" for job_id in normalized},
+        "runs_cmds": {job_id: f"openclaw cron runs --id {job_id} --limit 20" for job_id in normalized},
+        "notes": [
+            "业务 job 定义继续落在 jobs.json。",
+            "运行时状态查询与触发统一走官方 openclaw cron surface。",
+        ],
+    }
+
+
 def upsert_job(
     jobs: list[dict[str, Any]],
     job_id: str,
@@ -143,6 +157,7 @@ def main() -> None:
     parser.add_argument("--skip-path-check", action="store_true")
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
+    parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
 
     jobs_path = Path(args.jobs_file).expanduser()
@@ -172,10 +187,11 @@ def main() -> None:
         if task_db_path.exists() and (not task_db_path.is_file()):
             raise SystemExit(f"task db path is not file: {task_db_path}")
 
+    backup_file = ""
     if jobs_path.exists():
         backup = jobs_path.with_name(f"{jobs_path.name}.bak.{stamp()}")
         shutil.copy2(jobs_path, backup)
-        print(f"backup={backup}")
+        backup_file = str(backup)
 
     updated_jobs, existed = upsert_job(
         jobs=jobs,
@@ -199,8 +215,32 @@ def main() -> None:
         dir_mode=0o750,
     )
 
-    print(f"job_id={args.job_id}")
-    print(f"status={'updated' if existed else 'created'}")
+    result = {
+        "ok": True,
+        "job_id": str(args.job_id),
+        "status": ("updated" if existed else "created"),
+        "backup": backup_file,
+        "jobs_file": str(jobs_path),
+        "maintainer_py": str(maintainer_path),
+        "registry": str(registry_path),
+        "task_db": str(task_db_path),
+        "task_db_exists": task_db_path.exists(),
+        "task_id": task_id,
+        "actor": actor,
+        "delivery": {"channel": channel, "to": target},
+        "official_cron_surface": build_official_cron_surface([str(args.job_id)]),
+    }
+    if not task_db_path.exists():
+        result["warn"] = "task_db_missing_now; job installed anyway; runtime will self-handle binding"
+
+    if args.emit_json:
+        print(json.dumps(result, ensure_ascii=False))
+        return
+
+    if backup_file:
+        print(f"backup={backup_file}")
+    print(f"job_id={result['job_id']}")
+    print(f"status={result['status']}")
     print(f"jobs_file={jobs_path}")
     print(f"maintainer_py={maintainer_path}")
     print(f"registry={registry_path}")
@@ -210,6 +250,10 @@ def main() -> None:
     print(f"task_id={task_id}")
     print(f"actor={actor}")
     print(f"delivery={channel}:{target}")
+    print("cron_surface=official-cron")
+    print(f"cron_status_cmd={result['official_cron_surface']['status_cmd']}")
+    print(f"cron_run_cmd={result['official_cron_surface']['run_cmds'][str(args.job_id)]}")
+    print(f"cron_runs_cmd={result['official_cron_surface']['runs_cmds'][str(args.job_id)]}")
 
 
 if __name__ == "__main__":

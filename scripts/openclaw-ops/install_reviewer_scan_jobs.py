@@ -107,6 +107,20 @@ def build_message(command: str) -> str:
     )
 
 
+def build_official_cron_surface(job_ids: list[str]) -> dict[str, Any]:
+    normalized = [str(job_id).strip() for job_id in job_ids if str(job_id).strip()]
+    return {
+        "surface": "official-cron",
+        "status_cmd": "openclaw cron status --json",
+        "run_cmds": {job_id: f"openclaw cron run {job_id} --force" for job_id in normalized},
+        "runs_cmds": {job_id: f"openclaw cron runs --id {job_id} --limit 20" for job_id in normalized},
+        "notes": [
+            "Reviewer 扫描任务仍以 jobs.json 为业务定义源。",
+            "安装后请用官方 openclaw cron surface 查看状态与手工触发。",
+        ],
+    }
+
+
 def normalize_shell_path(value: str) -> str:
     raw = str(value or "").strip()
     if not raw:
@@ -337,6 +351,7 @@ def main() -> None:
 
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
+    parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
     profile_result = apply_reviewer_profile(args)
 
@@ -383,10 +398,11 @@ def main() -> None:
         project_context_assignee=str(args.project_context_assignee).strip() or "project-agent",
     )
 
+    backup_file = ""
     if jobs_path.exists():
         backup = jobs_path.with_name(f"{jobs_path.name}.bak.{stamp()}")
         shutil.copy2(jobs_path, backup)
-        print(f"backup={backup}")
+        backup_file = str(backup)
 
     merged, status = upsert_jobs(jobs=jobs, fresh_jobs=fresh_jobs, channel=channel, target=target)
     data["jobs"] = merged
@@ -399,6 +415,44 @@ def main() -> None:
         dir_mode=0o750,
     )
 
+    job_ids = [HOURLY_JOB_ID, DAILY_JOB_ID, BI_DAILY_JOB_ID, WEEKLY_JOB_ID]
+    result = {
+        "ok": True,
+        "backup": backup_file,
+        "jobs_file": str(jobs_path),
+        "runner_py": normalize_shell_path(args.runner_py),
+        "workspace": normalize_shell_path(args.workspace),
+        "state_file": normalize_shell_path(args.state_file),
+        "history_dir": normalize_shell_path(args.history_dir),
+        "delivery": {"channel": channel, "to": target},
+        "reviewer_profile": profile_result.get("profile", "legacy"),
+        "reviewer_profile_changes": profile_result.get("changes", {}),
+        "hourly_every_ms": max(600000, int(args.hourly_every_ms)),
+        "daily_expr": str(args.daily_expr).strip() or "0 4 * * *",
+        "bi_daily_expr": str(args.bi_daily_expr).strip() or "20 4 */2 * *",
+        "weekly_expr": str(args.weekly_expr).strip() or "40 4 * * 1",
+        "enable_hourly": bool(args.enable_hourly),
+        "enable_daily": bool(args.enable_daily),
+        "enable_bi_daily": bool(args.enable_bi_daily),
+        "enable_weekly": bool(args.enable_weekly),
+        "hourly_git_fetch": bool(args.hourly_git_fetch),
+        "hourly_check_pr": bool(args.hourly_check_pr),
+        "hourly_allow_merge": bool(args.hourly_allow_merge),
+        "hourly_merge_approval_file": normalize_shell_path(args.hourly_merge_approval_file),
+        "hourly_push_after_merge": bool(args.hourly_push_after_merge),
+        "project_context_gate": bool(args.project_context_gate),
+        "project_context_db": normalize_shell_path(args.project_context_db),
+        "project_context_assignee": str(args.project_context_assignee).strip() or "project-agent",
+        "job_status": {jid: status.get(jid, "unknown") for jid in job_ids},
+        "official_cron_surface": build_official_cron_surface(job_ids),
+    }
+
+    if args.emit_json:
+        print(json.dumps(result, ensure_ascii=False))
+        return
+
+    if backup_file:
+        print(f"backup={backup_file}")
     print(f"jobs_file={jobs_path}")
     print(f"runner_py={normalize_shell_path(args.runner_py)}")
     print(f"workspace={normalize_shell_path(args.workspace)}")
@@ -424,8 +478,12 @@ def main() -> None:
     print(f"project_context_gate={bool(args.project_context_gate)}")
     print(f"project_context_db={normalize_shell_path(args.project_context_db)}")
     print(f"project_context_assignee={str(args.project_context_assignee).strip() or 'project-agent'}")
-    for jid in [HOURLY_JOB_ID, DAILY_JOB_ID, BI_DAILY_JOB_ID, WEEKLY_JOB_ID]:
+    print("cron_surface=official-cron")
+    print(f"cron_status_cmd={result['official_cron_surface']['status_cmd']}")
+    for jid in job_ids:
         print(f"{jid}={status.get(jid, 'unknown')}")
+        print(f"cron_run_cmd[{jid}]={result['official_cron_surface']['run_cmds'][jid]}")
+        print(f"cron_runs_cmd[{jid}]={result['official_cron_surface']['runs_cmds'][jid]}")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,11 @@ from task_center import (
 )
 
 UTC = timezone.utc
+GOVERNANCE_BRIDGE_EPILOG = (
+    "Bridge contract: keep governance logic in Python, trigger it via official "
+    "OpenClaw cron/hooks/webhook surfaces, return structured JSON or NO_REPLY, "
+    "and do not mutate vendor private runtime state files directly."
+)
 
 DEFAULT_POLICY: dict[str, Any] = {
     "schema_version": "2026-03-02",
@@ -37,9 +42,10 @@ DEFAULT_POLICY: dict[str, Any] = {
     "allowed_models": [
         "kimicode/Doubao-Seed-2.0-Code",
         "glmcode/glm-5",
-        "openai-codex/gpt-5.3-codex",
+        "openai-codex/gpt-5.4",
         "openai-codex/gpt-5.3-codex-spark",
         "glmcode/glm-4.7",
+        "volcengine/kimi-k2.5",
     ],
     "allowed_entry_agents": ["coordinator"],
     "allow_project_agent_alias_entry": True,
@@ -292,9 +298,10 @@ DEFAULT_TOKEN_PRICING: dict[str, Any] = {
     "models": {
         "glmcode/glm-5": {"input": 0, "output": 0},
         "kimicode/Doubao-Seed-2.0-Code": {"input": 0, "output": 0},
-        "openai-codex/gpt-5.3-codex": {"input": 0, "output": 0},
+        "openai-codex/gpt-5.4": {"input": 0, "output": 0},
         "openai-codex/gpt-5.3-codex-spark": {"input": 0, "output": 0},
         "glmcode/glm-4.7": {"input": 0, "output": 0},
+        "volcengine/kimi-k2.5": {"input": 0, "output": 0},
     },
 }
 
@@ -2844,7 +2851,10 @@ class PolicyEnforcer:
 
 def build_parser() -> argparse.ArgumentParser:
     defaults = runtime_defaults()
-    parser = argparse.ArgumentParser(description="Policy-Enforcer CLI")
+    parser = argparse.ArgumentParser(
+        description="Policy-Enforcer CLI",
+        epilog=GOVERNANCE_BRIDGE_EPILOG,
+    )
     parser.add_argument(
         "--db",
         default=defaults["db"],

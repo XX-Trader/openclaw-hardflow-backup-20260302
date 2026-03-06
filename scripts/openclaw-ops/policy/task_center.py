@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Task-Center atomic storage and reporting utilities."""
+"""Task-Center atomic storage and reporting utilities.
+
+Bridge contract:
+- Python governance state lives here, not in vendor private runtime files.
+- Official OpenClaw cron/hooks/webhook surfaces may trigger this layer.
+- Callers should prefer structured JSON or NO_REPLY style outputs above this storage layer.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +18,12 @@ from pathlib import Path
 from typing import Any
 
 UTC = timezone.utc
+BRIDGE_TRIGGER_SURFACES = ("cron", "hooks", "webhook")
+BRIDGE_VENDOR_STATE_POLICY = "no-direct-vendor-private-state-writes"
+BRIDGE_OUTPUT_CONTRACT = {
+    "machine_output": "structured-json",
+    "quiet_success": "NO_REPLY",
+}
 
 TASK_STATUSES = {
     "pending",
@@ -414,7 +426,14 @@ class TaskCenter:
         for column, ddl in required_columns.items():
             if column in existing:
                 continue
-            self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {ddl}")
+            try:
+                self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {ddl}")
+            except sqlite3.OperationalError as exc:
+                # Legacy databases can occasionally be in a partial-migrated state.
+                # Skip duplicate-column errors so init/check commands remain idempotent.
+                message = str(exc).lower()
+                if "duplicate column name" not in message:
+                    raise
 
     def _normalize_task(self, task: dict[str, Any]) -> dict[str, Any]:
         now = utc_now_iso()

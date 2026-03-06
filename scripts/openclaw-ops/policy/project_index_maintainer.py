@@ -27,6 +27,11 @@ except Exception:  # pragma: no cover
     TaskCenter = None
 
 UTC = timezone.utc
+GOVERNANCE_BRIDGE_EPILOG = (
+    "Bridge contract: this Python maintainer is triggered through official "
+    "OpenClaw cron/hooks/webhook entry points, emits JSON when --emit-json is used, "
+    "emits NO_REPLY on quiet success, and does not modify vendor private runtime files."
+)
 
 DEFAULT_MODULE_GLOBS = [
     "src/**/*.py",
@@ -1099,7 +1104,10 @@ def build_failure_output(report: dict[str, Any]) -> str:
 
 def main() -> int:
     run_started_at = datetime.now(tz=UTC)
-    parser = argparse.ArgumentParser(description="Maintain project index docs for multi-project workflows")
+    parser = argparse.ArgumentParser(
+        description="Maintain project index docs for multi-project workflows",
+        epilog=GOVERNANCE_BRIDGE_EPILOG,
+    )
     parser.add_argument("--registry", required=True, help="registry json path")
     parser.add_argument("--git-pull", action="store_true", help="perform git pull on each project if git repo")
     parser.add_argument("--timeout", type=int, default=30, help="command timeout seconds")
@@ -1170,6 +1178,12 @@ def main() -> int:
         "project_count": len(results),
         "changed_count": len([x for x in results if x.changed]),
         "projects": [x.to_dict() for x in results],
+        "bridge": {
+            "trigger_surfaces": ["cron", "hooks", "webhook"],
+            "machine_output": "--emit-json",
+            "quiet_success_stdout": "NO_REPLY",
+            "vendor_state_policy": "no-direct-vendor-private-state-writes",
+        },
     }
     run_duration_ms = max(0, int((datetime.now(tz=UTC) - run_started_at).total_seconds() * 1000))
     report["run_duration_ms"] = run_duration_ms

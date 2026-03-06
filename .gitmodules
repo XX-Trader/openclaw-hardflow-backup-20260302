@@ -1,0 +1,3 @@
+[submodule "openclaw-official"]
+	path = vendor/openclaw-official
+	url = https://github.com/openclaw/openclaw.git

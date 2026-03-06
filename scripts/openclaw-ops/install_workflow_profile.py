@@ -7,9 +7,11 @@ import argparse
 import json
 import os
 import platform
+import shutil
 import shlex
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +19,13 @@ from typing import Any
 PROFILES = {"core", "all"}
 CORE_TASKS = [1, 2, 3, 4, 5, 7, 8, 9]
 ALL_TASKS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+OVERLAY_SYNC_STEP = "sync_overlay_openclaw_config (runtime boundary)"
+CORE_RUNTIME_HOOKS = (
+    "hardflow-command-guard",
+    "hardflow-audit",
+    "hardflow-stop-gate-reminder",
+    "hardflow-policy-enforcer",
+)
 
 
 def render_cmd(cmd: list[str]) -> str:
@@ -61,6 +70,204 @@ def delivery_args(channel: str, target: str) -> list[str]:
 
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
+
+
+def now_stamp_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
+def load_json_object(path: Path) -> dict[str, Any]:
+    raw = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(raw, dict):
+        raise ValueError(f"json root must be an object: {path}")
+    return raw
+
+
+def write_json_object(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def ensure_object(parent: dict[str, Any], key: str) -> dict[str, Any]:
+    value = parent.get(key)
+    if isinstance(value, dict):
+        return value
+    fresh: dict[str, Any] = {}
+    parent[key] = fresh
+    return fresh
+
+
+def normalize_string_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        items = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        text = str(value or "").strip()
+        items = [text] if text else []
+    unique: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        key = item.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
+def merge_overlay_object(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in overlay.items():
+        current = merged.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            merged[key] = merge_overlay_object(current, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def apply_runtime_bridge_config(merged_cfg: dict[str, Any], workflow_repo_path: str) -> dict[str, Any]:
+    workflow_root = Path(workflow_repo_path).resolve()
+    hooks_dir = workflow_root / "hooks"
+    skills_dir = workflow_root / "skills"
+    compatibility_cleanup: list[str] = []
+
+    agents_cfg = ensure_object(merged_cfg, "agents")
+    defaults_cfg = ensure_object(agents_cfg, "defaults")
+    if defaults_cfg.pop("outputPolicy", None) is not None:
+        compatibility_cleanup.append("agents.defaults.outputPolicy")
+
+    env_cfg = ensure_object(ensure_object(merged_cfg, "env"), "vars")
+    env_cfg["HARDFLOW_OPENCLAW_HOOKS_SOURCE_DIR"] = str(hooks_dir)
+    env_cfg["HARDFLOW_OPENCLAW_SKILLS_SOURCE_DIR"] = str(skills_dir)
+
+    hooks_cfg = ensure_object(merged_cfg, "hooks")
+    internal_cfg = ensure_object(hooks_cfg, "internal")
+    internal_cfg["enabled"] = True
+    entries_cfg = ensure_object(internal_cfg, "entries")
+    for hook_id in CORE_RUNTIME_HOOKS:
+        entry = entries_cfg.get(hook_id)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["enabled"] = True
+        entries_cfg[hook_id] = entry
+
+    bridge: dict[str, Any] = {
+        "workflow_repo_path": str(workflow_root),
+        "hooks": {
+            "managed_by": "official-hooks-loader",
+            "install_mode": "config-extraDirs",
+            "source_dir": str(hooks_dir),
+            "exists": hooks_dir.exists(),
+            "core_entries": list(CORE_RUNTIME_HOOKS),
+            "link_commands": [
+                render_cmd(["openclaw", "hooks", "install", "-l", str((hooks_dir / hook_id).resolve())])
+                for hook_id in CORE_RUNTIME_HOOKS
+                if (hooks_dir / hook_id).exists()
+            ],
+        },
+        "skills": {
+            "managed_by": "official-skills-loader",
+            "install_mode": "config-extraDirs",
+            "source_dir": str(skills_dir),
+            "exists": skills_dir.exists(),
+        },
+        "channels": {
+            "managed_by": "official-channel-surface",
+            "config_keys": ["channels.telegram"],
+        },
+        "plugins": {
+            "managed_by": "official-plugin-surface",
+            "config_keys": ["plugins.entries.telegram"],
+        },
+    }
+    if compatibility_cleanup:
+        bridge["compatibility_cleanup"] = list(compatibility_cleanup)
+
+    if hooks_dir.exists():
+        load_cfg = ensure_object(internal_cfg, "load")
+        extra_dirs = normalize_string_list(load_cfg.get("extraDirs"))
+        hooks_dir_text = str(hooks_dir)
+        if hooks_dir_text not in extra_dirs:
+            extra_dirs.append(hooks_dir_text)
+        load_cfg["extraDirs"] = extra_dirs
+        bridge["hooks"]["extra_dirs"] = list(extra_dirs)
+
+    if skills_dir.exists():
+        skills_cfg = ensure_object(merged_cfg, "skills")
+        load_cfg = ensure_object(skills_cfg, "load")
+        load_cfg.setdefault("watch", True)
+        load_cfg.setdefault("watchDebounceMs", 1200)
+        extra_dirs = normalize_string_list(load_cfg.get("extraDirs"))
+        skills_dir_text = str(skills_dir)
+        if skills_dir_text not in extra_dirs:
+            extra_dirs.append(skills_dir_text)
+        load_cfg["extraDirs"] = extra_dirs
+        bridge["skills"]["extra_dirs"] = list(extra_dirs)
+
+    return bridge
+
+
+def sync_overlay_config(
+    *,
+    source_path: str,
+    target_path: str,
+    vendor_runtime_root: str,
+    boundary_doc_path: str,
+    workflow_repo_path: str,
+    dry_run: bool,
+) -> dict[str, Any]:
+    source = Path(source_path)
+    target = Path(target_path)
+    result: dict[str, Any] = {
+        "ok": False,
+        "step": OVERLAY_SYNC_STEP,
+        "dry_run": dry_run,
+        "merge_mode": "repo-overlay-wins",
+        "source_role": "workflow-overlay",
+        "source": str(source),
+        "target": str(target),
+        "vendor_runtime_root": str(vendor_runtime_root),
+        "boundary_doc": str(boundary_doc_path),
+        "workflow_repo_path": str(Path(workflow_repo_path).resolve()),
+        "target_exists": target.exists(),
+        "changed": False,
+        "backup": "",
+        "written": False,
+    }
+    if not source.exists():
+        result["error"] = f"overlay_config_missing:{source}"
+        return result
+    try:
+        source_cfg = load_json_object(source)
+    except Exception as exc:
+        result["error"] = f"overlay_config_invalid:{source}:{exc}"
+        return result
+
+    target_cfg: dict[str, Any] = {}
+    if target.exists():
+        try:
+            target_cfg = load_json_object(target)
+        except Exception as exc:
+            result["error"] = f"target_config_invalid:{target}:{exc}"
+            return result
+
+    merged_cfg = merge_overlay_object(target_cfg, source_cfg)
+    result["runtime_bridge"] = apply_runtime_bridge_config(merged_cfg, workflow_repo_path=workflow_repo_path)
+    changed = (not target.exists()) or (merged_cfg != target_cfg)
+    result["changed"] = changed
+    if (not changed) or dry_run:
+        result["ok"] = True
+        return result
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        backup_path = target.with_name(f"{target.name}.bak.overlay.{now_stamp_utc()}")
+        shutil.copy2(target, backup_path)
+        result["backup"] = str(backup_path)
+    write_json_object(target, merged_cfg)
+    result["written"] = True
+    result["ok"] = True
+    return result
 
 
 def detect_platform_name() -> str:
@@ -370,6 +577,8 @@ def main() -> None:
     parser.add_argument("--jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
     parser.add_argument("--openclaw-home", default=detected_openclaw_home)
     parser.add_argument("--workflow-repo-path", default=str((home / "openclaw-hardflow-backup-20260302").resolve()))
+    parser.add_argument("--overlay-config-source", default="")
+    parser.add_argument("--sync-overlay-config", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--workflow-repo-id", default="")
     parser.add_argument("--project-registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
     parser.add_argument("--task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
@@ -377,6 +586,10 @@ def main() -> None:
     parser.add_argument("--to", default="")
     parser.add_argument("--todo-every-ms", type=int, default=900000)
     parser.add_argument("--todo-output-mode", default="summary", choices=["summary", "verbose", "silent"])
+    parser.add_argument("--task-executor-every-ms", type=int, default=600000)
+    parser.add_argument("--task-executor-max-tasks", type=int, default=3)
+    parser.add_argument("--task-executor-model", default="auto")
+    parser.add_argument("--task-executor-local-agent", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--project-index-every-ms", type=int, default=1800000)
     parser.add_argument("--local-backup-every-ms", type=int, default=3600000)
     parser.add_argument(
@@ -418,10 +631,18 @@ def main() -> None:
     jobs_file = normalize_path(args.jobs_file)
     openclaw_home = normalize_path(args.openclaw_home)
     workflow_repo_path = normalize_path(args.workflow_repo_path)
+    overlay_config_source = normalize_path(args.overlay_config_source) if str(args.overlay_config_source).strip() else str(
+        (Path(workflow_repo_path) / "openclaw" / "openclaw.json").resolve()
+    )
     project_registry = normalize_path(args.project_registry)
     task_db = normalize_path(args.task_db)
     ops_home = str(Path(openclaw_home) / "ops")
     workflow_repo_id = str(args.workflow_repo_id).strip() or Path(workflow_repo_path).name
+    local_config_path = str((Path(openclaw_home) / "openclaw.json").resolve())
+    vendor_runtime_root = str((Path(workflow_repo_path) / "vendor" / "openclaw-official").resolve())
+    runtime_boundary_doc = str((Path(workflow_repo_path) / "integration" / "openclaw-bridge" / "runtime-boundary.md").resolve())
+    hooks_source_dir = str((Path(workflow_repo_path) / "hooks").resolve())
+    skills_source_dir = str((Path(workflow_repo_path) / "skills").resolve())
 
     install_todo_cmd = [
         args.python_bin,
@@ -436,6 +657,36 @@ def main() -> None:
         str(args.todo_output_mode),
     ]
     install_todo_cmd.extend(delivery_args(args.channel, args.to))
+
+    install_task_executor_cmd = [
+        args.python_bin,
+        str(here / "install_task_executor_job.py"),
+        "--jobs-file",
+        jobs_file,
+        "--executor-py",
+        str(Path(ops_home) / "policy/task_executor_runner.py"),
+        "--db",
+        task_db,
+        "--every-ms",
+        str(max(300000, int(args.task_executor_every_ms))),
+        "--max-tasks",
+        str(max(1, int(args.task_executor_max_tasks))),
+        "--actor",
+        "coordinator",
+        "--planner-id",
+        "coordinator",
+        "--openclaw-bin",
+        "openclaw",
+        "--report-dir",
+        str(Path(ops_home) / "task-center/executor-runs"),
+    ]
+    if str(args.task_executor_model).strip().lower() not in {"", "auto", "default"}:
+        install_task_executor_cmd.extend(["--model", str(args.task_executor_model).strip()])
+    install_task_executor_cmd.append(
+        "--local-agent" if bool(args.task_executor_local_agent) else "--no-local-agent"
+    )
+    install_task_executor_cmd.extend(delivery_args(args.channel, args.to))
+    install_task_executor_cmd.append("--emit-json")
 
     install_index_cmd = [
         args.python_bin,
@@ -456,6 +707,7 @@ def main() -> None:
         "project-agent",
     ]
     install_index_cmd.extend(delivery_args(args.channel, args.to))
+    install_index_cmd.append("--emit-json")
 
     cron_setup_cmd = build_cron_setup_cmd(
         python_bin=args.python_bin,
@@ -485,6 +737,7 @@ def main() -> None:
         channel=str(args.channel),
         target=str(args.to),
     )
+    cron_setup_cmd.append("--emit-json")
 
     install_local_backup_cmd = [
         args.python_bin,
@@ -531,6 +784,7 @@ def main() -> None:
         f"{args.python_bin} {Path(ops_home) / 'policy_enforcer.py'} next-todo --limit 5",
     ]
     install_reviewer_cmd.extend(delivery_args(args.channel, args.to))
+    install_reviewer_cmd.append("--emit-json")
 
     install_web_intel_cmd = [
         args.python_bin,
@@ -582,6 +836,7 @@ def main() -> None:
 
     steps.extend([
         ("install_todo_patrol_job (task#1)", install_todo_cmd),
+        ("install_task_executor_job (task#1.5)", install_task_executor_cmd),
         ("install_project_index_job (task#3)", install_index_cmd),
         (
             "cron_setup core bundle (task#2,#4,#5,#7,#9"
@@ -609,23 +864,71 @@ def main() -> None:
     print(f"claude_home={detected_claude_home}")
     print(f"workflow_repo_path={workflow_repo_path}")
     print(f"workflow_repo_id={workflow_repo_id}")
+    print(f"overlay_config_source={overlay_config_source}")
+    print(f"local_config_path={local_config_path}")
+    print(f"vendor_runtime_root={vendor_runtime_root}")
+    print(f"runtime_boundary_doc={runtime_boundary_doc}")
+    print(f"hooks_source_dir={hooks_source_dir}")
+    print(f"skills_source_dir={skills_source_dir}")
 
     results: list[dict[str, Any]] = []
     failed = False
-    for step_name, step_cmd in steps:
-        result = run_step(step_name, step_cmd, bool(args.dry_run))
-        results.append(result)
-        if not result.get("ok", False):
+
+    if bool(args.sync_overlay_config):
+        overlay_result = sync_overlay_config(
+            source_path=overlay_config_source,
+            target_path=local_config_path,
+            vendor_runtime_root=vendor_runtime_root,
+            boundary_doc_path=runtime_boundary_doc,
+            workflow_repo_path=workflow_repo_path,
+            dry_run=bool(args.dry_run),
+        )
+        print(f"\n== {OVERLAY_SYNC_STEP} ==")
+        print(json.dumps(overlay_result, ensure_ascii=False, indent=2))
+        results.append(overlay_result)
+        if not overlay_result.get("ok", False):
             failed = True
-            break
+    else:
+        skipped_result = {
+            "step": OVERLAY_SYNC_STEP,
+            "ok": True,
+            "dry_run": bool(args.dry_run),
+            "skipped": True,
+            "reason": "sync disabled by flag",
+            "source": overlay_config_source,
+            "target": local_config_path,
+            "vendor_runtime_root": vendor_runtime_root,
+            "boundary_doc": runtime_boundary_doc,
+            "workflow_repo_path": workflow_repo_path,
+        }
+        print(f"\n== {OVERLAY_SYNC_STEP} ==")
+        print(json.dumps(skipped_result, ensure_ascii=False, indent=2))
+        results.append(skipped_result)
+
+    if not failed:
+        for step_name, step_cmd in steps:
+            result = run_step(step_name, step_cmd, bool(args.dry_run))
+            results.append(result)
+            if not result.get("ok", False):
+                failed = True
+                break
 
     summary = {
         "profile": profile,
         "expected_tasks": expected_tasks,
         "dry_run": bool(args.dry_run),
         "ok": not failed,
-        "steps_total": len(steps),
+        "steps_total": len(steps) + 1,
         "steps_ran": len(results),
+        "runtime_boundary": {
+            "vendor_runtime_root": vendor_runtime_root,
+            "overlay_config_source": overlay_config_source,
+            "local_config_path": local_config_path,
+            "boundary_doc": runtime_boundary_doc,
+            "hooks_source_dir": hooks_source_dir,
+            "skills_source_dir": skills_source_dir,
+            "sync_overlay_config": bool(args.sync_overlay_config),
+        },
         "results": results,
     }
 
@@ -639,7 +942,7 @@ def main() -> None:
                     "profile": profile,
                     "ok": (not failed),
                     "steps_ran": len(results),
-                    "steps_total": len(steps),
+                    "steps_total": len(steps) + 1,
                     "dry_run": bool(args.dry_run),
                 },
                 ensure_ascii=False,

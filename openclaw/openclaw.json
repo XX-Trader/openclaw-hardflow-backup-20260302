@@ -1,7 +1,23 @@
 {
   "meta": {
-    "lastTouchedVersion": "2026.2.26",
-    "lastTouchedAt": "2026-03-02T08:32:23.512Z"
+    "lastTouchedVersion": "2026.3.2",
+    "lastTouchedAt": "2026-03-06T13:33:00Z"
+  },
+  "env": {
+    "vars": {
+      "HARDFLOW_OPENCLAW_OVERLAY_ROLE": "workflow-overlay",
+      "HARDFLOW_OPENCLAW_OFFICIAL_RUNTIME_ROOT": "vendor/openclaw-official",
+      "HARDFLOW_OPENCLAW_OVERLAY_CONFIG_SOURCE": "openclaw/openclaw.json",
+      "HARDFLOW_OPENCLAW_RUNTIME_BOUNDARY_DOC": "integration/openclaw-bridge/runtime-boundary.md",
+      "HARDFLOW_OPENCLAW_HOOKS_INSTALL_DOC": "integration/openclaw-bridge/hooks-install.md",
+      "HARDFLOW_OPENCLAW_GOVERNANCE_BRIDGE_DOC": "integration/openclaw-bridge/governance-bridge.md",
+      "HARDFLOW_OPENCLAW_PLUGIN_POLICY_DOC": "integration/openclaw-bridge/plugin-policy.md",
+      "HARDFLOW_OPENCLAW_ACCEPTANCE_CHECKLIST_DOC": "integration/openclaw-bridge/acceptance-checklist.md",
+      "HARDFLOW_OPENCLAW_CRON_SURFACE": "official-cron",
+      "HARDFLOW_OPENCLAW_HOOKS_SURFACE": "official-hooks",
+      "HARDFLOW_OPENCLAW_PLUGINS_SURFACE": "official-plugins",
+      "HARDFLOW_OPENCLAW_SKILLS_SURFACE": "official-skills"
+    }
   },
   "auth": {
     "profiles": {}
@@ -39,8 +55,8 @@
         "api": "openai-completions",
         "models": [
           {
-            "id": "gpt-5.3-codex",
-            "name": "GPT-5.3 Codex"
+            "id": "gpt-5.4",
+            "name": "GPT-5.4"
           },
           {
             "id": "gpt-5.3-codex-spark",
@@ -70,7 +86,7 @@
         "glmcode/glm-4.7": {
           "alias": "glm47"
         },
-        "openai-codex/gpt-5.3-codex": {
+        "openai-codex/gpt-5.4": {
           "alias": "codex"
         },
         "openai-codex/gpt-5.3-codex-spark": {
@@ -100,12 +116,6 @@
         "maxConcurrent": 8,
         "maxSpawnDepth": 2,
         "maxChildrenPerAgent": 5
-      },
-      "outputPolicy": {
-        "defaultLanguage": "zh-CN",
-        "defaultLanguageName": "中文（简体）",
-        "requireChineseByDefault": true,
-        "allowOverrideByUser": true
       }
     },
     "list": [
@@ -176,7 +186,7 @@
         "id": "reviewer",
         "name": "代码审核",
         "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
-        "model": "openai-codex/gpt-5.3-codex"
+        "model": "openai-codex/gpt-5.4"
       },
       {
         "id": "tester",
@@ -220,7 +230,7 @@
         "name": "optimization-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-        "model": "openai-codex/gpt-5.3-codex",
+        "model": "openai-codex/gpt-5.4",
         "subagents": {
           "allowAgents": [
             "project-agent"
@@ -303,12 +313,13 @@
         "hardflow-policy-enforcer": {
           "enabled": true
         }
-      },
-      "load": {
-        "extraDirs": [
-          "/home/ubuntu/.claude/hooks"
-        ]
       }
+    }
+  },
+  "skills": {
+    "load": {
+      "watch": true,
+      "watchDebounceMs": 1200
     }
   },
   "channels": {

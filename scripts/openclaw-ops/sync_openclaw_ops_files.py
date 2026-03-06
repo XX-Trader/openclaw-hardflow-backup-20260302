@@ -219,6 +219,9 @@ def sync_files(
         },
         "notes": {
             "keep_stale_files": keep_stale_files,
+            "managed_scope": "ops-only",
+            "hooks_runtime_sync": "not-managed-here",
+            "official_runtime_surfaces": ["cron", "hooks", "plugins", "skills"],
         },
     }
 
@@ -265,6 +268,7 @@ def main() -> int:
         print(f"source_dir={result['source_dir']}")
         print(f"target_ops_dir={result['target_ops_dir']}")
         print(f"manifest_file={result['manifest_file']}")
+        print("managed_scope=ops-only")
         print(json.dumps(result["counts"], ensure_ascii=False))
         if result.get("dry_run"):
             print("dry_run=true")

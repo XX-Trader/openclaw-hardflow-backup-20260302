@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "strategy": "submodule",
+  "vendor_dir": "vendor/openclaw-official",
+  "submodule_name": "openclaw-official",
+  "bridge_dir": "integration/openclaw-bridge",
+  "patch_dir": "patches/openclaw",
+  "upstream": {
+    "repo_url": "https://github.com/openclaw/openclaw.git",
+    "ref": "v2026.3.2"
+  },
+  "updated_at": "2026-03-06T05:25:38+00:00"
+}

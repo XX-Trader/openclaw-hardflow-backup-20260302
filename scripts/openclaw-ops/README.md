@@ -531,3 +531,34 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
   --task-id manual:openclaw-local-backup \
   --normal-log-mode silent
 ```
+
+## Upstream Runtime Boundary (2026-03-06)
+
+- `install_workflow_profile.py` 现在会把仓库 overlay 配置合并到 `~/.openclaw/openclaw.json`，并把仓库 `hooks/`、`skills/` 动态注入官方 loader。
+- `sync_openclaw_ops_files.py` 的职责明确为 `ops-only`，不再负责 hooks runtime 同步。
+- `cron_setup.py`、`install_project_index_job.py`、`install_reviewer_scan_jobs.py`、`install_task_executor_job.py` 会显式输出官方 `openclaw cron` 验证命令；业务定义仍保留在 `jobs.json`。
+- Python 治理逻辑继续留在 `scripts/openclaw-ops/policy/*`，通过官方 cron/hooks/webhook surface 触发。
+
+桥接文档：
+
+- `integration/openclaw-bridge/runtime-boundary.md`
+- `integration/openclaw-bridge/hooks-install.md`
+- `integration/openclaw-bridge/governance-bridge.md`
+- `integration/openclaw-bridge/plugin-policy.md`
+- `integration/openclaw-bridge/acceptance-checklist.md`
+
+推荐验证命令：
+
+```bash
+python scripts/openclaw-ops/install_workflow_profile.py --profile core --workflow-repo-path . --dry-run --emit-json
+openclaw hooks list --json
+openclaw hooks check --json
+openclaw plugins list
+openclaw config get channels.telegram
+```
+
+如果要验证官方 cron surface，请先运行：
+
+```bash
+openclaw gateway run
+```
