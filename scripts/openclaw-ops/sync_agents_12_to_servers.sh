@@ -79,14 +79,15 @@ def get_model_ref():
     return {"primary": "openai-codex/gpt-5.3-codex"}
 
 model_ref = get_model_ref()
+web_agent_model = {"primary": "glmcode/glm-4.7"}
 
-def desired_agent(agent_id: str, allow_agents=None):
+def desired_agent(agent_id: str, allow_agents=None, model=None):
     payload = {
         "id": agent_id,
         "name": agent_id,
         "workspace": str(home / ".openclaw" / f"workspace-{agent_id}"),
         "agentDir": str(home / ".openclaw" / "agents" / agent_id / "agent"),
-        "model": copy.deepcopy(model_ref),
+        "model": copy.deepcopy(model if model is not None else model_ref),
     }
     if allow_agents:
         payload["subagents"] = {"allowAgents": list(allow_agents)}
@@ -96,6 +97,7 @@ desired = [
     desired_agent("ops-agent", ["optimization-agent", "secretary-agent"]),
     desired_agent("optimization-agent", ["secretary-agent"]),
     desired_agent("secretary-agent"),
+    desired_agent("web-agent", model=web_agent_model),
 ]
 
 for entry in desired:
@@ -116,7 +118,7 @@ if isinstance(main_cfg, dict):
         allow = []
         subagents["allowAgents"] = allow
         changed = True
-    for aid in ("ops-agent", "optimization-agent", "secretary-agent"):
+    for aid in ("ops-agent", "optimization-agent", "secretary-agent", "web-agent"):
         if aid not in allow:
             allow.append(aid)
             changed = True
@@ -127,18 +129,25 @@ if isinstance(tools, dict):
     if isinstance(a2a, dict):
         allow = a2a.get("allow")
         if isinstance(allow, list):
-            for aid in ("ops-agent", "optimization-agent", "secretary-agent"):
+            for aid in ("ops-agent", "optimization-agent", "secretary-agent", "web-agent"):
                 if aid not in allow:
                     allow.append(aid)
                     changed = True
 
-for aid in ("ops-agent", "optimization-agent", "secretary-agent"):
+web_cfg = index.get("web-agent")
+if isinstance(web_cfg, dict):
+    model = web_cfg.get("model")
+    if model != "glmcode/glm-4.7" and model != web_agent_model:
+        web_cfg["model"] = copy.deepcopy(web_agent_model)
+        changed = True
+
+for aid in ("ops-agent", "optimization-agent", "secretary-agent", "web-agent"):
     (home / ".openclaw" / f"workspace-{aid}").mkdir(parents=True, exist_ok=True)
     (home / ".openclaw" / "agents" / aid / "agent").mkdir(parents=True, exist_ok=True)
     (home / ".openclaw" / "agents" / aid / "sessions").mkdir(parents=True, exist_ok=True)
 
 if changed and not dry_run:
-    backup = cfg.with_name(f"openclaw.json.bak.agents12.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    backup = cfg.with_name(f"openclaw.json.bak.agents13.{datetime.now().strftime('%Y%m%d_%H%M%S')}")
     backup.write_text(cfg.read_text(encoding="utf-8"), encoding="utf-8")
     cfg.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("UPDATED")

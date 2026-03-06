@@ -1,0 +1,71 @@
+{
+  "schema_version": "2026-03-06",
+  "description": "web-agent 通用采集源（API/HTTP优先，必要时浏览器兜底）",
+  "sources": [
+    {
+      "id": "openclaw-workflow-readme",
+      "url": "https://raw.githubusercontent.com/XX-Trader/openclaw-hardflow-backup-20260302/main/README.md",
+      "category": "project-doc",
+      "tags": [
+        "official",
+        "workflow",
+        "doc"
+      ],
+      "enabled": false,
+      "browser_fallback": false,
+      "min_interval_minutes": 60
+    },
+    {
+      "id": "openclaw-workflow-index",
+      "url": "https://raw.githubusercontent.com/XX-Trader/openclaw-hardflow-backup-20260302/main/scripts/openclaw-ops/CRON_TASK_INDEX.md",
+      "category": "project-doc",
+      "tags": [
+        "official",
+        "cron",
+        "doc"
+      ],
+      "enabled": false,
+      "browser_fallback": false,
+      "min_interval_minutes": 60
+    },
+    {
+      "id": "fastapi-release-notes",
+      "url": "https://fastapi.tiangolo.com/release-notes/",
+      "category": "official-doc",
+      "tags": [
+        "api",
+        "doc",
+        "release"
+      ],
+      "enabled": true,
+      "browser_fallback": true,
+      "min_interval_minutes": 180
+    },
+    {
+      "id": "playwright-python-docs",
+      "url": "https://playwright.dev/python/docs/intro",
+      "category": "official-doc",
+      "tags": [
+        "api",
+        "doc",
+        "automation"
+      ],
+      "enabled": true,
+      "browser_fallback": true,
+      "min_interval_minutes": 180
+    },
+    {
+      "id": "openai-responses-doc",
+      "url": "https://platform.openai.com/docs/api-reference/responses",
+      "category": "official-doc",
+      "tags": [
+        "api",
+        "doc",
+        "llm"
+      ],
+      "enabled": true,
+      "browser_fallback": true,
+      "min_interval_minutes": 240
+    }
+  ]
+}

@@ -8,9 +8,9 @@ ExecStart=/usr/bin/node /usr/lib/node_modules/openclaw/dist/index.js gateway --p
 Restart=always
 RestartSec=5
 KillMode=process
-Environment=HOME=/home/ubuntu
+Environment=HOME=%h
 Environment=TMPDIR=/tmp
-Environment=PATH=/home/ubuntu/.local/bin:/home/ubuntu/.npm-global/bin:/home/ubuntu/bin:/home/ubuntu/.volta/bin:/home/ubuntu/.asdf/shims:/home/ubuntu/.bun/bin:/home/ubuntu/.nvm/current/bin:/home/ubuntu/.fnm/current/bin:/home/ubuntu/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=%h/.local/bin:%h/.npm-global/bin:%h/bin:%h/.volta/bin:%h/.asdf/shims:%h/.bun/bin:%h/.nvm/current/bin:%h/.fnm/current/bin:%h/.local/share/pnpm:/usr/local/bin:/usr/bin:/bin
 Environment=OPENCLAW_GATEWAY_PORT=18789
 Environment=OPENCLAW_GATEWAY_TOKEN=3fe778da5b51a39780dc4d53add1a1ac
 Environment=OPENCLAW_SYSTEMD_UNIT=openclaw-gateway.service

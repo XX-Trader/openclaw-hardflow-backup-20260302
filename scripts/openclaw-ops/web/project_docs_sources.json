@@ -1,0 +1,58 @@
+{
+  "schema_version": "2026-03-06",
+  "description": "project-agent 专用官方文档源（用于代码改造建议）",
+  "sources": [
+    {
+      "id": "openclaw-workflow-readme",
+      "url": "https://raw.githubusercontent.com/XX-Trader/openclaw-hardflow-backup-20260302/main/README.md",
+      "category": "project-doc",
+      "tags": [
+        "official",
+        "workflow",
+        "doc"
+      ],
+      "enabled": false,
+      "browser_fallback": false,
+      "min_interval_minutes": 60
+    },
+    {
+      "id": "openclaw-cron-task-index",
+      "url": "https://raw.githubusercontent.com/XX-Trader/openclaw-hardflow-backup-20260302/main/scripts/openclaw-ops/CRON_TASK_INDEX.md",
+      "category": "project-doc",
+      "tags": [
+        "official",
+        "cron",
+        "doc"
+      ],
+      "enabled": false,
+      "browser_fallback": false,
+      "min_interval_minutes": 60
+    },
+    {
+      "id": "fastapi-docs-reference",
+      "url": "https://fastapi.tiangolo.com/reference/apirouter/",
+      "category": "api-doc",
+      "tags": [
+        "official",
+        "api",
+        "reference"
+      ],
+      "enabled": true,
+      "browser_fallback": true,
+      "min_interval_minutes": 180
+    },
+    {
+      "id": "playwright-page-api",
+      "url": "https://playwright.dev/python/docs/api/class-page",
+      "category": "api-doc",
+      "tags": [
+        "official",
+        "api",
+        "reference"
+      ],
+      "enabled": true,
+      "browser_fallback": true,
+      "min_interval_minutes": 180
+    }
+  ]
+}

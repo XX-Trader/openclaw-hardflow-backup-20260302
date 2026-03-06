@@ -6,7 +6,7 @@
 - workspace: /home/ubuntu/.openclaw/workspace
 - agentDir: None
 - model: kimicode/Doubao-Seed-2.0-Code
-- allowAgentsCount: 12
+- allowAgentsCount: 13
 
 ## coordinator
 - name: coordinator
@@ -14,7 +14,7 @@
 - workspace: /home/ubuntu/.openclaw/workspace-coordinator
 - agentDir: None
 - model: kimicode/Doubao-Seed-2.0-Code
-- allowAgentsCount: 12
+- allowAgentsCount: 13
 
 ## doc-writer
 - name: doc-writer
@@ -70,7 +70,7 @@
 - workspace: /home/ubuntu/.openclaw/workspace-agent-factory
 - agentDir: None
 - model: kimicode/Doubao-Seed-2.0-Code
-- allowAgentsCount: 2
+- allowAgentsCount: 3
 
 ## ops-agent
 - name: ops-agent
@@ -86,7 +86,7 @@
 - workspace: /home/ubuntu/.openclaw/workspace-optimization-agent
 - agentDir: /home/ubuntu/.openclaw/agents/optimization-agent/agent
 - model: openai-codex/gpt-5.3-codex
-- allowAgentsCount: 1
+- allowAgentsCount: 2
 
 ## project-agent
 - name: project-agent
@@ -94,4 +94,12 @@
 - workspace: /home/ubuntu/.openclaw/workspace-project-agent
 - agentDir: /home/ubuntu/.openclaw/agents/project-agent/agent
 - model: kimicode/Doubao-Seed-2.0-Code
+- allowAgentsCount: 1
+
+## web-agent
+- name: web-agent
+- default: False
+- workspace: /home/ubuntu/.openclaw/workspace-web-agent
+- agentDir: /home/ubuntu/.openclaw/agents/web-agent/agent
+- model: glmcode/glm-4.7
 - allowAgentsCount: 0

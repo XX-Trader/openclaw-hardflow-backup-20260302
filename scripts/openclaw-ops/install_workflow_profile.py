@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import shlex
 import subprocess
 import sys
@@ -60,6 +61,17 @@ def delivery_args(channel: str, target: str) -> list[str]:
 
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
+
+
+def detect_platform_name() -> str:
+    raw = platform.system().strip().lower()
+    if raw.startswith("linux"):
+        return "linux"
+    if raw.startswith("darwin"):
+        return "macos"
+    if raw.startswith("windows"):
+        return "windows"
+    return raw or "unknown"
 
 
 def build_cron_setup_cmd(
@@ -123,6 +135,9 @@ def build_cron_setup_cmd(
         "--full-log-mode",
         "silent",
         "--daily-log-mode",
+        "silent",
+        "--install-system-schedule-job",
+        "--system-log-mode",
         "silent",
         "--install-daily-work-job",
         "--daily-work-py",
@@ -345,13 +360,16 @@ def build_cron_setup_cmd(
 def main() -> None:
     here = Path(__file__).resolve().parent
     home = Path(os.path.expanduser("~")).resolve()
+    platform_name = detect_platform_name()
+    detected_openclaw_home = str((home / ".openclaw").resolve())
+    detected_claude_home = str(Path(os.environ.get("CLAUDE_HOME", str(home / ".claude"))).expanduser().resolve())
 
     parser = argparse.ArgumentParser(description="Install workflow cron jobs by profile")
     parser.add_argument("--profile", default="core", choices=sorted(PROFILES))
     parser.add_argument("--python-bin", default="python3")
     parser.add_argument("--jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
-    parser.add_argument("--openclaw-home", default=str(home / ".openclaw"))
-    parser.add_argument("--workflow-repo-path", default=str(home / "openclaw-hardflow-backup-20260302"))
+    parser.add_argument("--openclaw-home", default=detected_openclaw_home)
+    parser.add_argument("--workflow-repo-path", default=str((home / "openclaw-hardflow-backup-20260302").resolve()))
     parser.add_argument("--workflow-repo-id", default="")
     parser.add_argument("--project-registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
     parser.add_argument("--task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
@@ -388,6 +406,7 @@ def main() -> None:
     parser.add_argument("--install-web-intel-jobs", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--reviewer-daily-expr", default="0 4 * * *")
     parser.add_argument("--reviewer-weekly-expr", default="40 4 * * 1")
+    parser.add_argument("--normalize-openclaw-paths", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
@@ -543,7 +562,25 @@ def main() -> None:
     ]
     install_web_intel_cmd.extend(delivery_args(args.channel, args.to))
 
-    steps: list[tuple[str, list[str]]] = [
+    normalize_paths_cmd = [
+        args.python_bin,
+        str(here / "normalize_openclaw_home_paths.py"),
+        "--config",
+        str(Path(openclaw_home) / "openclaw.json"),
+        "--openclaw-home",
+        openclaw_home,
+        "--claude-home",
+        detected_claude_home,
+        "--allow-missing",
+    ]
+    if bool(args.dry_run):
+        normalize_paths_cmd.append("--dry-run")
+
+    steps: list[tuple[str, list[str]]] = []
+    if bool(args.normalize_openclaw_paths):
+        steps.append(("normalize_openclaw_home_paths (linux compatibility)", normalize_paths_cmd))
+
+    steps.extend([
         ("install_todo_patrol_job (task#1)", install_todo_cmd),
         ("install_project_index_job (task#3)", install_index_cmd),
         (
@@ -554,7 +591,7 @@ def main() -> None:
         ),
         ("install_local_openclaw_backup_job (task#3-local)", install_local_backup_cmd),
         ("install_reviewer_scan_jobs (task#8)", install_reviewer_cmd),
-    ]
+    ])
 
     install_web_intel = bool(args.install_web_intel_jobs) or (profile == "all")
     if install_web_intel:
@@ -564,9 +601,12 @@ def main() -> None:
     if install_web_intel and 10 not in expected_tasks:
         expected_tasks.append(10)
     print(f"profile={profile}")
+    print(f"platform={platform_name}")
+    print(f"home={home}")
     print("expected_tasks=" + ",".join(str(x) for x in expected_tasks))
     print(f"jobs_file={jobs_file}")
     print(f"openclaw_home={openclaw_home}")
+    print(f"claude_home={detected_claude_home}")
     print(f"workflow_repo_path={workflow_repo_path}")
     print(f"workflow_repo_id={workflow_repo_id}")
 

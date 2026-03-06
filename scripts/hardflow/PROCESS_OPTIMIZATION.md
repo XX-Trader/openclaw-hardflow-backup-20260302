@@ -47,12 +47,12 @@
 可在 `~/.openclaw/hardflow/hardflow.env` 配置额外主动检查命令：
 
 ```bash
-export HARDFLOW_PROCESS_CMD_TEST='bash /home/ubuntu/Project/scripts/test-all.sh'
-export HARDFLOW_PROCESS_CMD_REVIEW='bash /home/ubuntu/Project/scripts/hardflow/review.sh'
-export HARDFLOW_PROCESS_CMD_ACCEPTANCE='bash /home/ubuntu/Project/scripts/hardflow/check-review-test-gate.sh --stage predeploy'
-export HARDFLOW_PROCESS_CMD_POSTDEPLOY='bash /home/ubuntu/Project/scripts/hardflow/check-review-test-gate.sh --stage postdeploy'
-export HARDFLOW_PROCESS_CMD_OPS='bash /home/ubuntu/Project/scripts/ops/health-check.sh'
-export HARDFLOW_PROCESS_CMD_HYGIENE='git -C /home/ubuntu/Project diff --check'
+export HARDFLOW_PROCESS_CMD_TEST='bash $HOME/Project/scripts/test-all.sh'
+export HARDFLOW_PROCESS_CMD_REVIEW='bash $HOME/Project/scripts/hardflow/review.sh'
+export HARDFLOW_PROCESS_CMD_ACCEPTANCE='bash $HOME/Project/scripts/hardflow/check-review-test-gate.sh --stage predeploy'
+export HARDFLOW_PROCESS_CMD_POSTDEPLOY='bash $HOME/Project/scripts/hardflow/check-review-test-gate.sh --stage postdeploy'
+export HARDFLOW_PROCESS_CMD_OPS='bash $HOME/Project/scripts/ops/health-check.sh'
+export HARDFLOW_PROCESS_CMD_HYGIENE='git -C $HOME/Project diff --check'
 
 export HARDFLOW_PROCESS_MAX_BACKUP_FILES='8'
 export HARDFLOW_PROCESS_CMD_TIMEOUT_SEC='900'

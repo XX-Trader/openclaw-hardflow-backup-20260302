@@ -1,0 +1,35 @@
+﻿{
+    "token_monitor":  {
+                          "enabled":  false
+                      },
+    "logs":  [
+                 "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\tmp\\ops_cron_smoke\\app.log"
+             ],
+    "service_monitor":  {
+                            "enabled":  false
+                        },
+    "workflow_monitor":  {
+                             "enabled":  false
+                         },
+    "app_usage_monitor":  {
+                              "enabled":  false
+                          },
+    "errors_only_notify":  true,
+    "incident_handoff":  {
+                             "enabled":  false
+                         },
+    "notify_policy":  {
+                          "daily_chat_notify_on_no_change":  false,
+                          "chat_notify_on_no_change":  false,
+                          "daily_chat_notify_on_change":  false,
+                          "silent_notify_on_change":  false,
+                          "chat_notify_on_change":  false,
+                          "daily_silent_notify_on_change":  false
+                      },
+    "log_roots":  [
+                      "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\tmp\\ops_cron_smoke"
+                  ],
+    "log_patterns":  [
+                         "app.log"
+                     ]
+}
