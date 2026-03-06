@@ -199,6 +199,54 @@ def normalize_notify_on(value: str) -> str:
     return mode if mode in NOTIFY_ON_MODES else "error"
 
 
+def compact_text(value: Any, max_len: int = 220) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def humanize_executor_detail(detail: str) -> str:
+    text = compact_text(detail, 220)
+    lower = text.lower()
+    if lower in {"timeout", "timed out"}:
+        return "超时"
+    if lower == "waiting_human_confirm":
+        return "等待人工确认"
+    if lower == "needs_clarification":
+        return "任务信息不足，需要补充上下文"
+    return text or "未提供详细信息"
+
+
+def humanize_executor_reason(reason: str, status: str) -> tuple[str, str]:
+    raw = str(reason or "").strip()
+    normalized_status = str(status or "").strip().lower()
+    lower = raw.lower()
+    if lower.startswith("pre_stage_failed:model blocked by policy:"):
+        model = raw.split(":", 2)[-1].strip() or "-"
+        return "模型被策略拦截", f"执行前检查失败：模型 {model} 被策略禁止"
+    if lower.startswith("pre_stage_failed:"):
+        detail = raw.split(":", 1)[1].strip()
+        return "执行前检查失败", humanize_executor_detail(detail)
+    if lower.startswith("report_failed:"):
+        detail = raw.split(":", 1)[1].strip()
+        return "执行结果回写失败", humanize_executor_detail(detail)
+    if lower.startswith("call_agent_exception:"):
+        detail = raw.split(":", 1)[1].strip()
+        return "调用执行代理失败", humanize_executor_detail(detail)
+    if lower == "waiting_human_confirm":
+        return "等待人工确认", "任务要求人工确认，当前尚未确认"
+    if lower == "needs_clarification":
+        return "上下文不足", "任务上下文不足，需要补充说明后再执行"
+    if normalized_status == "partial":
+        return "任务仅部分完成", humanize_executor_detail(raw or "仅部分完成")
+    if normalized_status == "escalated":
+        return "任务已升级处理", humanize_executor_detail(raw or "已升级给更高优先级处理")
+    if normalized_status == "failed":
+        return "任务执行失败", humanize_executor_detail(raw)
+    return "任务状态异常", humanize_executor_detail(raw or normalized_status or "unknown")
+
+
 def result_is_error(item: dict[str, Any]) -> bool:
     status = str(item.get("status", "")).strip().lower()
     report_status = str(item.get("report_status", "")).strip().lower()
@@ -225,23 +273,29 @@ def build_chat_output(summary: dict[str, Any], report_path: Path, notify_on: str
     if mode == "activity" and (not error_items) and executed <= 0:
         return "NO_REPLY"
 
+    has_errors = bool(error_items)
     lines = [
-        "# task-executor",
-        f"- task: {str(summary.get('trigger_task', '')).strip() or '-'}",
-        f"- time: {str(summary.get('started_at', '')).strip() or '-'}",
-        f"- run_id: {str(summary.get('run_id', '')).strip() or '-'}",
-        f"- executor_model: {str(summary.get('executor_model', '')).strip() or '-'}",
-        f"- tasks_selected: {max(0, int(summary.get('tasks_selected', 0) or 0))}",
-        f"- tasks_executed: {executed}",
-        f"- tasks_skipped: {max(0, int(summary.get('tasks_skipped', 0) or 0))}",
-        f"- tasks_failed: {len(error_items)}",
-        f"- report_file: {report_path}",
+        "任务执行异常" if has_errors else "任务执行摘要",
+        f"- 触发任务: {str(summary.get('trigger_task', '')).strip() or '-'}",
+        f"- 时间: {str(summary.get('started_at', '')).strip() or '-'}",
+        f"- 运行 ID: {str(summary.get('run_id', '')).strip() or '-'}",
+        f"- 执行模型: {str(summary.get('executor_model', '')).strip() or '-'}",
+        f"- 选中任务: {max(0, int(summary.get('tasks_selected', 0) or 0))}",
+        f"- 已执行: {executed}",
+        f"- 已跳过: {max(0, int(summary.get('tasks_skipped', 0) or 0))}",
+        f"- 失败任务: {len(error_items)}",
+        f"- 报告文件: {report_path}",
     ]
     if error_items:
-        lines.append("- failures:")
+        lines.append("- 失败明细:")
         for item in error_items[:8]:
             task_id = str(item.get("task_id", "")).strip() or "-"
             assignee = str(item.get("assignee", "")).strip() or "-"
+            status = (
+                str(item.get("report_status", "")).strip()
+                or str(item.get("task_status_after", "")).strip()
+                or str(item.get("status", "")).strip()
+            )
             reason = (
                 str(item.get("reason", "")).strip()
                 or str(item.get("report_status", "")).strip()
@@ -249,7 +303,39 @@ def build_chat_output(summary: dict[str, Any], report_path: Path, notify_on: str
                 or str(item.get("status", "")).strip()
                 or "-"
             )
-            lines.append(f"  - {task_id} ({assignee}): {reason}")
+            issue, detail = humanize_executor_reason(reason, status)
+            lines.append(f"  - 任务: {task_id}")
+            lines.append(f"    执行人: {assignee}")
+            lines.append(f"    问题: {issue}")
+            lines.append(f"    详情: {detail}")
+    return "\n".join(lines)
+
+
+def cli_flag_enabled(flag: str) -> bool:
+    return str(flag or "").strip() in {str(part).strip() for part in sys.argv[1:]}
+
+
+def cli_flag_value(flag: str, default: str = "") -> str:
+    parts = sys.argv[1:]
+    for idx, part in enumerate(parts):
+        if part == flag and idx + 1 < len(parts):
+            return str(parts[idx + 1]).strip()
+        if part.startswith(flag + "="):
+            return str(part.split("=", 1)[1]).strip()
+    return default
+
+
+def build_fatal_output(exc: Exception) -> str:
+    task_name = cli_flag_value("--task", "cron:task-executor") or "cron:task-executor"
+    issue, detail = humanize_executor_reason(str(exc), "failed")
+    lines = [
+        "任务执行异常",
+        f"- 触发任务: {task_name}",
+        f"- 时间: {now_iso()}",
+        "- 问题: 执行器入口异常",
+        f"- 异常类型: {exc.__class__.__name__}",
+        f"- 详情: {issue}；{detail}",
+    ]
     return "\n".join(lines)
 
 
@@ -643,5 +729,24 @@ def main() -> int:
     return 0
 
 
+def run_cli() -> int:
+    try:
+        return main()
+    except Exception as exc:
+        output = build_fatal_output(exc)
+        payload = {
+            "ok": False,
+            "notify": True,
+            "output": output,
+            "error_type": exc.__class__.__name__,
+            "error": str(exc),
+        }
+        if cli_flag_enabled("--emit-json"):
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+        else:
+            print(output)
+        return 1
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_cli())

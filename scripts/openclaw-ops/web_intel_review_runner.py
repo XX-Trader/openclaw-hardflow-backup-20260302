@@ -153,6 +153,24 @@ def compact(text: str, max_len: int = 180) -> str:
     return one_line[: max_len - 3].rstrip() + "..."
 
 
+def humanize_review_error(error_text: str) -> tuple[str, str]:
+    text = compact(error_text, 220)
+    lower = text.lower()
+    if lower.startswith("parsed_dir_missing:"):
+        detail = text.split(":", 1)[1].strip()
+        return "解析结果目录缺失", detail or "未找到 parsed 目录"
+    if lower.startswith("save_json_failed:"):
+        detail = text.split(":", 1)[1].strip()
+        return "写入 JSON 失败", compact(detail or "报告写入失败", 180)
+    if lower.startswith("save_text_failed:"):
+        detail = text.split(":", 1)[1].strip()
+        return "写入文本失败", compact(detail or "摘要写入失败", 180)
+    if lower.startswith("mode_invalid:"):
+        detail = text.split(":", 1)[1].strip()
+        return "复核模式无效", detail or "mode 参数不在允许范围内"
+    return "复核失败", text or "未提供详细信息"
+
+
 def state_default() -> dict[str, Any]:
     return {
         "schema_version": "2026-03-06",
@@ -266,22 +284,54 @@ def build_output(
     sample_items: list[dict[str, Any]],
 ) -> str:
     lines = [
-        f"web-intel-review ({mode})",
-        f"- sender_identity: {sender_identity}",
-        f"- task: {task_id}",
-        f"- time: {started_at}",
-        f"- scanned_files: {scanned}",
-        f"- reviewed_files: {reviewed}",
-        f"- changed_files: {changed}",
-        f"- evidence: {report_file}",
+        "网页情报复核",
+        f"- 模式: {mode}",
+        f"- 任务: {task_id}",
+        f"- 时间: {started_at}",
+        f"- 汇总: 扫描文件={scanned}，复核文件={reviewed}，发生变更={changed}",
+        f"- 报告文件: {report_file}",
     ]
     if sample_items:
-        lines.append("- highlights:")
+        lines.append("- 复核重点:")
         for item in sample_items[:8]:
             sid = str(item.get("id", ""))
             title = compact(str(item.get("title", "")).strip() or sid, 80)
             lines.append(f"  - {sid}: {title}")
     return "\n".join(lines)
+
+
+def build_failure_output(
+    *,
+    mode: str,
+    sender_identity: str,
+    task_id: str,
+    started_at: str,
+    error_text: str,
+) -> str:
+    issue, detail = humanize_review_error(error_text)
+    lines = [
+        "网页情报复核异常",
+        f"- 模式: {mode}",
+        f"- 任务: {task_id}",
+        f"- 时间: {started_at}",
+        "- 问题: 复核器入口异常",
+        f"- 详情: {issue}：{detail}",
+    ]
+    return "\n".join(lines)
+
+
+def cli_flag_enabled(flag: str) -> bool:
+    return str(flag or "").strip() in {str(part).strip() for part in sys.argv[1:]}
+
+
+def cli_flag_value(flag: str, default: str = "") -> str:
+    parts = sys.argv[1:]
+    for idx, part in enumerate(parts):
+        if part == flag and idx + 1 < len(parts):
+            return str(parts[idx + 1]).strip()
+        if part.startswith(flag + "="):
+            return str(part.split("=", 1)[1]).strip()
+    return default
 
 
 def main() -> None:
@@ -476,5 +526,37 @@ def main() -> None:
         print(output_text)
 
 
+def run_cli() -> int:
+    try:
+        main()
+        return 0
+    except Exception as exc:
+        mode = cli_flag_value("--mode", "optimization") or "optimization"
+        task_id = cli_flag_value(
+            "--task-id",
+            "cron:web-intel-review-project-doc" if mode == "project-doc" else "cron:web-intel-review-optimization",
+        )
+        sender_identity = normalize_sender_identity(cli_flag_value("--sender-identity", ""), mode)
+        output = build_failure_output(
+            mode=mode,
+            sender_identity=sender_identity,
+            task_id=task_id,
+            started_at=now_iso(),
+            error_text=str(exc),
+        )
+        payload = {
+            "ok": False,
+            "notify": True,
+            "output": output,
+            "error_type": exc.__class__.__name__,
+            "error": str(exc),
+        }
+        if cli_flag_enabled("--emit-json"):
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(output)
+        return 1
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_cli())

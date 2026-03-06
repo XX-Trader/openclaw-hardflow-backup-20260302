@@ -137,6 +137,26 @@ def compact(text: str, max_len: int = 180) -> str:
     return one_line[: max_len - 3].rstrip() + "..."
 
 
+def humanize_collect_error(error_text: str, status_code: int) -> tuple[str, str]:
+    text = compact(error_text, 220)
+    lower = text.lower()
+    if lower.startswith("http_error:"):
+        code = int(status_code or 0) or int((text.split(":", 1)[1] or "0").strip() or 0)
+        return "HTTP 请求失败", f"目标站点返回状态码 {code}"
+    if lower.startswith("http_request_failed:"):
+        detail = text.split(":", 1)[1].strip()
+        return "HTTP 请求异常", compact(detail or "网络请求失败", 180)
+    if lower.startswith("playwright_unavailable:"):
+        detail = text.split(":", 1)[1].strip()
+        return "浏览器回退不可用", compact(detail or "Playwright 不可用", 180)
+    if lower.startswith("browser_request_failed:"):
+        detail = text.split(":", 1)[1].strip()
+        return "浏览器回退失败", compact(detail or "浏览器获取页面失败", 180)
+    if "just a moment" in lower or "captcha" in lower or "security check" in lower:
+        return "目标站点触发反爬校验", "站点返回了反爬/人机验证页面"
+    return "采集失败", text or "未提供详细信息"
+
+
 def parse_charset(content_type: str) -> str:
     raw = str(content_type or "").lower()
     marker = "charset="
@@ -346,29 +366,55 @@ def build_output(
     changed_ids: list[str],
     failed_items: list[dict[str, Any]],
 ) -> str:
+    has_failures = bool(failed_items)
     lines = [
-        "web-intel-collect",
-        f"- sender_identity: {sender_identity}",
-        f"- task: {task_id}",
-        f"- time: {started_at}",
-        f"- sources_total: {total}",
-        f"- scanned: {scanned}",
-        f"- changed_count: {changed}",
-        f"- skipped_count: {skipped}",
-        f"- failed_count: {failed}",
-        f"- evidence: {report_file}",
+        "网页情报采集异常" if has_failures else "网页情报采集",
+        f"- 任务: {task_id}",
+        f"- 时间: {started_at}",
+        f"- 汇总: 来源总数={total}，扫描={scanned}，变更={changed}，跳过={skipped}，失败={failed}",
+        f"- 报告文件: {report_file}",
     ]
     if changed_ids:
-        lines.append("- changed_sources:")
+        lines.append("- 发生变更:")
         for sid in changed_ids[:12]:
             lines.append(f"  - {sid}")
     if failed_items:
-        lines.append("- failed_sources:")
+        lines.append("- 异常明细:")
         for item in failed_items[:8]:
-            lines.append(
-                f"  - {item.get('id')}: {compact(str(item.get('error', '') or item.get('status', 'failed')), 140)}"
+            issue, detail = humanize_collect_error(
+                str(item.get("error", "") or item.get("status", "failed")),
+                int(item.get("status_code", 0) or 0),
             )
+            lines.append(f"  - 来源: {item.get('id')}")
+            lines.append(f"    问题: {issue}")
+            lines.append(f"    详情: {detail}")
     return "\n".join(lines)
+
+
+def build_failure_output(task_id: str, started_at: str, error_text: str) -> str:
+    issue, detail = humanize_collect_error(error_text, 0)
+    lines = [
+        "网页情报采集异常",
+        f"- 任务: {task_id}",
+        f"- 时间: {started_at}",
+        "- 问题: 采集器入口异常",
+        f"- 详情: {issue}：{detail}",
+    ]
+    return "\n".join(lines)
+
+
+def cli_flag_enabled(flag: str) -> bool:
+    return str(flag or "").strip() in {str(part).strip() for part in sys.argv[1:]}
+
+
+def cli_flag_value(flag: str, default: str = "") -> str:
+    parts = sys.argv[1:]
+    for idx, part in enumerate(parts):
+        if part == flag and idx + 1 < len(parts):
+            return str(parts[idx + 1]).strip()
+        if part.startswith(flag + "="):
+            return str(part.split("=", 1)[1]).strip()
+    return default
 
 
 def main() -> None:
@@ -632,5 +678,26 @@ def main() -> None:
         print(output_text)
 
 
+def run_cli() -> int:
+    try:
+        main()
+        return 0
+    except Exception as exc:
+        task_id = cli_flag_value("--task-id", "cron:web-intel-collect") or "cron:web-intel-collect"
+        output = build_failure_output(task_id, now_iso(), str(exc))
+        payload = {
+            "ok": False,
+            "notify": True,
+            "output": output,
+            "error_type": exc.__class__.__name__,
+            "error": str(exc),
+        }
+        if cli_flag_enabled("--emit-json"):
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(output)
+        return 1
+
+
 if __name__ == "__main__":
-    main()
+    raise SystemExit(run_cli())

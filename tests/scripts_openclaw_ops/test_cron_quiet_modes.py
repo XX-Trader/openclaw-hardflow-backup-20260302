@@ -66,9 +66,45 @@ class CronQuietModeTests(unittest.TestCase):
             ],
         }
         output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
-        self.assertIn("task-executor", output)
+        self.assertIn("任务执行异常", output)
         self.assertIn("todo-1", output)
         self.assertIn("report.json", output)
+
+    def test_task_executor_failure_output_is_human_friendly_chinese(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+        summary = {
+            "trigger_task": "cron:task-executor",
+            "run_id": "exec-2",
+            "started_at": "2026-03-06T10:00:00+00:00",
+            "executor_model": "kimicode/Doubao-Seed-2.0-Code",
+            "tasks_selected": 2,
+            "tasks_executed": 0,
+            "tasks_skipped": 0,
+            "tasks_failed": 2,
+            "results": [
+                {
+                    "task_id": "todo-1",
+                    "assignee": "backend-dev",
+                    "status": "failed",
+                    "reason": "pre_stage_failed:model blocked by policy: volcengine/kimi-k2.5",
+                },
+                {
+                    "task_id": "todo-2",
+                    "assignee": "backend-dev",
+                    "status": "failed",
+                    "reason": "report_failed:timeout",
+                },
+            ],
+        }
+        output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
+        self.assertIn("任务执行异常", output)
+        self.assertIn("模型被策略拦截", output)
+        self.assertIn("volcengine/kimi-k2.5", output)
+        self.assertIn("执行结果回写失败", output)
+        self.assertNotIn("# task-executor", output)
 
     def test_web_collect_error_only_mode_stays_quiet_on_changes(self):
         module = load_module(
@@ -78,6 +114,36 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertTrue(module.should_quiet("silent", "error", failed_count=0, changed_count=3))
         self.assertFalse(module.should_quiet("silent", "error", failed_count=1, changed_count=0))
 
+    def test_web_collect_failure_output_is_human_friendly_chinese(self):
+        module = load_module(
+            "web_intel_collect_runner",
+            "scripts/openclaw-ops/web_intel_collect_runner.py",
+        )
+        output = module.build_output(
+            sender_identity="web-agent/web-intel-collect",
+            task_id="cron:web-intel-collect",
+            started_at="2026-03-06T10:00:00+00:00",
+            total=5,
+            scanned=3,
+            changed=0,
+            skipped=2,
+            failed=1,
+            report_file=Path("/tmp/web_collect.json"),
+            changed_ids=[],
+            failed_items=[
+                {
+                    "id": "openai-responses-doc",
+                    "status": "failed",
+                    "error": "http_error:429",
+                    "status_code": 429,
+                }
+            ],
+        )
+        self.assertIn("网页情报采集异常", output)
+        self.assertIn("openai-responses-doc", output)
+        self.assertIn("429", output)
+        self.assertEqual(output.splitlines()[0], "网页情报采集异常")
+
     def test_web_review_error_only_mode_stays_quiet_on_changes(self):
         module = load_module(
             "web_intel_review_runner",
@@ -85,6 +151,23 @@ class CronQuietModeTests(unittest.TestCase):
         )
         self.assertTrue(module.should_quiet("silent", "error", changed_count=2))
         self.assertFalse(module.should_quiet("chat", "error", changed_count=2))
+
+    def test_web_review_failure_output_is_human_friendly_chinese(self):
+        module = load_module(
+            "web_intel_review_runner",
+            "scripts/openclaw-ops/web_intel_review_runner.py",
+        )
+        output = module.build_failure_output(
+            mode="optimization",
+            sender_identity="optimization-agent/web-intel-review",
+            task_id="cron:web-intel-review-optimization",
+            started_at="2026-03-06T10:00:00+00:00",
+            error_text="parsed_dir_missing:/home/ubuntu/.openclaw/web/parsed",
+        )
+        self.assertIn("网页情报复核异常", output)
+        self.assertIn("optimization", output)
+        self.assertIn("解析结果目录缺失", output)
+        self.assertEqual(output.splitlines()[0], "网页情报复核异常")
 
     def test_project_index_command_omits_git_pull_by_default(self):
         module = load_module(
