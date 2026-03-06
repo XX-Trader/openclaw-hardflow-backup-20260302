@@ -28,6 +28,7 @@ from io_write_gateway import write_json_atomic
 COLLECT_JOB_ID = "fa03a968-2ce6-4cf9-a8ab-6c32f7c8a0a1"
 OPT_REVIEW_JOB_ID = "fa03a968-2ce6-4cf9-a8ab-6c32f7c8a0a2"
 PROJECT_REVIEW_JOB_ID = "fa03a968-2ce6-4cf9-a8ab-6c32f7c8a0a3"
+NOTIFY_ON_MODES = {"error", "change", "always"}
 
 
 def now_ms() -> int:
@@ -147,6 +148,8 @@ def main() -> None:
     parser.add_argument("--project-review-every-ms", type=int, default=21600000)
     parser.add_argument("--collect-min-interval-minutes", type=int, default=60)
     parser.add_argument("--review-min-interval-minutes", type=int, default=180)
+    parser.add_argument("--collect-notify-on", default="change", choices=sorted(NOTIFY_ON_MODES))
+    parser.add_argument("--review-notify-on", default="change", choices=sorted(NOTIFY_ON_MODES))
     parser.add_argument("--skip-path-check", action="store_true")
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
@@ -200,6 +203,7 @@ def main() -> None:
         f"--state-file {openclaw_home_sh}/ops/web-intel/state.json "
         f"--report-dir {openclaw_home_sh}/ops/web-intel/reports "
         f"--min-interval-minutes {max(1, int(args.collect_min_interval_minutes))} "
+        f"--notify-on {str(args.collect_notify_on).strip()} "
         "--normal-log-mode silent"
     )
     opt_review_cmd = (
@@ -211,6 +215,7 @@ def main() -> None:
         f"--state-file {openclaw_home_sh}/ops/web-intel/review-state.json "
         f"--report-dir {openclaw_home_sh}/ops/web-intel/review-reports "
         f"--min-interval-minutes {max(1, int(args.review_min_interval_minutes))} "
+        f"--notify-on {str(args.review_notify_on).strip()} "
         "--normal-log-mode silent"
     )
     project_review_cmd = (
@@ -222,6 +227,7 @@ def main() -> None:
         f"--state-file {openclaw_home_sh}/ops/web-intel/review-state.json "
         f"--report-dir {openclaw_home_sh}/ops/web-intel/review-reports "
         f"--min-interval-minutes {max(1, int(args.review_min_interval_minutes))} "
+        f"--notify-on {str(args.review_notify_on).strip()} "
         "--normal-log-mode silent"
     )
 
@@ -312,6 +318,8 @@ def main() -> None:
         "collector_every_ms": max(600000, int(args.collect_every_ms)),
         "opt_review_every_ms": max(600000, int(args.opt_review_every_ms)),
         "project_review_every_ms": max(600000, int(args.project_review_every_ms)),
+        "collect_notify_on": str(args.collect_notify_on),
+        "review_notify_on": str(args.review_notify_on),
         "collector_sources_file": str(collect_sources_file),
         "project_doc_sources_file": str(project_doc_sources_file),
     }

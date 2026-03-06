@@ -68,6 +68,24 @@ def build_official_cron_surface(job_ids: list[str]) -> dict[str, Any]:
     }
 
 
+def build_runner_command(
+    maintainer_py: str,
+    registry: str,
+    task_db: str,
+    task_id: str,
+    actor: str,
+    git_pull: bool,
+) -> str:
+    command = (
+        f"python3 {maintainer_py} --registry {registry} "
+        f"--task-db {task_db} --task-id {task_id} --actor {actor} "
+        "--doc-timeout 8 --doc-fetch-max-chars 24000"
+    )
+    if bool(git_pull):
+        command += " --git-pull"
+    return command
+
+
 def upsert_job(
     jobs: list[dict[str, Any]],
     job_id: str,
@@ -77,6 +95,7 @@ def upsert_job(
     task_db: str,
     task_id: str,
     actor: str,
+    git_pull: bool,
     channel: str,
     target: str,
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -112,9 +131,7 @@ def upsert_job(
             "kind": "agentTurn",
             "message": (
                 "You are project-index maintainer. Run command only:\n"
-                f"python3 {maintainer_py} --registry {registry} "
-                f"--task-db {task_db} --task-id {task_id} --actor {actor} "
-                "--git-pull --doc-timeout 8 --doc-fetch-max-chars 24000\n"
+                f"{build_runner_command(maintainer_py, registry, task_db, task_id, actor, git_pull)}\n"
                 "Return EXACTLY raw stdout/stderr text from the command; "
                 "do not add explanation, greeting, or prefix text. "
                 "If output is NO_REPLY, reply NO_REPLY."
@@ -154,6 +171,7 @@ def main() -> None:
     parser.add_argument("--task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument("--task-id", default="cron:project-index-maintainer-30m")
     parser.add_argument("--actor", default="project-agent")
+    parser.add_argument("--git-pull", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--skip-path-check", action="store_true")
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
@@ -202,6 +220,7 @@ def main() -> None:
         task_db=str(task_db_path),
         task_id=task_id,
         actor=actor,
+        git_pull=bool(args.git_pull),
         channel=channel,
         target=target,
     )
@@ -227,6 +246,7 @@ def main() -> None:
         "task_db_exists": task_db_path.exists(),
         "task_id": task_id,
         "actor": actor,
+        "git_pull": bool(args.git_pull),
         "delivery": {"channel": channel, "to": target},
         "official_cron_surface": build_official_cron_surface([str(args.job_id)]),
     }
@@ -249,6 +269,7 @@ def main() -> None:
         print("warn=task_db_missing_now; job installed anyway; runtime will self-handle binding")
     print(f"task_id={task_id}")
     print(f"actor={actor}")
+    print(f"git_pull={str(bool(args.git_pull)).lower()}")
     print(f"delivery={channel}:{target}")
     print("cron_surface=official-cron")
     print(f"cron_status_cmd={result['official_cron_surface']['status_cmd']}")

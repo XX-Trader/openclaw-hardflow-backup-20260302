@@ -21,6 +21,7 @@ from io_write_gateway import write_json_atomic
 
 
 AUTO_MODEL_SENTINELS = {"", "auto", "default"}
+NOTIFY_ON_MODES = {"error", "activity", "always"}
 
 
 def now_ms() -> int:
@@ -81,6 +82,7 @@ def build_message(
     openclaw_bin: str,
     report_dir: str,
     local_agent: bool,
+    notify_on: str,
 ) -> str:
     command = (
         f'python3 "{executor_py}" '
@@ -91,7 +93,7 @@ def build_message(
         f'--planner-id {planner_id} '
         f'--openclaw-bin {openclaw_bin} '
         f'--report-dir "{report_dir}" '
-        "--emit-json"
+        f"--notify-on {notify_on}"
     )
     normalized_model = str(model or "").strip()
     if normalized_model:
@@ -124,6 +126,7 @@ def upsert_job(
     openclaw_bin: str,
     report_dir: str,
     local_agent: bool,
+    notify_on: str,
     channel: str,
     target: str,
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -164,6 +167,7 @@ def upsert_job(
                 openclaw_bin=openclaw_bin,
                 report_dir=report_dir,
                 local_agent=local_agent,
+                notify_on=notify_on,
             ),
             "timeoutSeconds": 1800,
         },
@@ -206,6 +210,7 @@ def main() -> None:
     parser.add_argument("--report-dir", default=str(default_report_dir))
     parser.add_argument("--local-agent", dest="local_agent", action="store_true", default=True)
     parser.add_argument("--no-local-agent", dest="local_agent", action="store_false")
+    parser.add_argument("--notify-on", default="error", choices=sorted(NOTIFY_ON_MODES))
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
     parser.add_argument("--emit-json", action="store_true")
@@ -251,6 +256,7 @@ def main() -> None:
         openclaw_bin=str(args.openclaw_bin),
         report_dir=report_dir,
         local_agent=bool(args.local_agent),
+        notify_on=str(args.notify_on),
         channel=channel,
         target=target,
     )
@@ -280,6 +286,7 @@ def main() -> None:
         "openclaw_bin": str(args.openclaw_bin),
         "report_dir": report_dir,
         "local_agent": bool(args.local_agent),
+        "notify_on": str(args.notify_on),
         "delivery": {"channel": channel, "to": target},
         "official_cron_surface": build_official_cron_surface([str(args.job_id)]),
     }
@@ -303,6 +310,7 @@ def main() -> None:
     print(f"openclaw_bin={args.openclaw_bin}")
     print(f"report_dir={report_dir}")
     print(f"local_agent={str(bool(args.local_agent)).lower()}")
+    print(f"notify_on={args.notify_on}")
     print(f"delivery={channel}:{target}")
     print("cron_surface=official-cron")
     print(f"cron_status_cmd={result['official_cron_surface']['status_cmd']}")

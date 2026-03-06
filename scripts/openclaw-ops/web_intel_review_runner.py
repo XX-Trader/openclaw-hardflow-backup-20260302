@@ -21,6 +21,7 @@ from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomi
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
+NOTIFY_ON_MODES = {"error", "change", "always"}
 MODES = {"optimization", "project-doc"}
 DEFAULT_SENDER_BY_MODE = {
     "optimization": "optimization-agent/web-intel-review",
@@ -65,6 +66,17 @@ SIGNAL_RULES = [
         "project_action": "更新请求/响应模型与契约测试用例。",
     },
 ]
+
+
+def should_quiet(log_mode: str, notify_on: str, changed_count: int) -> bool:
+    if str(log_mode or "").strip().lower() != "silent":
+        return False
+    mode = str(notify_on or "change").strip().lower()
+    if mode == "always":
+        return False
+    if mode == "error":
+        return True
+    return int(changed_count) <= 0
 
 
 def now() -> datetime:
@@ -285,6 +297,7 @@ def main() -> None:
     parser.add_argument("--task-id", default="")
     parser.add_argument("--sender-identity", default="")
     parser.add_argument("--normal-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--notify-on", default="change", choices=sorted(NOTIFY_ON_MODES))
     parser.add_argument("--min-interval-minutes", type=int, default=180)
     parser.add_argument("--max-items", type=int, default=120)
     parser.add_argument("--force", action="store_true")
@@ -447,7 +460,7 @@ def main() -> None:
         report_file=report_file,
         sample_items=review_items,
     )
-    quiet_no_reply = log_mode == "silent" and len(changed_entries) == 0
+    quiet_no_reply = should_quiet(log_mode, str(args.notify_on), changed_count=len(changed_entries))
     output_text = "NO_REPLY" if quiet_no_reply else output
     response_payload = {
         "ok": True,

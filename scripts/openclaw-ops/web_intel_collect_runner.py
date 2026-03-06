@@ -32,6 +32,7 @@ from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomi
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
+NOTIFY_ON_MODES = {"error", "change", "always"}
 DEFAULT_SENDER_IDENTITY = "web-agent/web-intel-collect"
 ANTI_BOT_KEYWORDS = (
     "captcha",
@@ -51,6 +52,17 @@ def now() -> datetime:
 
 def now_iso() -> str:
     return now().replace(microsecond=0).isoformat()
+
+
+def should_quiet(log_mode: str, notify_on: str, failed_count: int, changed_count: int) -> bool:
+    if str(log_mode or "").strip().lower() != "silent":
+        return False
+    mode = str(notify_on or "change").strip().lower()
+    if mode == "always":
+        return False
+    if mode == "error":
+        return int(failed_count) <= 0
+    return int(failed_count) <= 0 and int(changed_count) <= 0
 
 
 def parse_iso(value: str) -> datetime | None:
@@ -378,6 +390,7 @@ def main() -> None:
     parser.add_argument("--max-bytes", type=int, default=240000)
     parser.add_argument("--allow-browser-fallback", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--normal-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--notify-on", default="change", choices=sorted(NOTIFY_ON_MODES))
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
@@ -597,7 +610,12 @@ def main() -> None:
     )
     save_text(latest_summary_file, final_output + "\n")
 
-    quiet_no_reply = log_mode == "silent" and (not failed_items) and (not changed_ids)
+    quiet_no_reply = should_quiet(
+        log_mode,
+        str(args.notify_on),
+        failed_count=len(failed_items),
+        changed_count=len(changed_ids),
+    )
     output_text = "NO_REPLY" if quiet_no_reply else final_output
     response_payload = {
         "ok": True,

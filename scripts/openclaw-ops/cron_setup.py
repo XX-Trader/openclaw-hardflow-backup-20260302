@@ -648,7 +648,7 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
                 f"--registry {ops_dir / 'task-center' / 'project-registry.json'} "
                 f"--task-db {ops_dir / 'task-center' / 'task_center.db'} "
                 "--task-id cron:project-index-maintainer-30m --actor project-agent "
-                "--git-pull --doc-timeout 8 --doc-fetch-max-chars 24000"
+                "--doc-timeout 8 --doc-fetch-max-chars 24000"
             ),
             "timeout": 1800,
         },

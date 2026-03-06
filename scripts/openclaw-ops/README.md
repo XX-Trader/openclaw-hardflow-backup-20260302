@@ -545,6 +545,14 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 - `integration/openclaw-bridge/hooks-install.md`
 - `integration/openclaw-bridge/governance-bridge.md`
 - `integration/openclaw-bridge/plugin-policy.md`
+
+## Cron Quiet Defaults (2026-03-06)
+
+- `install_task_executor_job.py` 现在默认写入 `--notify-on error`，不再让 `task_executor_runner.py` 的常规 JSON 结果直接刷到群里。
+- `task_executor_runner.py` 保留 `--emit-json` 机器输出模式；非 `--emit-json` 模式新增 `--notify-on {error,activity,always}`，静默成功时输出 `NO_REPLY`。
+- `install_project_index_job.py` 安装的 cron 任务默认不再追加 `--git-pull`。仓库拉取由 `ops_auto_update_install_hourly` 统一负责；如需人工排障，可显式传 `--git-pull`。
+- `web_intel_collect_runner.py` 与 `web_intel_review_runner.py` 新增 `--notify-on`，可选 `error/change/always`。
+- `install_web_intel_jobs.py` 新增 `--collect-notify-on` 与 `--review-notify-on`，在只想保留异常告警时传 `error`。
 - `integration/openclaw-bridge/acceptance-checklist.md`
 
 推荐验证命令：

@@ -68,6 +68,139 @@ def delivery_args(channel: str, target: str) -> list[str]:
     return out
 
 
+def build_install_task_executor_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    ops_home: str,
+    task_db: str,
+    every_ms: int,
+    max_tasks: int,
+    model: str,
+    local_agent: bool,
+    channel: str,
+    target: str,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "install_task_executor_job.py"),
+        "--jobs-file",
+        jobs_file,
+        "--executor-py",
+        str(Path(ops_home) / "policy/task_executor_runner.py"),
+        "--db",
+        task_db,
+        "--every-ms",
+        str(max(300000, int(every_ms))),
+        "--max-tasks",
+        str(max(1, int(max_tasks))),
+        "--actor",
+        "coordinator",
+        "--planner-id",
+        "coordinator",
+        "--openclaw-bin",
+        "openclaw",
+        "--report-dir",
+        str(Path(ops_home) / "task-center/executor-runs"),
+        "--notify-on",
+        "error",
+    ]
+    if str(model).strip().lower() not in {"", "auto", "default"}:
+        cmd.extend(["--model", str(model).strip()])
+    cmd.append("--local-agent" if bool(local_agent) else "--no-local-agent")
+    cmd.extend(delivery_args(channel, target))
+    cmd.append("--emit-json")
+    return cmd
+
+
+def build_install_project_index_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    ops_home: str,
+    project_registry: str,
+    task_db: str,
+    every_ms: int,
+    channel: str,
+    target: str,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "install_project_index_job.py"),
+        "--jobs-file",
+        jobs_file,
+        "--every-ms",
+        str(max(600000, int(every_ms))),
+        "--maintainer-py",
+        str(Path(ops_home) / "policy/project_index_maintainer.py"),
+        "--registry",
+        project_registry,
+        "--task-db",
+        task_db,
+        "--task-id",
+        "cron:project-index-maintainer-30m",
+        "--actor",
+        "project-agent",
+        "--no-git-pull",
+    ]
+    cmd.extend(delivery_args(channel, target))
+    cmd.append("--emit-json")
+    return cmd
+
+
+def build_install_web_intel_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    ops_home: str,
+    openclaw_home: str,
+    collect_every_ms: int,
+    opt_review_every_ms: int,
+    project_review_every_ms: int,
+    collect_min_interval_minutes: int,
+    review_min_interval_minutes: int,
+    channel: str,
+    target: str,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "install_web_intel_jobs.py"),
+        "--jobs-file",
+        jobs_file,
+        "--python-bin",
+        python_bin,
+        "--collector-py",
+        str(Path(ops_home) / "web_intel_collect_runner.py"),
+        "--review-py",
+        str(Path(ops_home) / "web_intel_review_runner.py"),
+        "--openclaw-home",
+        openclaw_home,
+        "--collect-sources-file",
+        str(Path(ops_home) / "web/sources.json"),
+        "--project-doc-sources-file",
+        str(Path(ops_home) / "web/project_docs_sources.json"),
+        "--collect-every-ms",
+        str(max(600000, int(collect_every_ms))),
+        "--opt-review-every-ms",
+        str(max(600000, int(opt_review_every_ms))),
+        "--project-review-every-ms",
+        str(max(600000, int(project_review_every_ms))),
+        "--collect-min-interval-minutes",
+        str(max(1, int(collect_min_interval_minutes))),
+        "--review-min-interval-minutes",
+        str(max(1, int(review_min_interval_minutes))),
+        "--collect-notify-on",
+        "error",
+        "--review-notify-on",
+        "error",
+    ]
+    cmd.extend(delivery_args(channel, target))
+    return cmd
+
+
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
 
@@ -658,56 +791,31 @@ def main() -> None:
     ]
     install_todo_cmd.extend(delivery_args(args.channel, args.to))
 
-    install_task_executor_cmd = [
-        args.python_bin,
-        str(here / "install_task_executor_job.py"),
-        "--jobs-file",
-        jobs_file,
-        "--executor-py",
-        str(Path(ops_home) / "policy/task_executor_runner.py"),
-        "--db",
-        task_db,
-        "--every-ms",
-        str(max(300000, int(args.task_executor_every_ms))),
-        "--max-tasks",
-        str(max(1, int(args.task_executor_max_tasks))),
-        "--actor",
-        "coordinator",
-        "--planner-id",
-        "coordinator",
-        "--openclaw-bin",
-        "openclaw",
-        "--report-dir",
-        str(Path(ops_home) / "task-center/executor-runs"),
-    ]
-    if str(args.task_executor_model).strip().lower() not in {"", "auto", "default"}:
-        install_task_executor_cmd.extend(["--model", str(args.task_executor_model).strip()])
-    install_task_executor_cmd.append(
-        "--local-agent" if bool(args.task_executor_local_agent) else "--no-local-agent"
+    install_task_executor_cmd = build_install_task_executor_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        jobs_file=jobs_file,
+        ops_home=ops_home,
+        task_db=task_db,
+        every_ms=int(args.task_executor_every_ms),
+        max_tasks=int(args.task_executor_max_tasks),
+        model=str(args.task_executor_model),
+        local_agent=bool(args.task_executor_local_agent),
+        channel=str(args.channel),
+        target=str(args.to),
     )
-    install_task_executor_cmd.extend(delivery_args(args.channel, args.to))
-    install_task_executor_cmd.append("--emit-json")
 
-    install_index_cmd = [
-        args.python_bin,
-        str(here / "install_project_index_job.py"),
-        "--jobs-file",
-        jobs_file,
-        "--every-ms",
-        str(max(600000, int(args.project_index_every_ms))),
-        "--maintainer-py",
-        str(Path(ops_home) / "policy/project_index_maintainer.py"),
-        "--registry",
-        project_registry,
-        "--task-db",
-        task_db,
-        "--task-id",
-        "cron:project-index-maintainer-30m",
-        "--actor",
-        "project-agent",
-    ]
-    install_index_cmd.extend(delivery_args(args.channel, args.to))
-    install_index_cmd.append("--emit-json")
+    install_index_cmd = build_install_project_index_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        jobs_file=jobs_file,
+        ops_home=ops_home,
+        project_registry=project_registry,
+        task_db=task_db,
+        every_ms=int(args.project_index_every_ms),
+        channel=str(args.channel),
+        target=str(args.to),
+    )
 
     cron_setup_cmd = build_cron_setup_cmd(
         python_bin=args.python_bin,
@@ -786,35 +894,20 @@ def main() -> None:
     install_reviewer_cmd.extend(delivery_args(args.channel, args.to))
     install_reviewer_cmd.append("--emit-json")
 
-    install_web_intel_cmd = [
-        args.python_bin,
-        str(here / "install_web_intel_jobs.py"),
-        "--jobs-file",
-        jobs_file,
-        "--python-bin",
-        args.python_bin,
-        "--collector-py",
-        str(Path(ops_home) / "web_intel_collect_runner.py"),
-        "--review-py",
-        str(Path(ops_home) / "web_intel_review_runner.py"),
-        "--openclaw-home",
-        openclaw_home,
-        "--collect-sources-file",
-        str(Path(ops_home) / "web/sources.json"),
-        "--project-doc-sources-file",
-        str(Path(ops_home) / "web/project_docs_sources.json"),
-        "--collect-every-ms",
-        str(max(600000, int(args.web_intel_collect_every_ms))),
-        "--opt-review-every-ms",
-        str(max(600000, int(args.web_intel_opt_review_every_ms))),
-        "--project-review-every-ms",
-        str(max(600000, int(args.web_intel_project_review_every_ms))),
-        "--collect-min-interval-minutes",
-        str(max(1, int(args.web_intel_collect_min_interval_minutes))),
-        "--review-min-interval-minutes",
-        str(max(1, int(args.web_intel_review_min_interval_minutes))),
-    ]
-    install_web_intel_cmd.extend(delivery_args(args.channel, args.to))
+    install_web_intel_cmd = build_install_web_intel_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        jobs_file=jobs_file,
+        ops_home=ops_home,
+        openclaw_home=openclaw_home,
+        collect_every_ms=int(args.web_intel_collect_every_ms),
+        opt_review_every_ms=int(args.web_intel_opt_review_every_ms),
+        project_review_every_ms=int(args.web_intel_project_review_every_ms),
+        collect_min_interval_minutes=int(args.web_intel_collect_min_interval_minutes),
+        review_min_interval_minutes=int(args.web_intel_review_min_interval_minutes),
+        channel=str(args.channel),
+        target=str(args.to),
+    )
 
     normalize_paths_cmd = [
         args.python_bin,

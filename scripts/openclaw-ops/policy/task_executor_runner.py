@@ -26,6 +26,8 @@ GOVERNANCE_BRIDGE_EPILOG = (
 )
 AUTO_MODEL_SENTINELS = {"", "auto", "default"}
 LEGACY_DEFAULT_MODEL = "volcengine/kimi-k2.5"
+NOTIFY_ON_MODES = {"error", "activity", "always"}
+ERROR_TASK_STATUSES = {"failed", "partial", "escalated"}
 
 
 def now_iso() -> str:
@@ -192,6 +194,65 @@ def default_stage(assignee: str) -> str:
     return "implement"
 
 
+def normalize_notify_on(value: str) -> str:
+    mode = str(value or "error").strip().lower()
+    return mode if mode in NOTIFY_ON_MODES else "error"
+
+
+def result_is_error(item: dict[str, Any]) -> bool:
+    status = str(item.get("status", "")).strip().lower()
+    report_status = str(item.get("report_status", "")).strip().lower()
+    task_status_after = str(item.get("task_status_after", "")).strip().lower()
+    if status == "failed":
+        return True
+    if report_status in ERROR_TASK_STATUSES:
+        return True
+    if task_status_after in ERROR_TASK_STATUSES:
+        return True
+    return False
+
+
+def build_chat_output(summary: dict[str, Any], report_path: Path, notify_on: str) -> str:
+    mode = normalize_notify_on(notify_on)
+    results = summary.get("results", [])
+    if not isinstance(results, list):
+        results = []
+    error_items = [item for item in results if isinstance(item, dict) and result_is_error(item)]
+    executed = max(0, int(summary.get("tasks_executed", 0) or 0))
+
+    if mode == "error" and not error_items:
+        return "NO_REPLY"
+    if mode == "activity" and (not error_items) and executed <= 0:
+        return "NO_REPLY"
+
+    lines = [
+        "# task-executor",
+        f"- task: {str(summary.get('trigger_task', '')).strip() or '-'}",
+        f"- time: {str(summary.get('started_at', '')).strip() or '-'}",
+        f"- run_id: {str(summary.get('run_id', '')).strip() or '-'}",
+        f"- executor_model: {str(summary.get('executor_model', '')).strip() or '-'}",
+        f"- tasks_selected: {max(0, int(summary.get('tasks_selected', 0) or 0))}",
+        f"- tasks_executed: {executed}",
+        f"- tasks_skipped: {max(0, int(summary.get('tasks_skipped', 0) or 0))}",
+        f"- tasks_failed: {len(error_items)}",
+        f"- report_file: {report_path}",
+    ]
+    if error_items:
+        lines.append("- failures:")
+        for item in error_items[:8]:
+            task_id = str(item.get("task_id", "")).strip() or "-"
+            assignee = str(item.get("assignee", "")).strip() or "-"
+            reason = (
+                str(item.get("reason", "")).strip()
+                or str(item.get("report_status", "")).strip()
+                or str(item.get("task_status_after", "")).strip()
+                or str(item.get("status", "")).strip()
+                or "-"
+            )
+            lines.append(f"  - {task_id} ({assignee}): {reason}")
+    return "\n".join(lines)
+
+
 def select_tasks(enforcer: PolicyEnforcer, only_task_id: str, max_tasks: int) -> list[dict[str, Any]]:
     if str(only_task_id or "").strip():
         return [enforcer.db.get_task(str(only_task_id).strip())]
@@ -345,6 +406,7 @@ def main() -> int:
     parser.add_argument("--web-max-chars", type=int, default=12000)
     parser.add_argument("--report-dir", default=str(repo_root / ".workflow/executor-runs"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--notify-on", default="error", choices=sorted(NOTIFY_ON_MODES))
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
 
@@ -577,15 +639,7 @@ def main() -> int:
     if args.emit_json:
         print(json.dumps(summary, ensure_ascii=False, indent=2))
     else:
-        print(json.dumps({
-            "ok": summary.get("ok", True),
-            "run_id": run_id,
-            "tasks_selected": summary.get("tasks_selected", 0),
-            "tasks_executed": summary.get("tasks_executed", 0),
-            "tasks_skipped": summary.get("tasks_skipped", 0),
-            "tasks_failed": summary.get("tasks_failed", 0),
-            "report_file": str(report_path),
-        }, ensure_ascii=False))
+        print(build_chat_output(summary, report_path, str(args.notify_on)))
     return 0
 
 
