@@ -1216,6 +1216,70 @@ def main() -> int:
             policy_observability["errors"].append(err_comm)
 
         report_count = 0
+        if bound_task_id:
+            runtime_quality = 70.0 if run_errors else 90.0
+            runtime_report_args = [
+                "report-agent-result",
+                "--task-id",
+                bound_task_id,
+                "--agent-id",
+                "github-web-evolution-agent",
+                "--planner-id",
+                "coordinator",
+                "--status",
+                ("failed" if run_errors else "passed"),
+                "--solved",
+                ("false" if run_errors else "true"),
+                "--resolved-issues",
+                "github_web_evolution_runtime_recorded",
+                "--resolution-summary",
+                (
+                    "github web evolution run recorded"
+                    if not run_errors
+                    else "github web evolution run recorded with runtime exceptions"
+                ),
+                "--resolution-steps",
+                "search_github,extract_readme_methods,detect_changes,record_runtime_observability",
+                "--failed-items",
+                ",".join(run_errors[:20]),
+                "--failure-count",
+                str(len(run_errors)),
+                "--duration-ms",
+                str(run_duration_ms),
+                "--input-tokens",
+                "0",
+                "--output-tokens",
+                "0",
+                "--cost-estimate",
+                "0",
+                "--quality-score",
+                str(round(runtime_quality, 2)),
+                "--quality-grade",
+                ("c" if run_errors else "a"),
+                "--notify-chat",
+                ("true" if run_errors else "false"),
+                "--details-json",
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "fingerprint": fingerprint,
+                        "dedupe_key": dedupe_key,
+                        "created_task_count": len(created_tasks),
+                    },
+                    ensure_ascii=False,
+                ),
+                "--actor",
+                "github-web-evolution-agent",
+            ]
+            ok_runtime_report, _payload_runtime_report, err_runtime_report = invoke_policy_enforcer(
+                db_file,
+                runtime_report_args,
+                timeout=35,
+            )
+            if ok_runtime_report:
+                report_count += 1
+            elif err_runtime_report:
+                policy_observability["errors"].append(err_runtime_report)
         for item in created_tasks:
             task_id = str(item.get("task_id", "")).strip()
             if not task_id:

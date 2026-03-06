@@ -33,6 +33,18 @@
   - 复制 `vendor/openclaw-official/*` 到 `~/.openclaw`
   - 修改 `vendor/openclaw-official/*`
 
+## uninstall_workflow_profile.py 契约
+
+- 默认只卸载 runtime 安装产物，不删除仓库源码，不修改 `vendor/openclaw-official/*`。
+- 清理范围：
+  - `jobs.json` 中由 workflow installer 管理的已知 job ids / names。
+  - `~/.openclaw/openclaw.json` 中 `HARDFLOW_OPENCLAW_*` 边界变量，以及 repo `hooks/`、`skills/` 注入的 loader extraDirs。
+  - `~/.openclaw/ops/.hardflow-sync-manifest.json` 记录的 managed files。
+- 明确不做：
+  - 反向回滚整份 overlay 配置。
+  - 删除不在 manifest 内的 runtime 文件。
+  - 删除仓库目录、submodule 或官方核心运行时。
+
 ## 当前边界内允许的动作
 
 - 调整 overlay 配置。

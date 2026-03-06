@@ -13,6 +13,18 @@
 - `install_todo_patrol_job.py`
   - 安装/更新 `TODO 巡检（15分钟）` 到 `~/.openclaw/cron/jobs.json`。
 
+## Web Intel
+
+- `web_intel_collect_runner.py`
+  - HTTP 优先，浏览器兜底支持 `playwright -> selenium`。
+  - 会识别 `403/429/503` 与 `Cloudflare/captcha/turnstile/checking your browser` 反爬页面。
+  - 采集失败不再只聊天告警，会自动写入 task-center 修复任务，后续由 `task_executor_runner.py` 消费。
+- `web_intel_review_runner.py`
+  - 对解析后的网页情报做 optimization/project-doc 两种复核。
+  - 发现变化后会自动打包 follow-up 任务到 task-center，而不是只输出摘要。
+- `install_web_intel_jobs.py`
+  - 安装 web-intel cron 时会显式带上 `--db ~/.openclaw/ops/task-center/task_center.db`，接入统一闭环。
+
 ## Cron 工作流
 
 - `ops_cron_runner.py`
@@ -535,6 +547,7 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 ## Upstream Runtime Boundary (2026-03-06)
 
 - `install_workflow_profile.py` 现在会把仓库 overlay 配置合并到 `~/.openclaw/openclaw.json`，并把仓库 `hooks/`、`skills/` 动态注入官方 loader。
+- `uninstall_workflow_profile.py` 按“精确删除已知安装产物”的方式卸载 runtime workflow，只清理受安装器管理的 cron jobs、runtime bridge 注入项和 `ops` manifest 文件。
 - `sync_openclaw_ops_files.py` 的职责明确为 `ops-only`，不再负责 hooks runtime 同步。
 - `cron_setup.py`、`install_project_index_job.py`、`install_reviewer_scan_jobs.py`、`install_task_executor_job.py` 会显式输出官方 `openclaw cron` 验证命令；业务定义仍保留在 `jobs.json`。
 - Python 治理逻辑继续留在 `scripts/openclaw-ops/policy/*`，通过官方 cron/hooks/webhook surface 触发。
@@ -559,6 +572,7 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 
 ```bash
 python scripts/openclaw-ops/install_workflow_profile.py --profile core --workflow-repo-path . --dry-run --emit-json
+python scripts/openclaw-ops/uninstall_workflow_profile.py --profile all --workflow-repo-path . --dry-run --emit-json
 openclaw hooks list --json
 openclaw hooks check --json
 openclaw plugins list

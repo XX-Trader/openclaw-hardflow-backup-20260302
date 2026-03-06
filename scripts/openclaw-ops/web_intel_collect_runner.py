@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import urllib.error
 import urllib.parse
@@ -38,11 +39,14 @@ ANTI_BOT_KEYWORDS = (
     "captcha",
     "cloudflare",
     "verify you are human",
+    "confirm you are human",
+    "checking your browser",
     "access denied",
     "robot check",
     "bot detection",
     "just a moment",
     "security check",
+    "turnstile",
 )
 
 
@@ -86,6 +90,64 @@ def normalize_log_mode(value: str, default: str = "silent") -> str:
 def normalize_sender_identity(value: str, default: str = DEFAULT_SENDER_IDENTITY) -> str:
     sender = str(value or "").strip()
     return sender or default
+
+
+def parse_json_output(text: str) -> dict[str, Any] | None:
+    raw = str(text or "").strip()
+    if not raw:
+        return None
+    decoder = json.JSONDecoder()
+    for idx, ch in enumerate(raw):
+        if ch != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(raw[idx:])
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    lines = [line.strip() for line in raw.splitlines() if line.strip()]
+    for candidate in reversed(lines):
+        try:
+            payload = json.loads(candidate)
+        except Exception:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return None
+
+
+def policy_enforcer_path() -> Path:
+    return POLICY_DIR / "policy_enforcer.py"
+
+
+def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) -> tuple[bool, dict[str, Any], str]:
+    script = policy_enforcer_path()
+    if not script.exists():
+        return False, {}, f"policy_enforcer_missing:{script}"
+    cmd = [sys.executable, str(script), "--db", str(db_path), *args]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        return False, payload or {}, f"policy_enforcer_failed:{err_text}"
+    if not isinstance(payload, dict):
+        return False, {}, "policy_enforcer_invalid_json_output"
+    if not bool(payload.get("ok", False)):
+        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+    return True, payload, ""
 
 
 def load_json(path: Path, default: Any) -> Any:
@@ -149,9 +211,14 @@ def humanize_collect_error(error_text: str, status_code: int) -> tuple[str, str]
     if lower.startswith("playwright_unavailable:"):
         detail = text.split(":", 1)[1].strip()
         return "浏览器回退不可用", compact(detail or "Playwright 不可用", 180)
+    if lower.startswith("selenium_unavailable:"):
+        detail = text.split(":", 1)[1].strip()
+        return "浏览器回退不可用", compact(detail or "Selenium 不可用", 180)
     if lower.startswith("browser_request_failed:"):
         detail = text.split(":", 1)[1].strip()
         return "浏览器回退失败", compact(detail or "浏览器获取页面失败", 180)
+    if lower.startswith("browser_antibot_challenge") or lower.startswith("http_antibot_challenge"):
+        return "目标站点触发反爬校验", "页面返回了 Cloudflare/验证码 等反爬挑战"
     if "just a moment" in lower or "captcha" in lower or "security check" in lower:
         return "目标站点触发反爬校验", "站点返回了反爬/人机验证页面"
     return "采集失败", text or "未提供详细信息"
@@ -221,13 +288,13 @@ def fetch_with_http(url: str, timeout_seconds: int, max_bytes: int) -> dict[str,
         }
 
 
-def fetch_with_browser(url: str, timeout_seconds: int) -> dict[str, Any]:
+def fetch_with_playwright(url: str, timeout_seconds: int) -> dict[str, Any]:
     try:
         from playwright.sync_api import sync_playwright  # type: ignore
     except Exception as exc:
         return {
             "ok": False,
-            "method": "browser",
+            "method": "browser-playwright",
             "status": 0,
             "content_type": "text/html",
             "text": "",
@@ -244,7 +311,7 @@ def fetch_with_browser(url: str, timeout_seconds: int) -> dict[str, Any]:
             browser.close()
             return {
                 "ok": True,
-                "method": "browser",
+                "method": "browser-playwright",
                 "status": 200,
                 "content_type": "text/html",
                 "text": html,
@@ -254,13 +321,93 @@ def fetch_with_browser(url: str, timeout_seconds: int) -> dict[str, Any]:
     except Exception as exc:
         return {
             "ok": False,
-            "method": "browser",
+            "method": "browser-playwright",
             "status": 0,
             "content_type": "text/html",
             "text": "",
             "truncated": False,
             "error": f"browser_fetch_failed:{exc}",
         }
+
+
+def fetch_with_selenium(url: str, timeout_seconds: int) -> dict[str, Any]:
+    try:
+        from selenium import webdriver  # type: ignore
+        from selenium.webdriver.chrome.options import Options  # type: ignore
+    except Exception as exc:
+        return {
+            "ok": False,
+            "method": "browser-selenium",
+            "status": 0,
+            "content_type": "text/html",
+            "text": "",
+            "truncated": False,
+            "error": f"selenium_unavailable:{exc}",
+        }
+
+    driver = None
+    try:
+        options = Options()
+        options.add_argument("--headless=new")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        driver = webdriver.Chrome(options=options)
+        driver.set_page_load_timeout(max(5, int(timeout_seconds)))
+        driver.get(url)
+        html = str(driver.page_source or "")
+        return {
+            "ok": True,
+            "method": "browser-selenium",
+            "status": 200,
+            "content_type": "text/html",
+            "text": html,
+            "truncated": False,
+            "error": "",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "method": "browser-selenium",
+            "status": 0,
+            "content_type": "text/html",
+            "text": "",
+            "truncated": False,
+            "error": f"browser_fetch_failed:{exc}",
+        }
+    finally:
+        if driver is not None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
+
+def fetch_with_browser(url: str, timeout_seconds: int) -> dict[str, Any]:
+    attempts: list[dict[str, Any]] = []
+    for fetcher in (fetch_with_playwright, fetch_with_selenium):
+        result = fetcher(url, timeout_seconds)
+        if bool(result.get("ok")) and not looks_like_antibot(result):
+            return result
+        if bool(result.get("ok")) and looks_like_antibot(result):
+            result = dict(result)
+            result["ok"] = False
+            result["error"] = "browser_antibot_challenge"
+        attempts.append(result)
+
+    combined_error = "; ".join(
+        dict.fromkeys(str(item.get("error", "")).strip() for item in attempts if str(item.get("error", "")).strip())
+    ).strip()
+    first = attempts[0] if attempts else {}
+    return {
+        "ok": False,
+        "method": "browser",
+        "status": int(first.get("status", 0) or 0),
+        "content_type": str(first.get("content_type", "") or "text/html"),
+        "text": str(first.get("text", "") or ""),
+        "truncated": False,
+        "error": combined_error or "browser_fetch_failed",
+    }
 
 
 def looks_like_antibot(result: dict[str, Any]) -> bool:
@@ -403,6 +550,174 @@ def build_failure_output(task_id: str, started_at: str, error_text: str) -> str:
     return "\n".join(lines)
 
 
+def follow_up_lines(tasks: list[dict[str, Any]]) -> list[str]:
+    if not tasks:
+        return []
+    lines = ["- 已派生修复任务:"]
+    for item in tasks[:8]:
+        task_id = str(item.get("task_id", "")).strip() or "-"
+        assignee = str(item.get("assignee", "")).strip() or "-"
+        status = str(item.get("status", "")).strip() or "created"
+        lines.append(f"  - {task_id} -> {assignee} ({status})")
+    return lines
+
+
+def classify_collect_follow_up(item: dict[str, Any]) -> dict[str, str]:
+    error_text = str(item.get("error", "") or "").strip().lower()
+    if "playwright_unavailable:" in error_text or "selenium_unavailable:" in error_text:
+        return {
+            "kind": "browser-runtime-missing",
+            "assignee": "ops-agent",
+            "priority": "high",
+            "pool": "jobs",
+        }
+    if (
+        "http_error:403" in error_text
+        or "http_antibot_challenge" in error_text
+        or "browser_antibot_challenge" in error_text
+        or "cloudflare" in error_text
+        or "captcha" in error_text
+    ):
+        return {
+            "kind": "anti-bot-blocked",
+            "assignee": "ops-agent",
+            "priority": "high",
+            "pool": "jobs",
+        }
+    return {
+        "kind": "fetch-failed",
+        "assignee": "ops-agent",
+        "priority": "medium",
+        "pool": "todo",
+    }
+
+
+def create_collect_follow_up_tasks(
+    *,
+    db_path: Path,
+    actor: str,
+    report_file: Path,
+    run_task_id: str,
+    started_at: str,
+    failed_items: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    created: list[dict[str, Any]] = []
+    errors: list[str] = []
+    day_token = started_at[:10].replace("-", "") or datetime.now(tz=UTC).strftime("%Y%m%d")
+    for item in failed_items:
+        sid = slugify(str(item.get("id", "")).strip(), "source")
+        url = str(item.get("url", "")).strip()
+        error_text = str(item.get("error", "")).strip() or "fetch_failed"
+        status_code = int(item.get("status_code", 0) or 0)
+        follow_up = classify_collect_follow_up(item)
+        issue_key = sha256_text(f"{sid}|{follow_up['kind']}|{day_token}")[:10]
+        task_id = f"todo-web-intel-collect-{sid}-{day_token}-{issue_key}"
+        issue, detail = humanize_collect_error(error_text, status_code)
+
+        requirement = "\n".join(
+            [
+                f"web-intel collect task: {run_task_id}",
+                f"source_id: {sid}",
+                f"url: {url}",
+                f"first_seen_at: {started_at}",
+                f"report_file: {report_file}",
+                f"status_code: {status_code}",
+                f"error: {error_text}",
+                "",
+                "需要闭环处理，而不是仅聊天告警：",
+                "1. 复现 HTTP 抓取失败，并判断是否为 Cloudflare/验证码/403。",
+                "2. 验证浏览器兜底运行环境是否可用（Playwright/Selenium/Chrome 驱动）。",
+                "3. 若浏览器可用仍被拦截，给出最小修复方案：真实浏览器策略、可抓取的官方替代源，或明确的人工接管条件。",
+                "4. 修复后重新执行 web_intel_collect_runner，确认该来源不再失败。",
+            ]
+        )
+        acceptance = "至少完成一次复现、一次修复尝试、一次复验，并把证据写回任务。"
+        context_payload = {
+            "problem": f"{sid} collect failed: {issue}",
+            "location": url or sid,
+            "first_seen_at": started_at,
+            "impact": issue,
+            "evidence": f"{report_file}",
+            "current_state": error_text,
+            "expected_state": "目标来源可稳定采集，不再返回反爬挑战或运行时依赖错误。",
+            "operation_path": f"web_intel_collect_runner::{sid}",
+            "reproduction_steps": f"运行 {run_task_id} 或手动执行 web_intel_collect_runner 并观察 {sid} 的采集结果。",
+            "scope": f"web-intel collect source={sid}",
+            "constraints": "优先保持官方来源；若必须改为替代源，需要在任务中写明原因与验证结果。",
+            "acceptance_criteria": acceptance,
+            "full_background": requirement,
+        }
+        create_args = [
+            "create-task",
+            "--task-id",
+            task_id,
+            "--task-type",
+            "web_intel_collect_repair",
+            "--reason",
+            f"[WEB_INTEL_COLLECT] {sid} {issue}",
+            "--source",
+            actor,
+            "--request-source",
+            "ai",
+            "--priority",
+            follow_up["priority"],
+            "--risk-level",
+            "low",
+            "--pool",
+            follow_up["pool"],
+            "--assignee",
+            follow_up["assignee"],
+            "--need-human-confirm",
+            "false",
+            "--human-confirmed",
+            "true",
+            "--context-json",
+            json.dumps(context_payload, ensure_ascii=False),
+            "--requirement",
+            requirement,
+            "--result-output",
+            "目标来源恢复可采集；若仍不可采集，任务中需留下已验证的阻断原因与替代方案。",
+            "--acceptance",
+            acceptance,
+            "--observable-outputs",
+            f"report_file={report_file},source_id={sid},url={url}",
+            "--acceptance-thresholds",
+            "修复后重跑 web-intel 任务，该来源 failed=0；或留下明确不可自动解决结论。",
+            "--scheduled-at",
+            now_iso(),
+            "--actor",
+            actor,
+        ]
+        ok, payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+        if ok:
+            created.append(
+                {
+                    "task_id": task_id,
+                    "assignee": follow_up["assignee"],
+                    "status": "created",
+                    "source_id": sid,
+                    "issue": issue,
+                    "detail": detail,
+                }
+            )
+            continue
+        if "task_id already exists" in err:
+            created.append(
+                {
+                    "task_id": task_id,
+                    "assignee": follow_up["assignee"],
+                    "status": "existing",
+                    "source_id": sid,
+                    "issue": issue,
+                    "detail": detail,
+                }
+            )
+            continue
+        payload_error = str(payload.get("error", "")).strip() if isinstance(payload, dict) else ""
+        errors.append(f"{sid}:{err or payload_error or 'create_follow_up_task_failed'}")
+    return created, errors
+
+
 def cli_flag_enabled(flag: str) -> bool:
     return str(flag or "").strip() in {str(part).strip() for part in sys.argv[1:]}
 
@@ -427,6 +742,7 @@ def main() -> None:
     parser.add_argument("--raw-dir", default="")
     parser.add_argument("--parsed-dir", default="")
     parser.add_argument("--summary-dir", default="")
+    parser.add_argument("--db", default="")
     parser.add_argument("--task-id", default="cron:web-intel-collect")
     parser.add_argument("--sender-identity", default=DEFAULT_SENDER_IDENTITY)
     parser.add_argument("--min-interval-minutes", type=int, default=60)
@@ -435,6 +751,7 @@ def main() -> None:
     parser.add_argument("--browser-timeout-seconds", type=int, default=40)
     parser.add_argument("--max-bytes", type=int, default=240000)
     parser.add_argument("--allow-browser-fallback", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--create-follow-up-tasks", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--normal-log-mode", default="silent", choices=sorted(LOG_MODES))
     parser.add_argument("--notify-on", default="change", choices=sorted(NOTIFY_ON_MODES))
     parser.add_argument("--force", action="store_true")
@@ -459,6 +776,7 @@ def main() -> None:
         if str(args.report_dir).strip()
         else (ops_home / "web-intel" / "reports")
     )
+    db_path = Path(args.db).expanduser() if str(args.db).strip() else (ops_home / "task-center" / "task_center.db")
     raw_dir = Path(args.raw_dir).expanduser() if str(args.raw_dir).strip() else (web_home / "raw")
     parsed_dir = Path(args.parsed_dir).expanduser() if str(args.parsed_dir).strip() else (web_home / "parsed")
     summary_dir = Path(args.summary_dir).expanduser() if str(args.summary_dir).strip() else (web_home / "summary")
@@ -509,14 +827,26 @@ def main() -> None:
         url = str(source.get("url", "")).strip()
         fetched = fetch_with_http(url, int(args.timeout_seconds), int(args.max_bytes))
         use_browser = bool(args.allow_browser_fallback) and bool(source.get("browser_fallback", True))
-        if use_browser and (not bool(fetched.get("ok"))) and (looks_like_antibot(fetched) or not fetched.get("text")):
+        http_antibot = looks_like_antibot(fetched)
+        should_try_browser = use_browser and (
+            http_antibot or ((not bool(fetched.get("ok"))) and (http_antibot or not fetched.get("text")))
+        )
+        if should_try_browser:
             browser_fetched = fetch_with_browser(url, int(args.browser_timeout_seconds))
-            if bool(browser_fetched.get("ok")):
+            if bool(browser_fetched.get("ok")) and not looks_like_antibot(browser_fetched):
                 fetched = browser_fetched
             else:
-                fetched["error"] = (
-                    str(fetched.get("error", "")).strip() + "; " + str(browser_fetched.get("error", "")).strip()
-                ).strip("; ")
+                combined_errors: list[str] = []
+                if http_antibot:
+                    combined_errors.append("http_antibot_challenge")
+                elif not bool(fetched.get("ok")):
+                    combined_errors.append(str(fetched.get("error", "")).strip())
+                browser_error = str(browser_fetched.get("error", "")).strip()
+                if browser_error:
+                    combined_errors.append(browser_error)
+                fetched = dict(fetched)
+                fetched["ok"] = False
+                fetched["error"] = "; ".join(x for x in combined_errors if x).strip("; ") or "fetch_failed"
 
         now_mark = now_iso()
         item_state = dict(item_state)
@@ -620,6 +950,7 @@ def main() -> None:
     state["updated_at"] = now_iso()
     state["last_run_at"] = started_at
 
+    report_file = report_dir / f"web_collect_{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}.json"
     report_payload: dict[str, Any] = {
         "ok": True,
         "task": str(args.task_id),
@@ -635,8 +966,27 @@ def main() -> None:
         },
         "results": results,
     }
-    report_file = report_dir / f"web_collect_{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}.json"
     save_json(report_file, report_payload)
+    follow_up_tasks: list[dict[str, Any]] = []
+    follow_up_errors: list[str] = []
+    if bool(args.create_follow_up_tasks) and failed_items:
+        follow_up_tasks, follow_up_errors = create_collect_follow_up_tasks(
+            db_path=db_path,
+            actor=sender_identity,
+            report_file=report_file,
+            run_task_id=str(args.task_id),
+            started_at=started_at,
+            failed_items=failed_items,
+        )
+        for item in failed_items:
+            sid = str(item.get("id", "")).strip()
+            task_row = next((x for x in follow_up_tasks if str(x.get("source_id", "")).strip() == sid), None)
+            if task_row:
+                item["follow_up_task_id"] = str(task_row.get("task_id", "")).strip()
+                item["follow_up_status"] = str(task_row.get("status", "")).strip()
+        report_payload["follow_up_tasks"] = follow_up_tasks
+        report_payload["follow_up_errors"] = follow_up_errors
+        save_json(report_file, report_payload)
     state["last_report_file"] = str(report_file)
     save_json(state_file, state)
 
@@ -654,6 +1004,13 @@ def main() -> None:
         changed_ids=changed_ids,
         failed_items=failed_items,
     )
+    extra_lines = follow_up_lines(follow_up_tasks)
+    if follow_up_errors:
+        extra_lines.append("- 建单失败:")
+        for item in follow_up_errors[:8]:
+            extra_lines.append(f"  - {item}")
+    if extra_lines:
+        final_output = final_output + "\n" + "\n".join(extra_lines)
     save_text(latest_summary_file, final_output + "\n")
 
     quiet_no_reply = should_quiet(
@@ -670,6 +1027,8 @@ def main() -> None:
         "report_file": str(report_file),
         "state_file": str(state_file),
         "latest_summary_file": str(latest_summary_file),
+        "follow_up_tasks": follow_up_tasks,
+        "follow_up_errors": follow_up_errors,
     }
 
     if bool(args.emit_json):

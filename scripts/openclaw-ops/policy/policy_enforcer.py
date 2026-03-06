@@ -1304,6 +1304,7 @@ class PolicyEnforcer:
             getattr(args, "request_source", ""),
             getattr(args, "source", ""),
         )
+        task_type = str(args.task_type or "workflow").strip()
         context_payload = self.parse_context_payload(
             getattr(args, "context_json", ""),
             getattr(args, "context_file", ""),
@@ -1334,6 +1335,19 @@ class PolicyEnforcer:
             context_payload["acceptance"] = str(args.acceptance).strip()
         if not str(context_payload.get("evidence", "")).strip():
             context_payload["evidence"] = str(args.observable_outputs).strip()
+        if task_type == "ops_runtime_cron":
+            runtime_ref = str(args.source or "").strip() or str(args.task_id or "").strip()
+            runtime_seen_at = str(args.scheduled_at or "").strip() or now_iso()
+            if not str(context_payload.get("location", "")).strip():
+                context_payload["location"] = runtime_ref
+            if not str(context_payload.get("first_seen_at", "")).strip():
+                context_payload["first_seen_at"] = runtime_seen_at
+            if not str(context_payload.get("impact", "")).strip():
+                context_payload["impact"] = "Runtime observability and status tracking would be lost if this binding task is missing."
+            if not str(context_payload.get("operation_path", "")).strip():
+                context_payload["operation_path"] = runtime_ref
+            if not str(context_payload.get("constraints", "")).strip():
+                context_payload["constraints"] = "Internal runtime binding only; do not mutate vendor private runtime files."
 
         owner = str(getattr(args, "owner", "") or context_payload.get("owner", "")).strip()
         change_id = str(getattr(args, "change_id", "") or context_payload.get("change_id", "")).strip()
@@ -1360,7 +1374,6 @@ class PolicyEnforcer:
             scheduled_at = now_iso()
 
         assignee = str(args.assignee or "").strip() or self.dispatcher_agent()
-        task_type = str(args.task_type or "workflow").strip()
         if needs_clarification:
             assignee = self.clarification_assignee()
             pool = "todo"
