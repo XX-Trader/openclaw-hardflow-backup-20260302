@@ -1,11 +1,11 @@
 # openclaw-hardflow-backup-20260302 Project Index
 
-- generated_at: 2026-03-05T22:55:35+00:00
+- generated_at: 2026-03-06T09:13:27+00:00
 - root: /home/ubuntu/openclaw-hardflow-backup-20260302
 - git_repo: True
 - git_branch: main
 - git_remote: https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git
-- dirty_files: 1
+- dirty_files: 5
 
 ## Workflow
 1. coordinator intake and requirement alignment
@@ -74,9 +74,11 @@
 - scripts/openclaw-ops/install_project_index_job.py
 - scripts/openclaw-ops/install_reviewer_scan_jobs.py
 - scripts/openclaw-ops/install_todo_patrol_job.py
+- scripts/openclaw-ops/install_web_intel_jobs.py
 - scripts/openclaw-ops/install_workflow_profile.py
 - scripts/openclaw-ops/local_git_backup_runner.py
 - scripts/openclaw-ops/model_tier_profiles.json
+- scripts/openclaw-ops/normalize_openclaw_home_paths.py
 - scripts/openclaw-ops/ops_cron_runner.py
 - scripts/openclaw-ops/policy/CONTEXT_GATE.md
 - scripts/openclaw-ops/policy/FIELD_DICTIONARY.md
@@ -115,6 +117,10 @@
 - scripts/openclaw-ops/system_schedule_snapshot.py
 - scripts/openclaw-ops/todo_patrol.py
 - scripts/openclaw-ops/verify_job_payload_paths.py
+- scripts/openclaw-ops/web/project_docs_sources.json
+- scripts/openclaw-ops/web/sources.json
+- scripts/openclaw-ops/web_intel_collect_runner.py
+- scripts/openclaw-ops/web_intel_review_runner.py
 
 ## Update Rules
 - API/parameters/process changes must update this index in the same commit.
