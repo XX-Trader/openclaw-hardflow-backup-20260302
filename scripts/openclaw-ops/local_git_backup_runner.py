@@ -247,6 +247,81 @@ def ensure_gitignore(repo: Path) -> bool:
     return changed
 
 
+def humanize_error(error: str) -> tuple[str, str]:
+    text = str(error or "").strip()
+    if ":" in text:
+        code, detail = text.split(":", 1)
+    else:
+        code, detail = text, ""
+    detail = detail.strip()
+    mapping = {
+        "repo_invalid": "仓库路径无效",
+        "git_init_failed": "Git 仓库初始化失败",
+        "not_git_repo": "仓库不是有效的 Git 仓库",
+        "git_config_user_name_failed": "Git 用户名配置失败",
+        "git_config_user_email_failed": "Git 邮箱配置失败",
+        "git_status_failed": "Git 状态读取失败",
+        "git_add_failed": "Git 暂存文件失败",
+        "git_diff_cached_failed": "Git 暂存差异读取失败",
+        "git_commit_failed": "Git 提交失败",
+    }
+    return mapping.get(code, "本地 Git 备份执行失败"), detail or text
+
+
+def build_chat_output(
+    result: dict[str, Any],
+    notify_mode: str,
+    *,
+    list_changed_files: bool = False,
+    max_listed_files: int = 20,
+) -> str:
+    if result["errors"]:
+        lines = [
+            "本地 Git 备份异常",
+            f"- 任务: {result['task_id'] or '-'}",
+            f"- 时间: {result['time']}",
+            f"- 仓库: {result['repo']}",
+            f"- 初始化仓库: {'是' if result['initialized'] else '否'}",
+            f"- 更新.gitignore: {'是' if result['gitignore_updated'] else '否'}",
+            f"- 已提交: {'是' if result['committed'] else '否'}",
+            f"- 可处理文件数: {len(result['eligible_files'])}",
+            f"- 已跳过文件数: {len(result['skipped_files'])}",
+            f"- 异常数量: {len(result['errors'])}",
+        ]
+        for idx, err in enumerate(result["errors"][:10], start=1):
+            title, detail = humanize_error(err)
+            lines.append(f"- 异常{idx}: {title}")
+            lines.append(f"- 详情{idx}: {detail}")
+        return "\n".join(lines)
+
+    if notify_mode not in {"always", "on-change"}:
+        return "NO_REPLY"
+    if notify_mode == "on-change" and not (
+        result["committed"] or result["initialized"] or result["gitignore_updated"]
+    ):
+        return "NO_REPLY"
+
+    lines = [
+        "本地 Git 备份",
+        f"- 任务: {result['task_id'] or '-'}",
+        f"- 时间: {result['time']}",
+        f"- 仓库: {result['repo']}",
+        f"- 初始化仓库: {'是' if result['initialized'] else '否'}",
+        f"- 更新.gitignore: {'是' if result['gitignore_updated'] else '否'}",
+        f"- 已提交: {'是' if result['committed'] else '否'}",
+        f"- 可处理文件数: {len(result['eligible_files'])}",
+        f"- 已跳过文件数: {len(result['skipped_files'])}",
+        f"- 通知模式: {notify_mode}",
+    ]
+    if str(result.get("commit_sha", "")).strip():
+        lines.append(f"- 提交: {result['commit_sha']}")
+    if list_changed_files:
+        max_count = max(0, int(max_listed_files))
+        for path in result["eligible_files"][:max_count]:
+            lines.append(f"- 变更: {path}")
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Local git backup runner (commit only, no push)")
     parser.add_argument("--repo-path", default=str(Path.home() / ".openclaw"))
@@ -372,31 +447,16 @@ def main() -> int:
     else:
         notify = bool(result["errors"])
 
-    output = "NO_REPLY"
-    if notify:
-        lines = [
-            "# local-git-backup",
-            f"- task: {result['task_id'] or '-'}",
-            f"- time: {result['time']}",
-            f"- repo: {result['repo']}",
-            f"- initialized: {result['initialized']}",
-            f"- gitignore_updated: {result['gitignore_updated']}",
-            f"- committed: {result['committed']}",
-            f"- eligible_files: {len(result['eligible_files'])}",
-            f"- skipped_files: {len(result['skipped_files'])}",
-            f"- error_count: {len(result['errors'])}",
-            f"- notify_on: {notify_mode}",
-        ]
-        if str(result.get("commit_sha", "")).strip():
-            lines.append(f"- commit_sha: {result['commit_sha']}")
-        for err in result["errors"][:10]:
-            lines.append(f"- error: {err}")
-        if bool(args.list_changed_files):
-            max_listed_files = max(0, int(args.max_listed_files or 0))
-            if max_listed_files > 0:
-                for path in result["eligible_files"][:max_listed_files]:
-                    lines.append(f"- changed: {path}")
-        output = "\n".join(lines)
+    output = (
+        build_chat_output(
+            result,
+            notify_mode,
+            list_changed_files=bool(args.list_changed_files),
+            max_listed_files=max(0, int(args.max_listed_files or 0)),
+        )
+        if notify
+        else "NO_REPLY"
+    )
 
     if bool(args.emit_json):
         print(json.dumps({"notify": notify, "output": output, "result": result}, ensure_ascii=False))

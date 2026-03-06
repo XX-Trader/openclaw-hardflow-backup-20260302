@@ -169,6 +169,31 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("解析结果目录缺失", output)
         self.assertEqual(output.splitlines()[0], "网页情报复核异常")
 
+    def test_local_git_backup_failure_output_is_human_friendly_chinese(self):
+        module = load_module(
+            "local_git_backup_runner",
+            "scripts/openclaw-ops/local_git_backup_runner.py",
+        )
+        output = module.build_chat_output(
+            {
+                "time": "2026-03-06T10:00:00+00:00",
+                "task_id": "cron:ops-local-openclaw-git-backup",
+                "repo": "/home/ubuntu/.openclaw",
+                "initialized": False,
+                "gitignore_updated": False,
+                "committed": False,
+                "commit_sha": "",
+                "eligible_files": [],
+                "skipped_files": [],
+                "errors": ["git_commit_failed:permission denied"],
+            },
+            "errors-only",
+        )
+        self.assertEqual(output.splitlines()[0], "本地 Git 备份异常")
+        self.assertIn("Git 提交失败", output)
+        self.assertIn("permission denied", output)
+        self.assertNotIn("# local-git-backup", output)
+
     def test_project_index_command_omits_git_pull_by_default(self):
         module = load_module(
             "install_project_index_job",
