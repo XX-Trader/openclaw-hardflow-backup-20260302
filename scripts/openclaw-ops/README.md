@@ -584,3 +584,12 @@ openclaw config get channels.telegram
 ```bash
 openclaw gateway run
 ```
+
+## Scrapling Integration Update (2026-03-07)
+
+- `web_intel_collect_runner.py` now uses browser fallback in this order: `scrapling-stealth -> playwright -> selenium`.
+- `api_test_audit.py` now supports `http/playwright/playwright-real/selenium/scrapling/scrapling-stealth`.
+- `scrapling` is treated as an optional dependency for anti-bot and lightweight browser fetching. If it is unavailable, the workflow still falls back to Playwright/Selenium instead of failing the whole job.
+- To enable the new path explicitly, install `scrapling` in the runtime environment: `pip install scrapling`.
+- `github_web_evolution_runner.py` now keeps the search scope on project-relevant third-party repositories and libraries, and excludes infrastructure repositories such as `python/cpython`, `nodejs/node`, `golang/go`, and similar runtime/compiler foundations.
+- Repositories such as `microsoft/playwright`, `D4Vinci/Scrapling`, and your own project-related third-party dependencies remain in scope.

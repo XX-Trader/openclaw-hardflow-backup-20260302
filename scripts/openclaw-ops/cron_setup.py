@@ -25,7 +25,7 @@ except Exception:  # pragma: no cover
     runner_default_config = None
 
 LOG_MODES = {"silent", "chat"}
-API_ENGINES = {"http", "playwright", "playwright-real", "selenium"}
+API_ENGINES = {"http", "playwright", "playwright-real", "selenium", "scrapling", "scrapling-stealth"}
 INSTALL_PROFILES = {"legacy", "minimal", "standard", "aggressive"}
 LEGACY_OPTIMIZE_JOB_MODES = {"auto", "keep", "disable", "remove"}
 DAILY_REPORT_DEDUPE_MODES = {"auto", "keep", "disable-digest", "disable-daily-work"}

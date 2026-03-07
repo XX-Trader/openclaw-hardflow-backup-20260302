@@ -30,6 +30,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
+from scrapling_runtime import fetch_with_scrapling_browser  # type: ignore
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
@@ -224,6 +225,63 @@ def humanize_collect_error(error_text: str, status_code: int) -> tuple[str, str]
     return "采集失败", text or "未提供详细信息"
 
 
+def humanize_collect_error(error_text: str, status_code: int) -> tuple[str, str]:
+    text = compact(error_text, 220)
+    lower = text.lower()
+    if lower.startswith("http_error:"):
+        code = int(status_code or 0) or int((text.split(":", 1)[1] or "0").strip() or 0)
+        return "HTTP 璇锋眰澶辫触", f"鐩爣绔欑偣杩斿洖鐘舵€佺爜 {code}"
+    if lower.startswith("http_request_failed:"):
+        detail = text.split(":", 1)[1].strip()
+        return "HTTP 璇锋眰寮傚父", compact(detail or "缃戠粶璇锋眰澶辫触", 180)
+    if lower.startswith(("playwright_unavailable:", "selenium_unavailable:", "scrapling_unavailable:")):
+        detail = text.split(":", 1)[1].strip()
+        return "娴忚鍣ㄥ洖閫€涓嶅彲鐢?", compact(detail or "娴忚鍣ㄥ紩鎿庝笉鍙敤", 180)
+    if lower.startswith(("browser_request_failed:", "scrapling_browser_failed:", "scrapling_request_failed:")):
+        detail = text.split(":", 1)[1].strip()
+        return "娴忚鍣ㄥ洖閫€澶辫触", compact(detail or "娴忚鍣ㄨ幏鍙栭〉闈㈠け璐?", 180)
+    if lower.startswith("browser_antibot_challenge") or lower.startswith("http_antibot_challenge"):
+        return "鐩爣绔欑偣瑙﹀彂鍙嶇埇鏍￠獙", "椤甸潰杩斿洖浜� Cloudflare/captcha/turnstile 绛夊弽鐖寫鎴?"
+    if "just a moment" in lower or "captcha" in lower or "security check" in lower:
+        return "鐩爣绔欑偣瑙﹀彂鍙嶇埇鏍￠獙", "绔欑偣杩斿洖浜嗗弽鐖�/浜烘満楠岃瘉椤甸潰"
+    return "閲囬泦澶辫触", text or "鏈彁渚涜缁嗕俊鎭?"
+
+
+def humanize_collect_error(error_text: str, status_code: int) -> tuple[str, str]:
+    text = compact(error_text, 220)
+    lower = text.lower()
+    if lower.startswith("http_error:"):
+        code = int(status_code or 0) or int((text.split(":", 1)[1] or "0").strip() or 0)
+        return "HTTP \u8bf7\u6c42\u5931\u8d25", f"\u76ee\u6807\u7ad9\u70b9\u8fd4\u56de\u72b6\u6001\u7801 {code}"
+    if lower.startswith("http_request_failed:"):
+        detail = text.split(":", 1)[1].strip()
+        return "HTTP \u8bf7\u6c42\u5f02\u5e38", compact(detail or "\u7f51\u7edc\u8bf7\u6c42\u5931\u8d25", 180)
+    if lower.startswith(("playwright_unavailable:", "selenium_unavailable:", "scrapling_unavailable:")):
+        detail = text.split(":", 1)[1].strip()
+        return (
+            "\u6d4f\u89c8\u5668\u56de\u9000\u4e0d\u53ef\u7528",
+            compact(detail or "Playwright/Selenium/Scrapling \u4e0d\u53ef\u7528", 180),
+        )
+    if lower.startswith(
+        (
+            "browser_request_failed:",
+            "browser_fetch_failed:",
+            "scrapling_browser_failed:",
+            "scrapling_request_failed:",
+        )
+    ):
+        detail = text.split(":", 1)[1].strip()
+        return "\u6d4f\u89c8\u5668\u56de\u9000\u5931\u8d25", compact(detail or "\u6d4f\u89c8\u5668\u9875\u9762\u83b7\u53d6\u5931\u8d25", 180)
+    if lower.startswith("browser_antibot_challenge") or lower.startswith("http_antibot_challenge"):
+        return (
+            "\u76ee\u6807\u7ad9\u70b9\u89e6\u53d1\u53cd\u722c\u6821\u9a8c",
+            "\u9875\u9762\u8fd4\u56de\u4e86 Cloudflare/captcha/turnstile \u7b49\u53cd\u722c\u6311\u6218\u3002",
+        )
+    if "just a moment" in lower or "captcha" in lower or "security check" in lower:
+        return "\u76ee\u6807\u7ad9\u70b9\u89e6\u53d1\u53cd\u722c\u6821\u9a8c", "\u7ad9\u70b9\u8fd4\u56de\u4e86\u53cd\u722c/\u4eba\u673a\u9a8c\u8bc1\u9875\u9762"
+    return "\u91c7\u96c6\u5931\u8d25", text or "\u672a\u63d0\u4f9b\u8be6\u7ec6\u4fe1\u606f"
+
+
 def parse_charset(content_type: str) -> str:
     raw = str(content_type or "").lower()
     marker = "charset="
@@ -330,6 +388,16 @@ def fetch_with_playwright(url: str, timeout_seconds: int) -> dict[str, Any]:
         }
 
 
+def fetch_with_scrapling(url: str, timeout_seconds: int) -> dict[str, Any]:
+    return fetch_with_scrapling_browser(
+        url,
+        timeout_seconds=max(5, int(timeout_seconds)),
+        engine="scrapling-stealth",
+        disable_resources=True,
+        headless=True,
+    )
+
+
 def fetch_with_selenium(url: str, timeout_seconds: int) -> dict[str, Any]:
     try:
         from selenium import webdriver  # type: ignore
@@ -386,6 +454,33 @@ def fetch_with_selenium(url: str, timeout_seconds: int) -> dict[str, Any]:
 def fetch_with_browser(url: str, timeout_seconds: int) -> dict[str, Any]:
     attempts: list[dict[str, Any]] = []
     for fetcher in (fetch_with_playwright, fetch_with_selenium):
+        result = fetcher(url, timeout_seconds)
+        if bool(result.get("ok")) and not looks_like_antibot(result):
+            return result
+        if bool(result.get("ok")) and looks_like_antibot(result):
+            result = dict(result)
+            result["ok"] = False
+            result["error"] = "browser_antibot_challenge"
+        attempts.append(result)
+
+    combined_error = "; ".join(
+        dict.fromkeys(str(item.get("error", "")).strip() for item in attempts if str(item.get("error", "")).strip())
+    ).strip()
+    first = attempts[0] if attempts else {}
+    return {
+        "ok": False,
+        "method": "browser",
+        "status": int(first.get("status", 0) or 0),
+        "content_type": str(first.get("content_type", "") or "text/html"),
+        "text": str(first.get("text", "") or ""),
+        "truncated": False,
+        "error": combined_error or "browser_fetch_failed",
+    }
+
+
+def fetch_with_browser(url: str, timeout_seconds: int) -> dict[str, Any]:
+    attempts: list[dict[str, Any]] = []
+    for fetcher in (fetch_with_scrapling, fetch_with_playwright, fetch_with_selenium):
         result = fetcher(url, timeout_seconds)
         if bool(result.get("ok")) and not looks_like_antibot(result):
             return result

@@ -43,11 +43,11 @@ LOG_MODES = {"silent", "chat"}
 DEFAULT_SENDER_IDENTITY = "optimization-agent/github-web-evolution"
 DEFAULT_GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
 DEFAULT_QUERY_PACK = [
-    "multi-agent workflow orchestration language:python archived:false",
-    "ai coding agent automation language:python archived:false",
-    "llm agent memory routing workflow archived:false",
-    "code review automation bot language:python archived:false",
-    "prompt engineering workflow framework archived:false",
+    "multi-agent workflow orchestration archived:false",
+    "ai coding agent automation workflow archived:false",
+    "browser testing automation playwright archived:false",
+    "web scraping anti bot browser automation archived:false",
+    "github code review automation agent archived:false",
 ]
 METHOD_KEYWORDS = {
     "workflow",
@@ -69,6 +69,34 @@ METHOD_KEYWORDS = {
     "pr",
     "pipeline",
     "self-evolution",
+}
+PROJECT_SCOPE_KEYWORDS = {
+    "agent",
+    "automation",
+    "browser",
+    "crawler",
+    "playwright",
+    "review",
+    "scraper",
+    "scraping",
+    "scrapling",
+    "selenium",
+    "test",
+    "testing",
+    "web",
+    "workflow",
+}
+INFRA_REPO_FULL_NAMES = {
+    "python/cpython",
+    "nodejs/node",
+    "golang/go",
+    "rust-lang/rust",
+    "denoland/deno",
+    "ruby/ruby",
+    "php/php-src",
+    "openjdk/jdk",
+    "dotnet/runtime",
+    "llvm/llvm-project",
 }
 
 
@@ -426,6 +454,27 @@ def normalize_repo_item(item: dict[str, Any], query: str) -> dict[str, Any] | No
     return repo
 
 
+def repo_text_blob(repo: dict[str, Any]) -> str:
+    parts: list[str] = [
+        str(repo.get("full_name", "")).strip(),
+        str(repo.get("description", "")).strip(),
+        str(repo.get("language", "")).strip(),
+    ]
+    parts.extend(str(x).strip() for x in (repo.get("topics") or []) if str(x).strip())
+    parts.extend(str(x).strip() for x in (repo.get("query_hits") or []) if str(x).strip())
+    return " ".join(parts).lower()
+
+
+def is_infrastructure_repo(repo: dict[str, Any]) -> bool:
+    full_name = str(repo.get("full_name", "")).strip().lower()
+    return full_name in INFRA_REPO_FULL_NAMES
+
+
+def matches_project_scope(repo: dict[str, Any]) -> bool:
+    blob = repo_text_blob(repo)
+    return any(keyword in blob for keyword in PROJECT_SCOPE_KEYWORDS)
+
+
 def build_query_list(raw_queries: list[str], min_stars: int, max_queries: int) -> list[str]:
     base = [str(x).strip() for x in raw_queries if str(x).strip()]
     if not base:
@@ -453,6 +502,10 @@ def merge_query_results(
             if repo is None:
                 continue
             if repo.get("archived"):
+                continue
+            if is_infrastructure_repo(repo):
+                continue
+            if not matches_project_scope(repo):
                 continue
             if int(repo.get("stargazers_count", 0) or 0) < max(0, int(min_stars)):
                 continue

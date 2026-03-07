@@ -18,7 +18,7 @@ from typing import Any
 from io_write_gateway import atomic_write_text, write_json_atomic
 
 UTC = timezone.utc
-API_ENGINES = {"http", "playwright", "selenium"}
+API_ENGINES = {"http", "playwright", "selenium", "scrapling", "scrapling-stealth"}
 GIT_UPDATE_STRATEGIES = {"fetch", "pull-ff-only"}
 
 
@@ -1575,7 +1575,10 @@ def main() -> int:
                         "API test cron expr", args.cron_api_test_expr or "*/15 * * * *"
                     )
                     args.cron_api_test_engine = normalize_api_engine(
-                        prompt_text("API test engine (http/playwright/selenium)", args.cron_api_test_engine or "playwright"),
+                        prompt_text(
+                            "API test engine (http/playwright/selenium/scrapling)",
+                            args.cron_api_test_engine or "playwright",
+                        ),
                         default="playwright",
                     )
                     args.cron_api_test_log_mode = normalize_log_mode(

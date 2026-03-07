@@ -24,10 +24,11 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, write_json_atomic
+from scrapling_runtime import fetch_with_scrapling_browser, fetch_with_scrapling_static  # type: ignore
 
 TZ = timezone(timedelta(hours=8))
 LOG_MODES = {"silent", "chat"}
-ENGINES = {"http", "playwright", "playwright-real", "selenium"}
+ENGINES = {"http", "playwright", "playwright-real", "selenium", "scrapling", "scrapling-stealth"}
 DEFAULT_SENDER_IDENTITY = "ops-agent/api-test-audit"
 DEFAULT_FRESHNESS_CANDIDATES = [
     "timestamp",
@@ -422,6 +423,27 @@ def playwright_call(method: str, url: str, headers: dict[str, str], body: str, t
         return 0, "", str(exc)
 
 
+def scrapling_call(
+    method: str,
+    url: str,
+    headers: dict[str, str],
+    body: str,
+    timeout_seconds: int,
+    engine: str,
+) -> tuple[int, str, str]:
+    result = fetch_with_scrapling_static(
+        url,
+        method=method,
+        headers=headers,
+        body=body,
+        timeout_seconds=timeout_seconds,
+        engine=engine,
+    )
+    if bool(result.get("ok")):
+        return int(result.get("status", 0) or 0), str(result.get("content_type", "") or ""), str(result.get("text", "") or "")
+    return int(result.get("status", 0) or 0), str(result.get("content_type", "") or ""), str(result.get("error", "") or "")
+
+
 def apply_playwright_steps(page: Any, steps: list[dict[str, Any]], timeout_seconds: int) -> tuple[bool, str]:
     timeout_ms = max(1000, int(timeout_seconds) * 1000)
     for idx, step in enumerate(steps, start=1):
@@ -762,6 +784,139 @@ def run_browser_check_selenium(
                 pass
 
 
+def run_browser_check_scrapling(
+    url: str,
+    expect_text: str,
+    timeout_seconds: int,
+    *,
+    steps: list[dict[str, Any]] | None = None,
+    expect_selectors: list[str] | None = None,
+    screenshot_file: str = "",
+    devtools_file: str = "",
+    engine: str = "scrapling",
+) -> tuple[bool, str, str, dict[str, Any]]:
+    steps = [x for x in (steps or []) if isinstance(x, dict)]
+    expected_selectors = [str(x).strip() for x in (expect_selectors or []) if str(x).strip()]
+    timeout_ms = max(1000, int(timeout_seconds) * 1000)
+    screenshot_path = str(Path(screenshot_file).expanduser()) if screenshot_file else ""
+    devtools_path = str(Path(devtools_file).expanduser()) if devtools_file else ""
+    console_rows: list[dict[str, str]] = []
+    request_failed_rows: list[dict[str, str]] = []
+    api_records: list[dict[str, Any]] = []
+    action_error = ""
+
+    def persist_screenshot(page: Any) -> None:
+        if not screenshot_path:
+            return
+        try:
+            Path(screenshot_path).parent.mkdir(parents=True, exist_ok=True)
+            page.screenshot(path=screenshot_path, full_page=True)
+        except Exception:
+            pass
+
+    def mark_error(page: Any, note: str) -> None:
+        nonlocal action_error
+        if not action_error:
+            action_error = str(note or "").strip() or "scrapling_page_action_failed"
+        persist_screenshot(page)
+
+    def page_action(page: Any) -> None:
+        def on_console(msg: Any) -> None:
+            level = str(getattr(msg, "type", "") or "").strip()
+            text = str(getattr(msg, "text", "") or "").strip()
+            if text:
+                console_rows.append({"level": level, "text": text[:500]})
+
+        def on_request_failed(req: Any) -> None:
+            fail_text = ""
+            try:
+                if req.failure:
+                    fail_text = str(req.failure or "")
+            except Exception:
+                fail_text = ""
+            request_failed_rows.append(
+                {
+                    "url": str(getattr(req, "url", "") or ""),
+                    "method": str(getattr(req, "method", "") or ""),
+                    "resource_type": str(getattr(req, "resource_type", "") or ""),
+                    "failure": fail_text[:400],
+                }
+            )
+
+        def on_response(resp: Any) -> None:
+            req = getattr(resp, "request", None)
+            resource_type = str(getattr(req, "resource_type", "") or "")
+            if resource_type not in {"xhr", "fetch"}:
+                return
+            row: dict[str, Any] = {
+                "url": str(getattr(resp, "url", "") or ""),
+                "status": int(getattr(resp, "status", 0) or 0),
+                "method": str(getattr(req, "method", "") or "").upper(),
+                "resource_type": resource_type,
+            }
+            body_text = ""
+            try:
+                body_text = resp.text() or ""
+                row["response_bytes"] = len(body_text.encode("utf-8", errors="ignore"))
+            except Exception:
+                body_text = ""
+            if body_text:
+                row["response_body"] = body_text[:3000]
+                try:
+                    row["response_json"] = json.loads(body_text)
+                except Exception:
+                    pass
+            api_records.append(row)
+
+        try:
+            page.on("console", on_console)
+            page.on("requestfailed", on_request_failed)
+            page.on("response", on_response)
+        except Exception:
+            pass
+
+        ok_steps, note_steps = apply_playwright_steps(page, steps, timeout_seconds)
+        if not ok_steps:
+            mark_error(page, note_steps)
+            return
+
+        for selector in expected_selectors:
+            try:
+                page.locator(selector).first.wait_for(state="visible", timeout=timeout_ms)
+            except Exception:
+                mark_error(page, f"expect_selector_missing:{selector}")
+                return
+        persist_screenshot(page)
+
+    result = fetch_with_scrapling_browser(
+        url,
+        timeout_seconds=timeout_seconds,
+        engine=engine,
+        wait_selector=expected_selectors[0] if expected_selectors else "",
+        wait_selector_state="visible",
+        page_action=page_action,
+        disable_resources=False,
+        headless=True,
+    )
+    details = {
+        "console": console_rows,
+        "request_failed": request_failed_rows,
+        "api_records": api_records,
+    }
+    if devtools_path:
+        Path(devtools_path).parent.mkdir(parents=True, exist_ok=True)
+        save_json(Path(devtools_path), details)
+
+    if not bool(result.get("ok")):
+        return False, str(result.get("error", "") or "scrapling_browser_failed"), screenshot_path, details
+    if action_error:
+        return False, action_error, screenshot_path, details
+    text = str(result.get("text", "") or "")
+    if expect_text and expect_text not in text:
+        return False, "expect_text_missing", screenshot_path, details
+    return True, "ok", screenshot_path, details
+
+
 def issue_key(kind: str, item_id: str, reason: str) -> str:
     return f"{kind}:{item_id}:{reason}"
 
@@ -857,6 +1012,8 @@ def evaluate_endpoint(
     result["probe_engine"] = probe_engine
     if probe_engine in {"playwright", "playwright-real"}:
         status_code, content_type, text = playwright_call(method, url, headers, body, timeout_seconds)
+    elif probe_engine in {"scrapling", "scrapling-stealth"}:
+        status_code, content_type, text = scrapling_call(method, url, headers, body, timeout_seconds, probe_engine)
     else:
         status_code, content_type, text = http_call(method, url, headers, body, timeout_seconds)
 
@@ -1054,8 +1211,19 @@ def run_browser_checks(
                 timeout_seconds,
                 screenshot_file=str(screenshot_file),
             )
+        elif engine in {"scrapling", "scrapling-stealth"}:
+            ok, note, screenshot_path, details = run_browser_check_scrapling(
+                url,
+                expect_text,
+                timeout_seconds,
+                steps=steps,
+                expect_selectors=expect_selectors,
+                screenshot_file=str(screenshot_file),
+                devtools_file=str(devtools_file),
+                engine=engine,
+            )
         else:
-            ok, note, screenshot_path, details = False, "browser_checks_require_playwright_or_selenium", "", {}
+            ok, note, screenshot_path, details = False, "browser_checks_require_playwright_selenium_or_scrapling", "", {}
 
         if screenshot_path and Path(screenshot_path).exists():
             row["screenshot"] = screenshot_path
@@ -1129,7 +1297,11 @@ def main() -> int:
     parser.add_argument("--state-file", default=str(home / ".openclaw/ops/api-test-state.json"))
     parser.add_argument("--history-dir", default=str(home / ".openclaw/ops/api-test-runs"))
     parser.add_argument("--task-id", default="")
-    parser.add_argument("--engine", default="", help="http|playwright|playwright-real|selenium; empty uses config")
+    parser.add_argument(
+        "--engine",
+        default="",
+        help="http|playwright|playwright-real|selenium|scrapling|scrapling-stealth; empty uses config",
+    )
     parser.add_argument("--sender-identity", default=DEFAULT_SENDER_IDENTITY)
     parser.add_argument("--normal-log-mode", default="silent", choices=sorted(LOG_MODES))
     parser.add_argument("--allow-auto-default-config", action="store_true")
@@ -1400,7 +1572,7 @@ def main() -> int:
                 "status": "failed",
                 "reasons": ["http_engine_forbidden"],
                 "issue_key": issue_key("policy", "engine-policy", "http_engine_forbidden"),
-                "suggestion": "use playwright-real with browser checks",
+                "suggestion": "use playwright-real or scrapling-stealth with browser checks",
             }
         )
     if require_browser_checks and not browser_items:

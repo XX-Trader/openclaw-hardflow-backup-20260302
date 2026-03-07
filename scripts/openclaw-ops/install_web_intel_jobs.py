@@ -242,7 +242,7 @@ def main() -> None:
             job_id=str(args.collector_job_id),
             agent_id="web-agent",
             name="web_intel_collect_hourly",
-            description="web-agent collects internet intelligence with browser fallback",
+            description="web-agent collects internet intelligence with scrapling/playwright/selenium fallback",
             every_ms=max(600000, int(args.collect_every_ms)),
             message=build_message(collect_cmd),
             timeout_seconds=1500,
