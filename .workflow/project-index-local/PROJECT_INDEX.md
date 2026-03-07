@@ -1,11 +1,11 @@
 # openclaw-hardflow-backup-20260302 Project Index
 
-- generated_at: 2026-03-06T09:13:27+00:00
+- generated_at: 2026-03-07T07:25:26+00:00
 - root: /home/ubuntu/openclaw-hardflow-backup-20260302
 - git_repo: True
 - git_branch: main
 - git_remote: https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git
-- dirty_files: 5
+- dirty_files: 6
 
 ## Workflow
 1. coordinator intake and requirement alignment
@@ -58,6 +58,7 @@
 - scripts/openclaw-ops/api_test_audit.py
 - scripts/openclaw-ops/apply_default_output_language.py
 - scripts/openclaw-ops/auto_update_install_runner.py
+- scripts/openclaw-ops/bootstrap_runtime_agents.py
 - scripts/openclaw-ops/configure_runtime_env.py
 - scripts/openclaw-ops/conversation_evolution_runner.py
 - scripts/openclaw-ops/cron_setup.py
@@ -73,12 +74,14 @@
 - scripts/openclaw-ops/install_local_openclaw_backup_job.py
 - scripts/openclaw-ops/install_project_index_job.py
 - scripts/openclaw-ops/install_reviewer_scan_jobs.py
+- scripts/openclaw-ops/install_task_executor_job.py
 - scripts/openclaw-ops/install_todo_patrol_job.py
 - scripts/openclaw-ops/install_web_intel_jobs.py
 - scripts/openclaw-ops/install_workflow_profile.py
 - scripts/openclaw-ops/local_git_backup_runner.py
 - scripts/openclaw-ops/model_tier_profiles.json
 - scripts/openclaw-ops/normalize_openclaw_home_paths.py
+- scripts/openclaw-ops/openclaw_upstream_binding.py
 - scripts/openclaw-ops/ops_cron_runner.py
 - scripts/openclaw-ops/policy/CONTEXT_GATE.md
 - scripts/openclaw-ops/policy/FIELD_DICTIONARY.md
@@ -97,16 +100,21 @@
 - scripts/openclaw-ops/policy/runtime.env.example
 - scripts/openclaw-ops/policy/runtime/file_write_audit.jsonl
 - scripts/openclaw-ops/policy/task_center.py
+- scripts/openclaw-ops/policy/task_executor_runner.py
 - scripts/openclaw-ops/policy/token-pricing.json
 - scripts/openclaw-ops/policy/workflow_setup.py
 - scripts/openclaw-ops/prune_cron_jobs.py
+- scripts/openclaw-ops/repeat_server_message_audit.py
 - scripts/openclaw-ops/restore_openclaw_memory.py
 - scripts/openclaw-ops/reviewer_cron_runner.py
+- scripts/openclaw-ops/scrapling_runtime.py
 - scripts/openclaw-ops/self_evolution_todo.py
 - scripts/openclaw-ops/switch_model_tier.ps1
 - scripts/openclaw-ops/switch_model_tier.py
 - scripts/openclaw-ops/switch_model_tier.sh
 - scripts/openclaw-ops/sync_agents_12_to_servers.sh
+- scripts/openclaw-ops/sync_gpt54_to_servers.ps1
+- scripts/openclaw-ops/sync_gpt54_to_servers.sh
 - scripts/openclaw-ops/sync_model_to_doubao_servers.ps1
 - scripts/openclaw-ops/sync_model_to_doubao_servers.sh
 - scripts/openclaw-ops/sync_openclaw_ops_files.py
@@ -116,6 +124,7 @@
 - scripts/openclaw-ops/sync_todo_patrol_to_servers.sh
 - scripts/openclaw-ops/system_schedule_snapshot.py
 - scripts/openclaw-ops/todo_patrol.py
+- scripts/openclaw-ops/uninstall_workflow_profile.py
 - scripts/openclaw-ops/verify_job_payload_paths.py
 - scripts/openclaw-ops/web/project_docs_sources.json
 - scripts/openclaw-ops/web/sources.json

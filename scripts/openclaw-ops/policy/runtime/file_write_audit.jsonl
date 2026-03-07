@@ -40,3 +40,11 @@
 {"op":"write_json","path":"D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\tmp\\task-executor-job-test.json","status":"ok","size_bytes":1638,"duration_ms":16.0,"code":"ok","ts_utc":"2026-03-06T09:54:46.533361+00:00","pid":592196}
 {"op":"write_json","path":"C:\\Users\\superma\\AppData\\Local\\Temp\\tmpqck93bmg\\runs\\20260307_071831_daily_incremental_run-test-1.json","status":"ok","size_bytes":247,"duration_ms":16.0,"code":"ok","ts_utc":"2026-03-06T23:18:31.647146+00:00","pid":122048}
 {"op":"write_json","path":"C:\\Users\\superma\\AppData\\Local\\Temp\\tmpqck93bmg\\state.json","status":"ok","size_bytes":396,"duration_ms":0.0,"code":"ok","ts_utc":"2026-03-06T23:18:31.663142+00:00","pid":122048}
+{"op":"write_json","path":"/home/ubuntu/.openclaw/ops/.hardflow-sync-manifest.json","status":"ok","size_bytes":3038,"duration_ms":5.791,"code":"ok","ts_utc":"2026-03-07T01:53:16.968587+00:00","pid":1130612}
+{"op":"write_json","path":"/home/ubuntu/.openclaw/cron/jobs.json","status":"ok","size_bytes":45674,"duration_ms":3.329,"code":"ok","ts_utc":"2026-03-07T01:53:17.234659+00:00","pid":1130618}
+{"op":"write_json","path":"/home/ubuntu/.openclaw/cron/jobs.json","status":"ok","size_bytes":45674,"duration_ms":3.031,"code":"ok","ts_utc":"2026-03-07T01:53:17.328465+00:00","pid":1130619}
+{"op":"write_json","path":"/home/ubuntu/.openclaw/cron/jobs.json","status":"ok","size_bytes":45540,"duration_ms":4.645,"code":"ok","ts_utc":"2026-03-07T01:53:17.430020+00:00","pid":1130620}
+{"op":"write_json","path":"/home/ubuntu/.openclaw/ops/cron-monitor-config.json","status":"ok","size_bytes":3834,"duration_ms":14.199,"code":"ok","ts_utc":"2026-03-07T01:53:17.675628+00:00","pid":1130622}
+{"op":"write_json","path":"/home/ubuntu/.openclaw/cron/jobs.json","status":"ok","size_bytes":45674,"duration_ms":30.781,"code":"ok","ts_utc":"2026-03-07T01:53:17.712982+00:00","pid":1130622}
+{"op":"write_json","path":"/home/ubuntu/.openclaw/cron/jobs.json","status":"ok","size_bytes":45718,"duration_ms":5.643,"code":"ok","ts_utc":"2026-03-07T01:53:17.946091+00:00","pid":1130629}
+{"op":"write_json","path":"/home/ubuntu/.openclaw/cron/jobs.json","status":"ok","size_bytes":45917,"duration_ms":3.048,"code":"ok","ts_utc":"2026-03-07T01:53:18.015132+00:00","pid":1130631}
