@@ -339,9 +339,18 @@ def build_fatal_output(exc: Exception) -> str:
     return "\n".join(lines)
 
 
+def is_runtime_binding_task(task: dict[str, Any] | None) -> bool:
+    if not isinstance(task, dict):
+        return False
+    if str(task.get("task_type", "")).strip().lower() == "ops_runtime_cron":
+        return True
+    return str(task.get("reason", "")).strip().startswith("[CRON_RUNTIME] bind ")
+
+
 def select_tasks(enforcer: PolicyEnforcer, only_task_id: str, max_tasks: int) -> list[dict[str, Any]]:
     if str(only_task_id or "").strip():
-        return [enforcer.db.get_task(str(only_task_id).strip())]
+        task = enforcer.db.get_task(str(only_task_id).strip())
+        return [] if is_runtime_binding_task(task) else [task]
     rows = enforcer.db.conn.execute(
         """
         SELECT task_id FROM tasks
@@ -356,7 +365,10 @@ def select_tasks(enforcer: PolicyEnforcer, only_task_id: str, max_tasks: int) ->
     ).fetchall()
     out: list[dict[str, Any]] = []
     for row in rows:
-        out.append(enforcer.db.get_task(str(row["task_id"])))
+        task = enforcer.db.get_task(str(row["task_id"]))
+        if is_runtime_binding_task(task):
+            continue
+        out.append(task)
         if len(out) >= max_tasks:
             break
     return out
