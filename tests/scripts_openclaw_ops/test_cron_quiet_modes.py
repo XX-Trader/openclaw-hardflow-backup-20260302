@@ -1,6 +1,7 @@
 import contextlib
 import io
 import importlib.util
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,68 @@ def load_module(name: str, rel_path: str):
 
 
 class CronQuietModeTests(unittest.TestCase):
+    def test_task_executor_skips_ops_runtime_cron_binding_tasks(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            """
+            CREATE TABLE tasks (
+                task_id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                pool TEXT NOT NULL,
+                priority TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.executemany(
+            """
+            INSERT INTO tasks (task_id, status, pool, priority, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                ("cron:ops-governance-evolution", "pending", "jobs", "low", "2026-03-07T08:00:00+00:00"),
+                ("todo-1", "pending", "todo", "medium", "2026-03-07T08:01:00+00:00"),
+            ],
+        )
+
+        tasks = {
+            "cron:ops-governance-evolution": {
+                "task_id": "cron:ops-governance-evolution",
+                "status": "pending",
+                "pool": "jobs",
+                "priority": "low",
+                "task_type": "ops_runtime_cron",
+                "reason": "[CRON_RUNTIME] bind cron:ops-governance-evolution",
+            },
+            "todo-1": {
+                "task_id": "todo-1",
+                "status": "pending",
+                "pool": "todo",
+                "priority": "medium",
+                "task_type": "workflow",
+                "reason": "normal work item",
+            },
+        }
+
+        class FakeDB:
+            def __init__(self, conn_obj, task_map):
+                self.conn = conn_obj
+                self._task_map = task_map
+
+            def get_task(self, task_id):
+                return self._task_map[task_id]
+
+        enforcer = SimpleNamespace(db=FakeDB(conn, tasks))
+
+        selected = module.select_tasks(enforcer, "", 3)
+        self.assertEqual([item["task_id"] for item in selected], ["todo-1"])
+
     def test_task_executor_quiet_when_no_failures(self):
         module = load_module(
             "task_executor_runner",
