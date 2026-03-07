@@ -58,7 +58,7 @@ python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py \
 3. 为每个项目生成并初始化：
    - `.workflow/task-center/task_center.db`
    - `.workflow/policy.env`
-   - `.workflow/project-index/project-registry.json`
+   - `.workflow/project-index/project-registry.json`（运行时本地配置，不入 Git）
 4. 写入环境变量：
    - `OPENCLAW_HOME`
    - `TASK_CENTER_DIR`
@@ -85,8 +85,8 @@ python3 "$PROJECT_INDEX_MAINTAINER_PY" \
 
 会自动维护：
 
-- `.workflow/project-index/PROJECT_INDEX.md`
-- `.workflow/project-index/project-index.json`
+- `.workflow/project-index-local/PROJECT_INDEX.md`
+- `.workflow/project-index-local/project-index.json`
 
 ## 6. 安装后核查（强烈建议）
 

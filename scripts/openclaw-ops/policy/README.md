@@ -233,7 +233,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py daily-summary \
 ```bash
 python3 scripts/openclaw-ops/policy/policy_enforcer.py check-config \
   --openclaw-config openclaw/openclaw.json \
-  --project-registry .workflow/project-index/project-registry.json \
+  --project-registry ~/.openclaw/ops/task-center/project-registry.json \
   --strict
 ```
 

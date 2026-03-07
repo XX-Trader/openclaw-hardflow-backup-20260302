@@ -6,13 +6,14 @@ docs/BrowserWing-介绍.md
 log/browserwing.log
 config.toml
 
-# 机器特定的配置文件（不要同步到 Git）
+# Machine-specific runtime files
 .workflow/policy.env
-.workflow/project-index/project-registry.json
+.workflow/project-index/
+.workflow/project-index-local/
 .workflow/task-center/
 .tmp/
 
-# IDE 和编辑器
+# IDE and editors
 .idea/
 .vscode/
 *.swp

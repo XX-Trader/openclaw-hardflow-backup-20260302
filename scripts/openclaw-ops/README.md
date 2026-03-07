@@ -96,6 +96,15 @@
 - `sync_policy_enforcer_to_servers.sh`
 - `sync_policy_enforcer_to_servers.ps1`
 
+## 远程安全更新
+
+- `remote_safe_update.py`
+  - 远程检查或同步 `openclaw-hardflow-backup-20260302`
+  - 默认排除 `google-us`
+  - 支持三种冲突策略：`runtime-reset`、`stash-nonvolatile`、`snapshot-branch`
+- `remote_safe_update.ps1`
+- `remote_safe_update.sh`
+
 ## 常用命令
 
 ```bash
@@ -172,6 +181,15 @@ python3 scripts/openclaw-ops/policy/risk_rule_sync.py batch \
   --apply-default-preset \
   --add-high "api契约升级" \
   --add-low "临时网络抖动"
+
+# 先检查远程仓库冲突
+python3 scripts/openclaw-ops/remote_safe_update.py --mode inspect
+
+# 只清理运行态冲突再同步
+python3 scripts/openclaw-ops/remote_safe_update.py --mode sync --strategy runtime-reset
+
+# 非运行态改动先 stash 再同步
+python3 scripts/openclaw-ops/remote_safe_update.py --mode sync --strategy stash-nonvolatile
 
 # 手动执行一次每日工作钉钉报告（仅新增 todo/done）
 python3 scripts/openclaw-ops/daily_work_report.py \
@@ -293,12 +311,14 @@ python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
    - endpoint `freshness_required=true` to fail when no valid freshness timestamp is available
    - `real_browser.user_data_dir/profile_directory/channel/headless`
 5. `init_api_test_config.py` now generates real-browser defaults and click-step templates.
-6. `project_index_maintainer.py` now maintains:
-   - `.workflow/project-index/doc-knowledge.json`
-   - `.workflow/project-index/doc-search-index.json`
-   - `.workflow/project-index/DOC_KNOWLEDGE.md`
+6. `project_index_maintainer.py` now maintains runtime index artifacts under `.workflow/project-index-local/` by default:
+   - `doc-knowledge.json`
+   - `doc-search-index.json`
+   - `DOC_KNOWLEDGE.md`
    - docs update-check state in `doc-knowledge-state.json`
-   - direct-fetch cache under `.workflow/project-index/doc-source-cache/*.txt`
+   - direct-fetch cache under `doc-source-cache/*.txt`
+   - `reviewer_cron_runner.py` prefers `project-index-local/project-index.json` and falls back to legacy `.workflow/project-index/project-index.json`
+   - both `.workflow/project-index-local/` and `.workflow/project-index/` are runtime-only and should stay out of Git tracking
 7. Browser checks now export DevTools-like evidence:
    - `history/devtools/<run>/check-id.json` includes console/network/xhr-fetch response excerpts
    - scoring fields: `min_score`, `require_api_output`, `api_expectations`, `expect_selectors`

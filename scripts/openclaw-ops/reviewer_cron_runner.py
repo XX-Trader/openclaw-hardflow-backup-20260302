@@ -579,7 +579,11 @@ def current_head(repo: Path) -> str:
 
 
 def load_project_index_summary(repo: Path) -> dict[str, Any]:
-    index_file = repo / ".workflow" / "project-index" / "project-index.json"
+    candidate_files = [
+        repo / ".workflow" / "project-index-local" / "project-index.json",
+        repo / ".workflow" / "project-index" / "project-index.json",
+    ]
+    index_file = next((path for path in candidate_files if path.exists()), candidate_files[0])
     if not index_file.exists():
         return {"exists": False, "index_file": str(index_file)}
     payload = load_json(index_file, {})
