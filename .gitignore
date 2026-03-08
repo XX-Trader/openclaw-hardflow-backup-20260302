@@ -11,7 +11,9 @@ config.toml
 .workflow/project-index/
 .workflow/project-index-local/
 .workflow/task-center/
+.workflow/tmp-*/
 .tmp/
+scripts/openclaw-ops/policy/runtime/
 
 # IDE and editors
 .idea/
