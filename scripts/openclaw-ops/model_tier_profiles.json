@@ -1,5 +1,5 @@
 {
-  "schema_version": "2026-03-03",
+  "schema_version": "2026-03-08",
   "default_tier": "high",
   "tiers": {
     "top": {
@@ -14,11 +14,18 @@
       ],
       "primary_model": "openai-codex/gpt-5.4",
       "fallback_models": [
-        "kimicode/Doubao-Seed-2.0-Code",
+        "openai-codex/gpt-5.3-codex-spark",
         "glmcode/glm-5",
         "glmcode/glm-4.7"
       ],
-      "thinking_default": "xhigh"
+      "model_thinking_overrides": {
+        "openai-codex/gpt-5.4": "xhigh",
+        "openai-codex/gpt-5.3-codex-spark": "xhigh",
+        "glmcode/glm-5": "high",
+        "glmcode/glm-4.7": "high",
+        "kimicode/Doubao-Seed-2.0-Code": "high"
+      },
+      "thinking_default": "high"
     },
     "high": {
       "name": "高级",
@@ -26,17 +33,76 @@
         "high",
         "advanced",
         "高级",
-        "doubao"
+        "default"
+      ],
+      "primary_model": "openai-codex/gpt-5.4",
+      "fallback_models": [
+        "openai-codex/gpt-5.3-codex-spark",
+        "glmcode/glm-5",
+        "glmcode/glm-4.7"
+      ],
+      "agent_model_overrides": {
+        "main": "openai-codex/gpt-5.4",
+        "coordinator": "openai-codex/gpt-5.4",
+        "reviewer": "openai-codex/gpt-5.4",
+        "agent-factory": "openai-codex/gpt-5.3-codex-spark",
+        "backend-dev": "openai-codex/gpt-5.3-codex-spark",
+        "frontend-dev": "openai-codex/gpt-5.3-codex-spark",
+        "optimization-agent": "openai-codex/gpt-5.3-codex-spark",
+        "project-agent": "openai-codex/gpt-5.3-codex-spark",
+        "doc-writer": "glmcode/glm-4.7",
+        "deployer": "glmcode/glm-4.7",
+        "ops-agent": "glmcode/glm-4.7",
+        "tester": "glmcode/glm-4.7",
+        "web-agent": "glmcode/glm-4.7"
+      },
+      "model_thinking_overrides": {
+        "openai-codex/gpt-5.4": "xhigh",
+        "openai-codex/gpt-5.3-codex-spark": "xhigh",
+        "glmcode/glm-5": "high",
+        "glmcode/glm-4.7": "high",
+        "kimicode/Doubao-Seed-2.0-Code": "high"
+      },
+      "thinking_default": "high"
+    },
+    "high_doubao": {
+      "name": "高级豆包版",
+      "aliases": [
+        "high_doubao",
+        "high-doubao",
+        "doubao-chat",
+        "chat-doubao",
+        "gpt54-to-doubao",
+        "豆包版",
+        "豆包对话版"
       ],
       "primary_model": "kimicode/Doubao-Seed-2.0-Code",
       "fallback_models": [
+        "openai-codex/gpt-5.3-codex-spark",
         "glmcode/glm-5",
-        "glmcode/glm-4.7",
-        "openai-codex/gpt-5.3-codex-spark"
+        "glmcode/glm-4.7"
       ],
       "agent_model_overrides": {
-        "reviewer": "openai-codex/gpt-5.4",
-        "optimization-agent": "openai-codex/gpt-5.4"
+        "main": "kimicode/Doubao-Seed-2.0-Code",
+        "coordinator": "kimicode/Doubao-Seed-2.0-Code",
+        "reviewer": "kimicode/Doubao-Seed-2.0-Code",
+        "agent-factory": "openai-codex/gpt-5.3-codex-spark",
+        "backend-dev": "openai-codex/gpt-5.3-codex-spark",
+        "frontend-dev": "openai-codex/gpt-5.3-codex-spark",
+        "optimization-agent": "openai-codex/gpt-5.3-codex-spark",
+        "project-agent": "openai-codex/gpt-5.3-codex-spark",
+        "doc-writer": "glmcode/glm-4.7",
+        "deployer": "glmcode/glm-4.7",
+        "ops-agent": "glmcode/glm-4.7",
+        "tester": "glmcode/glm-4.7",
+        "web-agent": "glmcode/glm-4.7"
+      },
+      "model_thinking_overrides": {
+        "openai-codex/gpt-5.4": "xhigh",
+        "openai-codex/gpt-5.3-codex-spark": "xhigh",
+        "glmcode/glm-5": "high",
+        "glmcode/glm-4.7": "high",
+        "kimicode/Doubao-Seed-2.0-Code": "high"
       },
       "thinking_default": "high"
     },
@@ -53,7 +119,14 @@
       "fallback_models": [
         "glmcode/glm-4.7"
       ],
-      "thinking_default": "medium"
+      "model_thinking_overrides": {
+        "openai-codex/gpt-5.4": "xhigh",
+        "openai-codex/gpt-5.3-codex-spark": "xhigh",
+        "glmcode/glm-5": "high",
+        "glmcode/glm-4.7": "high",
+        "kimicode/Doubao-Seed-2.0-Code": "high"
+      },
+      "thinking_default": "high"
     },
     "low": {
       "name": "低级",
@@ -66,7 +139,14 @@
       ],
       "primary_model": "glmcode/glm-4.7",
       "fallback_models": [],
-      "thinking_default": "low"
+      "model_thinking_overrides": {
+        "openai-codex/gpt-5.4": "xhigh",
+        "openai-codex/gpt-5.3-codex-spark": "xhigh",
+        "glmcode/glm-5": "high",
+        "glmcode/glm-4.7": "high",
+        "kimicode/Doubao-Seed-2.0-Code": "high"
+      },
+      "thinking_default": "high"
     }
   }
 }

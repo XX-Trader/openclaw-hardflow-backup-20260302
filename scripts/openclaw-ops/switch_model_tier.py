@@ -109,7 +109,8 @@ def resolve_tier(raw: str, profiles: dict[str, Any]) -> str:
 
     fuzzy_rules = [
         ("top", ("顶级", "最高", "codex", "xhigh")),
-        ("high", ("高级", "doubao", "high")),
+        ("high_doubao", ("豆包", "doubao", "chatdoubao", "highdoubao")),
+        ("high", ("高级", "high", "advanced")),
         ("medium", ("中级", "glm5", "glm-5", "mid", "medium")),
         ("low", ("低级", "glm47", "glm-4.7", "lite", "low")),
     ]
@@ -142,21 +143,40 @@ def ensure_profile(profile: dict[str, Any], tier: str) -> dict[str, Any]:
         if not agent or not model:
             continue
         agent_model_overrides[agent] = model
+    thinking_overrides_raw = profile.get("model_thinking_overrides", {})
+    if not isinstance(thinking_overrides_raw, dict):
+        raise ValueError(f"档位 {tier} 的 model_thinking_overrides 必须是对象")
+    model_thinking_overrides: dict[str, str] = {}
+    for model_id, thinking in thinking_overrides_raw.items():
+        model = str(model_id).strip()
+        level = str(thinking).strip().lower()
+        if not model or not level:
+            continue
+        model_thinking_overrides[model] = level
     thinking_default = str(profile.get("thinking_default", "")).strip() or "high"
     return {
         "name": str(profile.get("name", tier)).strip() or tier,
         "primary_model": primary,
         "fallback_models": fallbacks,
         "agent_model_overrides": agent_model_overrides,
+        "model_thinking_overrides": model_thinking_overrides,
         "thinking_default": thinking_default,
     }
 
 
-def build_default_model_aliases(chain: list[str], existing: dict[str, Any]) -> dict[str, Any]:
+def build_default_model_aliases(
+    chain: list[str],
+    existing: dict[str, Any],
+    model_thinking_overrides: dict[str, str],
+) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for model_id in chain:
         alias = MODEL_ALIAS_MAP.get(model_id) or model_id.split("/")[-1]
-        result[model_id] = {"alias": alias}
+        payload: dict[str, Any] = {"alias": alias}
+        thinking = str(model_thinking_overrides.get(model_id, "")).strip().lower()
+        if thinking:
+            payload["params"] = {"thinking": thinking}
+        result[model_id] = payload
 
     for model_id, meta in existing.items():
         if model_id in result:
@@ -171,6 +191,7 @@ def apply_openclaw_config(data: dict[str, Any], profile: dict[str, Any]) -> tupl
     primary = profile["primary_model"]
     fallbacks = profile["fallback_models"]
     agent_model_overrides = profile["agent_model_overrides"]
+    model_thinking_overrides = profile["model_thinking_overrides"]
     thinking_default = profile["thinking_default"]
 
     agents_obj = data.setdefault("agents", {})
@@ -192,8 +213,12 @@ def apply_openclaw_config(data: dict[str, Any], profile: dict[str, Any]) -> tupl
     existing_models = defaults.get("models", {})
     if not isinstance(existing_models, dict):
         existing_models = {}
-    chain = ordered_unique([primary, *fallbacks, *agent_model_overrides.values()])
-    expected_alias_map = build_default_model_aliases(chain=chain, existing=existing_models)
+    chain = ordered_unique([primary, *fallbacks, *agent_model_overrides.values(), *model_thinking_overrides.keys()])
+    expected_alias_map = build_default_model_aliases(
+        chain=chain,
+        existing=existing_models,
+        model_thinking_overrides=model_thinking_overrides,
+    )
     if defaults.get("models") != expected_alias_map:
         defaults["models"] = expected_alias_map
         changed = True
@@ -275,6 +300,7 @@ def apply_policy_config(data: dict[str, Any], profile: dict[str, Any]) -> bool:
     primary = profile["primary_model"]
     fallbacks = profile["fallback_models"]
     agent_model_overrides = profile["agent_model_overrides"]
+    model_thinking_overrides = profile["model_thinking_overrides"]
     allowed = ordered_unique([primary, *fallbacks, *agent_model_overrides.values()])
 
     if data.get("primary_model") != primary:
@@ -285,6 +311,12 @@ def apply_policy_config(data: dict[str, Any], profile: dict[str, Any]) -> bool:
         changed = True
     if data.get("allowed_models") != allowed:
         data["allowed_models"] = allowed
+        changed = True
+    if data.get("agent_model_overrides") != agent_model_overrides:
+        data["agent_model_overrides"] = dict(agent_model_overrides)
+        changed = True
+    if data.get("model_thinking_overrides") != model_thinking_overrides:
+        data["model_thinking_overrides"] = dict(model_thinking_overrides)
         changed = True
     return changed
 

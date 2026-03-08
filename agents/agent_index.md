@@ -5,7 +5,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace
 - agentDir: None
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: openai-codex/gpt-5.4
 - allowAgentsCount: 13
 
 ## coordinator
@@ -13,7 +13,7 @@
 - default: True
 - workspace: /home/ubuntu/.openclaw/workspace-coordinator
 - agentDir: None
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: openai-codex/gpt-5.4
 - allowAgentsCount: 13
 
 ## doc-writer
@@ -21,7 +21,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-doc-writer
 - agentDir: None
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: glmcode/glm-4.7
 - allowAgentsCount: 0
 
 ## frontend-dev
@@ -29,7 +29,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-frontend-dev
 - agentDir: None
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: openai-codex/gpt-5.3-codex-spark
 - allowAgentsCount: 0
 
 ## backend-dev
@@ -37,7 +37,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-backend-dev
 - agentDir: None
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: openai-codex/gpt-5.3-codex-spark
 - allowAgentsCount: 0
 
 ## reviewer
@@ -53,7 +53,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-tester
 - agentDir: None
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: glmcode/glm-4.7
 - allowAgentsCount: 0
 
 ## deployer
@@ -61,7 +61,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-deployer
 - agentDir: None
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: glmcode/glm-4.7
 - allowAgentsCount: 0
 
 ## agent-factory
@@ -69,7 +69,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-agent-factory
 - agentDir: None
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: openai-codex/gpt-5.3-codex-spark
 - allowAgentsCount: 3
 
 ## ops-agent
@@ -77,7 +77,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-ops-agent
 - agentDir: /home/ubuntu/.openclaw/agents/ops-agent/agent
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: glmcode/glm-4.7
 - allowAgentsCount: 2
 
 ## optimization-agent
@@ -85,7 +85,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-optimization-agent
 - agentDir: /home/ubuntu/.openclaw/agents/optimization-agent/agent
-- model: openai-codex/gpt-5.4
+- model: openai-codex/gpt-5.3-codex-spark
 - allowAgentsCount: 2
 
 ## project-agent
@@ -93,7 +93,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-project-agent
 - agentDir: /home/ubuntu/.openclaw/agents/project-agent/agent
-- model: kimicode/Doubao-Seed-2.0-Code
+- model: openai-codex/gpt-5.3-codex-spark
 - allowAgentsCount: 1
 
 ## web-agent

@@ -75,6 +75,8 @@ def get_model_ref():
     return {"primary": "openai-codex/gpt-5.4"}
 
 model_ref = get_model_ref()
+ops_agent_model = {"primary": "glmcode/glm-4.7"}
+optimization_agent_model = {"primary": "openai-codex/gpt-5.3-codex-spark"}
 web_agent_model = {"primary": "glmcode/glm-4.7"}
 
 def desired_agent(agent_id: str, allow_agents=None, model=None):
@@ -90,8 +92,8 @@ def desired_agent(agent_id: str, allow_agents=None, model=None):
     return payload
 
 desired = [
-    desired_agent("ops-agent", ["optimization-agent", "secretary-agent"]),
-    desired_agent("optimization-agent", ["secretary-agent"]),
+    desired_agent("ops-agent", ["optimization-agent", "secretary-agent"], model=ops_agent_model),
+    desired_agent("optimization-agent", ["secretary-agent"], model=optimization_agent_model),
     desired_agent("secretary-agent"),
     desired_agent("web-agent", model=web_agent_model),
 ]
@@ -129,6 +131,20 @@ if isinstance(tools, dict):
                 if aid not in allow:
                     allow.append(aid)
                     changed = True
+
+ops_cfg = index.get("ops-agent")
+if isinstance(ops_cfg, dict):
+    model = ops_cfg.get("model")
+    if model != "glmcode/glm-4.7" and model != ops_agent_model:
+        ops_cfg["model"] = copy.deepcopy(ops_agent_model)
+        changed = True
+
+optimization_cfg = index.get("optimization-agent")
+if isinstance(optimization_cfg, dict):
+    model = optimization_cfg.get("model")
+    if model != "openai-codex/gpt-5.3-codex-spark" and model != optimization_agent_model:
+        optimization_cfg["model"] = copy.deepcopy(optimization_agent_model)
+        changed = True
 
 web_cfg = index.get("web-agent")
 if isinstance(web_cfg, dict):

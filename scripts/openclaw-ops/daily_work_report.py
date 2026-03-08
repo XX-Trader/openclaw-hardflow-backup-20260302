@@ -458,6 +458,7 @@ def main() -> int:
     run_errors: list[str] = []
 
     should_send_digest = has_new_records
+    notify = bool(should_send_digest)
 
     report = {
         "run_id": uuid.uuid4().hex[:12],

@@ -27,7 +27,7 @@ python3 scripts/openclaw-ops/install_workflow_profile.py \
 | # | 任务目标 | 档位 | 对应 Job（name） | 安装入口 | 默认频率 |
 |---|---|---|---|---|---|
 | 1 | 运维 agent 定期把到期 TODO 发给规划者执行 | core/all | `todo_patrol_15m` | `install_todo_patrol_job.py` | 每 15 分钟 |
-| 2 | 运维 agent 监控日志问题并去重报警 | core/all | `ops_incremental_monitor` + `ops_full_calibration` + `ops_daily_summary` | `cron_setup.py`（由 profile 安装器调用） | 15 分钟 + 6 小时 + 每日 |
+| 2 | 运维 agent 监控日志问题并去重报警；失败工作流自动派生给优化 agent 的修复任务 | core/all | `ops_incremental_monitor` + `ops_full_calibration` + `ops_daily_summary` | `cron_setup.py`（由 profile 安装器调用） | 15 分钟 + 6 小时 + 每日 |
 | 3 | 项目 agent 同步项目 git 与索引（含本地 `~/.openclaw` 备份链路） | core/all | `project_index_maintainer_30m` + `ops_git_sync_push` + `ops_local_openclaw_git_backup` | `install_project_index_job.py` + `cron_setup.py` + `install_local_openclaw_backup_job.py` | 30 分钟 + 6 小时 + 1 小时 |
 | 4 | 优化 agent 基于本地 openclaw/git 更新优化工作流项目 | core/all | `ops_governance_evolution_incremental` | `cron_setup.py` | 6 小时 |
 | 5 | 优化 agent 全量看对话与 memory，总结并优化其他 agent（含评分） | core/all | `ops_conversation_evolution_incremental` + `ops_self_evolution_weekly_todo` | `cron_setup.py` | 6 小时 + 每周 |
@@ -53,7 +53,13 @@ python3 scripts/openclaw-ops/install_workflow_profile.py \
 
 ## 6. 模型说明
 - 定时脚本本身不硬编码具体模型；实际模型由 OpenClaw 运行时 agent 配置决定。
-- `web-agent` 推荐/默认模型：`glmcode/glm-4.7`。
+- 默认分工：
+  - `main` / `coordinator` / `reviewer` -> `openai-codex/gpt-5.4`
+  - `optimization-agent` / `backend-dev` / `frontend-dev` / `project-agent` / `agent-factory` -> `openai-codex/gpt-5.3-codex-spark`
+  - `ops-agent` / `web-agent` / `tester` / `deployer` / `doc-writer` -> `glmcode/glm-4.7`
+- 思考强度规则：
+  - Codex 模型默认 `xhigh`
+  - 非 Codex 模型默认 `high`
 - 统一切换模型档位可用：
   - `scripts/openclaw-ops/model_tier_profiles.json`
   - `scripts/openclaw-ops/switch_model_tier.py`

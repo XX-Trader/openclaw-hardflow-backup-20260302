@@ -8,6 +8,7 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -26,8 +27,17 @@ GOVERNANCE_BRIDGE_EPILOG = (
 )
 AUTO_MODEL_SENTINELS = {"", "auto", "default"}
 LEGACY_DEFAULT_MODEL = "volcengine/kimi-k2.5"
+DEFAULT_THINKING_LEVEL = "high"
 NOTIFY_ON_MODES = {"error", "activity", "always"}
 ERROR_TASK_STATUSES = {"failed", "partial", "escalated"}
+RETRYABLE_AGENT_ERROR_PATTERNS = (
+    "api rate limit reached",
+    "too many requests",
+    "http_error:429",
+    "status code: 429",
+    "status=429",
+    "failovererror: ⚠️ api rate limit reached",
+)
 
 
 def now_iso() -> str:
@@ -102,29 +112,68 @@ def split_list(value: Any) -> list[str]:
     return uniq
 
 
-def resolve_executor_model(requested_model: str, policy_file: Path) -> tuple[str, str]:
+def load_policy(policy_file: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(policy_file.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def is_codex_model(model_name: str) -> bool:
+    return str(model_name or "").strip().startswith("openai-codex/")
+
+
+def normalize_thinking(value: Any, default: str = "") -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"off", "minimal", "low", "medium", "high", "xhigh", "adaptive"}:
+        return normalized
+    return str(default or "").strip().lower()
+
+
+def resolve_executor_selection(requested_model: str, assignee: str, policy_file: Path) -> tuple[str, str, str]:
     normalized = str(requested_model or "").strip()
     if normalized and normalized.lower() not in AUTO_MODEL_SENTINELS:
-        return normalized, "cli"
+        policy = load_policy(policy_file)
+        thinking_map = policy.get("model_thinking_overrides", {})
+        thinking = ""
+        if isinstance(thinking_map, dict):
+            thinking = normalize_thinking(thinking_map.get(normalized), DEFAULT_THINKING_LEVEL)
+        if not thinking:
+            thinking = DEFAULT_THINKING_LEVEL
+        return normalized, "cli", thinking
 
-    try:
-        policy = json.loads(policy_file.read_text(encoding="utf-8-sig"))
-    except Exception:
-        return LEGACY_DEFAULT_MODEL, "legacy-default"
+    policy = load_policy(policy_file)
+    if not policy:
+        return LEGACY_DEFAULT_MODEL, "legacy-default", DEFAULT_THINKING_LEVEL
 
-    if not isinstance(policy, dict):
-        return LEGACY_DEFAULT_MODEL, "legacy-default"
+    agent_overrides = policy.get("agent_model_overrides", {})
+    if isinstance(agent_overrides, dict):
+        assignee_key = str(assignee or "").strip()
+        target = str(agent_overrides.get(assignee_key, "")).strip()
+        if target:
+            thinking_map = policy.get("model_thinking_overrides", {})
+            thinking = ""
+            if isinstance(thinking_map, dict):
+                thinking = normalize_thinking(thinking_map.get(target), DEFAULT_THINKING_LEVEL)
+            if not thinking:
+                thinking = DEFAULT_THINKING_LEVEL
+            return target, f"policy-agent:{assignee_key}", thinking
 
+    thinking_map = policy.get("model_thinking_overrides", {})
     primary = str(policy.get("primary_model", "")).strip()
     allowed_raw = policy.get("allowed_models", [])
     allowed = [str(item).strip() for item in allowed_raw if str(item).strip()] if isinstance(allowed_raw, list) else []
     if primary and primary in allowed:
-        return primary, "policy-primary"
+        thinking = normalize_thinking(thinking_map.get(primary), DEFAULT_THINKING_LEVEL) if isinstance(thinking_map, dict) else DEFAULT_THINKING_LEVEL
+        return primary, "policy-primary", (thinking or DEFAULT_THINKING_LEVEL)
     if allowed:
-        return allowed[0], "policy-allowed[0]"
+        thinking = normalize_thinking(thinking_map.get(allowed[0]), DEFAULT_THINKING_LEVEL) if isinstance(thinking_map, dict) else DEFAULT_THINKING_LEVEL
+        return allowed[0], "policy-allowed[0]", (thinking or DEFAULT_THINKING_LEVEL)
     if primary:
-        return primary, "policy-primary"
-    return LEGACY_DEFAULT_MODEL, "legacy-default"
+        thinking = normalize_thinking(thinking_map.get(primary), DEFAULT_THINKING_LEVEL) if isinstance(thinking_map, dict) else DEFAULT_THINKING_LEVEL
+        return primary, "policy-primary", (thinking or DEFAULT_THINKING_LEVEL)
+    return LEGACY_DEFAULT_MODEL, "legacy-default", DEFAULT_THINKING_LEVEL
 
 
 def normalize_contract(reply_text: str) -> dict[str, Any]:
@@ -436,7 +485,15 @@ def prompt_for_task(task: dict[str, Any], local_hits: list[str], web_hits: list[
     return f"""你是执行代理，请完成任务并只输出 JSON 对象（不要解释）。\n\n任务:\n- task_id: {task.get('task_id')}\n- reason: {task.get('reason')}\n- requirement: {task.get('requirement')}\n- result_output: {task.get('result_output')}\n- acceptance: {task.get('acceptance')}\n- observable_outputs: {task.get('observable_outputs')}\n- acceptance_thresholds: {task.get('acceptance_thresholds')}\n\n本地检索:\n{local_text}\n\n网络检索:\n{web_text}\n\n输出模板:\n{{\"status\":\"passed|failed|partial|escalated\",\"solved\":true,\"resolution_summary\":\"\",\"resolution_steps\":[],\"resolved_issues\":[],\"failed_items\":[],\"failure_count\":0,\"quality_score\":0,\"quality_grade\":\"a|b|c|d\",\"need_clarification\":false,\"clarification_reason\":\"\",\"context_fields_missing\":[],\"cost_estimate\":0}}"""
 
 
-def call_agent(openclaw_bin: str, assignee: str, message: str, session_id: str, timeout_sec: int, local_mode: bool) -> tuple[int, str, str]:
+def call_agent(
+    openclaw_bin: str,
+    assignee: str,
+    message: str,
+    session_id: str,
+    timeout_sec: int,
+    local_mode: bool,
+    thinking: str = "",
+) -> tuple[int, str, str]:
     openclaw_cmd = str(openclaw_bin or "openclaw").strip() or "openclaw"
     timeout_value = max(30, int(timeout_sec))
     cmd = [
@@ -452,6 +509,9 @@ def call_agent(openclaw_bin: str, assignee: str, message: str, session_id: str, 
         "--timeout",
         str(timeout_value),
     ]
+    normalized_thinking = normalize_thinking(thinking)
+    if normalized_thinking:
+        cmd.extend(["--thinking", normalized_thinking])
     if local_mode:
         cmd.append("--local")
     proc = subprocess.run(
@@ -464,6 +524,53 @@ def call_agent(openclaw_bin: str, assignee: str, message: str, session_id: str, 
         check=False,
     )
     return int(proc.returncode), str(proc.stdout or ""), str(proc.stderr or "")
+
+
+def is_retryable_agent_failure(exit_code: int, out: str, err: str) -> bool:
+    if int(exit_code or 0) == 0:
+        return False
+    combined = "\n".join([str(out or ""), str(err or "")]).lower()
+    return any(pattern in combined for pattern in RETRYABLE_AGENT_ERROR_PATTERNS)
+
+
+def call_agent_with_retries(
+    openclaw_bin: str,
+    assignee: str,
+    message: str,
+    session_id: str,
+    timeout_sec: int,
+    local_mode: bool,
+    thinking: str,
+    *,
+    max_retries: int,
+    retry_delay_sec: int,
+) -> tuple[int, str, str, int, list[dict[str, Any]]]:
+    attempts: list[dict[str, Any]] = []
+    total_attempts = max(1, int(max_retries or 0) + 1)
+    delay_base = max(1, int(retry_delay_sec or 1))
+    for attempt_idx in range(total_attempts):
+        rc, out, err = call_agent(
+            openclaw_bin,
+            assignee,
+            message,
+            session_id,
+            timeout_sec,
+            local_mode,
+            thinking,
+        )
+        retryable = is_retryable_agent_failure(rc, out, err)
+        attempts.append(
+            {
+                "attempt": attempt_idx + 1,
+                "exit_code": int(rc or 0),
+                "retryable": retryable,
+                "stderr_excerpt": str(err or "")[:300],
+            }
+        )
+        if rc == 0 or (not retryable) or attempt_idx >= total_attempts - 1:
+            return rc, out, err, attempt_idx + 1, attempts
+        time.sleep(delay_base * (attempt_idx + 1))
+    return rc, out, err, total_attempts, attempts
 
 
 def extract_usage(agent_json: dict[str, Any]) -> tuple[int, int, int]:
@@ -505,6 +612,8 @@ def main() -> int:
     parser.add_argument("--report-dir", default=str(repo_root / ".workflow/executor-runs"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--notify-on", default="error", choices=sorted(NOTIFY_ON_MODES))
+    parser.add_argument("--agent-max-retries", type=int, default=2)
+    parser.add_argument("--agent-retry-delay-sec", type=int, default=20)
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
 
@@ -514,7 +623,8 @@ def main() -> int:
         routing_file=Path(args.routing_file).expanduser(),
         pricing_file=Path(args.pricing_file).expanduser(),
     )
-    model_name, model_source = resolve_executor_model(str(args.model), paths.policy_file)
+    requested_model = str(args.model or "").strip()
+    has_fixed_model = bool(requested_model and requested_model.lower() not in AUTO_MODEL_SENTINELS)
     cmd_init(paths, force=False)
     enforcer = PolicyEnforcer(paths)
 
@@ -536,8 +646,9 @@ def main() -> int:
             "vendor_state_policy": "no-direct-vendor-private-state-writes",
         },
         "trigger_task": str(args.task).strip(),
-        "executor_model": model_name,
-        "executor_model_source": model_source,
+        "executor_model": (requested_model if has_fixed_model else "auto(per-assignee)"),
+        "executor_model_source": ("cli" if has_fixed_model else "policy-agent-overrides"),
+        "executor_thinking": "auto(by-model)",
         "results": [],
     }
 
@@ -549,7 +660,22 @@ def main() -> int:
             task_id = str(task.get("task_id", "")).strip()
             assignee = str(task.get("assignee", "")).strip() or "backend-dev"
             stage = default_stage(assignee)
-            result: dict[str, Any] = {"task_id": task_id, "assignee": assignee, "stage": stage, "status": "skipped", "reason": ""}
+            task_model_name, task_model_source, task_thinking = resolve_executor_selection(
+                requested_model,
+                assignee,
+                paths.policy_file,
+            )
+            task_cli_thinking = task_thinking if is_codex_model(task_model_name) else ""
+            result: dict[str, Any] = {
+                "task_id": task_id,
+                "assignee": assignee,
+                "stage": stage,
+                "status": "skipped",
+                "reason": "",
+                "model": task_model_name,
+                "model_source": task_model_source,
+                "thinking": task_thinking,
+            }
 
             if bool(task.get("needs_clarification")):
                 result["reason"] = "needs_clarification"
@@ -579,7 +705,16 @@ def main() -> int:
                 pass
 
             try:
-                enforcer.pre_stage(ns(task_id=task_id, stage=stage, agent_id=assignee, model=model_name, input_ref=str(report_dir), actor=str(args.actor)))
+                enforcer.pre_stage(
+                    ns(
+                        task_id=task_id,
+                        stage=stage,
+                        agent_id=assignee,
+                        model=task_model_name,
+                        input_ref=str(report_dir),
+                        actor=str(args.actor),
+                    )
+                )
             except Exception as exc:
                 result["status"] = "failed"
                 result["reason"] = f"pre_stage_failed:{exc}"
@@ -596,16 +731,19 @@ def main() -> int:
 
             started = datetime.now(tz=UTC)
             try:
-                rc, out, err = call_agent(
+                rc, out, err, agent_attempts, agent_attempt_details = call_agent_with_retries(
                     str(args.openclaw_bin),
                     assignee,
                     prompt,
                     session_id,
                     int(args.timeout_sec),
                     bool(args.local_agent),
+                    task_cli_thinking,
+                    max_retries=int(args.agent_max_retries),
+                    retry_delay_sec=int(args.agent_retry_delay_sec),
                 )
             except Exception as exc:
-                rc, out, err = 1, "", f"call_agent_exception:{exc}"
+                rc, out, err, agent_attempts, agent_attempt_details = 1, "", f"call_agent_exception:{exc}", 1, []
             agent_log_path = report_dir / f"{run_id}-{task_id}.agent.log"
             try:
                 agent_log_path.write_text(
@@ -613,12 +751,18 @@ def main() -> int:
                         [
                             f"task_id={task_id}",
                             f"assignee={assignee}",
+                            f"model={task_model_name}",
+                            f"model_source={task_model_source}",
+                            f"thinking={task_thinking}",
                             f"session_id={session_id}",
                             f"exit_code={rc}",
+                            f"attempts={agent_attempts}",
                             "=== STDOUT ===",
                             str(out or ""),
                             "=== STDERR ===",
                             str(err or ""),
+                            "=== ATTEMPTS ===",
+                            json.dumps(agent_attempt_details, ensure_ascii=False),
                         ]
                     )
                     + "\n",
@@ -666,14 +810,27 @@ def main() -> int:
 
             try:
                 if (in_tokens + out_tokens) > 0:
-                    enforcer.record_token(ns(task_id=task_id, agent_id=assignee, model=model_name, input_tokens=str(in_tokens), output_tokens=str(out_tokens)))
+                    enforcer.record_token(
+                        ns(
+                            task_id=task_id,
+                            agent_id=assignee,
+                            model=task_model_name,
+                            input_tokens=str(in_tokens),
+                            output_tokens=str(out_tokens),
+                        )
+                    )
             except Exception:
                 pass
 
             details = {
                 "run_id": run_id,
                 "session_id": session_id,
+                "model": task_model_name,
+                "model_source": task_model_source,
+                "thinking": task_thinking,
                 "command_exit_code": rc,
+                "agent_attempts": agent_attempts,
+                "agent_attempt_details": agent_attempt_details,
                 "stderr_excerpt": str(err or "")[:1200],
                 "local_context_hits": len(local_hits),
                 "web_context_hits": len(web_hits),
@@ -693,7 +850,7 @@ def main() -> int:
                         failed_items=",".join(contract.get("failed_items", [])),
                         failure_count=str(max(0, int(contract.get("failure_count", 0) or 0))),
                         duration_ms=str(max(0, int(duration_ms))),
-                        model=model_name,
+                        model=task_model_name,
                         input_tokens=str(max(0, int(in_tokens))),
                         output_tokens=str(max(0, int(out_tokens))),
                         cost_estimate=str(max(0.0, float(contract.get("cost_estimate", 0.0) or 0.0))),

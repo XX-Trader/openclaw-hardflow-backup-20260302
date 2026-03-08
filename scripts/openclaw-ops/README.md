@@ -31,6 +31,7 @@
   - 统一执行 `incremental/full/daily` 三种模式。
   - 记录增量读取位置（checkpoint）、问题次数、open/resolved/reopened 状态。
   - 增量异常可自动回退全量扫描。
+  - 对失败工作流不再只写 `TODO.md`；会同时自动派生指派给 `optimization-agent` 的 `task-center` 修复任务，后续由 `task_executor_runner.py` 消费。
   - 支持每个技能日志开关：`silent`（静默）/`chat`（发聊天）。
   - 高风险始终提醒，不受普通日志开关影响。
 - `cron_setup.py`
@@ -584,6 +585,8 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 
 - `install_task_executor_job.py` 现在默认写入 `--notify-on error`，不再让 `task_executor_runner.py` 的常规 JSON 结果直接刷到群里。
 - `task_executor_runner.py` 保留 `--emit-json` 机器输出模式；非 `--emit-json` 模式新增 `--notify-on {error,activity,always}`，静默成功时输出 `NO_REPLY`。
+- `task_executor_runner.py` 遇到明确的模型限流/`429` 会做有限次退避重试；可用 `--agent-max-retries` 与 `--agent-retry-delay-sec` 调整。
+- `task_executor_runner.py` 现在按 assignee 读取 `policy-config.json` 里的 `agent_model_overrides`，并按 `model_thinking_overrides` 对 Codex 显式使用 `xhigh`，其他模型统一走 `high`。
 - `install_project_index_job.py` 安装的 cron 任务默认不再追加 `--git-pull`。仓库拉取由 `ops_auto_update_install_hourly` 统一负责；如需人工排障，可显式传 `--git-pull`。
 - `web_intel_collect_runner.py` 与 `web_intel_review_runner.py` 新增 `--notify-on`，可选 `error/change/always`。
 - `install_web_intel_jobs.py` 新增 `--collect-notify-on` 与 `--review-notify-on`，在只想保留异常告警时传 `error`。

@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -29,6 +30,140 @@ def load_module(name: str, rel_path: str):
 
 
 class CronQuietModeTests(unittest.TestCase):
+    def test_switch_model_tier_high_doubao_keeps_code_and_ops_layers(self):
+        module = load_module(
+            "switch_model_tier",
+            "scripts/openclaw-ops/switch_model_tier.py",
+        )
+        profiles = module.load_profiles(ROOT / "scripts/openclaw-ops/model_tier_profiles.json")
+        tier = module.resolve_tier("high_doubao", profiles)
+        profile = module.ensure_profile(profiles["tiers"][tier], tier)
+
+        self.assertEqual(tier, "high_doubao")
+        self.assertEqual(profile["primary_model"], "kimicode/Doubao-Seed-2.0-Code")
+        self.assertEqual(profile["agent_model_overrides"]["optimization-agent"], "openai-codex/gpt-5.3-codex-spark")
+        self.assertEqual(profile["agent_model_overrides"]["backend-dev"], "openai-codex/gpt-5.3-codex-spark")
+        self.assertEqual(profile["agent_model_overrides"]["ops-agent"], "glmcode/glm-4.7")
+        self.assertEqual(profile["agent_model_overrides"]["web-agent"], "glmcode/glm-4.7")
+        self.assertEqual(profile["model_thinking_overrides"]["kimicode/Doubao-Seed-2.0-Code"], "high")
+        self.assertEqual(profile["model_thinking_overrides"]["openai-codex/gpt-5.3-codex-spark"], "xhigh")
+
+    def test_ops_cron_runner_creates_follow_up_task_for_failed_workflow(self):
+        module = load_module(
+            "ops_cron_runner",
+            "scripts/openclaw-ops/ops_cron_runner.py",
+        )
+        cfg = module.default_config()
+        state = {}
+        workflow_health = {
+            "failed_jobs": [
+                {
+                    "id": "9873ab34-c4af-4db0-8cd5-40df68f92efd",
+                    "name": "ops_daily_work_report_dingtalk",
+                    "last_status": "error",
+                    "consecutive_errors": 1,
+                    "last_run_at": "2026-03-08T07:02:45+08:00",
+                    "stale_minutes": 61.5,
+                    "last_error": "⚠️ Edit: in ~/.openclaw/ops/daily_work_report.py (53 chars) failed",
+                }
+            ]
+        }
+        invoked: list[list[str]] = []
+
+        def fake_invoke(db_path: Path, args: list[str], timeout: int = 30):
+            invoked.append(list(args))
+            return True, {"ok": True}, ""
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "task_center.db"
+            db_path.write_text("", encoding="utf-8")
+            run_file = Path(tmpdir) / "ops_run.json"
+            with mock.patch.object(module, "invoke_policy_enforcer", side_effect=fake_invoke):
+                summary = module.create_workflow_follow_up_tasks(
+                    cfg=cfg,
+                    state=state,
+                    db_path=db_path,
+                    actor="ops-agent/ops-cron-runner",
+                    run_file=run_file,
+                    run_task_id="cron:ops-incremental-monitor",
+                    mode="incremental",
+                    started_at="2026-03-08T12:37:28+08:00",
+                    workflow_health=workflow_health,
+                )
+                repeated = module.create_workflow_follow_up_tasks(
+                    cfg=cfg,
+                    state=state,
+                    db_path=db_path,
+                    actor="ops-agent/ops-cron-runner",
+                    run_file=run_file,
+                    run_task_id="cron:ops-incremental-monitor",
+                    mode="incremental",
+                    started_at="2026-03-08T12:37:28+08:00",
+                    workflow_health=workflow_health,
+                )
+
+        self.assertTrue(summary["enabled"])
+        self.assertEqual(summary["created_count"], 1)
+        self.assertEqual(summary["existing_count"], 0)
+        self.assertEqual(len(summary["tasks"]), 1)
+        self.assertTrue(summary["tasks"][0]["task_id"].startswith("todo-ops-workflow-repair-"))
+        self.assertEqual(summary["tasks"][0]["assignee"], "optimization-agent")
+        self.assertEqual(len(invoked), 1)
+        args = invoked[0]
+        self.assertIn("create-task", args)
+        self.assertIn("ops_workflow_repair", args)
+        self.assertIn("jobs", args)
+        self.assertIn("optimization-agent", args)
+        self.assertIn("false", args)
+        self.assertIn("true", args)
+        self.assertEqual(repeated["created_count"], 0)
+        self.assertEqual(repeated["existing_count"], 0)
+        self.assertEqual(len(invoked), 1)
+
+    def test_ops_cron_runner_marks_existing_follow_up_task_without_error(self):
+        module = load_module(
+            "ops_cron_runner",
+            "scripts/openclaw-ops/ops_cron_runner.py",
+        )
+        cfg = module.default_config()
+        state = {}
+        workflow_health = {
+            "failed_jobs": [
+                {
+                    "id": "job-1",
+                    "name": "ops_daily_work_report_dingtalk",
+                    "last_status": "error",
+                    "consecutive_errors": 1,
+                    "last_run_at": "2026-03-08T07:02:45+08:00",
+                    "stale_minutes": 61.5,
+                    "last_error": "⚠️ Edit failed",
+                }
+            ]
+        }
+
+        def fake_invoke(db_path: Path, args: list[str], timeout: int = 30):
+            return False, {}, "task_id already exists"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "task_center.db"
+            db_path.write_text("", encoding="utf-8")
+            with mock.patch.object(module, "invoke_policy_enforcer", side_effect=fake_invoke):
+                summary = module.create_workflow_follow_up_tasks(
+                    cfg=cfg,
+                    state=state,
+                    db_path=db_path,
+                    actor="ops-agent/ops-cron-runner",
+                    run_file=Path(tmpdir) / "ops_run.json",
+                    run_task_id="cron:ops-incremental-monitor",
+                    mode="incremental",
+                    started_at="2026-03-08T12:37:28+08:00",
+                    workflow_health=workflow_health,
+                )
+
+        self.assertEqual(summary["created_count"], 0)
+        self.assertEqual(summary["existing_count"], 1)
+        self.assertEqual(summary["errors"], [])
+
     def test_task_executor_skips_ops_runtime_cron_binding_tasks(self):
         module = load_module(
             "task_executor_runner",
@@ -137,6 +272,144 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("任务执行异常", output)
         self.assertIn("todo-1", output)
         self.assertIn("report.json", output)
+
+    def test_task_executor_retries_rate_limit_failures(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+        calls: list[int] = []
+
+        def fake_call_agent(*args, **kwargs):
+            calls.append(1)
+            if len(calls) == 1:
+                return 1, "", "FailoverError: ⚠️ API rate limit reached. Please try again later."
+            return 0, "{\"status\":\"passed\",\"solved\":true,\"resolution_summary\":\"ok\"}", ""
+
+        with mock.patch.object(module, "call_agent", side_effect=fake_call_agent):
+            with mock.patch.object(module.time, "sleep") as mocked_sleep:
+                rc, out, err, attempts, details = module.call_agent_with_retries(
+                    "openclaw",
+                    "optimization-agent",
+                    "prompt",
+                    "task-1",
+                    300,
+                    True,
+                    "xhigh",
+                    max_retries=2,
+                    retry_delay_sec=1,
+                )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(attempts, 2)
+        self.assertEqual(len(details), 2)
+        self.assertTrue(details[0]["retryable"])
+        mocked_sleep.assert_called_once_with(1)
+        self.assertIn("\"passed\"", out)
+
+    def test_task_executor_resolves_agent_model_and_thinking_from_policy(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            policy_path = Path(tmpdir) / "policy.json"
+            policy_path.write_text(
+                """
+{
+  "primary_model": "openai-codex/gpt-5.4",
+  "allowed_models": [
+    "openai-codex/gpt-5.4",
+    "openai-codex/gpt-5.3-codex-spark",
+    "glmcode/glm-4.7"
+  ],
+  "agent_model_overrides": {
+    "optimization-agent": "openai-codex/gpt-5.3-codex-spark",
+    "ops-agent": "glmcode/glm-4.7"
+  },
+  "model_thinking_overrides": {
+    "openai-codex/gpt-5.4": "xhigh",
+    "openai-codex/gpt-5.3-codex-spark": "xhigh",
+    "glmcode/glm-4.7": "high"
+  }
+}
+""".strip(),
+                encoding="utf-8",
+            )
+
+            model_name, model_source, thinking = module.resolve_executor_selection(
+                "auto",
+                "optimization-agent",
+                policy_path,
+            )
+            ops_model, ops_source, ops_thinking = module.resolve_executor_selection(
+                "auto",
+                "ops-agent",
+                policy_path,
+            )
+
+        self.assertEqual(model_name, "openai-codex/gpt-5.3-codex-spark")
+        self.assertEqual(model_source, "policy-agent:optimization-agent")
+        self.assertEqual(thinking, "xhigh")
+        self.assertEqual(ops_model, "glmcode/glm-4.7")
+        self.assertEqual(ops_source, "policy-agent:ops-agent")
+        self.assertEqual(ops_thinking, "high")
+
+    def test_task_executor_passes_thinking_flag_for_codex(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        with mock.patch.object(module.subprocess, "run") as mocked_run:
+            mocked_run.return_value = SimpleNamespace(returncode=0, stdout='{"status":"passed"}', stderr="")
+            rc, out, err = module.call_agent(
+                "openclaw",
+                "optimization-agent",
+                "prompt",
+                "task-1",
+                300,
+                True,
+                "xhigh",
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertIn('"passed"', out)
+        self.assertEqual(err, "")
+        cmd = mocked_run.call_args.args[0]
+        self.assertIn("--thinking", cmd)
+        self.assertIn("xhigh", cmd)
+
+    def test_task_executor_does_not_retry_non_retryable_failures(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        def fake_call_agent(*args, **kwargs):
+            return 1, "", "permission denied"
+
+        with mock.patch.object(module, "call_agent", side_effect=fake_call_agent):
+            with mock.patch.object(module.time, "sleep") as mocked_sleep:
+                rc, out, err, attempts, details = module.call_agent_with_retries(
+                    "openclaw",
+                    "optimization-agent",
+                    "prompt",
+                    "task-1",
+                    300,
+                    True,
+                    "xhigh",
+                    max_retries=2,
+                    retry_delay_sec=1,
+                )
+
+        self.assertEqual(rc, 1)
+        self.assertEqual(attempts, 1)
+        self.assertEqual(len(details), 1)
+        self.assertFalse(details[0]["retryable"])
+        mocked_sleep.assert_not_called()
+        self.assertEqual(out, "")
+        self.assertEqual(err, "permission denied")
 
     def test_task_executor_failure_output_is_human_friendly_chinese(self):
         module = load_module(

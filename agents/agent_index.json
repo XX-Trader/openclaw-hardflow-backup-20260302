@@ -5,7 +5,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace",
     "agentDir": null,
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "openai-codex/gpt-5.4",
     "allowAgents": [
       "agent-factory",
       "backend-dev",
@@ -28,7 +28,7 @@
     "default": true,
     "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
     "agentDir": null,
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "openai-codex/gpt-5.4",
     "allowAgents": [
       "agent-factory",
       "backend-dev",
@@ -51,7 +51,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
     "agentDir": null,
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "glmcode/glm-4.7",
     "allowAgents": []
   },
   {
@@ -60,7 +60,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
     "agentDir": null,
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "openai-codex/gpt-5.3-codex-spark",
     "allowAgents": []
   },
   {
@@ -69,7 +69,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
     "agentDir": null,
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "openai-codex/gpt-5.3-codex-spark",
     "allowAgents": []
   },
   {
@@ -87,7 +87,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-tester",
     "agentDir": null,
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "glmcode/glm-4.7",
     "allowAgents": []
   },
   {
@@ -96,7 +96,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-deployer",
     "agentDir": null,
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "glmcode/glm-4.7",
     "allowAgents": []
   },
   {
@@ -105,7 +105,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
     "agentDir": null,
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "openai-codex/gpt-5.3-codex-spark",
     "allowAgents": [
       "optimization-agent",
       "project-agent",
@@ -118,7 +118,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
     "agentDir": "/home/ubuntu/.openclaw/agents/ops-agent/agent",
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "glmcode/glm-4.7",
     "allowAgents": [
       "optimization-agent",
       "project-agent"
@@ -130,7 +130,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
     "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-    "model": "openai-codex/gpt-5.4",
+    "model": "openai-codex/gpt-5.3-codex-spark",
     "allowAgents": [
       "project-agent",
       "web-agent"
@@ -142,7 +142,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
     "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
-    "model": "kimicode/Doubao-Seed-2.0-Code",
+    "model": "openai-codex/gpt-5.3-codex-spark",
     "allowAgents": [
       "web-agent"
     ]

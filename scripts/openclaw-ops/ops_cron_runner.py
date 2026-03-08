@@ -309,6 +309,17 @@ def default_config() -> dict[str, Any]:
             "high_risk_direct_human": True,
             "write_medium_risk_to_todo": False,
         },
+        "workflow_follow_up": {
+            "enabled": True,
+            "task_center_db": str(home / ".openclaw" / "ops" / "task-center" / "task_center.db"),
+            "task_type": "ops_workflow_repair",
+            "source": "ops-agent/ops-cron-runner",
+            "default_assignee": "optimization-agent",
+            "pool": "jobs",
+            "priority": "high",
+            "risk_level": "low",
+            "max_tasks_per_run": 2,
+        },
     }
 
 
@@ -1593,6 +1604,263 @@ def handoff_incidents_to_todo(
     return summary
 
 
+def resolve_task_center_db_path(cfg: dict[str, Any], home: Path) -> Path:
+    follow_up_cfg = cfg.get("workflow_follow_up") if isinstance(cfg.get("workflow_follow_up"), dict) else {}
+    token_cfg = cfg.get("token_monitor") if isinstance(cfg.get("token_monitor"), dict) else {}
+    raw = str(
+        follow_up_cfg.get("task_center_db")
+        or token_cfg.get("task_center_db")
+        or (home / ".openclaw" / "ops" / "task-center" / "task_center.db")
+    ).strip()
+    return Path(raw).expanduser()
+
+
+def workflow_follow_up_active_key(job: dict[str, Any]) -> str:
+    job_id = str(job.get("id", "")).strip() or "unknown"
+    error_text = str(job.get("last_error", "")).strip() or job_id
+    error_sig = hashlib.sha1(normalize_line(error_text).encode("utf-8")).hexdigest()[:12]
+    return f"workflow_job:{job_id}:{error_sig}"
+
+
+def create_workflow_follow_up_tasks(
+    *,
+    cfg: dict[str, Any],
+    state: dict[str, Any],
+    db_path: Path,
+    actor: str,
+    run_file: Path,
+    run_task_id: str,
+    mode: str,
+    started_at: str,
+    workflow_health: dict[str, Any],
+) -> dict[str, Any]:
+    summary = {
+        "enabled": False,
+        "db": str(db_path),
+        "created_count": 0,
+        "existing_count": 0,
+        "tasks": [],
+        "errors": [],
+    }
+    if str(mode).strip().lower() == "daily":
+        return summary
+
+    follow_up_cfg = cfg.get("workflow_follow_up")
+    if not isinstance(follow_up_cfg, dict):
+        follow_up_cfg = {}
+    if not bool(follow_up_cfg.get("enabled", True)):
+        return summary
+    summary["enabled"] = True
+
+    if not db_path.exists():
+        summary["errors"].append(f"task_center_db_missing:{db_path}")
+        return summary
+
+    failed_jobs = workflow_health.get("failed_jobs", [])
+    if not isinstance(failed_jobs, list) or not failed_jobs:
+        return summary
+
+    max_tasks = max(1, int(follow_up_cfg.get("max_tasks_per_run", 2) or 2))
+    default_assignee = (
+        str(follow_up_cfg.get("default_assignee", "optimization-agent")).strip()
+        or "optimization-agent"
+    )
+    task_type = str(follow_up_cfg.get("task_type", "ops_workflow_repair")).strip() or "ops_workflow_repair"
+    pool = str(follow_up_cfg.get("pool", "jobs")).strip().lower() or "jobs"
+    priority = str(follow_up_cfg.get("priority", "high")).strip().lower() or "high"
+    risk_level = str(follow_up_cfg.get("risk_level", "low")).strip().lower() or "low"
+    source_name = str(follow_up_cfg.get("source", "")).strip() or str(actor or "ops-agent/ops-cron-runner")
+
+    active_keys = {
+        workflow_follow_up_active_key(job)
+        for job in failed_jobs
+        if isinstance(job, dict) and str(job.get("id", "")).strip()
+    }
+    follow_up_state = state.setdefault("workflow_follow_up", {})
+    if not isinstance(follow_up_state, dict):
+        follow_up_state = {}
+        state["workflow_follow_up"] = follow_up_state
+    sent_keys_raw = follow_up_state.get("sent_keys")
+    if not isinstance(sent_keys_raw, dict):
+        sent_keys_raw = {}
+    sent_keys = {}
+    for raw_key, raw_value in sent_keys_raw.items():
+        key = str(raw_key).strip()
+        if key not in active_keys:
+            continue
+        if isinstance(raw_value, dict):
+            sent_keys[key] = {
+                "task_id": str(raw_value.get("task_id", "")).strip(),
+                "sent_at": str(raw_value.get("sent_at", "")).strip(),
+            }
+        else:
+            sent_keys[key] = {"task_id": str(raw_value).strip(), "sent_at": ""}
+
+    for job in failed_jobs[:max_tasks]:
+        if not isinstance(job, dict):
+            continue
+        job_id = str(job.get("id", "")).strip()
+        if not job_id:
+            continue
+        active_key = workflow_follow_up_active_key(job)
+        if active_key in sent_keys:
+            continue
+
+        job_name = str(job.get("name", "")).strip() or job_id
+        last_status = str(job.get("last_status", "")).strip() or "error"
+        last_error = str(job.get("last_error", "")).strip() or "workflow_failed"
+        last_run_at = str(job.get("last_run_at", "")).strip() or str(started_at or now_iso())
+        seen_dt = parse_iso(last_run_at) or parse_iso(started_at) or now()
+        seen_token = seen_dt.astimezone(TZ).strftime("%Y%m%d%H%M%S")
+        issue_sig = hashlib.sha1(f"{job_id}|{normalize_line(last_error)}|{seen_token}".encode("utf-8")).hexdigest()[:10]
+        task_id = f"todo-ops-workflow-repair-{safe_slug(job_id, 24)}-{issue_sig}"
+        acceptance = (
+            "定位失败根因，完成最小修复，并通过重跑或状态核验确认该工作流 lastStatus 恢复为非 error/failed；"
+            "若暂时无法自动修复，必须留下已验证的阻塞原因与后续建议。"
+        )
+        requirement = "\n".join(
+            [
+                f"ops workflow monitor task: {run_task_id or '-'}",
+                f"workflow_job_id: {job_id}",
+                f"workflow_job_name: {job_name}",
+                f"last_status: {last_status}",
+                f"last_run_at: {last_run_at}",
+                f"consecutive_errors: {int(job.get('consecutive_errors', 0) or 0)}",
+                f"stale_minutes: {float(job.get('stale_minutes', 0.0) or 0.0)}",
+                f"last_error: {last_error}",
+                f"evidence_file: {run_file}",
+                "",
+                "需要闭环处理，而不是只聊天告警。",
+                "1. 检查 ~/.openclaw/cron/jobs.json 中该工作流的 state、payload 与最近错误。",
+                "2. 复现失败命令或最小失败路径，定位根因。",
+                "3. 在最小范围内修复脚本、配置、权限、路径或上下文问题。",
+                "4. 修复后重新执行对应工作流，或验证其 lastStatus 已恢复为非 error/failed。",
+            ]
+        )
+        context_payload = {
+            "problem": f"workflow {job_name} failed: {last_error}",
+            "location": f"~/.openclaw/cron/jobs.json job_id={job_id}",
+            "first_seen_at": last_run_at,
+            "impact": f"Scheduled workflow {job_name} is failing and has not recovered automatically.",
+            "evidence": str(run_file),
+            "current_state": last_error,
+            "expected_state": f"Workflow {job_name} runs successfully and lastStatus is no longer error/failed.",
+            "operation_path": f"ops_cron_runner::{job_id}",
+            "reproduction_steps": f"Inspect {job_id} in ~/.openclaw/cron/jobs.json and rerun the underlying workflow command or script.",
+            "scope": f"workflow job {job_name}",
+            "constraints": "Prefer minimal, reversible fixes. Do not modify unrelated cron jobs or vendor runtime files.",
+            "acceptance_criteria": acceptance,
+            "full_background": requirement,
+        }
+        create_args = [
+            "create-task",
+            "--task-id",
+            task_id,
+            "--task-type",
+            task_type,
+            "--reason",
+            f"[OPS_WORKFLOW] {job_name} failed",
+            "--source",
+            source_name,
+            "--request-source",
+            "ai",
+            "--priority",
+            priority,
+            "--risk-level",
+            risk_level,
+            "--pool",
+            pool,
+            "--assignee",
+            default_assignee,
+            "--need-human-confirm",
+            "false",
+            "--human-confirmed",
+            "true",
+            "--context-json",
+            json.dumps(context_payload, ensure_ascii=False),
+            "--requirement",
+            requirement,
+            "--result-output",
+            f"Workflow {job_name} recovers to non-error status, or task output clearly records the blocking reason and next action.",
+            "--acceptance",
+            acceptance,
+            "--observable-outputs",
+            f"run_file={run_file},workflow_job_id={job_id},workflow_job_name={job_name}",
+            "--acceptance-thresholds",
+            "Re-run evidence or recovered status is attached to the task report.",
+            "--scheduled-at",
+            now_iso(),
+            "--actor",
+            str(actor or "ops-agent/ops-cron-runner"),
+        ]
+        ok, payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
+        if ok:
+            summary["created_count"] += 1
+            sent_keys[active_key] = {"task_id": task_id, "sent_at": now_iso()}
+            summary["tasks"].append(
+                {
+                    "task_id": task_id,
+                    "assignee": default_assignee,
+                    "status": "created",
+                    "workflow_job_id": job_id,
+                    "workflow_job_name": job_name,
+                }
+            )
+            continue
+        if "task_id already exists" in err:
+            summary["existing_count"] += 1
+            sent_keys[active_key] = {"task_id": task_id, "sent_at": now_iso()}
+            summary["tasks"].append(
+                {
+                    "task_id": task_id,
+                    "assignee": default_assignee,
+                    "status": "existing",
+                    "workflow_job_id": job_id,
+                    "workflow_job_name": job_name,
+                }
+            )
+            continue
+        payload_error = str(payload.get("error", "")).strip() if isinstance(payload, dict) else ""
+        summary["errors"].append(f"{job_id}:{err or payload_error or 'create_follow_up_task_failed'}")
+
+    follow_up_state["sent_keys"] = sent_keys
+    follow_up_state["updated_at"] = now_iso()
+    follow_up_state["active_keys"] = sorted(active_keys)[:100]
+    return summary
+
+
+def append_workflow_follow_up_output(output: str, summary: dict[str, Any]) -> str:
+    if str(output or "").strip() == "NO_REPLY":
+        return output
+    created_count = int(summary.get("created_count", 0) or 0)
+    existing_count = int(summary.get("existing_count", 0) or 0)
+    tasks = summary.get("tasks", [])
+    if not isinstance(tasks, list):
+        tasks = []
+    errors = summary.get("errors", [])
+    if not isinstance(errors, list):
+        errors = []
+    if created_count <= 0 and existing_count <= 0 and not errors:
+        return output
+
+    lines = [str(output).rstrip()]
+    if created_count > 0 or existing_count > 0:
+        lines.append("- 已派生修复任务:")
+        for idx, item in enumerate(tasks[:3], start=1):
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                f"  {idx}. {str(item.get('task_id', '')).strip() or '-'}"
+                f" -> {str(item.get('assignee', '')).strip() or '-'}"
+                f" ({str(item.get('status', '')).strip() or 'created'})"
+            )
+    if errors:
+        lines.append("- 修复建单异常:")
+        for idx, err in enumerate(errors[:3], start=1):
+            lines.append(f"  {idx}. {str(err)[:180]}")
+    return "\n".join(lines)
+
+
 @dataclass(slots=True)
 class RunResult:
     notify: bool
@@ -2134,17 +2402,25 @@ def main() -> int:
 
     stamp = now().strftime("%Y%m%d_%H%M%S")
     run_file = history_dir / f"{stamp}_{result.record.get('mode', args.mode)}_{result.record.get('run_id', 'run')}.json"
+    policy_db_path = resolve_task_center_db_path(cfg, home)
+    workflow_follow_up_summary = create_workflow_follow_up_tasks(
+        cfg=cfg,
+        state=state,
+        db_path=policy_db_path,
+        actor=str(result.record.get("sender_identity", "")) or DEFAULT_SENDER_PREFIX,
+        run_file=run_file,
+        run_task_id=str(args.task_id or ""),
+        mode=str(result.record.get("mode", args.mode)),
+        started_at=str(result.record.get("time", now_iso())),
+        workflow_health=result.record.get("workflow_health", {}) if isinstance(result.record.get("workflow_health"), dict) else {},
+    )
+    result.record["workflow_follow_up_summary"] = workflow_follow_up_summary
+    result.output = append_workflow_follow_up_output(result.output, workflow_follow_up_summary)
     save_json(run_file, result.record)
     state["updated_at"] = now_iso()
     state["last_run_record"] = str(run_file)
     save_json(state_path, state)
 
-    token_cfg = cfg.get("token_monitor") if isinstance(cfg.get("token_monitor"), dict) else {}
-    policy_db_raw = str(
-        token_cfg.get("task_center_db")
-        or (home / ".openclaw" / "ops" / "task-center" / "task_center.db")
-    ).strip()
-    policy_db_path = Path(policy_db_raw).expanduser()
     policy_observability: dict[str, Any] = {
         "enabled": False,
         "db": str(policy_db_path),
@@ -2176,6 +2452,9 @@ def main() -> int:
             handoff_data = result.record.get("handoff_24h")
         if not isinstance(handoff_data, dict):
             handoff_data = {}
+        workflow_follow_up_data = result.record.get("workflow_follow_up_summary")
+        if not isinstance(workflow_follow_up_data, dict):
+            workflow_follow_up_data = {}
 
         module_details = {
             "mode": mode_name,
@@ -2185,6 +2464,7 @@ def main() -> int:
             "risk_reasons": risk_reasons,
             "change_reasons": change_reasons,
             "handoff": handoff_data,
+            "workflow_follow_up": workflow_follow_up_data,
         }
         module_args = [
             "log-module",
@@ -2239,7 +2519,7 @@ def main() -> int:
             "--payload-ref",
             str(run_file),
             "--details-json",
-            json.dumps({"handoff": handoff_data, "mode": mode_name}, ensure_ascii=False),
+            json.dumps({"handoff": handoff_data, "workflow_follow_up": workflow_follow_up_data, "mode": mode_name}, ensure_ascii=False),
             "--actor",
             str(result.record.get("sender_identity", "")) or "ops-agent/ops-cron-runner",
         ]
@@ -2279,7 +2559,11 @@ def main() -> int:
                 "--resolution-summary",
                 f"ops scan mode={mode_name} completed",
                 "--resolution-steps",
-                "scan,aggregate,handoff",
+                (
+                    "scan,aggregate,handoff,create_follow_up_task"
+                    if int(workflow_follow_up_data.get("created_count", 0) or 0) > 0
+                    else "scan,aggregate,handoff"
+                ),
                 "--failed-items",
                 ",".join(failed_items[:20]),
                 "--failure-count",
