@@ -29,6 +29,8 @@ API_ENGINES = {"http", "playwright", "playwright-real", "selenium", "scrapling",
 INSTALL_PROFILES = {"legacy", "minimal", "standard", "aggressive"}
 LEGACY_OPTIMIZE_JOB_MODES = {"auto", "keep", "disable", "remove"}
 DAILY_REPORT_DEDUPE_MODES = {"auto", "keep", "disable-digest", "disable-daily-work"}
+DEFAULT_FAILURE_ALERT_AFTER = 1
+DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 LEGACY_OPTIMIZE_JOB_IDS = {
     "948d7307-6941-44ee-a8aa-57da767a31b7",  # optimization-agent 治理巡检 (external optimize_incremental_scan.py)
     "22b1712a-ff4a-4502-bce6-4e39c44cbe9f",  # optimize 自我进化总结 (external optimize_incremental_scan.py)
@@ -570,6 +572,17 @@ def build_message(command: str, extra_rules: list[str] | None = None) -> str:
     )
 
 
+def build_delivery(*, mode: str = "announce") -> dict[str, str]:
+    return {"mode": str(mode or "announce").strip() or "announce"}
+
+
+def build_failure_alert() -> dict[str, Any]:
+    return {
+        "after": DEFAULT_FAILURE_ALERT_AFTER,
+        "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS,
+    }
+
+
 def infer_openclaw_home_from_jobs_file(jobs_file: Path) -> Path:
     jobs_path = jobs_file.expanduser().resolve()
     if jobs_path.parent.name == "cron":
@@ -879,6 +892,8 @@ def build_daily_work_job(
         "sessionTarget": "isolated",
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1200},
+        "delivery": build_delivery(mode="none"),
+        "failureAlert": build_failure_alert(),
     }
 
 
@@ -929,6 +944,8 @@ def build_self_evolution_job(
         "sessionTarget": "isolated",
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1800},
+        "delivery": build_delivery(mode="none"),
+        "failureAlert": build_failure_alert(),
     }
 
 
@@ -983,6 +1000,8 @@ def build_conversation_evolution_job(
         "sessionTarget": "isolated",
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1800},
+        "delivery": build_delivery(mode="none"),
+        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1068,6 +1087,8 @@ def build_governance_evolution_job(
         "sessionTarget": "isolated",
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
+        "delivery": build_delivery(mode="none"),
+        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1124,6 +1145,8 @@ def build_github_web_evolution_job(
         "sessionTarget": "isolated",
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
+        "delivery": build_delivery(mode="none"),
+        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1195,6 +1218,8 @@ def build_git_sync_job(
         "sessionTarget": "isolated",
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
+        "delivery": build_delivery(mode="none"),
+        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1256,6 +1281,8 @@ def build_auto_update_install_job(
         "sessionTarget": "isolated",
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 3000},
+        "delivery": build_delivery(mode="none"),
+        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1344,7 +1371,8 @@ def compare_expected_job(
         drifts.append("schedule")
     if normalize_payload(existing.get("payload")) != normalize_payload(expected.get("payload")):
         drifts.append("payload")
-    expected_delivery = {"mode": "announce", "channel": expected_channel, "to": expected_target}
+    expected_mode = normalize_delivery(expected.get("delivery")).get("mode", "").strip() or "announce"
+    expected_delivery = {"mode": expected_mode, "channel": expected_channel, "to": expected_target}
     if normalize_delivery(existing.get("delivery")) != expected_delivery:
         drifts.append("delivery")
     return drifts
@@ -1374,7 +1402,11 @@ def audit_jobs(
                     "expected": {
                         "schedule": normalize_schedule(expected.get("schedule")),
                         "payload": normalize_payload(expected.get("payload")),
-                        "delivery": {"mode": "announce", "channel": channel, "to": target},
+                        "delivery": {
+                            "mode": normalize_delivery(expected.get("delivery")).get("mode", "").strip() or "announce",
+                            "channel": channel,
+                            "to": target,
+                        },
                     },
                 }
             )
@@ -1402,7 +1434,11 @@ def audit_jobs(
                 "expected": {
                     "schedule": normalize_schedule(expected.get("schedule")),
                     "payload": normalize_payload(expected.get("payload")),
-                    "delivery": {"mode": "announce", "channel": channel, "to": target},
+                    "delivery": {
+                        "mode": normalize_delivery(expected.get("delivery")).get("mode", "").strip() or "announce",
+                        "channel": channel,
+                        "to": target,
+                    },
                 },
             }
         )
@@ -1558,7 +1594,13 @@ def upsert_jobs(
             item["state"] = {}
             status[jid] = "created"
 
-        item["delivery"] = {"mode": "announce", "channel": channel, "to": target}
+        delivery_mode = normalize_delivery(item.get("delivery")).get("mode", "").strip() or "announce"
+        item["delivery"] = {"mode": delivery_mode, "channel": channel, "to": target}
+        failure_alert = item.get("failureAlert")
+        if isinstance(failure_alert, dict):
+            failure_alert["channel"] = channel
+            failure_alert["to"] = target
+            item["failureAlert"] = failure_alert
         if item.get("schedule", {}).get("kind") == "every":
             item["state"]["nextRunAtMs"] = ts + int(item["schedule"].get("everyMs", 0))
         by_id[jid] = item

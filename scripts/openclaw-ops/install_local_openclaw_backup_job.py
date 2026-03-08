@@ -11,6 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+DEFAULT_FAILURE_ALERT_AFTER = 1
+DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+
 
 def now_ms() -> int:
     return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
@@ -44,6 +47,19 @@ def infer_delivery(jobs: list[dict[str, Any]], preferred_agents: list[str]) -> t
             if channel and target:
                 return channel, target
     return "telegram", ""
+
+
+def build_delivery(channel: str, target: str, *, mode: str = "none") -> dict[str, str]:
+    return {"mode": str(mode or "none").strip() or "none", "channel": channel, "to": target}
+
+
+def build_failure_alert(channel: str, target: str) -> dict[str, Any]:
+    return {
+        "after": DEFAULT_FAILURE_ALERT_AFTER,
+        "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS,
+        "channel": channel,
+        "to": target,
+    }
 
 
 def upsert_job(
@@ -142,11 +158,8 @@ def upsert_job(
             ),
             "timeoutSeconds": 1800,
         },
-        "delivery": {
-            "mode": "announce",
-            "channel": channel,
-            "to": target,
-        },
+        "delivery": build_delivery(channel, target, mode="none"),
+        "failureAlert": build_failure_alert(channel, target),
         "state": old_state,
     }
     payload["state"]["nextRunAtMs"] = ts + every_ms

@@ -19,6 +19,9 @@ if str(POLICY_DIR) not in sys.path:
 
 from io_write_gateway import write_json_atomic
 
+DEFAULT_FAILURE_ALERT_AFTER = 1
+DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+
 
 def now_ms() -> int:
     return int(datetime.now(tz=timezone.utc).timestamp() * 1000)
@@ -52,6 +55,19 @@ def infer_delivery(jobs: list[dict[str, Any]], preferred_agents: list[str]) -> t
             if channel and target:
                 return channel, target
     return None, None
+
+
+def build_delivery(channel: str, target: str, *, mode: str = "none") -> dict[str, str]:
+    return {"mode": str(mode or "none").strip() or "none", "channel": channel, "to": target}
+
+
+def build_failure_alert(channel: str, target: str) -> dict[str, Any]:
+    return {
+        "after": DEFAULT_FAILURE_ALERT_AFTER,
+        "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS,
+        "channel": channel,
+        "to": target,
+    }
 
 
 def build_message(
@@ -135,7 +151,8 @@ def upsert_job(
             ),
             "timeoutSeconds": 1200,
         },
-        "delivery": {"mode": "announce", "channel": channel, "to": target},
+        "delivery": build_delivery(channel, target, mode="none"),
+        "failureAlert": build_failure_alert(channel, target),
         "state": old_state,
     }
     payload["state"]["nextRunAtMs"] = next_run

@@ -61,6 +61,8 @@ REVIEWER_PROFILE_BASELINE: dict[str, dict[str, int | bool]] = {
         "enable_weekly": True,
     },
 }
+DEFAULT_FAILURE_ALERT_AFTER = 1
+DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 
 
 def now_ms() -> int:
@@ -95,6 +97,19 @@ def infer_delivery(jobs: list[dict[str, Any]], preferred_agents: list[str]) -> t
             if channel and target:
                 return channel, target
     return None, None
+
+
+def build_delivery(channel: str, target: str, *, mode: str = "none") -> dict[str, str]:
+    return {"mode": str(mode or "none").strip() or "none", "channel": channel, "to": target}
+
+
+def build_failure_alert(channel: str, target: str) -> dict[str, Any]:
+    return {
+        "after": DEFAULT_FAILURE_ALERT_AFTER,
+        "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS,
+        "channel": channel,
+        "to": target,
+    }
 
 
 def build_message(command: str) -> str:
@@ -238,6 +253,8 @@ def build_jobs(
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_hourly), "timeoutSeconds": 1200},
+            "delivery": {"mode": "none"},
+            "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
         },
         {
             "id": DAILY_JOB_ID,
@@ -251,6 +268,8 @@ def build_jobs(
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_daily), "timeoutSeconds": 1800},
+            "delivery": {"mode": "none"},
+            "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
         },
         {
             "id": BI_DAILY_JOB_ID,
@@ -264,6 +283,8 @@ def build_jobs(
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_bi_daily), "timeoutSeconds": 1800},
+            "delivery": {"mode": "none"},
+            "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
         },
         {
             "id": WEEKLY_JOB_ID,
@@ -277,6 +298,8 @@ def build_jobs(
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_weekly), "timeoutSeconds": 1800},
+            "delivery": {"mode": "none"},
+            "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
         },
     ]
 
@@ -303,7 +326,13 @@ def upsert_jobs(
             status[jid] = "created"
 
         item["updatedAtMs"] = ts
-        item["delivery"] = {"mode": "announce", "channel": channel, "to": target}
+        delivery = item.get("delivery") if isinstance(item.get("delivery"), dict) else {}
+        item["delivery"] = build_delivery(channel, target, mode=str(delivery.get("mode", "none")))
+        failure_alert = item.get("failureAlert")
+        if isinstance(failure_alert, dict):
+            failure_alert["channel"] = channel
+            failure_alert["to"] = target
+            item["failureAlert"] = failure_alert
         if item.get("schedule", {}).get("kind") == "every":
             item["state"]["nextRunAtMs"] = ts + int(item["schedule"].get("everyMs", 0))
         by_id[jid] = item

@@ -37,6 +37,7 @@
   - 一键安装 OpenClaw cron jobs（增量监控/全量校准/每日日报）。
   - 可选安装系统定时审计 job（系统 cron + systemd timer + openclaw jobs）。
   - 自动推断 delivery channel/to。
+  - 内部维护型 job 默认走官方 `delivery.mode=none`，避免 isolated run 文本直接投递到聊天框；执行失败则保留 `failureAlert` 通道。
   - 自动写入 `~/.openclaw/ops/cron-monitor-config.json` 的技能日志开关。
 - `system_schedule_snapshot.py`
   - 采集系统定时与 OpenClaw 定时快照。

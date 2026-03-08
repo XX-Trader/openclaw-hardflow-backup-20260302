@@ -29,6 +29,8 @@ COLLECT_JOB_ID = "fa03a968-2ce6-4cf9-a8ab-6c32f7c8a0a1"
 OPT_REVIEW_JOB_ID = "fa03a968-2ce6-4cf9-a8ab-6c32f7c8a0a2"
 PROJECT_REVIEW_JOB_ID = "fa03a968-2ce6-4cf9-a8ab-6c32f7c8a0a3"
 NOTIFY_ON_MODES = {"error", "change", "always"}
+DEFAULT_FAILURE_ALERT_AFTER = 1
+DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 
 
 def now_ms() -> int:
@@ -63,6 +65,19 @@ def infer_delivery(jobs: list[dict[str, Any]], preferred_agents: list[str]) -> t
             if channel and target:
                 return channel, target
     return None, None
+
+
+def build_delivery(channel: str, target: str, *, mode: str = "none") -> dict[str, str]:
+    return {"mode": str(mode or "none").strip() or "none", "channel": channel, "to": target}
+
+
+def build_failure_alert(channel: str, target: str) -> dict[str, Any]:
+    return {
+        "after": DEFAULT_FAILURE_ALERT_AFTER,
+        "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS,
+        "channel": channel,
+        "to": target,
+    }
 
 
 def build_message(command: str) -> str:
@@ -121,11 +136,8 @@ def make_job(
             "message": message,
             "timeoutSeconds": max(300, int(timeout_seconds)),
         },
-        "delivery": {
-            "mode": "announce",
-            "channel": channel,
-            "to": target,
-        },
+        "delivery": build_delivery(channel, target, mode="none"),
+        "failureAlert": build_failure_alert(channel, target),
         "state": old_state,
     }
     payload["state"]["nextRunAtMs"] = ts + max(600000, int(every_ms))

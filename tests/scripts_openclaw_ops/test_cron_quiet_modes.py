@@ -435,6 +435,27 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("Do not run any follow-up command", message)
         self.assertIn("Never output sentences like 'Let's run ...'", message)
 
+    def test_project_index_job_defaults_to_silent_delivery(self):
+        module = load_module(
+            "install_project_index_job",
+            "scripts/openclaw-ops/install_project_index_job.py",
+        )
+        jobs, _ = module.upsert_job(
+            jobs=[],
+            job_id="job-project-index",
+            every_ms=1800000,
+            maintainer_py="/home/ubuntu/.openclaw/ops/policy/project_index_maintainer.py",
+            registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
+            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
+            task_id="cron:project-index-maintainer-30m",
+            actor="project-agent",
+            git_pull=False,
+            channel="telegram",
+            target="-1003333097130",
+        )
+        self.assertEqual(jobs[0]["delivery"]["mode"], "none")
+        self.assertEqual(jobs[0]["failureAlert"]["channel"], "telegram")
+
     def test_reviewer_install_message_blocks_follow_up_chatter(self):
         module = load_module(
             "install_reviewer_scan_jobs",
@@ -444,6 +465,40 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
         self.assertIn("Do not run any follow-up command", message)
         self.assertIn("Never output sentences like 'Let's run ...'", message)
+
+    def test_reviewer_jobs_default_to_silent_delivery(self):
+        module = load_module(
+            "install_reviewer_scan_jobs",
+            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
+        )
+        fresh = module.build_jobs(
+            runner_py="/tmp/reviewer.py",
+            workspace="/tmp/workspace",
+            state_file="/tmp/state.json",
+            history_dir="/tmp/history",
+            tz_name="Asia/Shanghai",
+            hourly_every_ms=3600000,
+            daily_expr="0 4 * * *",
+            bi_daily_expr="20 4 */2 * *",
+            weekly_expr="40 4 * * 1",
+            enable_hourly=True,
+            enable_daily=True,
+            enable_bi_daily=True,
+            enable_weekly=True,
+            normal_log_mode="silent",
+            daily_fix_command="",
+            hourly_git_fetch=True,
+            hourly_check_pr=True,
+            hourly_allow_merge=False,
+            hourly_push_after_merge=False,
+            hourly_merge_approval_file="",
+            project_context_gate=True,
+            project_context_db="/tmp/task_center.db",
+            project_context_assignee="project-agent",
+        )
+        merged, _ = module.upsert_jobs(jobs=[], fresh_jobs=fresh, channel="telegram", target="-1003333097130")
+        self.assertTrue(all(item["delivery"]["mode"] == "none" for item in merged[:4]))
+        self.assertTrue(all(item["failureAlert"]["to"] == "-1003333097130" for item in merged[:4]))
 
     def test_task_executor_message_uses_notify_on_error(self):
         module = load_module(
@@ -554,6 +609,102 @@ class CronQuietModeTests(unittest.TestCase):
         rendered = " ".join(cmd)
         self.assertIn("--collect-notify-on error", rendered)
         self.assertIn("--review-notify-on error", rendered)
+
+    def test_todo_patrol_job_defaults_to_silent_delivery(self):
+        module = load_module(
+            "install_todo_patrol_job",
+            "scripts/openclaw-ops/install_todo_patrol_job.py",
+        )
+        jobs, _ = module.upsert_job(
+            jobs=[],
+            job_id="job-todo",
+            ops_script="/home/ubuntu/.openclaw/ops/todo_patrol.py",
+            every_ms=900000,
+            max_dispatch=5,
+            default_request_source="human",
+            ai_context_min_pct=100.0,
+            skip_ops_incidents=True,
+            output_mode="summary",
+            channel="telegram",
+            target="-1003333097130",
+        )
+        self.assertEqual(jobs[0]["delivery"]["mode"], "none")
+        self.assertEqual(jobs[0]["failureAlert"]["to"], "-1003333097130")
+
+    def test_local_git_backup_job_defaults_to_silent_delivery(self):
+        module = load_module(
+            "install_local_openclaw_backup_job",
+            "scripts/openclaw-ops/install_local_openclaw_backup_job.py",
+        )
+        jobs, _ = module.upsert_job(
+            jobs=[],
+            job_id="job-backup",
+            every_ms=3600000,
+            runner_py="/home/ubuntu/.openclaw/ops/local_git_backup_runner.py",
+            openclaw_home="/home/ubuntu/.openclaw",
+            task_id="cron:ops-local-openclaw-git-backup",
+            notify_on="errors-only",
+            list_changed_files=False,
+            max_listed_files=20,
+            channel="telegram",
+            target="-1003333097130",
+        )
+        self.assertEqual(jobs[0]["delivery"]["mode"], "none")
+        self.assertEqual(jobs[0]["failureAlert"]["after"], 1)
+
+    def test_web_intel_jobs_default_to_silent_delivery(self):
+        module = load_module(
+            "install_web_intel_jobs",
+            "scripts/openclaw-ops/install_web_intel_jobs.py",
+        )
+        job = module.make_job(
+            job_id="web-intel-job",
+            agent_id="web-agent",
+            name="web_intel_collect_hourly",
+            description="desc",
+            every_ms=3600000,
+            message="run",
+            timeout_seconds=300,
+            old=None,
+            channel="telegram",
+            target="-1003333097130",
+        )
+        self.assertEqual(job["delivery"]["mode"], "none")
+        self.assertEqual(job["failureAlert"]["channel"], "telegram")
+
+    def test_cron_setup_internal_jobs_default_to_silent_delivery(self):
+        module = load_module(
+            "cron_setup",
+            "scripts/openclaw-ops/cron_setup.py",
+        )
+        job = module.build_governance_evolution_job(
+            script_py="/tmp/governance.py",
+            db_file="/tmp/task_center.db",
+            state_file="/tmp/state.json",
+            report_dir="/tmp/reports",
+            repo_path="/tmp/repo",
+            openclaw_config="/tmp/openclaw.json",
+            project_registry="/tmp/project-registry.json",
+            repo_id="repo-id",
+            repo_name="repo-name",
+            auto_git_update=False,
+            git_update_strategy="fetch",
+            git_fetch_timeout=120,
+            every_ms=21600000,
+            log_mode="silent",
+            max_files=120,
+            min_interval_minutes=180,
+            task_clarity="ambiguous",
+            project_context_gate=True,
+            project_context_assignee="project-agent",
+            create_review_task=True,
+            auto_pr=False,
+            pr_base="main",
+            reviewer_gh_user="",
+            push_before_pr=False,
+        )
+        self.assertEqual(job["delivery"]["mode"], "none")
+        self.assertEqual(job["failureAlert"]["cooldownMs"], 1800000)
 
     def test_install_workflow_profile_dry_run_uses_hardened_runtime_flags(self):
         with tempfile.TemporaryDirectory() as tmpdir:
