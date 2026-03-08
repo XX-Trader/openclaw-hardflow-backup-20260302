@@ -2,13 +2,13 @@
   "schema_version": "2026-03-08",
   "primary_model": "openai-codex/gpt-5.4",
   "fallback_models": [
-    "openai-codex/gpt-5.3-codex-spark",
+    "openai-codex/gpt-5.3-codex",
     "glmcode/glm-5",
     "glmcode/glm-4.7"
   ],
   "allowed_models": [
     "openai-codex/gpt-5.4",
-    "openai-codex/gpt-5.3-codex-spark",
+    "openai-codex/gpt-5.3-codex",
     "glmcode/glm-5",
     "glmcode/glm-4.7",
     "kimicode/Doubao-Seed-2.0-Code",
@@ -18,11 +18,11 @@
     "main": "openai-codex/gpt-5.4",
     "coordinator": "openai-codex/gpt-5.4",
     "reviewer": "openai-codex/gpt-5.4",
-    "agent-factory": "openai-codex/gpt-5.3-codex-spark",
-    "backend-dev": "openai-codex/gpt-5.3-codex-spark",
-    "frontend-dev": "openai-codex/gpt-5.3-codex-spark",
-    "optimization-agent": "openai-codex/gpt-5.3-codex-spark",
-    "project-agent": "openai-codex/gpt-5.3-codex-spark",
+    "agent-factory": "openai-codex/gpt-5.3-codex",
+    "backend-dev": "openai-codex/gpt-5.3-codex",
+    "frontend-dev": "openai-codex/gpt-5.3-codex",
+    "optimization-agent": "openai-codex/gpt-5.3-codex",
+    "project-agent": "openai-codex/gpt-5.3-codex",
     "doc-writer": "glmcode/glm-4.7",
     "deployer": "glmcode/glm-4.7",
     "ops-agent": "glmcode/glm-4.7",
@@ -31,7 +31,7 @@
   },
   "model_thinking_overrides": {
     "openai-codex/gpt-5.4": "xhigh",
-    "openai-codex/gpt-5.3-codex-spark": "xhigh",
+    "openai-codex/gpt-5.3-codex": "xhigh",
     "glmcode/glm-5": "high",
     "glmcode/glm-4.7": "high",
     "kimicode/Doubao-Seed-2.0-Code": "high"

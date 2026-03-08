@@ -76,7 +76,7 @@ def get_model_ref():
 
 model_ref = get_model_ref()
 ops_agent_model = {"primary": "glmcode/glm-4.7"}
-optimization_agent_model = {"primary": "openai-codex/gpt-5.3-codex-spark"}
+optimization_agent_model = {"primary": "openai-codex/gpt-5.3-codex"}
 web_agent_model = {"primary": "glmcode/glm-4.7"}
 
 def desired_agent(agent_id: str, allow_agents=None, model=None):
@@ -142,7 +142,7 @@ if isinstance(ops_cfg, dict):
 optimization_cfg = index.get("optimization-agent")
 if isinstance(optimization_cfg, dict):
     model = optimization_cfg.get("model")
-    if model != "openai-codex/gpt-5.3-codex-spark" and model != optimization_agent_model:
+    if model != "openai-codex/gpt-5.3-codex" and model != optimization_agent_model:
         optimization_cfg["model"] = copy.deepcopy(optimization_agent_model)
         changed = True
 
