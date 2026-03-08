@@ -1,0 +1,377 @@
+﻿From 333796d0baa502657097b71e785665fc822b5788 Mon Sep 17 00:00:00 2001
+From: XX-Trader <85067385+XX-Trader@users.noreply.github.com>
+Date: Sun, 8 Mar 2026 12:12:42 +0800
+Subject: [PATCH] Guard cron command-only outputs against chatter
+
+---
+ src/cron/isolated-agent/helpers.test.ts       | 65 ++++++++++++++
+ src/cron/isolated-agent/helpers.ts            | 87 ++++++++++++++++++-
+ .../run.command-only-contract.test.ts         | 60 +++++++++++++
+ src/cron/isolated-agent/run.test-harness.ts   | 13 ++-
+ src/cron/isolated-agent/run.ts                | 31 +++++--
+ 5 files changed, 249 insertions(+), 7 deletions(-)
+ create mode 100644 src/cron/isolated-agent/run.command-only-contract.test.ts
+
+diff --git a/src/cron/isolated-agent/helpers.test.ts b/src/cron/isolated-agent/helpers.test.ts
+index 365125764..9297ef61c 100644
+--- a/src/cron/isolated-agent/helpers.test.ts
++++ b/src/cron/isolated-agent/helpers.test.ts
+@@ -1,8 +1,10 @@
+ import { describe, expect, it } from "vitest";
+ import {
+   isHeartbeatOnlyResponse,
++  isCommandOnlyAgentTurnMessage,
+   pickLastDeliverablePayload,
+   pickLastNonEmptyTextFromPayloads,
++  pickCommandRunnerTextFromPayloads,
+   pickSummaryFromPayloads,
+ } from "./helpers.js";
+ 
+@@ -57,6 +59,69 @@ describe("pickLastNonEmptyTextFromPayloads", () => {
+   });
+ });
+ 
++describe("isCommandOnlyAgentTurnMessage", () => {
++  it("detects hardened command-only cron prompts", () => {
++    expect(
++      isCommandOnlyAgentTurnMessage(
++        [
++          "You are scheduled runner. Run command only:",
++          "python3 /tmp/job.py",
++          "Return EXACTLY raw stdout/stderr text from the command.",
++        ].join("\n"),
++      ),
++    ).toBe(true);
++  });
++
++  it("detects Chinese raw-output command prompts", () => {
++    expect(
++      isCommandOnlyAgentTurnMessage(
++        "你是 ops-agent 日报任务。仅用命令执行：python3 /tmp/job.py。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
++      ),
++    ).toBe(true);
++  });
++
++  it("ignores normal non-command prompts", () => {
++    expect(isCommandOnlyAgentTurnMessage("Please review the latest TODO list and summarize it.")).toBe(
++      false,
++    );
++  });
++});
++
++describe("pickCommandRunnerTextFromPayloads", () => {
++  it("prefers raw command output over trailing assistant chatter", () => {
++    const payloads = [
++      {
++        text: "# local-git-backup\n- task: cron:ops-local-openclaw-git-backup\n- time: 2026-03-06T14:48:34+00:00",
++      },
++      {
++        text: "Backup completed successfully! Here's the summary:\n- ✅ Commit SHA: abc123",
++      },
++    ];
++    expect(pickCommandRunnerTextFromPayloads(payloads)).toBe(payloads[0]?.text);
++  });
++
++  it("returns undefined when every payload is model narration", () => {
++    const payloads = [
++      { text: "Let's execute the command exactly as scheduled." },
++      { text: "Okay, let's remove the invalid argument and run it again." },
++    ];
++    expect(pickCommandRunnerTextFromPayloads(payloads)).toBeUndefined();
++  });
++
++  it("keeps raw traceback text for failure reporting", () => {
++    const payloads = [
++      {
++        text: [
++          "Traceback (most recent call last):",
++          '  File "/tmp/job.py", line 1, in <module>',
++          "NameError: name 'notify' is not defined",
++        ].join("\n"),
++      },
++    ];
++    expect(pickCommandRunnerTextFromPayloads(payloads)).toBe(payloads[0]?.text);
++  });
++});
++
+ describe("pickLastDeliverablePayload", () => {
+   it("picks real payload over error payload", () => {
+     const real = { text: "Delivered content" };
+diff --git a/src/cron/isolated-agent/helpers.ts b/src/cron/isolated-agent/helpers.ts
+index 3792a3a7a..36767fe15 100644
+--- a/src/cron/isolated-agent/helpers.ts
++++ b/src/cron/isolated-agent/helpers.ts
+@@ -10,8 +10,93 @@ type DeliveryPayload = {
+   isError?: boolean;
+ };
+ 
++const COMMAND_ONLY_MESSAGE_MARKERS = [
++  "run command only:",
++  "return exactly raw stdout/stderr text from the command",
++  "仅用命令执行",
++  "将命令输出原样作为唯一回复",
++];
++
++const COMMAND_RUNNER_CHATTER_RE =
++  /^(let's|okay[,!]?|now let's|i(?:'|’)ll|i will|running\b|starting\b|let me\b)/i;
++const COMMAND_RUNNER_WRAPUP_RE =
++  /^(backup completed successfully!?|here(?:'|’)s the summary\b|##\s*summary\b|summary\b|okay, the .*? is now complete!?|let(?:'|’)s clarify\b)/i;
++const COMMAND_OUTPUT_FIELD_LINE_RE = /(^|\n)-\s*[\w\u4e00-\u9fff._-]{1,40}\s*:/;
++const COMMAND_OUTPUT_ERROR_RE =
++  /^(traceback\b|error:|nameerror:|typeerror:|valueerror:|usage:|python\d?: can't open file|bash:|sh:|fatal:|module not found\b|modulenotfounderror:|syntaxerror:)/i;
++
++function normalizeText(value: string | undefined) {
++  return (value ?? "").trim();
++}
++
++function isLikelyNarrativeCommandRunnerText(text: string) {
++  const clean = normalizeText(text);
++  if (!clean) {
++    return false;
++  }
++  return COMMAND_RUNNER_CHATTER_RE.test(clean) || COMMAND_RUNNER_WRAPUP_RE.test(clean);
++}
++
++function looksLikeRawCommandOutput(text: string) {
++  const clean = normalizeText(text);
++  if (!clean) {
++    return false;
++  }
++  if (clean.toUpperCase() === "NO_REPLY") {
++    return true;
++  }
++  if (clean.startsWith("{") || clean.startsWith("```") || clean.startsWith("#")) {
++    return true;
++  }
++  if (COMMAND_OUTPUT_ERROR_RE.test(clean)) {
++    return true;
++  }
++  if (COMMAND_OUTPUT_FIELD_LINE_RE.test(clean)) {
++    return true;
++  }
++  return false;
++}
++
++export function isCommandOnlyAgentTurnMessage(message: string | undefined) {
++  const clean = normalizeText(message).toLowerCase();
++  if (!clean) {
++    return false;
++  }
++  const englishPrompt =
++    clean.includes("run command only:") &&
++    clean.includes("return exactly raw stdout/stderr text from the command");
++  const chinesePrompt = clean.includes("仅用命令执行") && clean.includes("将命令输出原样作为唯一回复");
++  const genericPrompt = COMMAND_ONLY_MESSAGE_MARKERS.filter((marker) => clean.includes(marker)).length >= 2;
++  return englishPrompt || chinesePrompt || genericPrompt;
++}
++
++export function pickCommandRunnerTextFromPayloads(
++  payloads: Array<{ text?: string | undefined; isError?: boolean }>,
++) {
++  const passes: Array<(payload: { text?: string | undefined; isError?: boolean }) => boolean> = [
++    (payload) => payload?.isError !== true,
++    () => true,
++  ];
++  for (const allow of passes) {
++    for (let i = payloads.length - 1; i >= 0; i--) {
++      const payload = payloads[i];
++      if (!allow(payload)) {
++        continue;
++      }
++      const clean = normalizeText(payload?.text);
++      if (!clean || isLikelyNarrativeCommandRunnerText(clean)) {
++        continue;
++      }
++      if (looksLikeRawCommandOutput(clean)) {
++        return clean;
++      }
++    }
++  }
++  return undefined;
++}
++
+ export function pickSummaryFromOutput(text: string | undefined) {
+-  const clean = (text ?? "").trim();
++  const clean = normalizeText(text);
+   if (!clean) {
+     return undefined;
+   }
+diff --git a/src/cron/isolated-agent/run.command-only-contract.test.ts b/src/cron/isolated-agent/run.command-only-contract.test.ts
+new file mode 100644
+index 000000000..025795aaf
+--- /dev/null
++++ b/src/cron/isolated-agent/run.command-only-contract.test.ts
+@@ -0,0 +1,60 @@
++import { describe, expect, it } from "vitest";
++import {
++  makeIsolatedAgentTurnJob,
++  makeIsolatedAgentTurnParams,
++  setupRunCronIsolatedAgentTurnSuite,
++} from "./run.suite-helpers.js";
++import {
++  isCommandOnlyAgentTurnMessageMock,
++  loadRunCronIsolatedAgentTurn,
++  pickCommandRunnerTextFromPayloadsMock,
++} from "./run.test-harness.js";
++
++const runCronIsolatedAgentTurn = await loadRunCronIsolatedAgentTurn();
++
++describe("runCronIsolatedAgentTurn - command-only contract", () => {
++  setupRunCronIsolatedAgentTurnSuite();
++
++  it("treats narration-only command-runner replies as errors instead of deliverable output", async () => {
++    isCommandOnlyAgentTurnMessageMock.mockReturnValue(true);
++    pickCommandRunnerTextFromPayloadsMock.mockReturnValue(undefined);
++
++    const result = await runCronIsolatedAgentTurn(
++      makeIsolatedAgentTurnParams({
++        job: makeIsolatedAgentTurnJob({
++          payload: {
++            kind: "agentTurn",
++            message: "You are scheduled runner. Run command only:\npython3 /tmp/job.py",
++          },
++        }),
++      }),
++    );
++
++    expect(result.status).toBe("error");
++    expect(result.error).toBe("cron command-only job returned non-command text");
++    expect(result.summary).toBeUndefined();
++    expect(result.outputText).toBeUndefined();
++  });
++
++  it("keeps trusted command output when helper resolved a raw payload", async () => {
++    isCommandOnlyAgentTurnMessageMock.mockReturnValue(true);
++    pickCommandRunnerTextFromPayloadsMock.mockReturnValue(
++      "# local-git-backup\n- task: cron:ops-local-openclaw-git-backup",
++    );
++
++    const result = await runCronIsolatedAgentTurn(
++      makeIsolatedAgentTurnParams({
++        job: makeIsolatedAgentTurnJob({
++          payload: {
++            kind: "agentTurn",
++            message: "You are scheduled runner. Run command only:\npython3 /tmp/job.py",
++          },
++        }),
++      }),
++    );
++
++    expect(result.status).toBe("ok");
++    expect(result.summary).toBe("summary");
++    expect(result.outputText).toContain("cron:ops-local-openclaw-git-backup");
++  });
++});
+diff --git a/src/cron/isolated-agent/run.test-harness.ts b/src/cron/isolated-agent/run.test-harness.ts
+index 3236d0b1c..7e77aa996 100644
+--- a/src/cron/isolated-agent/run.test-harness.ts
++++ b/src/cron/isolated-agent/run.test-harness.ts
+@@ -40,6 +40,9 @@ export const getCliSessionIdMock = createMock();
+ export const updateSessionStoreMock = createMock();
+ export const resolveCronSessionMock = createMock();
+ export const logWarnMock = createMock();
++export const resolveCronDeliveryPlanMock = createMock();
++export const isCommandOnlyAgentTurnMessageMock = createMock();
++export const pickCommandRunnerTextFromPayloadsMock = createMock();
+ 
+ vi.mock("../../agents/agent-scope.js", () => ({
+   resolveAgentConfig: resolveAgentConfigMock,
+@@ -169,7 +172,7 @@ vi.mock("../../security/external-content.js", () => ({
+ }));
+ 
+ vi.mock("../delivery.js", () => ({
+-  resolveCronDeliveryPlan: vi.fn().mockReturnValue({ requested: false }),
++  resolveCronDeliveryPlan: resolveCronDeliveryPlanMock,
+ }));
+ 
+ vi.mock("./delivery-target.js", () => ({
+@@ -182,7 +185,9 @@ vi.mock("./delivery-target.js", () => ({
+ }));
+ 
+ vi.mock("./helpers.js", () => ({
++  isCommandOnlyAgentTurnMessage: isCommandOnlyAgentTurnMessageMock,
+   isHeartbeatOnlyResponse: vi.fn().mockReturnValue(false),
++  pickCommandRunnerTextFromPayloads: pickCommandRunnerTextFromPayloadsMock,
+   pickLastDeliverablePayload: vi.fn().mockReturnValue(undefined),
+   pickLastNonEmptyTextFromPayloads: vi.fn().mockReturnValue("test output"),
+   pickSummaryFromOutput: vi.fn().mockReturnValue("summary"),
+@@ -271,6 +276,12 @@ export function resetRunCronIsolatedAgentTurnHarness(): void {
+ 
+   resolveCronSessionMock.mockReset();
+   resolveCronSessionMock.mockReturnValue(makeCronSession());
++  resolveCronDeliveryPlanMock.mockReset();
++  resolveCronDeliveryPlanMock.mockReturnValue({ requested: false });
++  isCommandOnlyAgentTurnMessageMock.mockReset();
++  isCommandOnlyAgentTurnMessageMock.mockReturnValue(false);
++  pickCommandRunnerTextFromPayloadsMock.mockReset();
++  pickCommandRunnerTextFromPayloadsMock.mockReturnValue(undefined);
+ 
+   logWarnMock.mockReset();
+ }
+diff --git a/src/cron/isolated-agent/run.ts b/src/cron/isolated-agent/run.ts
+index 028b2e3ce..e357bc471 100644
+--- a/src/cron/isolated-agent/run.ts
++++ b/src/cron/isolated-agent/run.ts
+@@ -58,8 +58,10 @@ import {
+ import { resolveDeliveryTarget } from "./delivery-target.js";
+ import {
+   isHeartbeatOnlyResponse,
++  isCommandOnlyAgentTurnMessage,
+   pickLastDeliverablePayload,
+   pickLastNonEmptyTextFromPayloads,
++  pickCommandRunnerTextFromPayloads,
+   pickSummaryFromOutput,
+   pickSummaryFromPayloads,
+   resolveHeartbeatAckMaxChars,
+@@ -598,12 +600,29 @@ export async function runCronIsolatedAgentTurn(params: {
+     return withRunSession({ status: "error", error: abortReason(), ...telemetry });
+   }
+   const firstText = payloads[0]?.text ?? "";
+-  let summary = pickSummaryFromPayloads(payloads) ?? pickSummaryFromOutput(firstText);
+-  let outputText = pickLastNonEmptyTextFromPayloads(payloads);
++  const commandOnlyJob = isCommandOnlyAgentTurnMessage(agentPayload?.message);
++  const commandRunnerText = commandOnlyJob ? pickCommandRunnerTextFromPayloads(payloads) : undefined;
++  let summary = commandRunnerText
++    ? pickSummaryFromOutput(commandRunnerText)
++    : (pickSummaryFromPayloads(payloads) ?? pickSummaryFromOutput(firstText));
++  let outputText = commandRunnerText ?? pickLastNonEmptyTextFromPayloads(payloads);
+   let synthesizedText = outputText?.trim() || summary?.trim() || undefined;
++  const commandOnlyContractViolated =
++    commandOnlyJob &&
++    !commandRunnerText &&
++    payloads.some((payload) => Boolean(payload?.text?.trim()));
++  if (commandOnlyContractViolated) {
++    summary = undefined;
++    outputText = undefined;
++    synthesizedText = undefined;
++  }
+   const deliveryPayload = pickLastDeliverablePayload(payloads);
+   let deliveryPayloads =
+-    deliveryPayload !== undefined
++    commandOnlyContractViolated
++      ? []
++      : commandRunnerText
++      ? [{ text: commandRunnerText }]
++      : deliveryPayload !== undefined
+       ? [deliveryPayload]
+       : synthesizedText
+         ? [{ text: synthesizedText }]
+@@ -632,11 +651,13 @@ export async function runCronIsolatedAgentTurn(params: {
+     ?.text?.trim();
+   const embeddedRunError = hasFatalErrorPayload
+     ? (lastErrorPayloadText ?? "cron isolated run returned an error payload")
++    : commandOnlyContractViolated
++      ? "cron command-only job returned non-command text"
+     : undefined;
+   const resolveRunOutcome = (params?: { delivered?: boolean; deliveryAttempted?: boolean }) =>
+     withRunSession({
+-      status: hasFatalErrorPayload ? "error" : "ok",
+-      ...(hasFatalErrorPayload
++      status: hasFatalErrorPayload || commandOnlyContractViolated ? "error" : "ok",
++      ...(hasFatalErrorPayload || commandOnlyContractViolated
+         ? { error: embeddedRunError ?? "cron isolated run returned an error payload" }
+         : {}),
+       summary,
+-- 
+2.43.0.windows.1
+
