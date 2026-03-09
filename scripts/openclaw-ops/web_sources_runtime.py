@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from project_registry_discovery import load_project_registry as load_project_registry_runtime
 from vendor_source_catalog import (
     DEFAULT_PROJECT_INDEX_DIR,
     LEGACY_PROJECT_INDEX_DIR,
@@ -118,20 +119,7 @@ def load_static_sources(path: Path) -> list[dict[str, Any]]:
 
 
 def load_project_registry(path: Path) -> list[dict[str, Any]]:
-    payload = load_json(path, {})
-    if isinstance(payload, dict):
-        items = payload.get("projects", [])
-    elif isinstance(payload, list):
-        items = payload
-    else:
-        items = []
-    if not isinstance(items, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for item in items:
-        if isinstance(item, dict):
-            out.append(dict(item))
-    return out
+    return load_project_registry_runtime(path)
 
 
 def collect_vendor_hints(project: dict[str, Any]) -> set[str]:

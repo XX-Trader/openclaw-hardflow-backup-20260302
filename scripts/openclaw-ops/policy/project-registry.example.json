@@ -1,4 +1,19 @@
 {
+  "discovery": {
+    "enabled": true,
+    "scan_roots": [
+      "/srv",
+      "/home/ubuntu/projects",
+      "/home/ubuntu"
+    ],
+    "max_depth": 4,
+    "max_projects": 40,
+    "exclude_path_tokens": [
+      "/.openclaw/skills/",
+      "/.openclaw/workspace-",
+      "/actions-runner/_work/"
+    ]
+  },
   "projects": [
     {
       "id": "project-a",

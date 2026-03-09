@@ -625,6 +625,7 @@ openclaw gateway run
   - `web/sources.json`
   - `web/project_docs_sources.json`
   - `project-registry.json` dynamic `doc_sources`, vendor hints, and per-project `doc-knowledge.json`
+- `project-registry.json` now supports a top-level `discovery` block. If enabled, runtime will auto-discover additional local git projects under configured scan roots and merge them with explicit registry entries, while skipping internal repos such as `.openclaw/skills` and runner worktrees.
 - `project_index_maintainer.py` now extracts external API URLs from actual project source files and writes vendor-aware `doc_sources` plus `repo_sources` into `.workflow/project-index-local/doc-knowledge.json`.
 - `project-registry.example.json` now documents `doc_sources` and `integrations`. If a project declares `binance`, runtime sources automatically include official Binance Spot API docs and changelog. If the code itself contains `https://api.binance.com/...`, the project index will infer the same vendor sources automatically even without manual `doc_sources`.
 - `github_web_evolution_runner.py` default queries now prioritize `openclaw` / `skills` / `hooks` / `plugins` / `workflow` instead of generic OpenAI-adjacent terms.
