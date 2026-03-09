@@ -26,6 +26,15 @@ CORE_RUNTIME_HOOKS = (
     "hardflow-stop-gate-reminder",
     "hardflow-policy-enforcer",
 )
+LOCAL_TELEGRAM_CREDENTIAL_KEYS = (
+    "botToken",
+    "apiId",
+    "apiHash",
+    "phone",
+    "phoneNumber",
+    "session",
+    "sessionString",
+)
 
 
 def render_cmd(cmd: list[str]) -> str:
@@ -283,6 +292,29 @@ def merge_overlay_object(base: dict[str, Any], overlay: dict[str, Any]) -> dict[
     return merged
 
 
+def preserve_local_telegram_credentials(base_cfg: dict[str, Any], merged_cfg: dict[str, Any]) -> list[str]:
+    base_channels = base_cfg.get("channels")
+    merged_channels = merged_cfg.get("channels")
+    if not isinstance(base_channels, dict) or not isinstance(merged_channels, dict):
+        return []
+
+    base_tg = base_channels.get("telegram")
+    merged_tg = merged_channels.get("telegram")
+    if not isinstance(base_tg, dict) or not isinstance(merged_tg, dict):
+        return []
+
+    preserved: list[str] = []
+    for key in LOCAL_TELEGRAM_CREDENTIAL_KEYS:
+        value = base_tg.get(key)
+        if value in (None, "", [], {}):
+            continue
+        if merged_tg.get(key) == value:
+            continue
+        merged_tg[key] = value
+        preserved.append(f"channels.telegram.{key}")
+    return preserved
+
+
 def apply_runtime_bridge_config(merged_cfg: dict[str, Any], workflow_repo_path: str) -> dict[str, Any]:
     workflow_root = Path(workflow_repo_path).resolve()
     hooks_dir = workflow_root / "hooks"
@@ -380,7 +412,7 @@ def sync_overlay_config(
         "ok": False,
         "step": OVERLAY_SYNC_STEP,
         "dry_run": dry_run,
-        "merge_mode": "repo-overlay-wins",
+        "merge_mode": "repo-overlay-wins-with-local-telegram-credentials",
         "source_role": "workflow-overlay",
         "source": str(source),
         "target": str(target),
@@ -410,6 +442,9 @@ def sync_overlay_config(
             return result
 
     merged_cfg = merge_overlay_object(target_cfg, source_cfg)
+    preserved_local_keys = preserve_local_telegram_credentials(target_cfg, merged_cfg)
+    if preserved_local_keys:
+        result["preserved_local_config_keys"] = preserved_local_keys
     result["runtime_bridge"] = apply_runtime_bridge_config(merged_cfg, workflow_repo_path=workflow_repo_path)
     changed = (not target.exists()) or (merged_cfg != target_cfg)
     result["changed"] = changed
