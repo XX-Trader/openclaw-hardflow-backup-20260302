@@ -513,6 +513,21 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
     data["notify_policy"] = notify_policy
     data.setdefault("errors_only_notify", True)
 
+    runtime_monitor = data.get("runtime_monitor")
+    if not isinstance(runtime_monitor, dict):
+        runtime_monitor = {}
+    runtime_defaults = {
+        "enabled": True,
+        "project_registry": str(home / ".openclaw" / "ops" / "task-center" / "project-registry.json"),
+        "max_projects": 24,
+        "max_items_per_project": 12,
+        "process_timeout_seconds": 15,
+        "service_timeout_seconds": 10,
+    }
+    for key, value in runtime_defaults.items():
+        runtime_monitor.setdefault(key, value)
+    data["runtime_monitor"] = runtime_monitor
+
     incident_handoff = data.get("incident_handoff")
     if not isinstance(incident_handoff, dict):
         incident_handoff = {}

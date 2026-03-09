@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import sqlite3
 import shutil
 import subprocess
@@ -106,6 +107,8 @@ def humanize_risk_reason(reason: str) -> str:
         "scan_error": "\u65e5\u5fd7\u626b\u63cf\u5931\u8d25",
         "system_anomaly": "\u7cfb\u7edf\u6307\u6807\u5f02\u5e38",
         "service_monitor_error": "\u8fdb\u7a0b\u6216\u670d\u52a1\u76d1\u63a7\u5f02\u5e38",
+        "runtime_process_missing": "\u9879\u76ee\u5e38\u9a7b\u8fdb\u7a0b\u6216\u670d\u52a1\u7f3a\u5931",
+        "runtime_monitor_error": "\u9879\u76ee\u8fd0\u884c\u6001\u76d1\u63a7\u5f02\u5e38",
         "workflow_job_error": "\u5de5\u4f5c\u6d41\u4efb\u52a1\u5931\u8d25",
         "workflow_job_error_stale": "\u5de5\u4f5c\u6d41\u4efb\u52a1\u6301\u7eed\u5931\u8d25\uff08\u8d85\u65f6\u672a\u6062\u590d\uff09",
         "workflow_monitor_error": "\u5de5\u4f5c\u6d41\u76d1\u63a7\u6a21\u5757\u5f02\u5e38",
@@ -227,6 +230,14 @@ def default_config() -> dict[str, Any]:
             "max_services": 120,
             "derive_log_paths": True,
         },
+        "runtime_monitor": {
+            "enabled": True,
+            "project_registry": str(home / ".openclaw" / "ops" / "task-center" / "project-registry.json"),
+            "max_projects": 24,
+            "max_items_per_project": 12,
+            "process_timeout_seconds": 15,
+            "service_timeout_seconds": 10,
+        },
         "system_monitor": {
             "enabled": True,
             "disk_paths": disk_paths,
@@ -332,6 +343,7 @@ def default_state() -> dict[str, Any]:
         "checkpoints": {},
         "issues": {},
         "services": {},
+        "runtime_monitor": {},
         "known_logs": [],
         "last_full_scan_at": "",
         "last_run_record": "",
@@ -580,7 +592,269 @@ def collect_services(cfg: dict[str, Any]) -> tuple[dict[str, dict[str, str]], st
     return services, None
 
 
-def discover_logs(cfg: dict[str, Any], service_names: list[str]) -> list[Path]:
+def _project_registry_items(path: Path) -> list[dict[str, Any]]:
+    raw = load_json(path, {})
+    if isinstance(raw, list):
+        items = raw
+    elif isinstance(raw, dict):
+        items = raw.get("projects", [])
+    else:
+        items = []
+    return [dict(item) for item in items if isinstance(item, dict)]
+
+
+def _safe_resolve_path(path: Path) -> Path:
+    try:
+        return path.expanduser().resolve()
+    except Exception:
+        return path.expanduser()
+
+
+def _normalize_runtime_log_paths(project_root: Path | None, value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    rows: list[str] = []
+    seen: set[str] = set()
+    for raw in value:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        path = Path(text).expanduser()
+        if project_root is not None and not path.is_absolute():
+            path = project_root / path
+        resolved = str(_safe_resolve_path(path))
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        rows.append(resolved)
+    return rows
+
+
+def _process_probe(match: str, *, cwd: str, timeout: int) -> tuple[list[dict[str, str]], str]:
+    pattern = str(match or "").strip()
+    if not pattern:
+        return [], "missing_process_match"
+    command = f"pgrep -af -- {shlex.quote(pattern)}"
+    rc, out, err = run_shell(command, timeout=max(3, int(timeout)))
+    if rc not in {0, 1}:
+        return [], err or out or f"pgrep_exit={rc}"
+    rows: list[dict[str, str]] = []
+    cwd_norm = str(cwd or "").strip().replace("\\", "/").lower()
+    for line in out.splitlines():
+        text = line.strip()
+        if not text:
+            continue
+        parts = text.split(None, 1)
+        pid = parts[0] if parts else ""
+        command_line = parts[1] if len(parts) > 1 else ""
+        if pattern and pattern not in command_line:
+            continue
+        if cwd_norm and cwd_norm not in command_line.replace("\\", "/").lower():
+            continue
+        rows.append({"pid": pid, "command": command_line})
+    return rows, ""
+
+
+def _service_probe(
+    service_unit: str,
+    *,
+    service_snapshot: dict[str, dict[str, str]],
+    timeout: int,
+) -> tuple[str, str]:
+    unit = str(service_unit or "").strip()
+    if not unit:
+        return "error", "missing_service_unit"
+    aliases = [unit]
+    if unit.endswith(".service"):
+        aliases.append(unit[:-8])
+    else:
+        aliases.append(f"{unit}.service")
+    for alias in aliases:
+        row = service_snapshot.get(alias)
+        if not isinstance(row, dict):
+            continue
+        state = str(row.get("state", "")).strip()
+        if state.startswith("active/"):
+            return "running", state
+        return "stopped", state or "inactive"
+
+    rc, out, err = run_shell(f"systemctl is-active {shlex.quote(unit)}", timeout=max(3, int(timeout)))
+    state = str(out or err).strip().lower()
+    if rc == 0 and state == "active":
+        return "running", "active"
+    if state in {"inactive", "failed", "deactivating"} or rc in {3, 4}:
+        return "stopped", state or f"exit={rc}"
+    if rc == 0:
+        return "running", state or "active"
+    return "error", state or f"systemctl_exit={rc}"
+
+
+def collect_runtime_project_health(
+    cfg: dict[str, Any],
+    *,
+    service_snapshot: dict[str, dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    monitor = cfg.get("runtime_monitor")
+    if not isinstance(monitor, dict):
+        monitor = {}
+    enabled = bool(monitor.get("enabled", True))
+    registry_path = Path(
+        str(monitor.get("project_registry", "")).strip()
+        or str(Path.home() / ".openclaw" / "ops" / "task-center" / "project-registry.json")
+    ).expanduser()
+    result: dict[str, Any] = {
+        "enabled": enabled,
+        "project_registry": str(registry_path),
+        "projects": [],
+        "missing_required": [],
+        "log_paths": [],
+        "errors": [],
+        "snapshot": {},
+        "summary": {
+            "project_count": 0,
+            "item_count": 0,
+            "required_missing_count": 0,
+            "running_count": 0,
+            "stopped_count": 0,
+            "disabled_count": 0,
+            "error_count": 0,
+        },
+    }
+    if not enabled:
+        return result
+    if not registry_path.exists():
+        result["errors"].append(f"project_registry_missing:{registry_path}")
+        result["summary"]["error_count"] = 1
+        return result
+
+    projects = _project_registry_items(registry_path)
+    max_projects = max(1, int(monitor.get("max_projects", 24) or 24))
+    max_items_per_project = max(1, int(monitor.get("max_items_per_project", 12) or 12))
+    process_timeout = max(3, int(monitor.get("process_timeout_seconds", 15) or 15))
+    service_timeout = max(3, int(monitor.get("service_timeout_seconds", 10) or 10))
+    known_services = service_snapshot if isinstance(service_snapshot, dict) else {}
+    log_paths: set[str] = set()
+    snapshot: dict[str, str] = {}
+
+    for project in projects[:max_projects]:
+        monitor_cfg = project.get("runtime_monitoring")
+        if not isinstance(monitor_cfg, dict):
+            continue
+        project_enabled = bool(monitor_cfg.get("enabled", True))
+        project_id = str(project.get("id", "")).strip() or safe_slug(str(project.get("name", "")))
+        project_name = str(project.get("name", "")).strip() or project_id
+        project_path_text = str(project.get("path", "")).strip()
+        project_root = _safe_resolve_path(Path(project_path_text)) if project_path_text else None
+        items_raw = monitor_cfg.get("items", [])
+        if not isinstance(items_raw, list):
+            items_raw = []
+
+        project_row = {
+            "id": project_id,
+            "name": project_name,
+            "path": str(project_root) if project_root else project_path_text,
+            "enabled": project_enabled,
+            "items": [],
+        }
+        item_rows: list[dict[str, Any]] = []
+
+        for idx, raw in enumerate(items_raw[:max_items_per_project], start=1):
+            if not isinstance(raw, dict):
+                continue
+            item_id = str(raw.get("id", "")).strip() or safe_slug(str(raw.get("name", "")) or f"item-{idx}")
+            item_name = str(raw.get("name", "")).strip() or item_id
+            item_type = str(raw.get("type", "process")).strip().lower() or "process"
+            item_enabled = project_enabled and bool(raw.get("enabled", True))
+            required = bool(raw.get("required", True))
+            cwd = str(raw.get("cwd", "")).strip() or (str(project_root) if project_root else "")
+            logs = _normalize_runtime_log_paths(project_root, raw.get("log_paths"))
+            for path in logs:
+                log_paths.add(path)
+            row = {
+                "id": item_id,
+                "name": item_name,
+                "type": item_type,
+                "required": required,
+                "enabled": item_enabled,
+                "match": str(raw.get("match", "")).strip(),
+                "service_unit": str(raw.get("service_unit", "")).strip(),
+                "cwd": cwd,
+                "status": "disabled",
+                "message": "",
+                "processes": [],
+                "log_paths": logs,
+                "stop_command": str(raw.get("stop_command", "")).strip(),
+            }
+
+            if not item_enabled:
+                result["summary"]["disabled_count"] += 1
+            elif item_type == "process":
+                processes, error = _process_probe(row["match"], cwd=cwd, timeout=process_timeout)
+                row["processes"] = processes
+                if error:
+                    row["status"] = "error"
+                    row["message"] = error
+                    result["summary"]["error_count"] += 1
+                    result["errors"].append(f"{project_id}:{item_id}:{error}")
+                elif processes:
+                    row["status"] = "running"
+                    row["message"] = f"matched={len(processes)}"
+                    result["summary"]["running_count"] += 1
+                else:
+                    row["status"] = "missing"
+                    row["message"] = "process_not_found"
+                    result["summary"]["stopped_count"] += 1
+            elif item_type == "service":
+                status, message = _service_probe(
+                    row["service_unit"] or item_name,
+                    service_snapshot=known_services,
+                    timeout=service_timeout,
+                )
+                row["status"] = status
+                row["message"] = message
+                if status == "running":
+                    result["summary"]["running_count"] += 1
+                elif status == "error":
+                    result["summary"]["error_count"] += 1
+                    result["errors"].append(f"{project_id}:{item_id}:{message}")
+                else:
+                    result["summary"]["stopped_count"] += 1
+            else:
+                row["status"] = "error"
+                row["message"] = f"unsupported_type:{item_type}"
+                result["summary"]["error_count"] += 1
+                result["errors"].append(f"{project_id}:{item_id}:unsupported_type:{item_type}")
+
+            result["summary"]["item_count"] += 1
+            snapshot[f"{project_id}:{item_id}"] = row["status"]
+            if item_enabled and required and row["status"] != "running":
+                result["missing_required"].append(
+                    {
+                        "project_id": project_id,
+                        "project_name": project_name,
+                        "item_id": item_id,
+                        "item_name": item_name,
+                        "type": item_type,
+                        "status": row["status"],
+                        "message": row["message"],
+                        "log_paths": logs,
+                        "stop_command": row["stop_command"],
+                    }
+                )
+            item_rows.append(row)
+
+        if item_rows:
+            project_row["items"] = item_rows
+            result["projects"].append(project_row)
+
+    result["summary"]["project_count"] = len(result["projects"])
+    result["summary"]["required_missing_count"] = len(result["missing_required"])
+    result["log_paths"] = sorted(log_paths)
+    result["snapshot"] = snapshot
+    return result
+
+
+def discover_logs(cfg: dict[str, Any], service_names: list[str], extra_paths: list[str] | None = None) -> list[Path]:
     roots = [Path(str(x)).expanduser() for x in (cfg.get("log_roots") or [])]
     patterns = [str(x).strip() for x in (cfg.get("log_patterns") or ["*.log"]) if str(x).strip()]
     excludes = [str(x).lower() for x in (cfg.get("exclude_path_substrings") or []) if str(x).strip()]
@@ -606,6 +880,15 @@ def discover_logs(cfg: dict[str, Any], service_names: list[str]) -> list[Path]:
                     candidates.add(f1.resolve())
                 if f2.exists() and f2.is_file():
                     candidates.add(f2.resolve())
+
+    if isinstance(extra_paths, list):
+        for raw in extra_paths:
+            text = str(raw or "").strip()
+            if not text:
+                continue
+            item = Path(text).expanduser()
+            if item.exists() and item.is_file():
+                candidates.add(_safe_resolve_path(item))
 
     kept: list[Path] = []
     for item in candidates:
@@ -1896,7 +2179,8 @@ def run_scan(
     state["runs"][mode] = int(state["runs"].get(mode, 0)) + 1
     run_id = uuid.uuid4().hex[:12]
     service_snapshot, service_error = collect_services(cfg)
-    log_files = discover_logs(cfg, list(service_snapshot.keys()))
+    runtime_health = collect_runtime_project_health(cfg, service_snapshot=service_snapshot)
+    log_files = discover_logs(cfg, list(service_snapshot.keys()), extra_paths=list(runtime_health.get("log_paths", [])))
 
     checkpoints = state.setdefault("checkpoints", {})
     findings: list[dict[str, Any]] = []
@@ -1968,6 +2252,22 @@ def run_scan(
     removed = sorted(set(prev_services) - set(service_snapshot))
     changed = sorted(x for x in set(service_snapshot) & set(prev_services) if service_snapshot[x] != prev_services[x])
     state["services"] = service_snapshot
+    prev_runtime = state.get("runtime_monitor", {})
+    prev_runtime = prev_runtime if isinstance(prev_runtime, dict) else {}
+    prev_runtime_snapshot = prev_runtime.get("item_status", {})
+    prev_runtime_snapshot = prev_runtime_snapshot if isinstance(prev_runtime_snapshot, dict) else {}
+    runtime_snapshot = runtime_health.get("snapshot", {})
+    runtime_snapshot = runtime_snapshot if isinstance(runtime_snapshot, dict) else {}
+    runtime_changed_count = 0
+    for key in set(prev_runtime_snapshot) | set(runtime_snapshot):
+        if str(prev_runtime_snapshot.get(key, "")) != str(runtime_snapshot.get(key, "")):
+            runtime_changed_count += 1
+    state["runtime_monitor"] = {
+        "updated_at": now_iso(),
+        "item_status": runtime_snapshot,
+        "summary": runtime_health.get("summary", {}),
+        "missing_required": runtime_health.get("missing_required", []),
+    }
 
     metrics = collect_system_metrics(cfg)
     workflow_health = collect_workflow_health(cfg, state)
@@ -1986,6 +2286,11 @@ def run_scan(
         risk_reasons.append(f"system_anomaly={len(metrics.get('anomalies', []))}")
     if service_error and prev_services:
         risk_reasons.append("service_monitor_error")
+    runtime_missing_count = int(((runtime_health.get("summary") or {}).get("required_missing_count", 0) or 0))
+    if runtime_missing_count > 0:
+        risk_reasons.append(f"runtime_process_missing={runtime_missing_count}")
+    if runtime_health.get("errors"):
+        risk_reasons.append(f"runtime_monitor_error={len(runtime_health.get('errors') or [])}")
     if int(workflow_health.get("failed_count", 0) or 0) > 0:
         risk_reasons.append(f"workflow_job_error={int(workflow_health.get('failed_count', 0) or 0)}")
     if int(workflow_health.get("stale_failed_count", 0) or 0) > 0:
@@ -2007,6 +2312,8 @@ def run_scan(
         change_reasons.append(f"resolved_issue={issue_stats['resolved']}")
     if added or removed or changed:
         change_reasons.append(f"service_change=+{len(added)}/-{len(removed)}/~{len(changed)}")
+    if runtime_changed_count > 0:
+        change_reasons.append(f"runtime_status_change={runtime_changed_count}")
     if fallback_used:
         change_reasons.append("fallback_full_scan")
     if int(workflow_health.get("new_failed_count", 0) or 0) > 0:
@@ -2096,6 +2403,19 @@ def run_scan(
                     f"  {idx}. [{item.get('severity')}] {str(item.get('title', ''))[:120]} "
                     f"(\u6700\u8fd1: {iso_to_local_text(item.get('last_seen'))})"
                 )
+        runtime_missing_rows = runtime_health.get("missing_required", [])
+        if isinstance(runtime_missing_rows, list) and runtime_missing_rows:
+            lines.append("- \u5e38\u9a7b\u8fdb\u7a0b/\u670d\u52a1\u7f3a\u5931:")
+            for idx, item in enumerate(runtime_missing_rows[:5], start=1):
+                lines.append(
+                    f"  {idx}. {str(item.get('project_name', '-'))} / {str(item.get('item_name', '-'))} "
+                    f"({str(item.get('type', '-'))}) -> {str(item.get('status', '-'))}"
+                )
+                log_paths = item.get("log_paths", [])
+                if isinstance(log_paths, list) and log_paths:
+                    lines.append(f"     log: {str(log_paths[0])[:180]}")
+                if str(item.get("stop_command", "")).strip():
+                    lines.append(f"     stop: {str(item.get('stop_command', ''))[:180]}")
         if workflow_failed_rows:
             lines.append("- \u5931\u8d25\u5de5\u4f5c\u6d41:")
             for idx, item in enumerate(workflow_failed_rows[:3], start=1):
@@ -2154,6 +2474,7 @@ def run_scan(
             "service_error": service_error or "",
         },
         "metrics": metrics,
+        "runtime_health": runtime_health,
         "workflow_health": workflow_health,
         "token_usage": token_usage_summary,
         "handoff_summary": handoff_summary,
@@ -2195,6 +2516,7 @@ def build_daily_report(
     top = open_issues[:8]
     open_high = [x for x in open_issues if str(x.get("severity")) == "high"]
     metrics = collect_system_metrics(cfg)
+    runtime_health = collect_runtime_project_health(cfg)
     app_usage = metrics.get("app_usage") if isinstance(metrics.get("app_usage"), dict) else {}
     workflow_health = collect_workflow_health(cfg, state)
     token_usage_summary = collect_token_usage_summary(cfg)
@@ -2204,6 +2526,11 @@ def build_daily_report(
         risk_reasons.append(f"failed_runs_24h={failed}")
     if open_high:
         risk_reasons.append(f"open_high_issues={len(open_high)}")
+    runtime_missing_count = int(((runtime_health.get("summary") or {}).get("required_missing_count", 0) or 0))
+    if runtime_missing_count > 0:
+        risk_reasons.append(f"runtime_process_missing={runtime_missing_count}")
+    if runtime_health.get("errors"):
+        risk_reasons.append(f"runtime_monitor_error={len(runtime_health.get('errors') or [])}")
     if int(workflow_health.get("failed_count", 0) or 0) > 0:
         risk_reasons.append(f"workflow_job_error={int(workflow_health.get('failed_count', 0) or 0)}")
     if int(workflow_health.get("stale_failed_count", 0) or 0) > 0:
@@ -2225,6 +2552,8 @@ def build_daily_report(
         change_reasons.append(f"major_runs_24h={major}")
     if top:
         change_reasons.append(f"open_issues={len(top)}")
+    if runtime_missing_count > 0:
+        change_reasons.append(f"runtime_missing={runtime_missing_count}")
     if int(workflow_health.get("new_failed_count", 0) or 0) > 0:
         change_reasons.append(f"workflow_new_failed={int(workflow_health.get('new_failed_count', 0) or 0)}")
     if int(workflow_health.get("recovered_count", 0) or 0) > 0:
@@ -2276,6 +2605,7 @@ def build_daily_report(
                 "run_duration_ms": max(0, int((now() - run_started_at).total_seconds() * 1000)),
                 "daily": {"total_runs_24h": total, "major_runs_24h": major, "failed_runs_24h": failed},
                 "metrics": metrics,
+                "runtime_health": runtime_health,
                 "workflow_health": workflow_health,
                 "token_usage": token_usage_summary,
             },
@@ -2318,6 +2648,14 @@ def build_daily_report(
                 f"  {idx}. [{item.get('severity')}] {str(item.get('title', ''))[:120]} "
                 f"(\u6700\u8fd1: {iso_to_local_text(item.get('last_seen'))})"
             )
+    runtime_missing_rows = runtime_health.get("missing_required", [])
+    if isinstance(runtime_missing_rows, list) and runtime_missing_rows:
+        lines.append("- \u5f53\u524d\u7f3a\u5931\u7684\u5e38\u9a7b\u8fdb\u7a0b/\u670d\u52a1:")
+        for idx, item in enumerate(runtime_missing_rows[:5], start=1):
+            lines.append(
+                f"  {idx}. {str(item.get('project_name', '-'))} / {str(item.get('item_name', '-'))} "
+                f"({str(item.get('type', '-'))}) -> {str(item.get('status', '-'))}"
+            )
     if warn_items:
         lines.append("- \u7a7a\u95f4\u9884\u8b66:")
         for idx, x in enumerate(warn_items[:3], start=1):
@@ -2352,6 +2690,7 @@ def build_daily_report(
             "open_issue_count": len(open_issues),
             "handoff_24h": {"todo_new": todo_new_24h, "active_high_risk_items": active_high_risk_24h},
             "metrics": metrics,
+            "runtime_health": runtime_health,
             "workflow_health": workflow_health,
             "token_usage": token_usage_summary,
             "cost_estimate": float(token_usage_summary.get("cost_estimate", 0.0) or 0.0),

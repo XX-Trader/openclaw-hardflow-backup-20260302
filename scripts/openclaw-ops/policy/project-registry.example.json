@@ -40,6 +40,34 @@
         "scripts/**/*",
         ".workflow/**/*.sh"
       ],
+      "runtime_monitoring": {
+        "enabled": true,
+        "items": [
+          {
+            "id": "project-a-api",
+            "name": "project-a-api",
+            "type": "process",
+            "required": true,
+            "match": "uvicorn app.main:app",
+            "cwd": "/srv/project-a",
+            "log_paths": [
+              "logs/api.log"
+            ],
+            "stop_command": "pkill -f 'uvicorn app.main:app'"
+          },
+          {
+            "id": "project-a-worker",
+            "name": "project-a-worker",
+            "type": "service",
+            "required": true,
+            "service_unit": "project-a-worker.service",
+            "log_paths": [
+              "/var/log/project-a-worker.log"
+            ],
+            "stop_command": "systemctl stop project-a-worker.service"
+          }
+        ]
+      },
       "doc_sources": [
         {
           "id": "project-a-api-reference",
