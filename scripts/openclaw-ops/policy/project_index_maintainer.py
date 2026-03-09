@@ -27,7 +27,12 @@ if root_dir in sys.path:
     sys.path.remove(root_dir)
 sys.path.insert(0, root_dir)
 
-from vendor_source_catalog import build_vendor_doc_sources, build_vendor_repo_source, detect_vendors_from_urls
+from vendor_source_catalog import (
+    build_host_repo_sources,
+    build_vendor_doc_sources,
+    build_vendor_repo_source,
+    detect_vendors_from_urls,
+)
 from project_registry_discovery import load_project_registry as load_project_registry_runtime
 from io_write_gateway import atomic_write_text, write_json_atomic
 
@@ -469,6 +474,48 @@ def build_vendor_repo_sources(vendors: set[str]) -> list[dict[str, Any]]:
     return out
 
 
+def dedupe_repo_sources(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        vendor = str(item.get("vendor", "")).strip().lower()
+        host = str(item.get("host", "")).strip().lower()
+        key = host or vendor
+        if not key:
+            continue
+        row = merged.setdefault(
+            key,
+            {
+                "vendor": vendor or host,
+                "host": host,
+                "official_repos": [],
+                "repo_queries": [],
+            },
+        )
+        if vendor and not row.get("vendor"):
+            row["vendor"] = vendor
+        if host and not row.get("host"):
+            row["host"] = host
+        repos = row.get("official_repos", [])
+        queries = row.get("repo_queries", [])
+        if not isinstance(repos, list):
+            repos = []
+        if not isinstance(queries, list):
+            queries = []
+        row["official_repos"] = repos
+        row["repo_queries"] = queries
+        for raw_repo in item.get("official_repos", []):
+            repo = str(raw_repo or "").strip().lower()
+            if repo and repo not in repos:
+                repos.append(repo)
+        for raw_query in item.get("repo_queries", []):
+            query = str(raw_query or "").strip()
+            if query and query not in queries:
+                queries.append(query)
+    return sorted(merged.values(), key=lambda row: (str(row.get("vendor", "")), str(row.get("host", ""))))
+
+
 def fetch_doc_meta(url: str, timeout: int) -> dict[str, Any]:
     req = urllib.request.Request(url=url, method="HEAD")
     try:
@@ -595,7 +642,11 @@ def build_doc_knowledge(
         for vendor in sorted(detected_vendors):
             sources.extend(build_vendor_doc_sources(vendor))
     sources = dedupe_doc_sources(sources)
-    repo_sources = build_vendor_repo_sources(detected_vendors) if vendor_monitoring_enabled else []
+    repo_sources: list[dict[str, Any]] = []
+    if vendor_monitoring_enabled:
+        repo_sources.extend(build_vendor_repo_sources(detected_vendors))
+        repo_sources.extend(build_host_repo_sources(external_api_hosts))
+        repo_sources = dedupe_repo_sources(repo_sources)
 
     state_file = index_root / "doc-knowledge-state.json"
     prev_state = load_doc_state(state_file)

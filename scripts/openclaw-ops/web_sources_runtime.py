@@ -12,6 +12,7 @@ from project_registry_discovery import load_project_registry as load_project_reg
 from vendor_source_catalog import (
     DEFAULT_PROJECT_INDEX_DIR,
     LEGACY_PROJECT_INDEX_DIR,
+    build_host_repo_sources,
     build_vendor_doc_sources,
     build_vendor_repo_source,
     detect_vendors_from_fragments,
@@ -322,6 +323,16 @@ def build_project_repo_targets(path: Path | None) -> dict[str, Any]:
                     "official_repos": item.get("official_repos", []),
                 },
             )
+        external_api_hosts = payload.get("external_api_hosts", []) if isinstance(payload, dict) else []
+        if isinstance(external_api_hosts, list):
+            for item in build_host_repo_sources([str(x) for x in external_api_hosts]):
+                result = merge_repo_targets(
+                    result,
+                    {
+                        "queries": item.get("repo_queries", []),
+                        "official_repos": item.get("official_repos", []),
+                    },
+                )
     return result
 
 

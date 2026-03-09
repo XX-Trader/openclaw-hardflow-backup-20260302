@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -48,6 +49,42 @@ VENDOR_CATALOG: dict[str, dict[str, Any]] = {
             ],
         },
     }
+}
+
+COMMON_HOST_TOKENS = {
+    "api",
+    "apis",
+    "app",
+    "apps",
+    "cloud",
+    "com",
+    "cn",
+    "co",
+    "dev",
+    "developers",
+    "developer",
+    "docs",
+    "doc",
+    "fapi",
+    "dapi",
+    "io",
+    "net",
+    "org",
+    "openapi",
+    "platform",
+    "prod",
+    "production",
+    "rest",
+    "sandbox",
+    "service",
+    "services",
+    "stage",
+    "staging",
+    "test",
+    "testnet",
+    "www",
+    "ws",
+    "wss",
 }
 
 
@@ -100,6 +137,22 @@ def detect_vendors_from_urls(urls: list[str]) -> set[str]:
     return detect_vendors_from_fragments(fragments)
 
 
+def extract_host_repo_terms(host: str) -> list[str]:
+    parts = re.split(r"[^a-z0-9]+", str(host or "").strip().lower())
+    out: list[str] = []
+    seen: set[str] = set()
+    for part in parts:
+        if not part or len(part) < 3 or part in COMMON_HOST_TOKENS:
+            continue
+        if part.isdigit():
+            continue
+        if part in seen:
+            continue
+        seen.add(part)
+        out.append(part)
+    return out[:4]
+
+
 def build_vendor_doc_sources(vendor: str) -> list[dict[str, Any]]:
     meta = VENDOR_CATALOG.get(str(vendor or "").strip().lower())
     if not isinstance(meta, dict):
@@ -125,3 +178,42 @@ def build_vendor_repo_source(vendor: str) -> dict[str, Any] | None:
         "official_repos": official_repos,
         "repo_queries": repo_queries,
     }
+
+
+def build_host_repo_source(host: str) -> dict[str, Any] | None:
+    clean_host = str(host or "").strip().lower()
+    if not clean_host or detect_vendors_from_fragments([clean_host]):
+        return None
+    terms = extract_host_repo_terms(clean_host)
+    if not terms:
+        return None
+    phrase = " ".join(terms[:3]).strip()
+    if not phrase:
+        return None
+    return {
+        "vendor": terms[0],
+        "host": clean_host,
+        "official_repos": [],
+        "repo_queries": unique_texts(
+            [
+                f"{phrase} api sdk archived:false",
+                f"{phrase} api client archived:false",
+                f"{phrase} official sdk archived:false",
+            ]
+        ),
+    }
+
+
+def build_host_repo_sources(hosts: list[str]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for host in hosts:
+        row = build_host_repo_source(host)
+        if row is None:
+            continue
+        key = str(row.get("host", "")).strip().lower() or str(row.get("vendor", "")).strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(row)
+    return out

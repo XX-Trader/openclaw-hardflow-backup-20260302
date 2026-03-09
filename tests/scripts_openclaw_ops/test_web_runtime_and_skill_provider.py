@@ -75,6 +75,48 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
         self.assertTrue(any("binance" in query.lower() for query in binance_repo_source["repo_queries"]))
         self.assertTrue(any("developers.binance.com" in item.get("url", "") for item in payload["doc_sources"]))
 
+    def test_project_index_doc_knowledge_builds_host_repo_queries_for_unknown_api_hosts(self):
+        module = load_module(
+            "project_index_maintainer",
+            "scripts/openclaw-ops/policy/project_index_maintainer.py",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            service_file = tmp / "src" / "vendor_client.py"
+            service_file.parent.mkdir(parents=True, exist_ok=True)
+            service_file.write_text(
+                "\n".join(
+                    [
+                        'BASE_URL = "https://api.polybaymax.com/v1/orders"',
+                        'PUBLIC_URL = "https://dabaiquant.com/api/markets"',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            index_root = tmp / ".workflow" / "project-index-local"
+
+            payload, _changed = module.build_doc_knowledge(
+                root=tmp,
+                index_root=index_root,
+                api_files=["src/vendor_client.py"],
+                source_files=["src/vendor_client.py"],
+                enable_checks=False,
+                timeout=5,
+                fetch_content=False,
+                fetch_max_chars=2048,
+            )
+
+        repo_sources = payload["repo_sources"]
+        vendors = {item.get("vendor") for item in repo_sources}
+        all_queries = [query for item in repo_sources for query in item.get("repo_queries", [])]
+        self.assertIn("api.polybaymax.com", payload["external_api_hosts"])
+        self.assertIn("dabaiquant.com", payload["external_api_hosts"])
+        self.assertIn("polybaymax", vendors)
+        self.assertIn("dabaiquant", vendors)
+        self.assertTrue(any("polybaymax api sdk" in query.lower() for query in all_queries))
+        self.assertTrue(any("dabaiquant api sdk" in query.lower() for query in all_queries))
+
+
     def test_web_intel_load_sources_merges_project_registry_and_vendor_docs(self):
         module = load_module(
             "web_intel_collect_runner",
@@ -227,6 +269,54 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
         self.assertTrue(any("developers.binance.com" in item.get("url", "") for item in sources))
         self.assertIn("binance/binance-spot-api-docs", repo_targets["official_repos"])
         self.assertTrue(any("binance connector" in query for query in repo_targets["queries"]))
+
+    def test_project_repo_targets_fallback_to_external_api_hosts_when_repo_sources_missing(self):
+        module = load_module(
+            "web_sources_runtime",
+            "scripts/openclaw-ops/web_sources_runtime.py",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            project_root = tmp / "trade-bot"
+            index_root = project_root / ".workflow" / "project-index-local"
+            index_root.mkdir(parents=True, exist_ok=True)
+            project_registry = tmp / "project-registry.json"
+
+            project_registry.write_text(
+                json.dumps(
+                    {
+                        "projects": [
+                            {
+                                "id": "trade-bot",
+                                "name": "trade-bot",
+                                "path": str(project_root),
+                                "index_dir": ".workflow/project-index-local",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (index_root / "doc-knowledge.json").write_text(
+                json.dumps(
+                    {
+                        "external_api_hosts": [
+                            "api.polybaymax.com",
+                            "dabaiquant.com",
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            repo_targets = module.load_project_repo_targets(project_registry)
+
+        self.assertTrue(any("polybaymax api sdk" in query.lower() for query in repo_targets["queries"]))
+        self.assertTrue(any("dabaiquant api sdk" in query.lower() for query in repo_targets["queries"]))
 
     def test_project_registry_auto_discovers_git_projects(self):
         module = load_module(
