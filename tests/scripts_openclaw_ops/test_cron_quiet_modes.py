@@ -525,6 +525,62 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("解析结果目录缺失", output)
         self.assertEqual(output.splitlines()[0], "网页情报复核异常")
 
+    def test_web_review_extracts_new_information_and_updated_interfaces(self):
+        module = load_module(
+            "web_intel_review_runner",
+            "scripts/openclaw-ops/web_intel_review_runner.py",
+        )
+        previous_text = "\n".join(
+            [
+                "Orders API",
+                "GET /v1/orders",
+                "Parameter: symbol",
+                "Response field: price",
+            ]
+        )
+        current_text = "\n".join(
+            [
+                "Orders API",
+                "GET /v1/orders",
+                "Parameter: symbol",
+                "Parameter: recvWindow",
+                "Response field: price",
+                "POST /v1/orders",
+                "New endpoint for batch create",
+            ]
+        )
+
+        details = module.analyze_content_change(previous_text, current_text, mode="project-doc")
+
+        self.assertIn("Parameter: recvWindow", details["new_information"])
+        self.assertTrue(
+            any(
+                item["interface"] == "POST /v1/orders" and item["change_type"] == "新增接口"
+                for item in details["updated_interfaces"]
+            )
+        )
+        self.assertTrue(
+            any(
+                item["interface"] == "GET /v1/orders" and item["change_type"] == "接口说明更新"
+                for item in details["updated_interfaces"]
+            )
+        )
+
+        item = {
+            "id": "orders-api",
+            "title": "Orders API",
+            "url": "https://example.com/orders",
+            "parsed_file": "/tmp/orders.json",
+            "signals": [],
+            "new_information": details["new_information"],
+            "updated_interfaces": details["updated_interfaces"],
+        }
+        rendered = "\n".join(module.render_review_item_summary(item))
+        self.assertIn("新增信息", rendered)
+        self.assertIn("Parameter: recvWindow", rendered)
+        self.assertIn("接口更新", rendered)
+        self.assertIn("新增接口: POST /v1/orders", rendered)
+
     def test_local_git_backup_failure_output_is_human_friendly_chinese(self):
         module = load_module(
             "local_git_backup_runner",
