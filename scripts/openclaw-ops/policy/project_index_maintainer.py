@@ -28,6 +28,7 @@ if root_dir in sys.path:
 sys.path.insert(0, root_dir)
 
 from vendor_source_catalog import build_vendor_doc_sources, build_vendor_repo_source, detect_vendors_from_urls
+from project_registry_discovery import load_project_registry as load_project_registry_runtime
 from io_write_gateway import atomic_write_text, write_json_atomic
 
 try:
@@ -787,24 +788,10 @@ def render_doc_knowledge_markdown(payload: dict[str, Any]) -> str:
 
 
 def load_registry(path: Path) -> list[dict[str, Any]]:
-    raw = json.loads(path.read_text(encoding="utf-8-sig"))
-    if isinstance(raw, list):
-        projects = raw
-    elif isinstance(raw, dict):
-        projects = raw.get("projects", [])
-    else:
-        raise ValueError("registry must be object or list")
-    if not isinstance(projects, list):
+    result = load_project_registry_runtime(path)
+    if not isinstance(result, list):
         raise ValueError("registry.projects must be list")
-    result: list[dict[str, Any]] = []
-    for item in projects:
-        if not isinstance(item, dict):
-            continue
-        root = str(item.get("path", "")).strip()
-        if not root:
-            continue
-        result.append(item)
-    return result
+    return [item for item in result if str(item.get("path", "")).strip()]
 
 
 @dataclass(slots=True)
