@@ -913,6 +913,7 @@ class CronQuietModeTests(unittest.TestCase):
             jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
             ops_home="/home/ubuntu/.openclaw/ops",
             openclaw_home="/home/ubuntu/.openclaw",
+            project_registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
             collect_every_ms=3600000,
             opt_review_every_ms=14400000,
             project_review_every_ms=21600000,
@@ -924,6 +925,24 @@ class CronQuietModeTests(unittest.TestCase):
         rendered = " ".join(cmd)
         self.assertIn("--collect-notify-on error", rendered)
         self.assertIn("--review-notify-on error", rendered)
+
+    def test_install_workflow_profile_ensure_runtime_skills_cmd_uses_manifest(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        cmd = module.build_ensure_runtime_skills_cmd(
+            python_bin="python3",
+            here=Path("/repo/scripts/openclaw-ops"),
+            openclaw_home="/home/ubuntu/.openclaw",
+            manifest_path="/repo/scripts/openclaw-ops/runtime-required-skills.json",
+            dry_run=True,
+        )
+        rendered = " ".join(cmd)
+        self.assertIn("ensure_runtime_skills.py", rendered)
+        self.assertIn("--manifest /repo/scripts/openclaw-ops/runtime-required-skills.json", rendered)
+        self.assertIn("--dry-run", rendered)
+        self.assertIn("--emit-json", rendered)
 
     def test_todo_patrol_job_defaults_to_silent_delivery(self):
         module = load_module(

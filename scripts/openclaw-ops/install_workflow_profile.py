@@ -204,6 +204,28 @@ def build_install_web_intel_cmd(
     return cmd
 
 
+def build_ensure_runtime_skills_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    openclaw_home: str,
+    manifest_path: str,
+    dry_run: bool,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "ensure_runtime_skills.py"),
+        "--openclaw-home",
+        openclaw_home,
+        "--manifest",
+        manifest_path,
+        "--emit-json",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    return cmd
+
+
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
 
@@ -715,6 +737,8 @@ def main() -> None:
     parser.add_argument("--workflow-repo-path", default=str((home / "openclaw-hardflow-backup-20260302").resolve()))
     parser.add_argument("--overlay-config-source", default="")
     parser.add_argument("--sync-overlay-config", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--ensure-runtime-skills", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--required-skills-manifest", default="")
     parser.add_argument("--workflow-repo-id", default="")
     parser.add_argument("--project-registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
     parser.add_argument("--task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
@@ -779,6 +803,9 @@ def main() -> None:
     runtime_boundary_doc = str((Path(workflow_repo_path) / "integration" / "openclaw-bridge" / "runtime-boundary.md").resolve())
     hooks_source_dir = str((Path(workflow_repo_path) / "hooks").resolve())
     skills_source_dir = str((Path(workflow_repo_path) / "skills").resolve())
+    required_skills_manifest = normalize_path(args.required_skills_manifest) if str(args.required_skills_manifest).strip() else str(
+        (here / "runtime-required-skills.json").resolve()
+    )
 
     install_todo_cmd = [
         args.python_bin,
@@ -927,9 +954,19 @@ def main() -> None:
     if bool(args.dry_run):
         normalize_paths_cmd.append("--dry-run")
 
+    ensure_runtime_skills_cmd = build_ensure_runtime_skills_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        openclaw_home=openclaw_home,
+        manifest_path=required_skills_manifest,
+        dry_run=bool(args.dry_run),
+    )
+
     steps: list[tuple[str, list[str]]] = []
     if bool(args.normalize_openclaw_paths):
         steps.append(("normalize_openclaw_home_paths (linux compatibility)", normalize_paths_cmd))
+    if bool(args.ensure_runtime_skills):
+        steps.append(("ensure_runtime_skills (required skills and bins)", ensure_runtime_skills_cmd))
 
     steps.extend([
         ("install_todo_patrol_job (task#1)", install_todo_cmd),
@@ -967,6 +1004,7 @@ def main() -> None:
     print(f"runtime_boundary_doc={runtime_boundary_doc}")
     print(f"hooks_source_dir={hooks_source_dir}")
     print(f"skills_source_dir={skills_source_dir}")
+    print(f"required_skills_manifest={required_skills_manifest}")
 
     results: list[dict[str, Any]] = []
     failed = False
@@ -1025,6 +1063,8 @@ def main() -> None:
             "hooks_source_dir": hooks_source_dir,
             "skills_source_dir": skills_source_dir,
             "sync_overlay_config": bool(args.sync_overlay_config),
+            "required_skills_manifest": required_skills_manifest,
+            "ensure_runtime_skills": bool(args.ensure_runtime_skills),
         },
         "results": results,
     }

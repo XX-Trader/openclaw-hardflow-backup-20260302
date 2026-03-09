@@ -312,6 +312,33 @@ def run_verify_job_payload_paths(
     return False, payload or {"ok": False, "error": err or out or f"verify job payload paths exit={rc}"}
 
 
+def run_ensure_runtime_skills(
+    script_path: Path,
+    openclaw_home: Path,
+    manifest_path: Path,
+    dry_run: bool,
+) -> tuple[bool, dict[str, Any]]:
+    if not script_path.exists():
+        return False, {"ok": False, "error": f"ensure_runtime_skills script missing: {script_path}"}
+    cmd = [
+        sys.executable,
+        str(script_path),
+        "--openclaw-home",
+        str(openclaw_home),
+        "--manifest",
+        str(manifest_path),
+        "--emit-json",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    rc, out, err, _ = run_cmd(cmd, timeout=1800)
+    payload = parse_json_output(out)
+    if rc == 0 and isinstance(payload, dict):
+        payload.setdefault("ok", True)
+        return True, payload
+    return False, payload or {"ok": False, "error": err or out or f"ensure runtime skills exit={rc}"}
+
+
 def is_writable_dir(path: Path) -> tuple[bool, str]:
     if not path.exists() or not path.is_dir():
         return False, f"path not found: {path}"
@@ -1346,6 +1373,8 @@ def main() -> int:
     parser.add_argument("--api-test-base-url", default="http://127.0.0.1:8845")
     parser.add_argument("--runtime-env-file", default="")
     parser.add_argument("--configure-runtime-env", action="store_true")
+    parser.add_argument("--skip-runtime-skill-ensure", action="store_true")
+    parser.add_argument("--runtime-skills-manifest", default="")
     parser.add_argument("--dingtalk-webhook-url", default="")
     parser.add_argument("--dingtalk-secret", default="")
     parser.add_argument("--set-runtime-env", action="append", default=[])
@@ -1365,6 +1394,7 @@ def main() -> int:
     restore_memory_py = policy_dir.parent / "restore_openclaw_memory.py"
     init_api_cfg_py = policy_dir.parent / "init_api_test_config.py"
     configure_runtime_env_py = policy_dir.parent / "configure_runtime_env.py"
+    ensure_runtime_skills_py = policy_dir.parent / "ensure_runtime_skills.py"
     verify_job_paths_py = policy_dir.parent / "verify_job_payload_paths.py"
 
     default_openclaw_home = Path(os.environ.get("OPENCLAW_HOME", str(home / ".openclaw"))).expanduser()
@@ -1462,9 +1492,15 @@ def main() -> int:
     sync_ops_enabled = not bool(args.skip_ops_sync)
     memory_restore_enabled = not bool(args.skip_memory_restore)
     configure_runtime_env_enabled = bool(args.configure_runtime_env)
+    runtime_skill_ensure_enabled = not bool(args.skip_runtime_skill_ensure)
     init_api_test_config_enabled = not bool(args.skip_init_api_test_config)
     verify_job_paths_enabled = not bool(args.skip_job_path_verify)
     dry_run = bool(args.dry_run)
+    runtime_skills_manifest = (
+        Path(args.runtime_skills_manifest).expanduser()
+        if str(args.runtime_skills_manifest).strip()
+        else (policy_dir.parent / "runtime-required-skills.json")
+    )
 
     if interactive:
         strict_remote = prompt_yes_no("Enable strict git remote check during bootstrap", default=strict_remote)
@@ -2212,6 +2248,7 @@ def main() -> int:
     bootstrap_result: dict[str, Any] | None = None
     install_result: dict[str, Any] | None = None
     cron_setup_result: dict[str, Any] | None = None
+    runtime_skill_ensure_result: dict[str, Any] | None = None
 
     if not dry_run:
         ok, note = run_bootstrap(
@@ -2252,6 +2289,21 @@ def main() -> int:
             install_result = {"ok": job_ok, "note": job_note}
         elif install_index_job:
             install_result = {"ok": False, "note": "bootstrap failed, skipped install_project_index_job"}
+
+        if ok and runtime_skill_ensure_enabled:
+            ensure_ok, ensure_payload = run_ensure_runtime_skills(
+                script_path=ensure_runtime_skills_py,
+                openclaw_home=openclaw_home,
+                manifest_path=runtime_skills_manifest,
+                dry_run=False,
+            )
+            runtime_skill_ensure_result = ensure_payload
+            if not ensure_ok:
+                payload = {"ok": False, "error": "ensure runtime skills failed", "runtime_skill_ensure": ensure_payload}
+                print(json.dumps(payload, ensure_ascii=False))
+                return 2
+        elif runtime_skill_ensure_enabled:
+            runtime_skill_ensure_result = {"ok": False, "note": "bootstrap failed, skipped ensure_runtime_skills"}
 
         if ok and install_cron_setup:
             cron_ok, cron_payload = run_cron_setup(
@@ -2420,11 +2472,13 @@ def main() -> int:
         "project_registry": str(registry_file),
         "bootstrap": bootstrap_result,
         "install_project_index_job": install_result,
+        "runtime_skill_ensure": runtime_skill_ensure_result,
         "install_cron_setup": cron_setup_result,
         "ops_sync": sync_result,
         "memory_restore": memory_restore_result,
         "sync_source_check": sync_layout_detail,
         "runtime_env": runtime_env_result,
+        "runtime_skills_manifest": str(runtime_skills_manifest),
         "api_test_config_file": str(api_test_config_file),
         "api_test_config_init": api_test_config_init_result,
         "job_payload_path_check": job_payload_path_check_result,

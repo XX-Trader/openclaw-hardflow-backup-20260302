@@ -1,0 +1,33 @@
+{
+  "schema_version": "2026-03-09",
+  "skills": [
+    {
+      "name": "frontend-design-ultimate",
+      "description": "Community frontend skill for React/static landing page generation.",
+      "conflicts": [
+        "frontend-design"
+      ],
+      "install": {
+        "targets": [
+          "managed",
+          "workspace"
+        ],
+        "repo_url": "https://github.com/kesslerio/ultimate-frontend-design-openclaw-skill.git",
+        "archive_url": "https://codeload.githubusercontent.com/kesslerio/ultimate-frontend-design-openclaw-skill/tar.gz/refs/heads/main"
+      }
+    }
+  ],
+  "commands": [
+    {
+      "name": "summarize",
+      "description": "CLI dependency used by the built-in summarize skill.",
+      "install": {
+        "command": "summarize",
+        "npm_package": "@steipete/summarize",
+        "verify_args": [
+          "--version"
+        ]
+      }
+    }
+  ]
+}
