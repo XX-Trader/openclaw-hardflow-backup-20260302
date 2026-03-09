@@ -22,6 +22,7 @@ import sqlite3
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -517,28 +518,37 @@ def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) ->
     if not script.exists():
         return False, {}, f"policy_enforcer_missing:{script}"
     cmd = [sys.executable, str(script), "--db", str(db_path), *args]
-    try:
-        proc = subprocess.run(
-            cmd,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            timeout=max(5, int(timeout)),
-            check=False,
-        )
-    except Exception as exc:
-        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+    attempts = 3
+    delay_sec = 2
+    for attempt in range(attempts):
+        try:
+            proc = subprocess.run(
+                cmd,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                timeout=max(5, int(timeout)),
+                check=False,
+            )
+        except Exception as exc:
+            return False, {}, f"policy_enforcer_exec_failed:{exc}"
 
-    payload = parse_json_output(proc.stdout or "")
-    if proc.returncode != 0:
+        payload = parse_json_output(proc.stdout or "")
+        if proc.returncode == 0:
+            if not isinstance(payload, dict):
+                return False, {}, "policy_enforcer_invalid_json_output"
+            if not bool(payload.get("ok", False)):
+                return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+            return True, payload, ""
+
         err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        retryable_lock = "database is locked" in err_text.lower()
+        if retryable_lock and attempt < attempts - 1:
+            time.sleep(delay_sec * (attempt + 1))
+            continue
         return False, payload or {}, f"policy_enforcer_failed:{err_text}"
-    if not isinstance(payload, dict):
-        return False, {}, "policy_enforcer_invalid_json_output"
-    if not bool(payload.get("ok", False)):
-        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
-    return True, payload, ""
+    return False, {}, "policy_enforcer_failed:retry_exhausted"
 
 
 def collect_services(cfg: dict[str, Any]) -> tuple[dict[str, dict[str, str]], str | None]:

@@ -12,13 +12,22 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+ROOT_DIR = Path(__file__).resolve().parents[1]
+root_dir = str(ROOT_DIR)
+if root_dir in sys.path:
+    sys.path.remove(root_dir)
+sys.path.insert(0, root_dir)
+
+from vendor_source_catalog import build_vendor_doc_sources, build_vendor_repo_source, detect_vendors_from_urls
 from io_write_gateway import atomic_write_text, write_json_atomic
 
 try:
@@ -93,6 +102,7 @@ STACK_DOC_SOURCES: dict[str, dict[str, str]] = {
     "flask": {"name": "Flask", "url": "https://flask.palletsprojects.com/en/stable/"},
     "openapi": {"name": "OpenAPI", "url": "https://spec.openapis.org/oas/latest.html"},
 }
+HTTP_URL_PATTERN = re.compile(r"https?://[^\s'\"`<>]+")
 
 
 def now_iso() -> str:
@@ -220,28 +230,37 @@ def invoke_policy_enforcer(db_path: Path, args: list[str], timeout: int = 30) ->
     if not script.exists():
         return False, {}, f"policy_enforcer_missing:{script}"
     cmd = [sys.executable, str(script), "--db", str(db_path), *args]
-    try:
-        proc = subprocess.run(
-            cmd,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            timeout=max(5, int(timeout)),
-            check=False,
-        )
-    except Exception as exc:
-        return False, {}, f"policy_enforcer_exec_failed:{exc}"
+    attempts = 3
+    delay_sec = 2
+    for attempt in range(attempts):
+        try:
+            proc = subprocess.run(
+                cmd,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                timeout=max(5, int(timeout)),
+                check=False,
+            )
+        except Exception as exc:
+            return False, {}, f"policy_enforcer_exec_failed:{exc}"
 
-    payload = parse_json_output(proc.stdout or "")
-    if proc.returncode != 0:
+        payload = parse_json_output(proc.stdout or "")
+        if proc.returncode == 0:
+            if not isinstance(payload, dict):
+                return False, {}, "policy_enforcer_invalid_json_output"
+            if not bool(payload.get("ok", False)):
+                return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
+            return True, payload, ""
+
         err_text = (proc.stderr or "").strip() or str((payload or {}).get("error", "")) or f"exit={proc.returncode}"
+        retryable_lock = "database is locked" in err_text.lower()
+        if retryable_lock and attempt < attempts - 1:
+            time.sleep(delay_sec * (attempt + 1))
+            continue
         return False, payload or {}, f"policy_enforcer_failed:{err_text}"
-    if not isinstance(payload, dict):
-        return False, {}, "policy_enforcer_invalid_json_output"
-    if not bool(payload.get("ok", False)):
-        return False, payload, str(payload.get("error", "policy_enforcer_return_not_ok"))
-    return True, payload, ""
+    return False, {}, "policy_enforcer_failed:retry_exhausted"
 
 
 def should_ignore(path: Path) -> bool:
@@ -358,6 +377,97 @@ def extract_api_endpoints(root: Path, api_files: list[str], max_items: int = 120
     return sorted(endpoints)
 
 
+def normalize_external_url(value: str) -> str:
+    return str(value or "").strip().rstrip("),.;]}>\"'")
+
+
+def is_public_external_host(host: str) -> bool:
+    value = str(host or "").strip().lower()
+    if not value:
+        return False
+    if value in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        return False
+    if value.endswith(".local"):
+        return False
+    return True
+
+
+def looks_like_api_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(str(url or "").strip())
+    except Exception:
+        return False
+    host = str(parsed.hostname or "").strip().lower()
+    path = str(parsed.path or "").strip().lower()
+    if not is_public_external_host(host):
+        return False
+    if host.startswith(("api.", "fapi.", "wsapi.", "rest.", "rpc.")):
+        return True
+    if "/api/" in path or path.startswith("/api") or path.endswith("/api"):
+        return True
+    return bool(detect_vendors_from_urls([url]))
+
+
+def extract_external_api_urls(root: Path, source_files: list[str], max_items: int = 120) -> list[str]:
+    urls: list[str] = []
+    seen: set[str] = set()
+    for rel in source_files:
+        path = root / rel
+        text = read_text_safe(path)
+        if not text:
+            continue
+        for match in HTTP_URL_PATTERN.finditer(text):
+            value = normalize_external_url(match.group(0))
+            if not value or value in seen:
+                continue
+            if not looks_like_api_url(value):
+                continue
+            seen.add(value)
+            urls.append(value)
+            if len(urls) >= max_items:
+                return sorted(urls)
+    return sorted(urls)
+
+
+def extract_external_api_hosts(urls: list[str]) -> list[str]:
+    hosts: list[str] = []
+    seen: set[str] = set()
+    for item in urls:
+        try:
+            parsed = urllib.parse.urlparse(str(item or "").strip())
+        except Exception:
+            continue
+        host = str(parsed.hostname or "").strip().lower()
+        if not is_public_external_host(host) or host in seen:
+            continue
+        seen.add(host)
+        hosts.append(host)
+    return sorted(hosts)
+
+
+def dedupe_doc_sources(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        url = str(item.get("url", "")).strip()
+        if not url or url in seen_urls:
+            continue
+        seen_urls.add(url)
+        out.append(dict(item))
+    return out
+
+
+def build_vendor_repo_sources(vendors: set[str]) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for vendor in sorted(vendors):
+        row = build_vendor_repo_source(vendor)
+        if row is not None:
+            out.append(row)
+    return out
+
+
 def fetch_doc_meta(url: str, timeout: int) -> dict[str, Any]:
     req = urllib.request.Request(url=url, method="HEAD")
     try:
@@ -456,6 +566,7 @@ def build_doc_knowledge(
     root: Path,
     index_root: Path,
     api_files: list[str],
+    source_files: list[str] | None = None,
     enable_checks: bool,
     timeout: int,
     fetch_content: bool,
@@ -463,6 +574,9 @@ def build_doc_knowledge(
 ) -> tuple[dict[str, Any], bool]:
     tags = detect_stack_tags(root)
     endpoints = extract_api_endpoints(root, api_files, max_items=120)
+    external_api_urls = extract_external_api_urls(root, source_files or api_files, max_items=120)
+    external_api_hosts = extract_external_api_hosts(external_api_urls)
+    detected_vendors = detect_vendors_from_urls(external_api_urls)
     sources: list[dict[str, Any]] = []
     for tag in tags:
         if tag not in STACK_DOC_SOURCES:
@@ -474,6 +588,10 @@ def build_doc_knowledge(
         openapi_meta = dict(STACK_DOC_SOURCES["openapi"])
         openapi_meta["tag"] = "openapi"
         sources.append(openapi_meta)
+    for vendor in sorted(detected_vendors):
+        sources.extend(build_vendor_doc_sources(vendor))
+    sources = dedupe_doc_sources(sources)
+    repo_sources = build_vendor_repo_sources(detected_vendors)
 
     state_file = index_root / "doc-knowledge-state.json"
     prev_state = load_doc_state(state_file)
@@ -569,7 +687,10 @@ def build_doc_knowledge(
         "project_root": str(root),
         "stack_tags": tags,
         "api_endpoints": endpoints,
+        "external_api_urls": external_api_urls,
+        "external_api_hosts": external_api_hosts,
         "doc_sources": output_sources,
+        "repo_sources": repo_sources,
         "checks_enabled": bool(enable_checks),
         "fetch_content_enabled": bool(fetch_content),
         "search_index": search_index,
@@ -595,6 +716,22 @@ def render_doc_knowledge_markdown(payload: dict[str, Any]) -> str:
     else:
         lines.append("- none")
     lines.append("")
+    lines.append("## External API URLs")
+    external_api_urls = payload.get("external_api_urls", [])
+    if isinstance(external_api_urls, list) and external_api_urls:
+        for item in external_api_urls[:120]:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- none")
+    lines.append("")
+    lines.append("## External API Hosts")
+    external_api_hosts = payload.get("external_api_hosts", [])
+    if isinstance(external_api_hosts, list) and external_api_hosts:
+        for item in external_api_hosts[:120]:
+            lines.append(f"- {item}")
+    else:
+        lines.append("- none")
+    lines.append("")
     lines.append("## Official Docs Sources")
     sources = payload.get("doc_sources", [])
     if isinstance(sources, list) and sources:
@@ -613,6 +750,19 @@ def render_doc_knowledge_markdown(payload: dict[str, Any]) -> str:
                 f"(status={status}, remote_changed={remote_changed}, checked_at={checked_at}, "
                 f"excerpt={excerpt_status}, channels={channels_text})"
             )
+    else:
+        lines.append("- none")
+    lines.append("")
+    lines.append("## Repository Sources")
+    repo_sources = payload.get("repo_sources", [])
+    if isinstance(repo_sources, list) and repo_sources:
+        for item in repo_sources[:120]:
+            vendor = str(item.get("vendor", "")).strip()
+            official_repos = item.get("official_repos", [])
+            repo_queries = item.get("repo_queries", [])
+            repos_text = ", ".join(official_repos[:6]) if isinstance(official_repos, list) else ""
+            queries_text = ", ".join(repo_queries[:4]) if isinstance(repo_queries, list) else ""
+            lines.append(f"- [{vendor}] repos={repos_text or '-'} | queries={queries_text or '-'}")
     else:
         lines.append("- none")
     lines.append("")
@@ -960,6 +1110,7 @@ def maintain_project(
             root=root,
             index_root=index_root,
             api_files=apis,
+            source_files=sorted(set(modules + apis + scripts)),
             enable_checks=doc_check_updates,
             timeout=max(3, int(doc_timeout)),
             fetch_content=doc_fetch_content,

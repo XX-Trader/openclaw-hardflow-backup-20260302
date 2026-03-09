@@ -31,6 +31,7 @@ if str(POLICY_DIR) not in sys.path:
 
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
 from scrapling_runtime import fetch_with_scrapling_browser  # type: ignore
+from web_sources_runtime import load_runtime_sources  # type: ignore
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
@@ -547,38 +548,17 @@ def state_default() -> dict[str, Any]:
     }
 
 
-def load_sources(path: Path) -> list[dict[str, Any]]:
-    payload = load_json(path, {})
-    if not isinstance(payload, dict):
-        return []
-    data = payload.get("sources")
-    if not isinstance(data, list):
-        return []
-    out: list[dict[str, Any]] = []
-    for idx, item in enumerate(data):
-        if not isinstance(item, dict):
-            continue
-        url = str(item.get("url", "")).strip()
-        if not url:
-            continue
-        sid = slugify(str(item.get("id", "")).strip(), default=f"source-{idx+1}")
-        enabled = bool(item.get("enabled", True))
-        category = str(item.get("category", "")).strip()
-        tags_raw = item.get("tags")
-        tags = [str(x).strip() for x in tags_raw] if isinstance(tags_raw, list) else []
-        tags = [x for x in tags if x]
-        out.append(
-            {
-                "id": sid,
-                "url": url,
-                "enabled": enabled,
-                "category": category,
-                "tags": tags,
-                "browser_fallback": bool(item.get("browser_fallback", True)),
-                "min_interval_minutes": max(1, int(item.get("min_interval_minutes", 60))),
-            }
-        )
-    return out
+def load_sources(
+    path: Path,
+    *,
+    extra_paths: list[Path] | None = None,
+    project_registry: Path | None = None,
+) -> list[dict[str, Any]]:
+    return load_runtime_sources(
+        path,
+        extra_source_files=extra_paths or [],
+        project_registry=project_registry,
+    )
 
 
 def should_skip_by_interval(last_attempt_at: str, min_interval_minutes: int, force: bool) -> bool:
@@ -832,12 +812,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Collect internet intelligence for web-agent")
     parser.add_argument("--openclaw-home", default=str(home / ".openclaw"))
     parser.add_argument("--sources-file", default="")
+    parser.add_argument("--extra-sources-file", action="append", default=[])
     parser.add_argument("--state-file", default="")
     parser.add_argument("--report-dir", default="")
     parser.add_argument("--raw-dir", default="")
     parser.add_argument("--parsed-dir", default="")
     parser.add_argument("--summary-dir", default="")
     parser.add_argument("--db", default="")
+    parser.add_argument("--project-registry", default="")
     parser.add_argument("--task-id", default="cron:web-intel-collect")
     parser.add_argument("--sender-identity", default=DEFAULT_SENDER_IDENTITY)
     parser.add_argument("--min-interval-minutes", type=int, default=60)
@@ -861,6 +843,14 @@ def main() -> None:
         if str(args.sources_file).strip()
         else (ops_home / "web" / "sources.json")
     )
+    extra_source_files = [
+        Path(str(value)).expanduser()
+        for value in (args.extra_sources_file or [])
+        if str(value).strip()
+    ]
+    default_project_doc_sources = ops_home / "web" / "project_docs_sources.json"
+    if not extra_source_files and default_project_doc_sources.exists():
+        extra_source_files = [default_project_doc_sources]
     state_file = (
         Path(args.state_file).expanduser()
         if str(args.state_file).strip()
@@ -872,6 +862,11 @@ def main() -> None:
         else (ops_home / "web-intel" / "reports")
     )
     db_path = Path(args.db).expanduser() if str(args.db).strip() else (ops_home / "task-center" / "task_center.db")
+    project_registry = (
+        Path(args.project_registry).expanduser()
+        if str(args.project_registry).strip()
+        else (ops_home / "task-center" / "project-registry.json")
+    )
     raw_dir = Path(args.raw_dir).expanduser() if str(args.raw_dir).strip() else (web_home / "raw")
     parsed_dir = Path(args.parsed_dir).expanduser() if str(args.parsed_dir).strip() else (web_home / "parsed")
     summary_dir = Path(args.summary_dir).expanduser() if str(args.summary_dir).strip() else (web_home / "summary")
@@ -891,7 +886,11 @@ def main() -> None:
         source_state = {}
         state["sources"] = source_state
 
-    sources = load_sources(sources_file)
+    sources = load_sources(
+        sources_file,
+        extra_paths=extra_source_files,
+        project_registry=(project_registry if project_registry.exists() else None),
+    )
     if int(args.max_sources) > 0:
         sources = sources[: int(args.max_sources)]
 

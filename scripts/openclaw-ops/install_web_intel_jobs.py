@@ -86,10 +86,13 @@ def build_message(command: str) -> str:
         f"{command}\n"
         "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
         "Execute exactly once. "
-        "Return EXACTLY raw stdout/stderr text from the command; "
+        "If the exec tool reports 'Command still running', do not start another exec command. "
+        "You MUST wait for completion by using only process poll or process log for that same session until the process exits. "
+        "Do not run unrelated follow-up commands or diagnostics. "
+        "Return EXACTLY raw stdout/stderr text from the finished command; "
         "do not add explanation, greeting, or prefix text. "
         "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
-        "If output is empty, reply NO_REPLY."
+        "If the finished output is empty, reply NO_REPLY."
     )
 
 
@@ -157,6 +160,7 @@ def main() -> None:
     parser.add_argument("--openclaw-home", default=str(home / ".openclaw"))
     parser.add_argument("--collect-sources-file", default=str(home / ".openclaw/ops/web/sources.json"))
     parser.add_argument("--project-doc-sources-file", default=str(home / ".openclaw/ops/web/project_docs_sources.json"))
+    parser.add_argument("--project-registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
     parser.add_argument("--collect-every-ms", type=int, default=3600000)
     parser.add_argument("--opt-review-every-ms", type=int, default=14400000)
     parser.add_argument("--project-review-every-ms", type=int, default=21600000)
@@ -192,6 +196,7 @@ def main() -> None:
     openclaw_home = Path(args.openclaw_home).expanduser()
     collect_sources_file = Path(args.collect_sources_file).expanduser()
     project_doc_sources_file = Path(args.project_doc_sources_file).expanduser()
+    project_registry = Path(args.project_registry).expanduser()
 
     if not bool(args.skip_path_check):
         if not collector_py.exists():
@@ -208,6 +213,7 @@ def main() -> None:
     review_py_sh = normalize_shell_path(str(review_py))
     collect_sources_sh = normalize_shell_path(str(collect_sources_file))
     project_sources_sh = normalize_shell_path(str(project_doc_sources_file))
+    project_registry_sh = normalize_shell_path(str(project_registry))
 
     collect_cmd = (
         f"{args.python_bin} {collector_py_sh} "
@@ -215,6 +221,8 @@ def main() -> None:
         f"--openclaw-home {openclaw_home_sh} "
         f"--db {openclaw_home_sh}/ops/task-center/task_center.db "
         f"--sources-file {collect_sources_sh} "
+        f"--extra-sources-file {project_sources_sh} "
+        f"--project-registry {project_registry_sh} "
         f"--state-file {openclaw_home_sh}/ops/web-intel/state.json "
         f"--report-dir {openclaw_home_sh}/ops/web-intel/reports "
         f"--min-interval-minutes {max(1, int(args.collect_min_interval_minutes))} "
@@ -228,6 +236,7 @@ def main() -> None:
         f"--openclaw-home {openclaw_home_sh} "
         f"--db {openclaw_home_sh}/ops/task-center/task_center.db "
         f"--sources-file {collect_sources_sh} "
+        f"--project-registry {project_registry_sh} "
         f"--state-file {openclaw_home_sh}/ops/web-intel/review-state.json "
         f"--report-dir {openclaw_home_sh}/ops/web-intel/review-reports "
         f"--min-interval-minutes {max(1, int(args.review_min_interval_minutes))} "
@@ -241,6 +250,7 @@ def main() -> None:
         f"--openclaw-home {openclaw_home_sh} "
         f"--db {openclaw_home_sh}/ops/task-center/task_center.db "
         f"--sources-file {project_sources_sh} "
+        f"--project-registry {project_registry_sh} "
         f"--state-file {openclaw_home_sh}/ops/web-intel/review-state.json "
         f"--report-dir {openclaw_home_sh}/ops/web-intel/review-reports "
         f"--min-interval-minutes {max(1, int(args.review_min_interval_minutes))} "

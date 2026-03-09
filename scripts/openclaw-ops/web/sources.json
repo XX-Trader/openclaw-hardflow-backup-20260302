@@ -53,19 +53,6 @@
       "enabled": true,
       "browser_fallback": true,
       "min_interval_minutes": 180
-    },
-    {
-      "id": "openai-responses-doc",
-      "url": "https://platform.openai.com/docs/api-reference/responses",
-      "category": "official-doc",
-      "tags": [
-        "api",
-        "doc",
-        "llm"
-      ],
-      "enabled": true,
-      "browser_fallback": true,
-      "min_interval_minutes": 240
     }
   ]
 }

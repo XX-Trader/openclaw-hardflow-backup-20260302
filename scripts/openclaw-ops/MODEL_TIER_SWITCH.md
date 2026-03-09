@@ -44,17 +44,17 @@ Windows 也可直接使用：
 ## Tier Rules
 
 - 顶级：`openai-codex/gpt-5.4`
-  - 回退：`openai-codex/gpt-5.3-codex-spark`, `glmcode/glm-5`, `glmcode/glm-4.7`
+  - 回退：`openai-codex/gpt-5.3-codex`, `glmcode/glm-5`, `glmcode/glm-4.7`
   - thinkingDefault：`high`
   - Codex 模型默认 `xhigh`；非 Codex 模型默认 `high`
 - 高级：`openai-codex/gpt-5.4`
-  - 回退：`openai-codex/gpt-5.3-codex-spark`, `glmcode/glm-5`, `glmcode/glm-4.7`
-  - agent 覆盖：`main/coordinator/reviewer -> gpt-5.4`，`optimization/backend/frontend/project/agent-factory -> gpt-5.3-codex-spark`，`ops/web/tester/deployer/doc-writer -> glmcode/glm-4.7`
+  - 回退：`openai-codex/gpt-5.3-codex`, `glmcode/glm-5`, `glmcode/glm-4.7`
+  - agent 覆盖：`main/coordinator/reviewer -> gpt-5.4`，`optimization/backend/frontend/project/agent-factory -> gpt-5.3-codex`，`ops/web/tester/deployer/doc-writer -> glmcode/glm-4.7`
   - thinkingDefault：`high`
   - Codex 模型默认 `xhigh`；非 Codex 模型默认 `high`
 - 高级豆包版：`kimicode/Doubao-Seed-2.0-Code`
-  - 回退：`openai-codex/gpt-5.3-codex-spark`, `glmcode/glm-5`, `glmcode/glm-4.7`
-  - agent 覆盖：只替换原来 `gpt-5.4` 那层，`main/coordinator/reviewer -> Doubao`；编码层仍是 `gpt-5.3-codex-spark`；标准执行层仍是 `glmcode/glm-4.7`
+  - 回退：`openai-codex/gpt-5.3-codex`, `glmcode/glm-5`, `glmcode/glm-4.7`
+  - agent 覆盖：只替换原来 `gpt-5.4` 那层，`main/coordinator/reviewer -> Doubao`；编码层仍是 `gpt-5.3-codex`；标准执行层仍是 `glmcode/glm-4.7`
   - 入口：`switch_model_tier.py high_doubao` 或 `switch_gpt54_layer_to_doubao.{sh|ps1}`
   - thinkingDefault：`high`
   - Codex 模型默认 `xhigh`；非 Codex 模型默认 `high`

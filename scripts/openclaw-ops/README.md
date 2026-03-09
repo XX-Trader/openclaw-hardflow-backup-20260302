@@ -587,6 +587,7 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 - `task_executor_runner.py` 保留 `--emit-json` 机器输出模式；非 `--emit-json` 模式新增 `--notify-on {error,activity,always}`，静默成功时输出 `NO_REPLY`。
 - `task_executor_runner.py` 遇到明确的模型限流/`429` 会做有限次退避重试；可用 `--agent-max-retries` 与 `--agent-retry-delay-sec` 调整。
 - `task_executor_runner.py` 现在按 assignee 读取 `policy-config.json` 里的 `agent_model_overrides`，并按 `model_thinking_overrides` 对 Codex 显式使用 `xhigh`，其他模型统一走 `high`。
+- cron 安装器写入的 scheduled-runner 提示词现在要求：首次只允许一个 `exec`；如果工具返回 `Command still running`，只能对同一 session 使用 `process poll/log` 等到进程退出，禁止再开第二个 `exec`，避免后台悬挂命令继续占用 `task_center.db`。
 - `install_project_index_job.py` 安装的 cron 任务默认不再追加 `--git-pull`。仓库拉取由 `ops_auto_update_install_hourly` 统一负责；如需人工排障，可显式传 `--git-pull`。
 - `web_intel_collect_runner.py` 与 `web_intel_review_runner.py` 新增 `--notify-on`，可选 `error/change/always`。
 - `install_web_intel_jobs.py` 新增 `--collect-notify-on` 与 `--review-notify-on`，在只想保留异常告警时传 `error`。
@@ -617,3 +618,20 @@ openclaw gateway run
 - To enable the new path explicitly, install `scrapling` in the runtime environment: `pip install scrapling`.
 - `github_web_evolution_runner.py` now keeps the search scope on project-relevant third-party repositories and libraries, and excludes infrastructure repositories such as `python/cpython`, `nodejs/node`, `golang/go`, and similar runtime/compiler foundations.
 - Repositories such as `microsoft/playwright`, `D4Vinci/Scrapling`, and your own project-related third-party dependencies remain in scope.
+
+## Project Doc And Skill Evolution Update (2026-03-09)
+
+- `web_intel_collect_runner.py` now merges three source layers at runtime:
+  - `web/sources.json`
+  - `web/project_docs_sources.json`
+  - `project-registry.json` dynamic `doc_sources`, vendor hints, and per-project `doc-knowledge.json`
+- `project_index_maintainer.py` now extracts external API URLs from actual project source files and writes vendor-aware `doc_sources` plus `repo_sources` into `.workflow/project-index-local/doc-knowledge.json`.
+- `project-registry.example.json` now documents `doc_sources` and `integrations`. If a project declares `binance`, runtime sources automatically include official Binance Spot API docs and changelog. If the code itself contains `https://api.binance.com/...`, the project index will infer the same vendor sources automatically even without manual `doc_sources`.
+- `github_web_evolution_runner.py` default queries now prioritize `openclaw` / `skills` / `hooks` / `plugins` / `workflow` instead of generic OpenAI-adjacent terms.
+- `github_web_evolution_runner.py` now also reads project-derived `repo_sources`, appends vendor repo queries, and directly scans official repositories such as Binance connectors/docs repos.
+- If `skill4agent` exists in PATH, `github_web_evolution_runner.py` will additionally search skill catalogs and fold new/updated skills into the same evolution report/catalog/task packaging flow.
+- Runtime install command for the optional provider:
+
+```bash
+npm install -g @skill4agent/cli
+```

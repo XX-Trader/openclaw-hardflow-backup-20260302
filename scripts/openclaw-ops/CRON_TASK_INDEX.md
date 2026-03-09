@@ -55,7 +55,7 @@ python3 scripts/openclaw-ops/install_workflow_profile.py \
 - 定时脚本本身不硬编码具体模型；实际模型由 OpenClaw 运行时 agent 配置决定。
 - 默认分工：
   - `main` / `coordinator` / `reviewer` -> `openai-codex/gpt-5.4`
-  - `optimization-agent` / `backend-dev` / `frontend-dev` / `project-agent` / `agent-factory` -> `openai-codex/gpt-5.3-codex-spark`
+  - `optimization-agent` / `backend-dev` / `frontend-dev` / `project-agent` / `agent-factory` -> `openai-codex/gpt-5.3-codex`
   - `ops-agent` / `web-agent` / `tester` / `deployer` / `doc-writer` -> `glmcode/glm-4.7`
 - 思考强度规则：
   - Codex 模型默认 `xhigh`
