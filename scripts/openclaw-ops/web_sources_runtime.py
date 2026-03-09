@@ -129,6 +129,13 @@ def collect_vendor_hints(project: dict[str, Any]) -> set[str]:
     return detect_vendors_from_fragments(fragments)
 
 
+def vendor_monitoring_enabled(project: dict[str, Any]) -> bool:
+    cfg = project.get("vendor_monitoring")
+    if isinstance(cfg, dict) and "enabled" in cfg:
+        return bool(cfg.get("enabled"))
+    return True
+
+
 def normalize_project_doc_source(
     project: dict[str, Any],
     item: dict[str, Any],
@@ -171,6 +178,9 @@ def build_project_registry_sources(path: Path | None) -> list[dict[str, Any]]:
                 )
                 if normalized is not None:
                     out.append(normalized)
+
+        if not vendor_monitoring_enabled(project):
+            continue
 
         for vendor in sorted(collect_vendor_hints(project)):
             for raw_item in build_vendor_doc_sources(vendor):
@@ -223,6 +233,8 @@ def build_project_index_sources(path: Path | None) -> list[dict[str, Any]]:
             default=f"project-{project_idx+1}",
         )
         payload = load_project_doc_knowledge(project)
+        if not vendor_monitoring_enabled(project):
+            continue
         items = payload.get("doc_sources", []) if isinstance(payload, dict) else []
         if not isinstance(items, list):
             continue
@@ -283,6 +295,8 @@ def build_project_repo_targets(path: Path | None) -> dict[str, Any]:
     projects = load_project_registry(path)
     result = {"queries": [], "official_repos": []}
     for project in projects:
+        if not vendor_monitoring_enabled(project):
+            continue
         for vendor in sorted(collect_vendor_hints(project)):
             row = build_vendor_repo_source(vendor)
             if row is None:

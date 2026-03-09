@@ -234,11 +234,67 @@ def first_clone_metadata(path: Path) -> tuple[str, str]:
         return "", line[:240]
 
 
+def infer_project_role(*, path: Path, name: str, remote_url: str) -> str:
+    norm = normalize_repo_path(path)
+    low_name = str(name or "").strip().lower()
+    low_remote = str(remote_url or "").strip().lower()
+    if norm.endswith("/.openclaw") or "/.openclaw/" in norm:
+        return "openclaw-runtime"
+    if "openclaw-hardflow" in low_name or "openclaw-hardflow" in norm:
+        return "workflow-ops"
+    if low_remote.startswith("https://github.com/openclaw/") or low_remote.startswith("git@github.com:openclaw/"):
+        return "upstream-reference"
+    return "business"
+
+
+def vendor_monitoring_default_enabled(role: str) -> bool:
+    return str(role or "").strip().lower() == "business"
+
+
+def decorate_project_item(item: dict[str, Any]) -> dict[str, Any]:
+    row = dict(item)
+    raw_path = str(row.get("path", "")).strip()
+    if not raw_path:
+        return row
+    path = Path(raw_path).expanduser().resolve()
+    discovery = row.get("discovery")
+    discovery_row = dict(discovery) if isinstance(discovery, dict) else {}
+    remote_url = str(discovery_row.get("remote_url", "")).strip()
+    if not remote_url and (path / ".git").exists():
+        remote_url = run_git(path, ["remote", "get-url", "origin"])
+    clone_at = str(discovery_row.get("clone_at", "")).strip()
+    clone_hint = str(discovery_row.get("clone_hint", "")).strip()
+    if (not clone_at) or (not clone_hint):
+        detected_clone_at, detected_clone_hint = first_clone_metadata(path)
+        clone_at = clone_at or detected_clone_at
+        clone_hint = clone_hint or detected_clone_hint
+    role = str(row.get("project_role", "")).strip() or infer_project_role(
+        path=path,
+        name=str(row.get("name", "")).strip() or path.name,
+        remote_url=remote_url,
+    )
+    vendor_monitoring = row.get("vendor_monitoring")
+    vendor_row = dict(vendor_monitoring) if isinstance(vendor_monitoring, dict) else {}
+    if "enabled" not in vendor_row:
+        vendor_row["enabled"] = vendor_monitoring_default_enabled(role)
+    vendor_row["reason"] = str(vendor_row.get("reason", "")).strip() or f"default:{role}"
+    discovery_row["remote_url"] = remote_url
+    discovery_row["clone_at"] = clone_at
+    discovery_row["clone_hint"] = clone_hint
+    row["path"] = str(path)
+    row["project_role"] = role
+    row["vendor_monitoring"] = vendor_row
+    if discovery_row:
+        row["discovery"] = discovery_row
+    return row
+
+
 def build_discovered_project_item(path: Path) -> dict[str, Any]:
     remote = run_git(path, ["remote", "get-url", "origin"])
     branch = run_git(path, ["branch", "--show-current"]) or "main"
     clone_at, clone_hint = first_clone_metadata(path)
-    return {
+    return decorate_project_item(
+        {
         "id": slugify(path.name),
         "name": path.name,
         "path": str(path.resolve()),
@@ -254,6 +310,7 @@ def build_discovered_project_item(path: Path) -> dict[str, Any]:
             "clone_hint": clone_hint,
         },
     }
+    )
 
 
 def merge_projects(explicit_projects: list[dict[str, Any]], discovered_paths: list[Path]) -> list[dict[str, Any]]:
@@ -262,7 +319,7 @@ def merge_projects(explicit_projects: list[dict[str, Any]], discovered_paths: li
         raw = str(item.get("path", "")).strip()
         if not raw:
             continue
-        merged[normalize_repo_path(Path(raw))] = dict(item)
+        merged[normalize_repo_path(Path(raw))] = decorate_project_item(item)
     for path in discovered_paths:
         key = normalize_repo_path(path)
         if key in merged:
@@ -279,7 +336,7 @@ def load_project_registry(path: Path) -> list[dict[str, Any]]:
     payload = load_json(path, {})
     explicit_projects = normalize_projects(payload)
     config = parse_discovery_config(payload, explicit_projects)
-    projects = list(explicit_projects)
+    projects = [decorate_project_item(item) for item in explicit_projects]
     if config.get("enabled", False):
         discovered = discover_git_repos(
             scan_roots=list(config.get("scan_roots", [])),
@@ -287,6 +344,6 @@ def load_project_registry(path: Path) -> list[dict[str, Any]]:
             max_projects=int(config.get("max_projects", DEFAULT_MAX_PROJECTS)),
             exclude_tokens=list(config.get("exclude_path_tokens", [])),
         )
-        projects = merge_projects(explicit_projects, discovered)
+        projects = merge_projects(projects, discovered)
     _CACHE[key] = [dict(item) for item in projects]
     return [dict(item) for item in projects]

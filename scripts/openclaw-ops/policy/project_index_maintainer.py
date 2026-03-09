@@ -568,6 +568,8 @@ def build_doc_knowledge(
     index_root: Path,
     api_files: list[str],
     source_files: list[str] | None = None,
+    project_role: str = "",
+    vendor_monitoring_enabled: bool = True,
     enable_checks: bool,
     timeout: int,
     fetch_content: bool,
@@ -589,10 +591,11 @@ def build_doc_knowledge(
         openapi_meta = dict(STACK_DOC_SOURCES["openapi"])
         openapi_meta["tag"] = "openapi"
         sources.append(openapi_meta)
-    for vendor in sorted(detected_vendors):
-        sources.extend(build_vendor_doc_sources(vendor))
+    if vendor_monitoring_enabled:
+        for vendor in sorted(detected_vendors):
+            sources.extend(build_vendor_doc_sources(vendor))
     sources = dedupe_doc_sources(sources)
-    repo_sources = build_vendor_repo_sources(detected_vendors)
+    repo_sources = build_vendor_repo_sources(detected_vendors) if vendor_monitoring_enabled else []
 
     state_file = index_root / "doc-knowledge-state.json"
     prev_state = load_doc_state(state_file)
@@ -686,6 +689,8 @@ def build_doc_knowledge(
     doc_payload = {
         "generated_at": now_iso(),
         "project_root": str(root),
+        "project_role": str(project_role or "").strip(),
+        "vendor_monitoring_enabled": bool(vendor_monitoring_enabled),
         "stack_tags": tags,
         "api_endpoints": endpoints,
         "external_api_urls": external_api_urls,
@@ -706,6 +711,8 @@ def render_doc_knowledge_markdown(payload: dict[str, Any]) -> str:
     lines.append("")
     lines.append(f"- generated_at: {payload.get('generated_at', '')}")
     lines.append(f"- project_root: {payload.get('project_root', '')}")
+    lines.append(f"- project_role: {payload.get('project_role', '') or '-'}")
+    lines.append(f"- vendor_monitoring_enabled: {payload.get('vendor_monitoring_enabled', True)}")
     tags = payload.get("stack_tags", [])
     lines.append(f"- stack_tags: {', '.join(tags) if isinstance(tags, list) and tags else '-'}")
     lines.append("")
@@ -1098,6 +1105,12 @@ def maintain_project(
             index_root=index_root,
             api_files=apis,
             source_files=sorted(set(modules + apis + scripts)),
+            project_role=str(item.get("project_role", "")).strip(),
+            vendor_monitoring_enabled=bool(
+                (item.get("vendor_monitoring", {}) or {}).get("enabled", True)
+                if isinstance(item.get("vendor_monitoring"), dict)
+                else True
+            ),
             enable_checks=doc_check_updates,
             timeout=max(3, int(doc_timeout)),
             fetch_content=doc_fetch_content,

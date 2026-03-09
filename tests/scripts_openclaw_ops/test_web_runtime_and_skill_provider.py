@@ -242,11 +242,23 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
             discovered.mkdir(parents=True, exist_ok=True)
             hidden_skill = tmp / ".openclaw" / "skills" / "frontend-design-ultimate"
             hidden_skill.mkdir(parents=True, exist_ok=True)
+            hidden_tool = tmp / ".nvm"
+            hidden_tool.mkdir(parents=True, exist_ok=True)
+            workflow_repo = tmp / "openclaw-hardflow-backup-20260302"
+            workflow_repo.mkdir(parents=True, exist_ok=True)
+            upstream_repo = tmp / "lobster"
+            upstream_repo.mkdir(parents=True, exist_ok=True)
 
             (discovered / "package.json").write_text('{"name":"auto-found-trader"}', encoding="utf-8")
             (hidden_skill / "package.json").write_text('{"name":"skill-repo"}', encoding="utf-8")
+            (hidden_tool / "package.json").write_text('{"name":"nvm"}', encoding="utf-8")
+            (workflow_repo / "package.json").write_text('{"name":"openclaw-hardflow-backup-20260302"}', encoding="utf-8")
+            (upstream_repo / "package.json").write_text('{"name":"lobster"}', encoding="utf-8")
             self.init_git_repo(discovered, remote="https://github.com/example/auto-found-trader.git")
             self.init_git_repo(hidden_skill, remote="https://github.com/example/skill-repo.git")
+            self.init_git_repo(hidden_tool, remote="https://github.com/nvm-sh/nvm.git")
+            self.init_git_repo(workflow_repo, remote="https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git")
+            self.init_git_repo(upstream_repo, remote="https://github.com/openclaw/lobster.git")
 
             project_registry = tmp / "project-registry.json"
             project_registry.write_text(
@@ -262,7 +274,7 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                         ],
                         "discovery": {
                             "enabled": True,
-                            "scan_roots": [str(discovered_root), str(tmp / ".openclaw")],
+                            "scan_roots": [str(tmp)],
                             "max_depth": 4,
                             "max_projects": 10,
                         },
@@ -278,7 +290,93 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
         paths = {item["path"] for item in projects}
         self.assertIn(str(explicit), paths)
         self.assertIn(str(discovered), paths)
+        self.assertIn(str(workflow_repo), paths)
+        self.assertIn(str(upstream_repo), paths)
         self.assertNotIn(str(hidden_skill), paths)
+        self.assertNotIn(str(hidden_tool), paths)
+        business = next(item for item in projects if item["path"] == str(discovered))
+        workflow = next(item for item in projects if item["path"] == str(workflow_repo))
+        upstream = next(item for item in projects if item["path"] == str(upstream_repo))
+        self.assertEqual(business["project_role"], "business")
+        self.assertTrue(business["vendor_monitoring"]["enabled"])
+        self.assertEqual(workflow["project_role"], "workflow-ops")
+        self.assertFalse(workflow["vendor_monitoring"]["enabled"])
+        self.assertEqual(upstream["project_role"], "upstream-reference")
+        self.assertFalse(upstream["vendor_monitoring"]["enabled"])
+
+    def test_project_repo_targets_ignore_vendor_monitoring_disabled_projects(self):
+        module = load_module(
+            "web_sources_runtime",
+            "scripts/openclaw-ops/web_sources_runtime.py",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            biz_root = tmp / "trade-bot"
+            ops_root = tmp / "openclaw-hardflow-backup-20260302"
+            for root in (biz_root, ops_root):
+                index_root = root / ".workflow" / "project-index-local"
+                index_root.mkdir(parents=True, exist_ok=True)
+            project_registry = tmp / "project-registry.json"
+            project_registry.write_text(
+                json.dumps(
+                    {
+                        "projects": [
+                            {
+                                "id": "trade-bot",
+                                "name": "trade-bot",
+                                "path": str(biz_root),
+                                "vendor_monitoring": {"enabled": True},
+                            },
+                            {
+                                "id": "workflow-repo",
+                                "name": "openclaw-hardflow-backup-20260302",
+                                "path": str(ops_root),
+                                "vendor_monitoring": {"enabled": False},
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (biz_root / ".workflow" / "project-index-local" / "doc-knowledge.json").write_text(
+                json.dumps(
+                    {
+                        "repo_sources": [
+                            {
+                                "vendor": "binance",
+                                "official_repos": ["binance/binance-connector-python"],
+                                "repo_queries": ["org:binance binance connector archived:false"],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            (ops_root / ".workflow" / "project-index-local" / "doc-knowledge.json").write_text(
+                json.dumps(
+                    {
+                        "repo_sources": [
+                            {
+                                "vendor": "openclaw",
+                                "official_repos": ["openclaw/openclaw"],
+                                "repo_queries": ["org:openclaw openclaw archived:false"],
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+
+            repo_targets = module.load_project_repo_targets(project_registry)
+
+        self.assertIn("binance/binance-connector-python", repo_targets["official_repos"])
+        self.assertNotIn("openclaw/openclaw", repo_targets["official_repos"])
 
     def test_skill4agent_query_pack_defaults_to_openclaw_focus(self):
         module = load_module(
