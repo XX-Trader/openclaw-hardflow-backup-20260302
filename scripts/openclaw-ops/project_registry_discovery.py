@@ -16,6 +16,7 @@ DEFAULT_INDEX_DIR = ".workflow/project-index-local"
 DEFAULT_MAX_DEPTH = 4
 DEFAULT_MAX_PROJECTS = 40
 DEFAULT_HEAVY_DIRS = {"node_modules", ".venv", "venv", "__pycache__", ".git", ".cache"}
+ALLOWED_HIDDEN_REPO_NAMES = {".openclaw"}
 DEFAULT_EXCLUDE_TOKENS = (
     "/.openclaw/skills/",
     "/.openclaw/workspace/skills/",
@@ -23,7 +24,7 @@ DEFAULT_EXCLUDE_TOKENS = (
     "/.openclaw/workspace-",
     "/.openclaw.backup",
     "/actions-runner/_work/",
-    "/.nvm/",
+    "/.nvm",
 )
 
 _CACHE: dict[tuple[str, int], list[dict[str, Any]]] = {}
@@ -124,6 +125,8 @@ def parse_discovery_config(payload: Any, projects: list[dict[str, Any]]) -> dict
 
 
 def should_exclude_repo(path: Path, exclude_tokens: list[str]) -> bool:
+    if path.name.startswith(".") and path.name not in ALLOWED_HIDDEN_REPO_NAMES:
+        return True
     norm = normalize_repo_path(path)
     return any(str(token or "").strip().lower() in norm for token in exclude_tokens if str(token or "").strip())
 
