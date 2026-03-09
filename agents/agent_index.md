@@ -29,7 +29,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-frontend-dev
 - agentDir: None
-- model: openai-codex/gpt-5.3-codex-spark
+- model: openai-codex/gpt-5.3-codex
 - allowAgentsCount: 0
 
 ## backend-dev
@@ -37,7 +37,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-backend-dev
 - agentDir: None
-- model: openai-codex/gpt-5.3-codex-spark
+- model: openai-codex/gpt-5.3-codex
 - allowAgentsCount: 0
 
 ## reviewer
@@ -69,7 +69,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-agent-factory
 - agentDir: None
-- model: openai-codex/gpt-5.3-codex-spark
+- model: openai-codex/gpt-5.3-codex
 - allowAgentsCount: 3
 
 ## ops-agent
@@ -85,7 +85,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-optimization-agent
 - agentDir: /home/ubuntu/.openclaw/agents/optimization-agent/agent
-- model: openai-codex/gpt-5.3-codex-spark
+- model: openai-codex/gpt-5.3-codex
 - allowAgentsCount: 2
 
 ## project-agent
@@ -93,7 +93,7 @@
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-project-agent
 - agentDir: /home/ubuntu/.openclaw/agents/project-agent/agent
-- model: openai-codex/gpt-5.3-codex-spark
+- model: openai-codex/gpt-5.3-codex
 - allowAgentsCount: 1
 
 ## web-agent

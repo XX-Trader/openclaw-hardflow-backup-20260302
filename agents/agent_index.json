@@ -60,7 +60,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
     "agentDir": null,
-    "model": "openai-codex/gpt-5.3-codex-spark",
+    "model": "openai-codex/gpt-5.3-codex",
     "allowAgents": []
   },
   {
@@ -69,7 +69,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
     "agentDir": null,
-    "model": "openai-codex/gpt-5.3-codex-spark",
+    "model": "openai-codex/gpt-5.3-codex",
     "allowAgents": []
   },
   {
@@ -105,7 +105,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
     "agentDir": null,
-    "model": "openai-codex/gpt-5.3-codex-spark",
+    "model": "openai-codex/gpt-5.3-codex",
     "allowAgents": [
       "optimization-agent",
       "project-agent",
@@ -130,7 +130,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
     "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-    "model": "openai-codex/gpt-5.3-codex-spark",
+    "model": "openai-codex/gpt-5.3-codex",
     "allowAgents": [
       "project-agent",
       "web-agent"
@@ -142,7 +142,7 @@
     "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
     "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
-    "model": "openai-codex/gpt-5.3-codex-spark",
+    "model": "openai-codex/gpt-5.3-codex",
     "allowAgents": [
       "web-agent"
     ]

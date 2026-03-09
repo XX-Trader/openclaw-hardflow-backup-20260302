@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import time as time_module
 import uuid
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
@@ -44,6 +45,10 @@ MODULE_LOG_LEVELS = {"debug", "info", "warn", "error"}
 MODULE_RUN_STATUSES = {"started", "running", "passed", "failed", "timeout", "skipped"}
 COMMUNICATION_STATUSES = {"sent", "acked", "failed", "timeout"}
 AGENT_REPORT_STATUSES = {"passed", "failed", "partial", "escalated"}
+SQLITE_LOCK_ERROR_SNIPPETS = ("database is locked", "database table is locked")
+SQLITE_WRITE_RETRY_ATTEMPTS = 4
+SQLITE_WRITE_RETRY_INITIAL_DELAY_SEC = 1.0
+SQLITE_WRITE_RETRY_MAX_DELAY_SEC = 8.0
 
 
 class TaskCenterError(RuntimeError):
@@ -211,6 +216,30 @@ class TaskCenter:
 
     def close(self) -> None:
         self.conn.close()
+
+    def _is_retryable_write_error(self, exc: Exception) -> bool:
+        text = str(exc or "").strip().lower()
+        return any(snippet in text for snippet in SQLITE_LOCK_ERROR_SNIPPETS)
+
+    def _run_write_with_retry(self, operation: Any) -> Any:
+        delay = SQLITE_WRITE_RETRY_INITIAL_DELAY_SEC
+        last_exc: Exception | None = None
+        for attempt in range(SQLITE_WRITE_RETRY_ATTEMPTS):
+            try:
+                return operation()
+            except sqlite3.OperationalError as exc:
+                if (not self._is_retryable_write_error(exc)) or attempt >= SQLITE_WRITE_RETRY_ATTEMPTS - 1:
+                    raise
+                last_exc = exc
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                time_module.sleep(delay)
+                delay = min(delay * 2.0, SQLITE_WRITE_RETRY_MAX_DELAY_SEC)
+        if last_exc is not None:
+            raise last_exc
+        raise TaskCenterError("sqlite write retry exhausted without captured exception")
 
     def init_schema(self) -> None:
         self.conn.executescript(
@@ -988,40 +1017,44 @@ class TaskCenter:
         if row_task_id and (not self._task_exists(row_task_id)):
             raise TaskCenterError(f"task not found: {row_task_id}")
 
-        with self.conn:
-            cursor = self.conn.execute(
-                """
-                INSERT INTO module_logs (
-                    task_id, ts, module_name, phase, level, status, message, duration_ms, details_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    row_task_id,
-                    utc_now_iso(),
-                    module,
-                    stage,
-                    normalized_level,
-                    normalized_status,
-                    note,
-                    max(0, int(duration_ms or 0)),
-                    ensure_json(details),
-                ),
-            )
-            log_id = int(cursor.lastrowid)
-            if row_task_id:
-                self.add_event(
-                    task_id=row_task_id,
-                    actor=(str(actor or "").strip() or module),
-                    event_type="module_log_recorded",
-                    stage=stage,
-                    details={
-                        "module_name": module,
-                        "level": normalized_level,
-                        "status": normalized_status,
-                        "message": note,
-                        "duration_ms": max(0, int(duration_ms or 0)),
-                    },
+        def write_op() -> int:
+            with self.conn:
+                cursor = self.conn.execute(
+                    """
+                    INSERT INTO module_logs (
+                        task_id, ts, module_name, phase, level, status, message, duration_ms, details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_task_id,
+                        utc_now_iso(),
+                        module,
+                        stage,
+                        normalized_level,
+                        normalized_status,
+                        note,
+                        max(0, int(duration_ms or 0)),
+                        ensure_json(details),
+                    ),
                 )
+                log_id = int(cursor.lastrowid)
+                if row_task_id:
+                    self.add_event(
+                        task_id=row_task_id,
+                        actor=(str(actor or "").strip() or module),
+                        event_type="module_log_recorded",
+                        stage=stage,
+                        details={
+                            "module_name": module,
+                            "level": normalized_level,
+                            "status": normalized_status,
+                            "message": note,
+                            "duration_ms": max(0, int(duration_ms or 0)),
+                        },
+                    )
+            return log_id
+
+        log_id = int(self._run_write_with_retry(write_op))
         return self.get_module_log(log_id)
 
     def list_module_logs(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
@@ -1083,45 +1116,49 @@ class TaskCenter:
         if row_task_id and (not self._task_exists(row_task_id)):
             raise TaskCenterError(f"task not found: {row_task_id}")
 
-        with self.conn:
-            cursor = self.conn.execute(
-                """
-                INSERT INTO module_communications (
-                    task_id, ts, from_module, to_module, protocol, message_type,
-                    status, latency_ms, correlation_id, payload_ref, details_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    row_task_id,
-                    utc_now_iso(),
-                    src,
-                    dst,
-                    proto,
-                    msg_type,
-                    normalized_status,
-                    max(0, int(latency_ms or 0)),
-                    str(correlation_id or "").strip(),
-                    str(payload_ref or "").strip(),
-                    ensure_json(details),
-                ),
-            )
-            comm_id = int(cursor.lastrowid)
-            if row_task_id:
-                self.add_event(
-                    task_id=row_task_id,
-                    actor=(str(actor or "").strip() or src),
-                    event_type="module_communication_recorded",
-                    stage="communication",
-                    details={
-                        "from_module": src,
-                        "to_module": dst,
-                        "protocol": proto,
-                        "message_type": msg_type,
-                        "status": normalized_status,
-                        "latency_ms": max(0, int(latency_ms or 0)),
-                        "correlation_id": str(correlation_id or "").strip(),
-                    },
+        def write_op() -> int:
+            with self.conn:
+                cursor = self.conn.execute(
+                    """
+                    INSERT INTO module_communications (
+                        task_id, ts, from_module, to_module, protocol, message_type,
+                        status, latency_ms, correlation_id, payload_ref, details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_task_id,
+                        utc_now_iso(),
+                        src,
+                        dst,
+                        proto,
+                        msg_type,
+                        normalized_status,
+                        max(0, int(latency_ms or 0)),
+                        str(correlation_id or "").strip(),
+                        str(payload_ref or "").strip(),
+                        ensure_json(details),
+                    ),
                 )
+                comm_id = int(cursor.lastrowid)
+                if row_task_id:
+                    self.add_event(
+                        task_id=row_task_id,
+                        actor=(str(actor or "").strip() or src),
+                        event_type="module_communication_recorded",
+                        stage="communication",
+                        details={
+                            "from_module": src,
+                            "to_module": dst,
+                            "protocol": proto,
+                            "message_type": msg_type,
+                            "status": normalized_status,
+                            "latency_ms": max(0, int(latency_ms or 0)),
+                            "correlation_id": str(correlation_id or "").strip(),
+                        },
+                    )
+            return comm_id
+
+        comm_id = int(self._run_write_with_retry(write_op))
         return self.get_module_communication(comm_id)
 
     def list_module_communications(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
@@ -1230,76 +1267,80 @@ class TaskCenter:
             "details_json": ensure_json(details),
         }
 
-        with self.conn:
-            self.conn.execute(
-                """
-                INSERT INTO agent_task_reports (
-                    task_id, ts, agent_id, planner_id, status, solved,
-                    resolved_issues, resolution_summary, resolution_steps,
-                    failed_items, failure_count, duration_ms, model_id,
-                    input_tokens, output_tokens, total_tokens, cost_estimate,
-                    quality_score, quality_grade, notify_chat, details_json
-                ) VALUES (
-                    :task_id, :ts, :agent_id, :planner_id, :status, :solved,
-                    :resolved_issues, :resolution_summary, :resolution_steps,
-                    :failed_items, :failure_count, :duration_ms, :model_id,
-                    :input_tokens, :output_tokens, :total_tokens, :cost_estimate,
-                    :quality_score, :quality_grade, :notify_chat, :details_json
+        def write_op() -> int:
+            with self.conn:
+                self.conn.execute(
+                    """
+                    INSERT INTO agent_task_reports (
+                        task_id, ts, agent_id, planner_id, status, solved,
+                        resolved_issues, resolution_summary, resolution_steps,
+                        failed_items, failure_count, duration_ms, model_id,
+                        input_tokens, output_tokens, total_tokens, cost_estimate,
+                        quality_score, quality_grade, notify_chat, details_json
+                    ) VALUES (
+                        :task_id, :ts, :agent_id, :planner_id, :status, :solved,
+                        :resolved_issues, :resolution_summary, :resolution_steps,
+                        :failed_items, :failure_count, :duration_ms, :model_id,
+                        :input_tokens, :output_tokens, :total_tokens, :cost_estimate,
+                        :quality_score, :quality_grade, :notify_chat, :details_json
+                    )
+                    ON CONFLICT(task_id, agent_id, planner_id) DO UPDATE SET
+                        ts = excluded.ts,
+                        status = excluded.status,
+                        solved = excluded.solved,
+                        resolved_issues = excluded.resolved_issues,
+                        resolution_summary = excluded.resolution_summary,
+                        resolution_steps = excluded.resolution_steps,
+                        failed_items = excluded.failed_items,
+                        failure_count = excluded.failure_count,
+                        duration_ms = excluded.duration_ms,
+                        model_id = excluded.model_id,
+                        input_tokens = excluded.input_tokens,
+                        output_tokens = excluded.output_tokens,
+                        total_tokens = excluded.total_tokens,
+                        cost_estimate = excluded.cost_estimate,
+                        quality_score = excluded.quality_score,
+                        quality_grade = excluded.quality_grade,
+                        notify_chat = excluded.notify_chat,
+                        details_json = excluded.details_json
+                    """,
+                    payload,
                 )
-                ON CONFLICT(task_id, agent_id, planner_id) DO UPDATE SET
-                    ts = excluded.ts,
-                    status = excluded.status,
-                    solved = excluded.solved,
-                    resolved_issues = excluded.resolved_issues,
-                    resolution_summary = excluded.resolution_summary,
-                    resolution_steps = excluded.resolution_steps,
-                    failed_items = excluded.failed_items,
-                    failure_count = excluded.failure_count,
-                    duration_ms = excluded.duration_ms,
-                    model_id = excluded.model_id,
-                    input_tokens = excluded.input_tokens,
-                    output_tokens = excluded.output_tokens,
-                    total_tokens = excluded.total_tokens,
-                    cost_estimate = excluded.cost_estimate,
-                    quality_score = excluded.quality_score,
-                    quality_grade = excluded.quality_grade,
-                    notify_chat = excluded.notify_chat,
-                    details_json = excluded.details_json
-                """,
-                payload,
-            )
 
-            report_row = self.conn.execute(
-                """
-                SELECT id
-                FROM agent_task_reports
-                WHERE task_id = ? AND agent_id = ? AND planner_id = ?
-                """,
-                (task_id, normalized_agent, normalized_planner),
-            ).fetchone()
-            if not report_row:
-                raise TaskCenterError("failed to locate upserted agent task report")
-            report_id = int(report_row["id"])
-            self.add_event(
-                task_id=task_id,
-                actor=(str(actor or "").strip() or normalized_agent),
-                event_type="agent_task_reported",
-                stage="report",
-                details={
-                    "report_id": report_id,
-                    "agent_id": normalized_agent,
-                    "planner_id": normalized_planner,
-                    "status": normalized_status,
-                    "solved": bool(solved),
-                    "failure_count": fail_count,
-                    "duration_ms": duration,
-                    "total_tokens": total_tokens,
-                    "model_id": str(model_id or "").strip(),
-                    "quality_score": quality,
-                    "quality_grade": quality_level,
-                    "notify_chat": bool(notify_chat),
-                },
-            )
+                report_row = self.conn.execute(
+                    """
+                    SELECT id
+                    FROM agent_task_reports
+                    WHERE task_id = ? AND agent_id = ? AND planner_id = ?
+                    """,
+                    (task_id, normalized_agent, normalized_planner),
+                ).fetchone()
+                if not report_row:
+                    raise TaskCenterError("failed to locate upserted agent task report")
+                report_id = int(report_row["id"])
+                self.add_event(
+                    task_id=task_id,
+                    actor=(str(actor or "").strip() or normalized_agent),
+                    event_type="agent_task_reported",
+                    stage="report",
+                    details={
+                        "report_id": report_id,
+                        "agent_id": normalized_agent,
+                        "planner_id": normalized_planner,
+                        "status": normalized_status,
+                        "solved": bool(solved),
+                        "failure_count": fail_count,
+                        "duration_ms": duration,
+                        "total_tokens": total_tokens,
+                        "model_id": str(model_id or "").strip(),
+                        "quality_score": quality,
+                        "quality_grade": quality_level,
+                        "notify_chat": bool(notify_chat),
+                    },
+                )
+            return report_id
+
+        report_id = int(self._run_write_with_retry(write_op))
         return self.get_agent_task_report(report_id)
 
     def list_agent_task_reports(

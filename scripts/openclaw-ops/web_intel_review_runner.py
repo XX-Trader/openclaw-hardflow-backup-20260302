@@ -19,6 +19,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
+from web_sources_runtime import load_runtime_sources  # type: ignore
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
@@ -262,17 +263,10 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
-def load_sources_map(path: Path) -> dict[str, dict[str, Any]]:
-    payload = load_json(path, {})
-    if not isinstance(payload, dict):
-        return {}
-    items = payload.get("sources")
-    if not isinstance(items, list):
-        return {}
+def load_sources_map(path: Path, *, project_registry: Path | None = None) -> dict[str, dict[str, Any]]:
+    items = load_runtime_sources(path, project_registry=project_registry)
     out: dict[str, dict[str, Any]] = {}
     for idx, item in enumerate(items):
-        if not isinstance(item, dict):
-            continue
         sid = str(item.get("id", "")).strip() or f"source-{idx+1}"
         out[sid] = item
     return out
@@ -557,6 +551,7 @@ def main() -> None:
     parser.add_argument("--parsed-dir", default="")
     parser.add_argument("--summary-dir", default="")
     parser.add_argument("--sources-file", default="")
+    parser.add_argument("--project-registry", default="")
     parser.add_argument("--state-file", default="")
     parser.add_argument("--report-dir", default="")
     parser.add_argument("--db", default="")
@@ -587,6 +582,11 @@ def main() -> None:
             if mode == "project-doc"
             else (ops_home / "web" / "sources.json")
         )
+    )
+    project_registry = (
+        Path(args.project_registry).expanduser()
+        if str(args.project_registry).strip()
+        else (ops_home / "task-center" / "project-registry.json")
     )
     state_file = (
         Path(args.state_file).expanduser()
@@ -633,7 +633,10 @@ def main() -> None:
             print("NO_REPLY")
         return
 
-    sources_map = load_sources_map(sources_file)
+    sources_map = load_sources_map(
+        sources_file,
+        project_registry=(project_registry if project_registry.exists() else None),
+    )
     entries = load_parsed_entries(parsed_dir, int(args.max_items))
     scanned = len(entries)
     if mode == "project-doc":

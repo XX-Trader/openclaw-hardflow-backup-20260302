@@ -86,7 +86,8 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
         )
         queries = module.build_query_list([], 80, 5)
         self.assertEqual(len(queries), 5)
-        self.assertTrue(any("web scraping anti bot browser automation" in query for query in queries))
+        self.assertTrue(any("openclaw" in query for query in queries))
+        self.assertTrue(any(any(token in query for token in ["skill", "hook", "plugin"]) for query in queries))
         self.assertTrue(all("language:python" not in query for query in queries))
 
     def test_web_intel_prefers_scrapling_before_other_browsers(self):

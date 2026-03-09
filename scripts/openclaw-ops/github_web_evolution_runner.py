@@ -17,6 +17,7 @@ import json
 import math
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -37,17 +38,25 @@ sys.path.insert(0, policy_dir)
 
 from task_center import TaskCenter  # type: ignore
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
+from web_sources_runtime import load_project_repo_targets  # type: ignore
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
 DEFAULT_SENDER_IDENTITY = "optimization-agent/github-web-evolution"
 DEFAULT_GITHUB_TOKEN_ENV = "GITHUB_TOKEN"
 DEFAULT_QUERY_PACK = [
-    "multi-agent workflow orchestration archived:false",
-    "ai coding agent automation workflow archived:false",
-    "browser testing automation playwright archived:false",
-    "web scraping anti bot browser automation archived:false",
-    "github code review automation agent archived:false",
+    "openclaw hooks plugins skills archived:false",
+    "openclaw workflow automation agent archived:false",
+    "openclaw plugin hook manager archived:false",
+    "claude code skills plugins workflow archived:false",
+    "browser automation anti bot playwright archived:false",
+]
+DEFAULT_SKILL_QUERY_PACK = [
+    "openclaw",
+    "openclaw skills",
+    "openclaw hooks",
+    "openclaw plugins",
+    "openclaw workflow",
 ]
 METHOD_KEYWORDS = {
     "workflow",
@@ -75,15 +84,37 @@ PROJECT_SCOPE_KEYWORDS = {
     "automation",
     "browser",
     "crawler",
+    "hook",
+    "hooks",
+    "openclaw",
     "playwright",
+    "plugin",
+    "plugins",
     "review",
     "scraper",
     "scraping",
     "scrapling",
     "selenium",
+    "skill",
+    "skills",
     "test",
     "testing",
     "web",
+    "workflow",
+}
+SKILL_SCOPE_KEYWORDS = {
+    "agent",
+    "api",
+    "binance",
+    "exchange",
+    "hook",
+    "hooks",
+    "openclaw",
+    "plugin",
+    "plugins",
+    "skill",
+    "skills",
+    "trading",
     "workflow",
 }
 INFRA_REPO_FULL_NAMES = {
@@ -403,6 +434,21 @@ def github_search_repositories(
     }
 
 
+def github_get_repository(*, full_name: str, token: str, timeout: int) -> tuple[dict[str, Any] | None, str]:
+    normalized = normalize_repo_full_name(full_name)
+    if not normalized:
+        return None, "invalid_full_name"
+    owner, repo = normalized.split("/", 1)
+    ok, payload, error = github_get_json(
+        url=f"https://api.github.com/repos/{owner}/{repo}",
+        token=token,
+        timeout=timeout,
+    )
+    if not ok:
+        return None, error
+    return payload, ""
+
+
 def calc_repo_quality(repo: dict[str, Any]) -> int:
     stars = max(0, int(repo.get("stargazers_count", 0) or 0))
     forks = max(0, int(repo.get("forks_count", 0) or 0))
@@ -488,6 +534,255 @@ def build_query_list(raw_queries: list[str], min_stars: int, max_queries: int) -
     return out
 
 
+def normalize_repo_full_name(value: str) -> str:
+    text = str(value or "").strip().lower()
+    if text.count("/") != 1:
+        return ""
+    owner, repo = text.split("/", 1)
+    if not owner or not repo:
+        return ""
+    return f"{owner}/{repo}"
+
+
+def build_repo_scan_inputs(
+    *,
+    raw_queries: list[str],
+    min_stars: int,
+    max_queries: int,
+    project_repo_targets: dict[str, Any] | None,
+) -> dict[str, Any]:
+    queries = build_query_list(raw_queries, min_stars, max_queries)
+    seen_queries = {str(item).strip().lower() for item in queries}
+    official_repos: list[str] = []
+    seen_repos: set[str] = set()
+    targets = project_repo_targets if isinstance(project_repo_targets, dict) else {}
+    for raw_query in targets.get("queries", []):
+        query = str(raw_query or "").strip()
+        if not query:
+            continue
+        if "stars:" not in query:
+            query = f"{query} stars:>={max(0, int(min_stars))}"
+        key = query.lower()
+        if key in seen_queries:
+            continue
+        seen_queries.add(key)
+        queries.append(query)
+    for raw_repo in targets.get("official_repos", []):
+        full_name = normalize_repo_full_name(raw_repo)
+        if not full_name or full_name in seen_repos:
+            continue
+        seen_repos.add(full_name)
+        official_repos.append(full_name)
+    return {"queries": queries, "official_repos": official_repos}
+
+
+def build_skill_query_list(raw_queries: list[str], max_queries: int) -> list[str]:
+    base = [str(x).strip() for x in raw_queries if str(x).strip()]
+    if not base:
+        base = list(DEFAULT_SKILL_QUERY_PACK)
+    out: list[str] = []
+    seen: set[str] = set()
+    for query in base:
+        key = query.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(query)
+        if len(out) >= max(1, int(max_queries)):
+            break
+    return out
+
+
+def resolve_skill4agent_bin(binary: str) -> str:
+    candidate = str(binary or "skill4agent").strip() or "skill4agent"
+    found = shutil.which(candidate)
+    if found:
+        return found
+    home = Path.home()
+    fallbacks = [
+        home / ".npm-global" / "bin" / candidate,
+        home / ".local" / "bin" / candidate,
+        home / "node_modules" / ".bin" / candidate,
+    ]
+    for path in fallbacks:
+        if path.exists() and path.is_file():
+            return str(path)
+    return ""
+
+
+def skill_text_blob(skill: dict[str, Any]) -> str:
+    parts = [
+        str(skill.get("source", "")).strip(),
+        str(skill.get("skillName", "")).strip(),
+        str(skill.get("description", "")).strip(),
+        str(skill.get("categoryName", "")).strip(),
+    ]
+    tags = skill.get("tags")
+    if isinstance(tags, list):
+        parts.extend(str(x).strip() for x in tags if str(x).strip())
+    else:
+        parts.extend(str(tags or "").split(","))
+    parts.extend(str(x).strip() for x in (skill.get("query_hits") or []) if str(x).strip())
+    return " ".join(parts).lower()
+
+
+def matches_skill_scope(skill: dict[str, Any]) -> bool:
+    blob = skill_text_blob(skill)
+    return any(keyword in blob for keyword in SKILL_SCOPE_KEYWORDS)
+
+
+def calc_skill_quality(skill: dict[str, Any]) -> int:
+    installs = max(0, int(skill.get("totalInstalls", 0) or 0))
+    relevance = max(0, int(skill.get("relevance", 0) or 0))
+    translation = skill.get("translation", {}) if isinstance(skill.get("translation"), dict) else {}
+    script = skill.get("script", {}) if isinstance(skill.get("script"), dict) else {}
+    translation_bonus = 10 if bool(translation.get("has_translation")) else 0
+    script_state = str(script.get("script_check_result", "")).strip().lower()
+    if script_state == "safe":
+        script_bonus = 8
+    elif script_state == "need attention":
+        script_bonus = -6
+    else:
+        script_bonus = 0
+    return max(1, min(100, installs + (relevance * 20) + translation_bonus + script_bonus))
+
+
+def normalize_skill4agent_item(item: dict[str, Any], query: str) -> dict[str, Any] | None:
+    source = str(item.get("source", "")).strip()
+    skill_name = str(item.get("skillName", "")).strip()
+    if not source or not skill_name:
+        return None
+    tags_raw = item.get("tags")
+    if isinstance(tags_raw, list):
+        tags = [str(x).strip() for x in tags_raw if str(x).strip()]
+    else:
+        tags = [part.strip() for part in str(tags_raw or "").split(",") if part.strip()]
+    row = {
+        "full_name": f"skill4agent::{source}/{skill_name}",
+        "display_name": f"{source}/{skill_name}",
+        "source": source,
+        "skillName": skill_name,
+        "skillId": str(item.get("skillId", "")).strip(),
+        "description": str(item.get("description", "") or "").strip(),
+        "tags": tags,
+        "categoryName": str(item.get("categoryName", "") or "").strip(),
+        "totalInstalls": int(item.get("totalInstalls", 0) or 0),
+        "relevance": int(item.get("relevance", 0) or 0),
+        "translation": item.get("translation", {}) if isinstance(item.get("translation"), dict) else {},
+        "script": item.get("script", {}) if isinstance(item.get("script"), dict) else {},
+        "query_hits": [str(query).strip()],
+    }
+    row["quality_score"] = calc_skill_quality(row)
+    return row
+
+
+def search_skill4agent_skills(
+    *,
+    query: str,
+    skill4agent_bin: str,
+    limit: int,
+    timeout: int,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    binary = str(skill4agent_bin or "skill4agent").strip() or "skill4agent"
+    found_bin = resolve_skill4agent_bin(binary)
+    if not found_bin:
+        return [], {
+            "ok": False,
+            "query": query,
+            "returned_count": 0,
+            "total_results": 0,
+            "error": f"skill4agent_not_found:{binary}",
+        }
+
+    cmd = [found_bin, "search", str(query).strip(), "-j", "-l", str(max(1, int(limit)))]
+    try:
+        proc = subprocess.run(
+            cmd,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            timeout=max(5, int(timeout)),
+            check=False,
+        )
+    except Exception as exc:
+        return [], {
+            "ok": False,
+            "query": query,
+            "returned_count": 0,
+            "total_results": 0,
+            "error": f"skill4agent_exec_failed:{exc}",
+        }
+
+    payload = parse_json_output(proc.stdout or "")
+    if proc.returncode != 0:
+        err_text = (proc.stderr or "").strip() or f"exit={proc.returncode}"
+        return [], {
+            "ok": False,
+            "query": query,
+            "returned_count": 0,
+            "total_results": 0,
+            "error": f"skill4agent_failed:{err_text}",
+        }
+    if not isinstance(payload, dict):
+        return [], {
+            "ok": False,
+            "query": query,
+            "returned_count": 0,
+            "total_results": 0,
+            "error": "skill4agent_invalid_json_output",
+        }
+
+    skills = payload.get("skills", [])
+    items = [item for item in skills if isinstance(item, dict)] if isinstance(skills, list) else []
+    return items, {
+        "ok": True,
+        "query": query,
+        "returned_count": len(items),
+        "total_results": int(payload.get("totalResults", len(items)) or len(items)),
+        "error": "",
+    }
+
+
+def merge_skill_results(
+    *,
+    query_results: list[tuple[str, list[dict[str, Any]]]],
+    min_quality_score: int,
+    max_total_skills: int,
+) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for query, items in query_results:
+        for item in items:
+            skill = normalize_skill4agent_item(item, query=query)
+            if skill is None:
+                continue
+            if not matches_skill_scope(skill):
+                continue
+            if int(skill.get("quality_score", 0) or 0) < max(1, int(min_quality_score)):
+                continue
+            key = str(skill.get("full_name", "")).strip().lower()
+            old = merged.get(key)
+            if old is None:
+                merged[key] = skill
+                continue
+            query_hits = set(old.get("query_hits", []))
+            query_hits.update(skill.get("query_hits", []))
+            old["query_hits"] = sorted(str(x) for x in query_hits if str(x).strip())
+            old["quality_score"] = max(int(old.get("quality_score", 0) or 0), int(skill.get("quality_score", 0) or 0))
+            old["totalInstalls"] = max(int(old.get("totalInstalls", 0) or 0), int(skill.get("totalInstalls", 0) or 0))
+
+    items_sorted = sorted(
+        merged.values(),
+        key=lambda x: (
+            int(x.get("quality_score", 0) or 0),
+            int(x.get("totalInstalls", 0) or 0),
+            str(x.get("display_name", "")),
+        ),
+        reverse=True,
+    )
+    return items_sorted[: max(1, int(max_total_skills))]
+
+
 def merge_query_results(
     *,
     query_results: list[tuple[str, list[dict[str, Any]]]],
@@ -534,6 +829,54 @@ def merge_query_results(
         reverse=True,
     )
     return items_sorted[: max(1, int(max_total_repos))]
+
+
+def upsert_selected_repo(rows: dict[str, dict[str, Any]], repo: dict[str, Any]) -> None:
+    full_name = str(repo.get("full_name", "")).strip()
+    if not full_name:
+        return
+    old = rows.get(full_name)
+    if old is None:
+        rows[full_name] = dict(repo)
+        return
+    query_hits = set(old.get("query_hits", []))
+    query_hits.update(repo.get("query_hits", []))
+    old["query_hits"] = sorted(str(x) for x in query_hits if str(x).strip())
+    old["quality_score"] = max(int(old.get("quality_score", 0) or 0), int(repo.get("quality_score", 0) or 0))
+    old["stargazers_count"] = max(int(old.get("stargazers_count", 0) or 0), int(repo.get("stargazers_count", 0) or 0))
+    old["forks_count"] = max(int(old.get("forks_count", 0) or 0), int(repo.get("forks_count", 0) or 0))
+    old["official_target"] = bool(old.get("official_target")) or bool(repo.get("official_target"))
+    for field in ("html_url", "description", "language", "updated_at", "pushed_at", "default_branch"):
+        if not str(old.get(field, "")).strip() and str(repo.get(field, "")).strip():
+            old[field] = repo.get(field)
+
+
+def merge_selected_repositories(
+    *,
+    selected: list[dict[str, Any]],
+    official_repo_items: list[dict[str, Any]],
+    max_total_repos: int,
+) -> list[dict[str, Any]]:
+    merged: dict[str, dict[str, Any]] = {}
+    for item in official_repo_items:
+        full_name = str(item.get("full_name", "")).strip()
+        repo = normalize_repo_item(item, query=f"official:{full_name}")
+        if repo is None or repo.get("archived"):
+            continue
+        repo["official_target"] = True
+        upsert_selected_repo(merged, repo)
+    for repo in selected:
+        upsert_selected_repo(merged, repo)
+    items = sorted(
+        merged.values(),
+        key=lambda x: (
+            0 if bool(x.get("official_target")) else 1,
+            -int(x.get("quality_score", 0) or 0),
+            -int(x.get("stargazers_count", 0) or 0),
+            str(x.get("pushed_at", "")),
+        ),
+    )
+    return items[: max(1, int(max_total_repos))]
 
 
 def fetch_repo_readme(
@@ -602,7 +945,18 @@ def extract_method_lines(readme_text: str, max_lines: int) -> list[str]:
 
 
 def repo_slug(full_name: str) -> str:
-    return str(full_name or "").replace("/", "__").replace("\\", "__")
+    return (
+        str(full_name or "")
+        .replace("/", "__")
+        .replace("\\", "__")
+        .replace(":", "__")
+        .replace("?", "_")
+        .replace("*", "_")
+        .replace("\"", "_")
+        .replace("<", "_")
+        .replace(">", "_")
+        .replace("|", "_")
+    )
 
 
 def load_index(index_file: Path) -> dict[str, Any]:
@@ -612,15 +966,20 @@ def load_index(index_file: Path) -> dict[str, Any]:
     repos = data.get("repos")
     if not isinstance(repos, dict):
         repos = {}
+    skills = data.get("skills")
+    if not isinstance(skills, dict):
+        skills = {}
     return {
-        "schema_version": str(data.get("schema_version", "2026-03-04")),
+        "schema_version": str(data.get("schema_version", "2026-03-09")),
         "updated_at": str(data.get("updated_at", "")),
         "repos": repos,
+        "skills": skills,
     }
 
 
 def write_catalog_markdown(index_payload: dict[str, Any], out_file: Path) -> None:
     repos = index_payload.get("repos", {}) if isinstance(index_payload.get("repos"), dict) else {}
+    skills = index_payload.get("skills", {}) if isinstance(index_payload.get("skills"), dict) else {}
     items: list[dict[str, Any]] = []
     for full_name, payload in repos.items():
         if not isinstance(payload, dict):
@@ -628,6 +987,13 @@ def write_catalog_markdown(index_payload: dict[str, Any], out_file: Path) -> Non
         row = dict(payload)
         row["full_name"] = full_name
         items.append(row)
+    skill_items: list[dict[str, Any]] = []
+    for full_name, payload in skills.items():
+        if not isinstance(payload, dict):
+            continue
+        row = dict(payload)
+        row["full_name"] = full_name
+        skill_items.append(row)
 
     items.sort(
         key=lambda x: (
@@ -643,6 +1009,9 @@ def write_catalog_markdown(index_payload: dict[str, Any], out_file: Path) -> Non
         "",
         f"- updated_at: {index_payload.get('updated_at', '')}",
         f"- total_repos: {len(items)}",
+        f"- total_skills: {len(skill_items)}",
+        "",
+        "## Repositories",
         "",
     ]
     for item in items[:400]:
@@ -654,6 +1023,23 @@ def write_catalog_markdown(index_payload: dict[str, Any], out_file: Path) -> Non
             + f"score={int(item.get('quality_score', 0) or 0)} "
             + f"stars={int(item.get('stargazers_count', 0) or 0)} "
             + f"pushed={item.get('pushed_at', '')}"
+        )
+    lines.extend(["", "## Skills", ""])
+    for item in sorted(
+        skill_items,
+        key=lambda x: (
+            int(x.get("quality_score", 0) or 0),
+            int(x.get("totalInstalls", 0) or 0),
+            str(x.get("display_name", "")),
+        ),
+        reverse=True,
+    )[:200]:
+        lines.append(
+            "- "
+            + f"{item.get('display_name', item.get('full_name', ''))} "
+            + f"score={int(item.get('quality_score', 0) or 0)} "
+            + f"installs={int(item.get('totalInstalls', 0) or 0)} "
+            + f"source={item.get('source', '')}"
         )
     save_text(out_file, "\n".join(lines) + "\n")
 
@@ -804,20 +1190,30 @@ def create_todo_task(
     lines = [
         f"[fingerprint:{fingerprint}]",
         f"[dedupe_key:{dedupe_key}]",
-        f"GitHub web evolution report: {report_file}",
-        f"GitHub web catalog: {catalog_file}",
+        f"Web evolution report: {report_file}",
+        f"Web evolution catalog: {catalog_file}",
         "",
-        "Incremental changes (new/updated repositories):",
+        "Incremental changes (new/updated repositories or skills):",
     ]
     for item in changes[:40]:
-        lines.append(
-            "- "
-            + f"{item.get('change_type', 'updated')} "
-            + f"{item.get('full_name', '')} "
-            + f"score={int(item.get('quality_score', 0) or 0)} "
-            + f"stars={int(item.get('stargazers_count', 0) or 0)} "
-            + f"url={item.get('html_url', '')}"
-        )
+        if str(item.get("entity_type", "")) == "skill":
+            lines.append(
+                "- "
+                + f"{item.get('change_type', 'updated')} skill "
+                + f"{item.get('display_name', item.get('full_name', ''))} "
+                + f"score={int(item.get('quality_score', 0) or 0)} "
+                + f"installs={int(item.get('stargazers_count', 0) or 0)} "
+                + f"source={item.get('source', '')}"
+            )
+        else:
+            lines.append(
+                "- "
+                + f"{item.get('change_type', 'updated')} repo "
+                + f"{item.get('full_name', '')} "
+                + f"score={int(item.get('quality_score', 0) or 0)} "
+                + f"stars={int(item.get('stargazers_count', 0) or 0)} "
+                + f"url={item.get('html_url', '')}"
+            )
     lines.extend(
         [
             "",
@@ -825,7 +1221,7 @@ def create_todo_task(
             *[f"- {q}" for q in query_list[:20]],
             "",
             "Output requirements:",
-            "- Propose high-value improvements for openclaw workflow/skills/routing based on these repositories.",
+            "- Propose high-value improvements for openclaw workflow/skills/routing based on these repositories and skills.",
             "- Mark uncertain items that require project-agent context package first.",
             "- Keep only executable, evidence-backed changes with validation and rollback.",
             "- If code change is approved, follow governance evolution flow (optimize -> reviewer -> PR).",
@@ -836,7 +1232,7 @@ def create_todo_task(
         "task_id": f"todo-github-web-evolution-{now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}",
         "pool": "todo",
         "task_type": "github_web_evolution",
-        "reason": f"[GITHUB_WEB_EVOLUTION] new_or_updated={len(changes)}",
+        "reason": f"[WEB_EVOLUTION] new_or_updated={len(changes)}",
         "source": "github-web-evolution-agent",
         "request_source": "ai",
         "priority": "low",
@@ -882,6 +1278,7 @@ def main() -> int:
     parser.add_argument("--web-root", default="")
     parser.add_argument("--state-file", default=str(home / ".openclaw/ops/github-web-evolution/state.json"))
     parser.add_argument("--report-dir", default=str(home / ".openclaw/ops/github-web-evolution/reports"))
+    parser.add_argument("--project-registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
     parser.add_argument("--task-id", default="")
     parser.add_argument("--sender-identity", default=DEFAULT_SENDER_IDENTITY)
     parser.add_argument("--normal-log-mode", default="silent", choices=sorted(LOG_MODES))
@@ -895,6 +1292,14 @@ def main() -> int:
     parser.add_argument("--method-lines-per-repo", type=int, default=24)
     parser.add_argument("--min-stars", type=int, default=80)
     parser.add_argument("--min-quality-score", type=int, default=45)
+    parser.add_argument("--enable-skill4agent", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--skill4agent-bin", default="skill4agent")
+    parser.add_argument("--skill4agent-query", action="append", default=[])
+    parser.add_argument("--skill4agent-max-queries", type=int, default=5)
+    parser.add_argument("--skill4agent-limit", type=int, default=12)
+    parser.add_argument("--skill4agent-max-total-skills", type=int, default=20)
+    parser.add_argument("--skill4agent-min-quality-score", type=int, default=20)
+    parser.add_argument("--skill4agent-timeout", type=int, default=35)
     parser.add_argument("--min-new-or-updated", type=int, default=2)
     parser.add_argument("--recent-dedupe-days", type=int, default=14)
     parser.add_argument("--max-tasks-per-run", type=int, default=1)
@@ -912,13 +1317,14 @@ def main() -> int:
     state_file = Path(args.state_file).expanduser()
 
     repos_dir = web_root / "repos"
+    skills_dir = web_root / "skills"
     readmes_dir = web_root / "readmes"
     methods_dir = web_root / "methods"
     runs_dir = web_root / "runs"
     index_file = web_root / "index.json"
     catalog_file = web_root / "CATALOG.md"
 
-    for p in [report_dir, repos_dir, readmes_dir, methods_dir, runs_dir]:
+    for p in [report_dir, repos_dir, skills_dir, readmes_dir, methods_dir, runs_dir]:
         p.mkdir(parents=True, exist_ok=True)
 
     state = load_json(state_file, None)
@@ -934,16 +1340,28 @@ def main() -> int:
     sender_identity = normalize_sender_identity(args.sender_identity)
     log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
     github_token = str(os.environ.get(str(args.github_token_env or DEFAULT_GITHUB_TOKEN_ENV), "") or "").strip()
-
-    query_list = build_query_list(
+    project_registry = Path(args.project_registry).expanduser() if str(args.project_registry).strip() else None
+    project_repo_targets = load_project_repo_targets(project_registry)
+    repo_scan_inputs = build_repo_scan_inputs(
         raw_queries=[str(x) for x in args.query],
         min_stars=max(0, int(args.min_stars)),
         max_queries=max(1, int(args.max_queries)),
+        project_repo_targets=project_repo_targets,
+    )
+    query_list = list(repo_scan_inputs.get("queries", []))
+    project_official_repos = list(repo_scan_inputs.get("official_repos", []))
+    skill_query_list = build_skill_query_list(
+        raw_queries=[str(x) for x in args.skill4agent_query],
+        max_queries=max(1, int(args.skill4agent_max_queries)),
     )
 
     query_logs: list[dict[str, Any]] = []
     query_results: list[tuple[str, list[dict[str, Any]]]] = []
     selected: list[dict[str, Any]] = []
+    official_repo_logs: list[dict[str, Any]] = []
+    skill_query_logs: list[dict[str, Any]] = []
+    skill_query_results: list[tuple[str, list[dict[str, Any]]]] = []
+    selected_skills: list[dict[str, Any]] = []
     readme_fetch: list[dict[str, Any]] = []
     changes: list[dict[str, Any]] = []
     created_tasks: list[dict[str, Any]] = []
@@ -952,6 +1370,10 @@ def main() -> int:
 
     index_payload = load_index(index_file)
     previous_repos = index_payload.get("repos", {}) if isinstance(index_payload.get("repos"), dict) else {}
+    previous_skills = index_payload.get("skills", {}) if isinstance(index_payload.get("skills"), dict) else {}
+    skill4agent_bin = str(args.skill4agent_bin or "skill4agent").strip() or "skill4agent"
+    skill4agent_resolved_bin = resolve_skill4agent_bin(skill4agent_bin)
+    skill4agent_available = bool(skill4agent_resolved_bin)
 
     run_id = uuid.uuid4().hex[:12]
     run_stamp = now().strftime("%Y%m%d_%H%M%S")
@@ -970,10 +1392,32 @@ def main() -> int:
                 query_logs.append(qlog)
                 query_results.append((q, items))
 
+            official_repo_items: list[dict[str, Any]] = []
+            for full_name in project_official_repos:
+                payload, error = github_get_repository(
+                    full_name=full_name,
+                    token=github_token,
+                    timeout=max(5, int(args.http_timeout)),
+                )
+                official_repo_logs.append(
+                    {
+                        "full_name": full_name,
+                        "ok": payload is not None,
+                        "error": error,
+                    }
+                )
+                if isinstance(payload, dict):
+                    official_repo_items.append(payload)
+
             selected = merge_query_results(
                 query_results=query_results,
                 min_stars=max(0, int(args.min_stars)),
                 min_quality_score=max(1, int(args.min_quality_score)),
+                max_total_repos=max(1, int(args.max_total_repos)),
+            )
+            selected = merge_selected_repositories(
+                selected=selected,
+                official_repo_items=official_repo_items,
                 max_total_repos=max(1, int(args.max_total_repos)),
             )
 
@@ -1048,6 +1492,7 @@ def main() -> int:
                         {
                             "change_type": change_type,
                             "change_flags": change_flags,
+                            "entity_type": "repo",
                             "full_name": full_name,
                             "html_url": str(repo.get("html_url", "")),
                             "quality_score": int(repo.get("quality_score", 0) or 0),
@@ -1060,7 +1505,100 @@ def main() -> int:
                         }
                     )
 
+            if bool(args.enable_skill4agent):
+                if skill4agent_available:
+                    for query in skill_query_list:
+                        items, slog = search_skill4agent_skills(
+                            query=query,
+                            skill4agent_bin=skill4agent_resolved_bin or skill4agent_bin,
+                            limit=max(1, int(args.skill4agent_limit)),
+                            timeout=max(5, int(args.skill4agent_timeout)),
+                        )
+                        skill_query_logs.append(slog)
+                        skill_query_results.append((query, items))
+
+                    selected_skills = merge_skill_results(
+                        query_results=skill_query_results,
+                        min_quality_score=max(1, int(args.skill4agent_min_quality_score)),
+                        max_total_skills=max(1, int(args.skill4agent_max_total_skills)),
+                    )
+
+                    for skill in selected_skills:
+                        full_name = str(skill.get("full_name", "")).strip()
+                        slug = repo_slug(full_name)
+                        meta_file = skills_dir / f"{slug}.json"
+                        prev = previous_skills.get(full_name, {}) if isinstance(previous_skills.get(full_name), dict) else {}
+                        prev_installs = int(prev.get("totalInstalls", 0) or 0)
+                        prev_fingerprint = str(prev.get("skill_fingerprint", "") or "")
+
+                        skill_fingerprint = hashlib.sha1(
+                            json.dumps(
+                                {
+                                    "description": str(skill.get("description", "")),
+                                    "tags": skill.get("tags", []),
+                                    "categoryName": str(skill.get("categoryName", "")),
+                                    "script": skill.get("script", {}),
+                                    "translation": skill.get("translation", {}),
+                                },
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ).encode("utf-8")
+                        ).hexdigest()[:16]
+
+                        skill_row = {
+                            **skill,
+                            "skill_fingerprint": skill_fingerprint,
+                            "meta_file": str(meta_file),
+                            "last_seen_at": now_iso(),
+                        }
+                        save_json(meta_file, skill_row)
+                        previous_skills[full_name] = skill_row
+
+                        change_type = ""
+                        change_flags: list[str] = []
+                        if not prev:
+                            change_type = "new"
+                        else:
+                            if int(skill.get("totalInstalls", 0) or 0) != prev_installs:
+                                change_flags.append("installs")
+                            if skill_fingerprint and skill_fingerprint != prev_fingerprint:
+                                change_flags.append("skill_payload")
+                            if change_flags:
+                                change_type = "updated"
+
+                        if change_type:
+                            changes.append(
+                                {
+                                    "change_type": change_type,
+                                    "change_flags": change_flags,
+                                    "entity_type": "skill",
+                                    "full_name": full_name,
+                                    "display_name": str(skill.get("display_name", "")),
+                                    "source": str(skill.get("source", "")),
+                                    "skill_name": str(skill.get("skillName", "")),
+                                    "html_url": "",
+                                    "quality_score": int(skill.get("quality_score", 0) or 0),
+                                    "stargazers_count": int(skill.get("totalInstalls", 0) or 0),
+                                    "pushed_at": str(skill_row.get("last_seen_at", "")),
+                                    "readme_sha": skill_fingerprint,
+                                    "meta_file": str(meta_file),
+                                    "readme_file": "",
+                                    "methods_file": "",
+                                }
+                            )
+                else:
+                    skill_query_logs.append(
+                        {
+                            "ok": False,
+                            "query": "",
+                            "returned_count": 0,
+                            "total_results": 0,
+                            "error": f"skill4agent_not_found:{skill4agent_bin}",
+                        }
+                    )
+
             index_payload["repos"] = previous_repos
+            index_payload["skills"] = previous_skills
             index_payload["updated_at"] = now_iso()
             save_json(index_file, index_payload)
             write_catalog_markdown(index_payload, catalog_file)
@@ -1070,10 +1608,22 @@ def main() -> int:
     fingerprint = fingerprint_from_changes(changes) if changes else ""
     dedupe_key = dedupe_key_from_changes(changes)
     candidate_batches: list[list[dict[str, Any]]] = []
+    task_query_list = list(query_list) + [f"skill4agent:{query}" for query in skill_query_list]
 
     try:
         save_json(run_dir / "queries.json", {"queries": query_list, "logs": query_logs})
+        save_json(
+            run_dir / "project_repo_targets.json",
+            {
+                "project_registry": str(project_registry) if project_registry is not None else "",
+                "queries": list(project_repo_targets.get("queries", [])),
+                "official_repos": project_official_repos,
+                "official_repo_logs": official_repo_logs,
+            },
+        )
+        save_json(run_dir / "skill_queries.json", {"queries": skill_query_list, "logs": skill_query_logs})
         save_json(run_dir / "selected_repositories.json", {"count": len(selected), "items": selected})
+        save_json(run_dir / "selected_skills.json", {"count": len(selected_skills), "items": selected_skills})
         save_json(run_dir / "changes.json", {"count": len(changes), "items": changes})
 
         if run_allowed and len(changes) >= max(1, int(args.min_new_or_updated)):
@@ -1099,7 +1649,7 @@ def main() -> int:
                         report_file=Path("<pending>"),
                         catalog_file=catalog_file,
                         changes=batch,
-                        query_list=query_list,
+                        query_list=task_query_list,
                         recent_dedupe_days=max(0, int(args.recent_dedupe_days)),
                     )
                     if created:
@@ -1146,13 +1696,27 @@ def main() -> int:
         "run_allowed": run_allowed,
         "github_token_present": bool(github_token),
         "github_token_env": str(args.github_token_env or DEFAULT_GITHUB_TOKEN_ENV),
+        "project_registry": str(project_registry) if project_registry is not None else "",
+        "project_repo_queries": list(project_repo_targets.get("queries", [])),
+        "project_official_repos": project_official_repos,
+        "official_repo_logs": official_repo_logs,
         "queries": query_list,
         "query_logs": query_logs,
+        "skill4agent_enabled": bool(args.enable_skill4agent),
+        "skill4agent_bin": skill4agent_bin,
+        "skill4agent_resolved_bin": skill4agent_resolved_bin,
+        "skill4agent_available": bool(skill4agent_available),
+        "skill_queries": skill_query_list,
+        "skill_query_logs": skill_query_logs,
         "selected_count": len(selected),
         "selected": selected[:200],
+        "selected_skill_count": len(selected_skills),
+        "selected_skills": selected_skills[:200],
         "readme_fetch": readme_fetch[:200],
         "changes_count": len(changes),
         "changes": changes[:300],
+        "repo_changes_count": len([x for x in changes if str(x.get("entity_type", "")) != "skill"]),
+        "skill_changes_count": len([x for x in changes if str(x.get("entity_type", "")) == "skill"]),
         "new_count": len([x for x in changes if str(x.get("change_type")) == "new"]),
         "updated_count": len([x for x in changes if str(x.get("change_type")) == "updated"]),
         "task_threshold_min_new_or_updated": max(1, int(args.min_new_or_updated)),
@@ -1460,7 +2024,8 @@ def main() -> int:
             f"- run_allowed: {run_allowed}",
             f"- queries: {len(query_list)}",
             f"- selected_repos: {len(selected)}",
-            f"- changed_repos: {len(changes)} (new={report['new_count']}, updated={report['updated_count']})",
+            f"- selected_skills: {len(selected_skills)}",
+            f"- changed_items: {len(changes)} (new={report['new_count']}, updated={report['updated_count']}, skills={report['skill_changes_count']})",
             f"- created_todo: {len(created_tasks)}",
             f"- skipped_reason: {task_skipped_reason or '-'}",
             f"- web_root: {web_root}",

@@ -549,8 +549,10 @@ def build_message(command: str, extra_rules: list[str] | None = None) -> str:
     cmd = str(command or "").strip()
     rules = [
         "Execute the command exactly once.",
-        "Do not run follow-up diagnostics (for example: ls/cat/read/lsof/rm) after the command finishes.",
-        "If the command prints NO_REPLY, you must respond exactly NO_REPLY and stop.",
+        "If the exec tool reports 'Command still running', do not start another exec command.",
+        "You MUST wait for completion by using only process poll or process log for that same session until the process exits.",
+        "Do not run unrelated follow-up diagnostics (for example: ls/cat/read/lsof/rm).",
+        "If the finished command prints NO_REPLY, you must respond exactly NO_REPLY and stop.",
     ]
     if isinstance(extra_rules, list):
         for item in extra_rules:
@@ -565,10 +567,10 @@ def build_message(command: str, extra_rules: list[str] | None = None) -> str:
         "Do not write, edit, create, move, or delete any file. "
         "Do not execute any other command. "
         f"{rules_text}\n"
-        "Return EXACTLY raw stdout/stderr text from the command. "
+        "Return EXACTLY raw stdout/stderr text from the finished command. "
         "Do not add explanation, greeting, or prefix text. "
         "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
-        "If output is empty, reply NO_REPLY."
+        "If the finished output is empty, reply NO_REPLY."
     )
 
 

@@ -93,11 +93,13 @@ def build_message(
         "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
         "Do not inspect files, list directories, or run any other command such as ls, pwd, cat, grep, find, or python probes. "
         "Execute the command exactly once. "
-        "Do not run any follow-up command. "
-        "Return EXACTLY raw stdout/stderr text from the command; "
+        "If the exec tool reports 'Command still running', do not start another exec command. "
+        "You MUST wait for completion by using only process poll or process log for that same session until the process exits. "
+        "Do not run unrelated follow-up commands or diagnostics. "
+        "Return EXACTLY raw stdout/stderr text from the finished command; "
         "do not add explanation, greeting, or prefix text. "
         "Never output sentences like 'Let's run ...', 'Now let's execute ...', or 'Okay, ...'. "
-        "If output is empty, reply NO_REPLY."
+        "If the finished output is empty, reply NO_REPLY."
     )
 
 

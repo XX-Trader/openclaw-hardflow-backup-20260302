@@ -8,6 +8,9 @@
       "auto_pull": true,
       "git_remote": "origin",
       "git_branch": "main",
+      "integrations": [
+        "binance"
+      ],
       "module_globs": [
         "src/**/*.py",
         "backend/**/*.py",
@@ -21,6 +24,22 @@
       "script_globs": [
         "scripts/**/*",
         ".workflow/**/*.sh"
+      ],
+      "doc_sources": [
+        {
+          "id": "project-a-api-reference",
+          "url": "https://developers.binance.com/docs/binance-spot-api-docs/rest-api/general-api-information",
+          "category": "api-doc",
+          "tags": [
+            "project",
+            "api",
+            "official",
+            "binance"
+          ],
+          "enabled": true,
+          "browser_fallback": true,
+          "min_interval_minutes": 180
+        }
       ]
     },
     {

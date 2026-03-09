@@ -59,8 +59,8 @@
             "name": "GPT-5.4"
           },
           {
-            "id": "gpt-5.3-codex-spark",
-            "name": "GPT-5.3 Codex Spark"
+            "id": "gpt-5.3-codex",
+            "name": "GPT-5.3 Codex"
           }
         ]
       }
@@ -71,7 +71,7 @@
       "model": {
         "primary": "openai-codex/gpt-5.4",
         "fallbacks": [
-          "openai-codex/gpt-5.3-codex-spark",
+          "openai-codex/gpt-5.3-codex",
           "glmcode/glm-5",
           "glmcode/glm-4.7"
         ]
@@ -101,8 +101,8 @@
             "thinking": "xhigh"
           }
         },
-        "openai-codex/gpt-5.3-codex-spark": {
-          "alias": "codexspark",
+        "openai-codex/gpt-5.3-codex": {
+          "alias": "codex53",
           "params": {
             "thinking": "xhigh"
           }
@@ -191,13 +191,13 @@
         "id": "frontend-dev",
         "name": "frontend-dev",
         "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
-        "model": "openai-codex/gpt-5.3-codex-spark"
+        "model": "openai-codex/gpt-5.3-codex"
       },
       {
         "id": "backend-dev",
         "name": "backend-dev",
         "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
-        "model": "openai-codex/gpt-5.3-codex-spark"
+        "model": "openai-codex/gpt-5.3-codex"
       },
       {
         "id": "reviewer",
@@ -221,7 +221,7 @@
         "id": "agent-factory",
         "name": "agent-factory",
         "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
-        "model": "openai-codex/gpt-5.3-codex-spark",
+        "model": "openai-codex/gpt-5.3-codex",
         "subagents": {
           "allowAgents": [
             "optimization-agent",
@@ -248,7 +248,7 @@
         "name": "optimization-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-        "model": "openai-codex/gpt-5.3-codex-spark",
+        "model": "openai-codex/gpt-5.3-codex",
         "subagents": {
           "allowAgents": [
             "project-agent",
@@ -261,7 +261,7 @@
         "name": "project-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
-        "model": "openai-codex/gpt-5.3-codex-spark",
+        "model": "openai-codex/gpt-5.3-codex",
         "subagents": {
           "allowAgents": [
             "web-agent"

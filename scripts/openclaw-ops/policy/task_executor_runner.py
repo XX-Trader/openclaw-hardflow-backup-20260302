@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -253,6 +254,20 @@ def compact_text(value: Any, max_len: int = 220) -> str:
     if len(text) <= max_len:
         return text
     return text[: max_len - 3].rstrip() + "..."
+
+
+def build_task_session_id(task_id: str, max_len: int = 48) -> str:
+    normalized = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(task_id or "").strip()).strip("-._")
+    if not normalized:
+        normalized = "task"
+    candidate = f"task-{normalized}"
+    if len(candidate) <= max_len:
+        return candidate
+    digest = hashlib.sha1(str(task_id or "").encode("utf-8")).hexdigest()[:10]
+    head_budget = max(8, max_len - len("task--") - len(digest))
+    head = normalized[:head_budget].rstrip("-._") or "task"
+    session_id = f"task-{head}-{digest}"
+    return session_id[:max_len]
 
 
 def humanize_executor_detail(detail: str) -> str:
@@ -692,7 +707,7 @@ def main() -> int:
             keyword = split_list(str(task.get("reason", "")))
             web_hits = web_context(Path(args.web_sources_file).expanduser(), keyword[0] if keyword else "", int(args.web_max_chars))
             prompt = prompt_for_task(task, local_hits, web_hits)
-            session_id = f"task-{task_id}"
+            session_id = build_task_session_id(task_id)
 
             try:
                 enforcer.db.add_event(task_id=task_id, actor=str(args.actor), event_type="task_decomposed", stage="dispatch", details={"steps": [

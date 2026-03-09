@@ -41,12 +41,12 @@ class CronQuietModeTests(unittest.TestCase):
 
         self.assertEqual(tier, "high_doubao")
         self.assertEqual(profile["primary_model"], "kimicode/Doubao-Seed-2.0-Code")
-        self.assertEqual(profile["agent_model_overrides"]["optimization-agent"], "openai-codex/gpt-5.3-codex-spark")
-        self.assertEqual(profile["agent_model_overrides"]["backend-dev"], "openai-codex/gpt-5.3-codex-spark")
+        self.assertEqual(profile["agent_model_overrides"]["optimization-agent"], "openai-codex/gpt-5.3-codex")
+        self.assertEqual(profile["agent_model_overrides"]["backend-dev"], "openai-codex/gpt-5.3-codex")
         self.assertEqual(profile["agent_model_overrides"]["ops-agent"], "glmcode/glm-4.7")
         self.assertEqual(profile["agent_model_overrides"]["web-agent"], "glmcode/glm-4.7")
         self.assertEqual(profile["model_thinking_overrides"]["kimicode/Doubao-Seed-2.0-Code"], "high")
-        self.assertEqual(profile["model_thinking_overrides"]["openai-codex/gpt-5.3-codex-spark"], "xhigh")
+        self.assertEqual(profile["model_thinking_overrides"]["openai-codex/gpt-5.3-codex"], "xhigh")
 
     def test_ops_cron_runner_creates_follow_up_task_for_failed_workflow(self):
         module = load_module(
@@ -226,6 +226,21 @@ class CronQuietModeTests(unittest.TestCase):
         selected = module.select_tasks(enforcer, "", 3)
         self.assertEqual([item["task_id"] for item in selected], ["todo-1"])
 
+    def test_task_executor_builds_bounded_stable_session_id(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        task_id = "todo-ops-workflow-repair-5797cd5b-5539-4e95-8d58--1655223be5"
+        session_id = module.build_task_session_id(task_id)
+
+        self.assertLessEqual(len(session_id), 48)
+        self.assertTrue(session_id.startswith("task-"))
+        self.assertIn("5797cd5", session_id)
+        self.assertRegex(session_id, r"-[0-9a-f]{10}$")
+        self.assertEqual(session_id, module.build_task_session_id(task_id))
+
     def test_task_executor_quiet_when_no_failures(self):
         module = load_module(
             "task_executor_runner",
@@ -320,16 +335,16 @@ class CronQuietModeTests(unittest.TestCase):
   "primary_model": "openai-codex/gpt-5.4",
   "allowed_models": [
     "openai-codex/gpt-5.4",
-    "openai-codex/gpt-5.3-codex-spark",
+    "openai-codex/gpt-5.3-codex",
     "glmcode/glm-4.7"
   ],
   "agent_model_overrides": {
-    "optimization-agent": "openai-codex/gpt-5.3-codex-spark",
+    "optimization-agent": "openai-codex/gpt-5.3-codex",
     "ops-agent": "glmcode/glm-4.7"
   },
   "model_thinking_overrides": {
     "openai-codex/gpt-5.4": "xhigh",
-    "openai-codex/gpt-5.3-codex-spark": "xhigh",
+    "openai-codex/gpt-5.3-codex": "xhigh",
     "glmcode/glm-4.7": "high"
   }
 }
@@ -348,7 +363,7 @@ class CronQuietModeTests(unittest.TestCase):
                 policy_path,
             )
 
-        self.assertEqual(model_name, "openai-codex/gpt-5.3-codex-spark")
+        self.assertEqual(model_name, "openai-codex/gpt-5.3-codex")
         self.assertEqual(model_source, "policy-agent:optimization-agent")
         self.assertEqual(thinking, "xhigh")
         self.assertEqual(ops_model, "glmcode/glm-4.7")
@@ -705,7 +720,8 @@ class CronQuietModeTests(unittest.TestCase):
         )
         message = jobs[0]["payload"]["message"]
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
-        self.assertIn("Do not run any follow-up command", message)
+        self.assertIn("Command still running", message)
+        self.assertIn("process poll or process log", message)
         self.assertIn("Never output sentences like 'Let's run ...'", message)
 
     def test_project_index_job_defaults_to_silent_delivery(self):
@@ -736,7 +752,8 @@ class CronQuietModeTests(unittest.TestCase):
         )
         message = module.build_message("python3 /tmp/reviewer_cron_runner.py --mode daily_incremental")
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
-        self.assertIn("Do not run any follow-up command", message)
+        self.assertIn("Command still running", message)
+        self.assertIn("process poll or process log", message)
         self.assertIn("Never output sentences like 'Let's run ...'", message)
 
     def test_reviewer_jobs_default_to_silent_delivery(self):
@@ -791,6 +808,8 @@ class CronQuietModeTests(unittest.TestCase):
             notify_on="error",
         )
         self.assertIn("--notify-on error", message)
+        self.assertIn("Command still running", message)
+        self.assertIn("process poll or process log", message)
         self.assertNotIn("--emit-json", message)
 
     def test_cron_setup_hardens_project_index_without_git_pull(self):
@@ -817,6 +836,29 @@ class CronQuietModeTests(unittest.TestCase):
         )
         message = module.build_message("python3 /tmp/demo.py")
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
+        self.assertIn("Command still running", message)
+        self.assertIn("process poll or process log", message)
+
+    def test_ops_cron_runner_invoke_policy_enforcer_retries_database_locked(self):
+        module = load_module(
+            "ops_cron_runner",
+            "scripts/openclaw-ops/ops_cron_runner.py",
+        )
+
+        runs = [
+            SimpleNamespace(returncode=1, stdout="", stderr="sqlite3.OperationalError: database is locked"),
+            SimpleNamespace(returncode=0, stdout='{"ok": true, "log": {"id": 1}}', stderr=""),
+        ]
+
+        with mock.patch.object(module.subprocess, "run", side_effect=runs) as run_mock:
+            with mock.patch.object(module.time, "sleep") as sleep_mock:
+                ok, payload, err = module.invoke_policy_enforcer(Path("/tmp/task_center.db"), ["log-module"], timeout=25)
+
+        self.assertTrue(ok)
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(err, "")
+        self.assertEqual(run_mock.call_count, 2)
+        sleep_mock.assert_called_once()
 
     def test_install_workflow_profile_task_executor_cmd_pins_error_only_notify(self):
         module = load_module(
