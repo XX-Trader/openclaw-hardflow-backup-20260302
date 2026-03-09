@@ -9,7 +9,9 @@ import os
 import re
 import subprocess
 import sys
+import urllib.parse
 from datetime import datetime, timedelta, timezone
+from html import unescape
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +70,26 @@ SIGNAL_RULES = [
         "project_action": "更新请求/响应模型与契约测试用例。",
     },
 ]
+HTTP_METHOD_RE = r"(?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)"
+INTERFACE_RE = re.compile(
+    rf"(?i)\b({HTTP_METHOD_RE})\s+((?:https?://[^\s`\"'<>]+)|(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*[A-Za-z0-9_/#-]))"
+)
+HIGHLIGHT_KEYWORDS = (
+    "new",
+    "added",
+    "新增",
+    "更新",
+    "update",
+    "changed",
+    "deprecated",
+    "breaking",
+    "endpoint",
+    "接口",
+    "parameter",
+    "response",
+    "schema",
+    "field",
+)
 
 
 def should_quiet(log_mode: str, notify_on: str, changed_count: int) -> bool:
@@ -211,6 +233,204 @@ def compact(text: str, max_len: int = 180) -> str:
     if len(one_line) <= max_len:
         return one_line
     return one_line[: max_len - 3].rstrip() + "..."
+
+
+def normalize_doc_text(content: str) -> str:
+    text = str(content or "")
+    if "<" not in text and ">" not in text:
+        lines = [re.sub(r"\s+", " ", line).strip() for line in text.replace("\r", "\n").split("\n")]
+        return "\n".join(line for line in lines if line)
+    text = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", text)
+    text = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", text)
+    text = re.sub(r"(?is)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?is)</(?:p|div|section|article|li|tr|td|th|pre|code|ul|ol|h[1-6])>", "\n", text)
+    text = re.sub(r"(?is)<[^>]+>", " ", text)
+    text = unescape(text)
+    lines = [re.sub(r"\s+", " ", line).strip() for line in text.replace("\r", "\n").split("\n")]
+    return "\n".join(line for line in lines if line)
+
+
+def split_doc_units(text: str) -> list[str]:
+    normalized = normalize_doc_text(text)
+    raw_lines = [line.strip() for line in normalized.splitlines() if line.strip()]
+    units = raw_lines if len(raw_lines) > 1 else [part.strip() for part in re.split(r"(?<=[。.!?;；])\s+", normalized) if part.strip()]
+    out: list[str] = []
+    seen: set[str] = set()
+    for unit in units:
+        cleaned = re.sub(r"\s+", " ", unit).strip(" -\t")
+        if len(cleaned) < 8:
+            continue
+        key = cleaned.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(cleaned)
+    return out
+
+
+def score_highlight(unit: str) -> tuple[int, int]:
+    lower = unit.casefold()
+    score = 0
+    if any(keyword in lower for keyword in HIGHLIGHT_KEYWORDS):
+        score += 3
+    if INTERFACE_RE.search(unit):
+        score += 4
+    if any(ch.isdigit() for ch in unit):
+        score += 1
+    if 16 <= len(unit) <= 180:
+        score += 1
+    return score, -len(unit)
+
+
+def extract_new_information(previous_text: str, current_text: str, limit: int = 4) -> list[str]:
+    previous_units = {unit.casefold() for unit in split_doc_units(previous_text)}
+    candidates = [unit for unit in split_doc_units(current_text) if unit.casefold() not in previous_units]
+    ranked = sorted(candidates, key=score_highlight, reverse=True)
+    return ranked[: max(1, int(limit))]
+
+
+def normalize_interface(method: str, target: str) -> str:
+    value = str(target or "").strip().rstrip(".,;:)]}>")
+    if value.lower().startswith(("http://", "https://")):
+        parsed = urllib.parse.urlparse(value)
+        path = parsed.path or "/"
+        if parsed.query:
+            path = f"{path}?{parsed.query}"
+        value = path
+    if value != "/" and value.endswith("/"):
+        value = value[:-1]
+    return f"{str(method or '').upper()} {value}"
+
+
+def extract_interfaces_from_unit(unit: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in INTERFACE_RE.finditer(str(unit or "")):
+        interface = normalize_interface(match.group(1), match.group(2))
+        if interface in seen:
+            continue
+        seen.add(interface)
+        out.append(interface)
+    return out
+
+
+def build_interface_context_map(text: str, max_context_units: int = 6) -> dict[str, list[str]]:
+    contexts: dict[str, list[str]] = {}
+    active_interfaces: list[str] = []
+    for unit in split_doc_units(text):
+        interfaces = extract_interfaces_from_unit(unit)
+        if interfaces:
+            active_interfaces = interfaces
+            for interface in interfaces:
+                bucket = contexts.setdefault(interface, [])
+                if unit not in bucket and len(bucket) < max_context_units:
+                    bucket.append(unit)
+            continue
+        if not active_interfaces:
+            continue
+        for interface in active_interfaces:
+            bucket = contexts.setdefault(interface, [])
+            if unit not in bucket and len(bucket) < max_context_units:
+                bucket.append(unit)
+    return contexts
+
+
+def extract_interface_changes(previous_text: str, current_text: str, limit: int = 8) -> list[dict[str, str]]:
+    previous_map = build_interface_context_map(previous_text)
+    current_map = build_interface_context_map(current_text)
+    previous_keys = set(previous_map)
+    current_keys = set(current_map)
+    changes: list[dict[str, str]] = []
+
+    for interface in sorted(current_keys - previous_keys):
+        detail = next((unit for unit in current_map.get(interface, []) if unit != interface), "") or interface
+        changes.append({"change_type": "新增接口", "interface": interface, "detail": compact(detail, 160)})
+    for interface in sorted(previous_keys - current_keys):
+        detail = next((unit for unit in previous_map.get(interface, []) if unit != interface), "") or interface
+        changes.append({"change_type": "移除接口", "interface": interface, "detail": compact(detail, 160)})
+    for interface in sorted(previous_keys & current_keys):
+        previous_block = "\n".join(previous_map.get(interface, []))
+        current_block = "\n".join(current_map.get(interface, []))
+        if previous_block.casefold() == current_block.casefold():
+            continue
+        detail = extract_new_information(previous_block, current_block, limit=1)
+        changes.append(
+            {
+                "change_type": "接口说明更新",
+                "interface": interface,
+                "detail": compact(detail[0] if detail else current_block, 160),
+            }
+        )
+    return changes[: max(1, int(limit))]
+
+
+def analyze_content_change(previous_text: str, current_text: str, mode: str) -> dict[str, Any]:
+    new_information = extract_new_information(previous_text, current_text, limit=4)
+    updated_interfaces = extract_interface_changes(previous_text, current_text, limit=8)
+    return {
+        "new_information": new_information,
+        "updated_interfaces": updated_interfaces,
+    }
+
+
+def render_review_item_summary(item: dict[str, Any]) -> list[str]:
+    lines = [
+        f"## {item.get('id')}: {compact(str(item.get('title', '')), 120)}",
+        f"- url: {item.get('url')}",
+        f"- parsed_file: {item.get('parsed_file')}",
+    ]
+    signals = item.get("signals") or []
+    if isinstance(signals, list):
+        for signal in signals[:3]:
+            if not isinstance(signal, dict):
+                continue
+            lines.append(f"- {compact(str(signal.get('signal', '')), 80)}: {compact(str(signal.get('action', '')), 180)}")
+    new_information = item.get("new_information") or []
+    if isinstance(new_information, list) and new_information:
+        lines.append("- 新增信息:")
+        for info in new_information[:3]:
+            lines.append(f"  - {compact(str(info), 180)}")
+    updated_interfaces = item.get("updated_interfaces") or []
+    if isinstance(updated_interfaces, list) and updated_interfaces:
+        lines.append("- 接口更新:")
+        for change in updated_interfaces[:5]:
+            if not isinstance(change, dict):
+                continue
+            detail = compact(str(change.get("detail", "")).strip(), 120)
+            base = f"  - {str(change.get('change_type', '')).strip()}: {str(change.get('interface', '')).strip()}"
+            lines.append(f"{base} | {detail}" if detail else base)
+    lines.append("")
+    return lines
+
+
+def load_text_file(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8-sig", errors="replace")
+    except Exception:
+        return ""
+
+
+def resolve_previous_raw_file(current_raw_file: str) -> str:
+    raw_path = Path(str(current_raw_file or "")).expanduser()
+    if not raw_path.exists() or not raw_path.is_file():
+        return ""
+    try:
+        current_resolved = raw_path.resolve()
+    except Exception:
+        current_resolved = raw_path
+    candidates = sorted(path for path in raw_path.parent.glob("*.txt") if path.is_file())
+    previous_candidates: list[Path] = []
+    for candidate in candidates:
+        try:
+            candidate_resolved = candidate.resolve()
+        except Exception:
+            candidate_resolved = candidate
+        if candidate_resolved == current_resolved:
+            continue
+        previous_candidates.append(candidate)
+    earlier = [path for path in previous_candidates if path.name < raw_path.name]
+    target = earlier[-1] if earlier else (previous_candidates[-1] if previous_candidates else None)
+    return str(target) if target is not None else ""
 
 
 def humanize_review_error(error_text: str) -> tuple[str, str]:
@@ -422,6 +642,19 @@ def create_review_follow_up_tasks(
                 signal_lines.append(f"- {signal_name}: {signal_action}")
         if not signal_lines:
             signal_lines.append("- 常规更新: 请根据文档变化给出最小可执行方案")
+        change_lines: list[str] = []
+        new_information = item.get("new_information") or []
+        if isinstance(new_information, list):
+            for info in new_information[:3]:
+                change_lines.append(f"- 新增信息: {compact(str(info), 180)}")
+        updated_interfaces = item.get("updated_interfaces") or []
+        if isinstance(updated_interfaces, list):
+            for change in updated_interfaces[:5]:
+                if not isinstance(change, dict):
+                    continue
+                change_lines.append(
+                    f"- 接口更新: {compact(str(change.get('change_type', '')), 40)} {compact(str(change.get('interface', '')), 120)}"
+                )
 
         requirement = "\n".join(
             [
@@ -434,6 +667,7 @@ def create_review_follow_up_tasks(
                 "",
                 "检测到的信号与动作建议:",
                 *signal_lines,
+                *(["", "结构化变化摘录:", *change_lines] if change_lines else []),
                 "",
                 "要求：",
                 "1. 先读取证据文件与当前实现，确认变更影响面。",
@@ -658,6 +892,11 @@ def main() -> None:
         sid = str(entry.get("id", "")).strip()
         fp = str(entry.get("fingerprint", "")).strip()
         text = str(entry.get("text_excerpt", "") or "")
+        raw_file = str(entry.get("raw_file", "")).strip()
+        previous_raw_file = resolve_previous_raw_file(raw_file)
+        current_text = normalize_doc_text(load_text_file(Path(raw_file))) if raw_file else normalize_doc_text(text)
+        previous_text = normalize_doc_text(load_text_file(Path(previous_raw_file))) if previous_raw_file else ""
+        change_details = analyze_content_change(previous_text, current_text, mode)
         signals = detect_signals(text, mode)
         review_items.append(
             {
@@ -668,7 +907,11 @@ def main() -> None:
                 "category": str(entry.get("category", "")).strip(),
                 "tags": list(entry.get("tags") or []),
                 "parsed_file": str(entry.get("_file", "")),
+                "raw_file": raw_file,
+                "previous_raw_file": previous_raw_file,
                 "signals": signals,
+                "new_information": change_details.get("new_information", []),
+                "updated_interfaces": change_details.get("updated_interfaces", []),
                 "fetched_at": str(entry.get("fetched_at", "")),
             }
         )
@@ -728,18 +971,7 @@ def main() -> None:
         "",
     ]
     for item in review_items[:24]:
-        summary_lines.append(f"## {item.get('id')}: {compact(str(item.get('title', '')), 120)}")
-        summary_lines.append(f"- url: {item.get('url')}")
-        summary_lines.append(f"- parsed_file: {item.get('parsed_file')}")
-        signals = item.get("signals") or []
-        if isinstance(signals, list):
-            for signal in signals[:3]:
-                if not isinstance(signal, dict):
-                    continue
-                summary_lines.append(
-                    f"- {compact(str(signal.get('signal', '')), 80)}: {compact(str(signal.get('action', '')), 180)}"
-                )
-        summary_lines.append("")
+        summary_lines.extend(render_review_item_summary(item))
     save_text(summary_file, "\n".join(summary_lines).strip() + "\n")
 
     started_at = now_iso()
