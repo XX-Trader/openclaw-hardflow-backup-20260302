@@ -31,7 +31,7 @@ Env:
   DRY_RUN=1                                     # optional
 
 Default servers:
-  pm-website 大白pm nofx coingod tokyo-claw hangqing-zhongxin
+  pm-website 大白pm nofx coingod tokyo-claw
 EOF
 }
 
@@ -53,7 +53,7 @@ DRY_RUN="${DRY_RUN:-0}"
 if [[ "$#" -gt 0 ]]; then
   SERVERS=("$@")
 else
-  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw" "hangqing-zhongxin")
+  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw")
 fi
 
 LOCAL_PATROL="${SCRIPT_DIR}/todo_patrol.py"
@@ -117,4 +117,3 @@ echo "[sync] done ok=${ok_count} fail=${fail_count}"
 if [[ "${fail_count}" -gt 0 ]]; then
   exit 2
 fi
-

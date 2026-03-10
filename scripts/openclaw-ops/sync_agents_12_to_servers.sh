@@ -25,7 +25,7 @@ DRY_RUN="${DRY_RUN:-0}"
 if (( $# > 0 )); then
   SERVERS=("$@")
 else
-  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "hangqing-zhongxin" "tokyo-claw")
+  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw")
 fi
 
 REMOTE_UPDATE_SCRIPT="$(cat <<'PY'

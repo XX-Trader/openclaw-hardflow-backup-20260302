@@ -108,19 +108,6 @@
           }
         }
       },
-      "memorySearch": {
-        "enabled": true,
-        "provider": "openai",
-        "remote": {
-          "baseUrl": "https://openrouter.ai/api/v1",
-          "apiKey": "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"
-        },
-        "fallback": "none",
-        "model": "baai/bge-m3",
-        "sync": {
-          "watch": true
-        }
-      },
       "compaction": {
         "mode": "safeguard"
       },
@@ -363,7 +350,6 @@
         "nativeSkills": false
       },
       "dmPolicy": "pairing",
-      "botToken": "8514601368:AAE6NsWDUeSkPK641NDUiu0ymHMiuYMG-eI",
       "groups": {
         "*": {
           "requireMention": false

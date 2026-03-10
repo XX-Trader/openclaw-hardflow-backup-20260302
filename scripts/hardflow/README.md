@@ -118,9 +118,8 @@ bash scripts/hardflow/hardflow-run.sh score-report --format text
 7. `.workflow/task.json`
 8. `.workflow/progress.txt`
 
-## 8. 经验进化维护（新增）
+## 8. 记忆说明
 
-1. 主文档：`scripts/hardflow/EXPERIENCE_EVOLUTION.md`
-2. 维护脚本：`scripts/hardflow/experience-maintain.mjs`
-3. cron 运行器：`scripts/hardflow/experience-maintain-cron.sh`
-4. 自测：`node --experimental-strip-types scripts/hardflow/hook-selftest.mjs --hooks-dir .claude/hardflow/hooks --workspace .workflow/tmp-hook-selftest`
+当前工作流不再内置自定义 experience/recall/evolve 记忆链路，也不再覆盖 `memorySearch` 配置。
+运行时统一回退到 OpenClaw 官方默认的 `memory-core` / `session-memory` 能力。
+自测命令：`node --experimental-strip-types scripts/hardflow/hook-selftest.mjs --hooks-dir .claude/hardflow/hooks --workspace .workflow/tmp-hook-selftest`

@@ -18,7 +18,7 @@ fi
 if (( $# > 0 )); then
   SERVERS=("$@")
 else
-  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw" "hangqing-zhongxin")
+  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw")
 fi
 
 RESTART_GATEWAY="${RESTART_GATEWAY:-0}"

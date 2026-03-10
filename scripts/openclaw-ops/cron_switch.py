@@ -29,7 +29,6 @@ MANAGED_NAME_PREFIXES = (
     "reviewer_",
     "project_index_maintainer",
     "todo_patrol",
-    "experience_maintain",
     "daily_todo_digest",
     "log-watcher",
 )

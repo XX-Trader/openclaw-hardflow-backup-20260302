@@ -1581,14 +1581,14 @@ def main() -> int:
                 )
                 install_conversation_evolution_job = prompt_yes_no(
                     "Install conversation evolution incremental job",
-                    default=install_conversation_evolution_job or True,
+                    default=install_conversation_evolution_job,
                 )
                 install_governance_evolution_job = prompt_yes_no(
                     "Install governance evolution incremental job", default=install_governance_evolution_job or True
                 )
                 install_github_web_evolution_job = prompt_yes_no(
                     "Install GitHub web evolution incremental job",
-                    default=install_github_web_evolution_job or True,
+                    default=install_github_web_evolution_job,
                 )
                 args.cron_incremental_log_mode = normalize_log_mode(
                     prompt_text("Incremental log mode (silent/chat)", args.cron_incremental_log_mode or "silent"),

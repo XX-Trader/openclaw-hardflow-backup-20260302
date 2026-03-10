@@ -1,5 +1,5 @@
 ﻿param(
-    [string[]]$Servers = @("pm-website", "大白pm", "nofx", "coingod", "tokyo-claw", "hangqing-zhongxin"),
+    [string[]]$Servers = @("pm-website", "大白pm", "nofx", "coingod", "tokyo-claw"),
     [string]$SshConfig = "D:\学习资料\ssh_keys\ssh_config",
     [string]$PrimaryModel = "kimicode/Doubao-Seed-2.0-Code",
     [string]$FallbackModel = "glmcode/glm-5",

@@ -271,18 +271,13 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
         ensure_minimum("github_web_evolution_every_ms", int(baseline["github_every_ms"]))
 
         governance_ready = governance_ready_for_install()
-        conversation_ready = Path(str(args.conversation_evolution_py)).expanduser().is_file() and Path(
-            str(args.conversation_evolution_openclaw_home)
-        ).expanduser().is_dir()
         enable_flag(
             "install_governance_evolution_job",
             when=governance_ready,
             reason="install_governance_evolution_job skipped: project-registry/repo-path missing",
         )
-        enable_flag(
-            "install_conversation_evolution_job",
-            when=conversation_ready,
-            reason="install_conversation_evolution_job skipped: openclaw-home missing",
+        skipped.append(
+            "install_conversation_evolution_job skipped by policy: third-party memory mode keeps conversation evolution off by default"
         )
         enable_flag(
             "install_self_evolution_job",
@@ -309,26 +304,16 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
         ensure_minimum("github_web_evolution_every_ms", int(baseline["github_every_ms"]))
 
         governance_ready = governance_ready_for_install()
-        conversation_ready = Path(str(args.conversation_evolution_py)).expanduser().is_file() and Path(
-            str(args.conversation_evolution_openclaw_home)
-        ).expanduser().is_dir()
-        github_ready = Path(str(args.github_web_evolution_py)).expanduser().is_file() and Path(
-            str(args.github_web_evolution_openclaw_home)
-        ).expanduser().is_dir()
         enable_flag(
             "install_governance_evolution_job",
             when=governance_ready,
             reason="install_governance_evolution_job skipped: project-registry/repo-path missing",
         )
-        enable_flag(
-            "install_conversation_evolution_job",
-            when=conversation_ready,
-            reason="install_conversation_evolution_job skipped: openclaw-home missing",
+        skipped.append(
+            "install_conversation_evolution_job skipped by policy: third-party memory mode keeps conversation evolution off by default"
         )
-        enable_flag(
-            "install_github_web_evolution_job",
-            when=github_ready,
-            reason="install_github_web_evolution_job skipped: openclaw-home missing",
+        skipped.append(
+            "install_github_web_evolution_job not auto-enabled by profile: pass --install-github-web-evolution-job when you explicitly need external knowledge evolution"
         )
         enable_flag(
             "install_self_evolution_job",
@@ -645,33 +630,6 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
             ),
             "timeout": 1200,
         },
-        "experience_maintain_daily": {
-            "description": "Hardflow experience maintenance (daily, stable python runner)",
-            "command": (
-                f"python3 {ops_dir / 'experience_maintain.py'} "
-                f"--mode daily --workspace {workspace_dir} "
-                "--task-id cron:experience-maintain-daily --normal-log-mode silent"
-            ),
-            "timeout": 1200,
-        },
-        "experience_maintain_weekly": {
-            "description": "Hardflow experience maintenance (weekly, stable python runner)",
-            "command": (
-                f"python3 {ops_dir / 'experience_maintain.py'} "
-                f"--mode weekly --workspace {workspace_dir} "
-                "--task-id cron:experience-maintain-weekly --normal-log-mode silent"
-            ),
-            "timeout": 1200,
-        },
-        "experience_maintain_monthly": {
-            "description": "Hardflow experience maintenance (monthly, stable python runner)",
-            "command": (
-                f"python3 {ops_dir / 'experience_maintain.py'} "
-                f"--mode monthly --workspace {workspace_dir} "
-                "--task-id cron:experience-maintain-monthly --normal-log-mode silent"
-            ),
-            "timeout": 1200,
-        },
         "project_index_maintainer_30m": {
             "description": "Project index maintainer (stable python runner, compact failure output)",
             "command": (
@@ -679,7 +637,7 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
                 f"--registry {ops_dir / 'task-center' / 'project-registry.json'} "
                 f"--task-db {ops_dir / 'task-center' / 'task_center.db'} "
                 "--task-id cron:project-index-maintainer-30m --actor project-agent "
-                "--doc-timeout 8 --doc-fetch-max-chars 24000"
+                "--doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change"
             ),
             "timeout": 1800,
         },

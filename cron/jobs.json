@@ -140,7 +140,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/policy/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --task-db $HOME/.openclaw/ops/task-center/task_center.db --task-id cron:project-index-maintainer-30m --actor project-agent --git-pull --doc-timeout 8 --doc-fetch-max-chars 24000\nReply only command output; if output is empty, reply NO_REPLY.",
+        "message": "You are scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/policy/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --task-db $HOME/.openclaw/ops/task-center/task_center.db --task-id cron:project-index-maintainer-30m --actor project-agent --git-pull --doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change\nReply only command output; if output is empty, reply NO_REPLY.",
         "timeoutSeconds": 1800
       },
       "delivery": {
@@ -227,93 +227,6 @@
       },
       "state": {
         "nextRunAtMs": 1772467200000
-      }
-    },
-    {
-      "id": "e943eaf3-9049-4429-b71d-12b2dbe29178",
-      "agentId": "optimization-agent",
-      "name": "experience_maintain_daily",
-      "description": "Hardflow experience maintenance (daily)",
-      "enabled": false,
-      "createdAtMs": 1772438672175,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "15 1 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 optimization-agent 经验维护任务（日）。仅用命令执行：bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh daily。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
-        "timeoutSeconds": 1200
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "nextRunAtMs": 1772471700000
-      }
-    },
-    {
-      "id": "270256a7-d119-41d0-b923-42f8dd4faf73",
-      "agentId": "optimization-agent",
-      "name": "experience_maintain_monthly",
-      "description": "Hardflow experience maintenance (monthly)",
-      "enabled": false,
-      "createdAtMs": 1772438672175,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "45 1 1 * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 optimization-agent 经验维护任务（月）。仅用命令执行：bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh monthly。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
-        "timeoutSeconds": 1200
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "nextRunAtMs": 1774979100000
-      }
-    },
-    {
-      "id": "a5057f0a-3734-44c7-8844-f82d72aacd12",
-      "agentId": "optimization-agent",
-      "name": "experience_maintain_weekly",
-      "description": "Hardflow experience maintenance (weekly)",
-      "enabled": false,
-      "createdAtMs": 1772438672175,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "30 1 * * 1",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 optimization-agent 经验维护任务（周）。仅用命令执行：bash $HOME/.openclaw/hardflow-hooks/tools/experience-maintain-cron.sh weekly。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
-        "timeoutSeconds": 1200
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "nextRunAtMs": 1772991000000
       }
     },
     {

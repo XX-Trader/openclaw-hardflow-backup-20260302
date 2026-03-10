@@ -1,5 +1,5 @@
 param(
-    [string[]]$Servers = @("pm-website", "大白pm", "nofx", "coingod", "tokyo-claw", "hangqing-zhongxin"),
+    [string[]]$Servers = @("pm-website", "大白pm", "nofx", "coingod", "tokyo-claw"),
     [string]$SshConfig = "D:\学习资料\ssh_keys\ssh_config",
     [int]$EveryMs = 900000,
     [string]$DeliveryTo = "",
@@ -94,4 +94,3 @@ if ($failed.Count -gt 0) {
     Write-Host "[sync] failed servers: $($failed -join ', ')" -ForegroundColor Yellow
     exit 2
 }
-

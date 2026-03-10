@@ -951,7 +951,6 @@ async function writeOutputs({
   historyFile,
   latestFile,
   sopFile,
-  memoryFile,
   dryRun,
 }) {
   if (dryRun) {
@@ -969,20 +968,6 @@ async function writeOutputs({
     hotspots: report.hotspots.slice(0, 5),
   })}\n`, "utf8");
   await writeFile(sopFile, buildSopDoc(report), "utf8");
-
-  await mkdir(path.dirname(memoryFile), { recursive: true });
-  const summary = [
-    "",
-    `## Process Optimization ${report.generatedAt}`,
-    `- mode: ${report.mode}`,
-    `- process_score: ${report.summary.processScore}`,
-    `- health: ${report.summary.health}`,
-    `- checks(pass/warn/fail): ${report.summary.passChecks}/${report.summary.warnChecks}/${report.summary.failChecks}`,
-    `- recent_runs: ${report.summary.recentRuns}`,
-    `- failed_issues: ${report.summary.failedIssues}`,
-    `- top_hotspots: ${report.hotspots.slice(0, 3).map((x) => `${x.stage}(${x.count})`).join(", ") || "none"}`,
-  ].join("\n");
-  await appendFile(memoryFile, `${summary}\n`, "utf8");
 }
 
 async function run() {
@@ -1036,7 +1021,6 @@ async function run() {
   const latestFile = path.join(outDir, "latest-report.json");
   const historyFile = path.join(outDir, "history.ndjson");
   const sopFile = path.join(outDir, "SOP_PROCESS_OPTIMIZATION.md");
-  const memoryFile = path.join(workspace, "memory", `${generatedAt.slice(0, 10)}.md`);
 
   const history = await loadHistory(historyFile);
   const previous = history.length > 0 ? history[history.length - 1] : null;
@@ -1095,7 +1079,6 @@ async function run() {
     historyFile,
     latestFile,
     sopFile,
-    memoryFile,
     dryRun,
   });
 

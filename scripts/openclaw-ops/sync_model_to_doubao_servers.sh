@@ -19,7 +19,7 @@ fi
 if (( $# > 0 )); then
   SERVERS=("$@")
 else
-  SERVERS=("pm-website" "澶х櫧pm" "nofx" "coingod" "tokyo-claw" "hangqing-zhongxin")
+  SERVERS=("pm-website" "澶х櫧pm" "nofx" "coingod" "tokyo-claw")
 fi
 
 DRY_RUN="${DRY_RUN:-0}"

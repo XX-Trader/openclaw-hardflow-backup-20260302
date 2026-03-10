@@ -91,6 +91,7 @@ def build_runner_command(
     task_id: str,
     actor: str,
     git_pull: bool,
+    disable_memory_index_on_change: bool,
 ) -> str:
     command = (
         f"python3 {maintainer_py} --registry {registry} "
@@ -99,6 +100,8 @@ def build_runner_command(
     )
     if bool(git_pull):
         command += " --git-pull"
+    if bool(disable_memory_index_on_change):
+        command += " --disable-memory-index-on-change"
     return command
 
 
@@ -129,6 +132,7 @@ def upsert_job(
     task_id: str,
     actor: str,
     git_pull: bool,
+    disable_memory_index_on_change: bool,
     channel: str,
     target: str,
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -163,7 +167,15 @@ def upsert_job(
         "payload": {
             "kind": "agentTurn",
             "message": build_message(
-                build_runner_command(maintainer_py, registry, task_db, task_id, actor, git_pull)
+                build_runner_command(
+                    maintainer_py,
+                    registry,
+                    task_db,
+                    task_id,
+                    actor,
+                    git_pull,
+                    disable_memory_index_on_change,
+                )
             ),
             "timeoutSeconds": 1800,
         },
@@ -198,6 +210,7 @@ def main() -> None:
     parser.add_argument("--task-id", default="cron:project-index-maintainer-30m")
     parser.add_argument("--actor", default="project-agent")
     parser.add_argument("--git-pull", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--disable-memory-index-on-change", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--skip-path-check", action="store_true")
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
@@ -247,6 +260,7 @@ def main() -> None:
         task_id=task_id,
         actor=actor,
         git_pull=bool(args.git_pull),
+        disable_memory_index_on_change=bool(args.disable_memory_index_on_change),
         channel=channel,
         target=target,
     )

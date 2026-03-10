@@ -180,9 +180,10 @@ python scripts/openclaw-ops/verify_job_payload_paths.py \
 - 治理报告会输出增量变更统计（added/modified/deleted/renamed）用于更精准自我进化。
 
 ## 8. Conversation Evolution（2026-03-03）
-- 新增 job：`ops_conversation_evolution_incremental`（agent: `ops-agent`）。
+- 可选 job：`ops_conversation_evolution_incremental`（agent: `ops-agent`）。
 - 用途：定时扫描近期对话/会话/记忆记录，识别 bug/流程问题/未闭环项/优化机会，打包 TODO。
 - 该通道只产出任务包，不直接执行高风险改动。
+- 在当前“三方记忆插件 / 官方默认记忆”模式下，该任务默认不自动安装；只有明确需要时才手工开启。
 
 `workflow_setup.py` / `cron_setup.py` 相关参数：
 - `--cron-install-conversation-evolution-job`

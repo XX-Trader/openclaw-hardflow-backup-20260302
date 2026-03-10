@@ -56,9 +56,6 @@
 - `daily_todo_digest.py`
   - 每日 TODO/DONE 摘要（仅聊天输出，不做外部 webhook 推送）。
   - 用于替代历史 `workspace/scripts/daily_todo_digest.py` 的不稳定路径依赖。
-- `experience_maintain.py`
-  - 每日/每周/每月经验维护稳定执行器（纯 Python、无外部 Node 依赖）。
-  - 自动维护 `workspace/MEMORY.md` 与 `workspace/memory/YYYY-MM-DD.md`。
 - `self_evolution_todo.py`
   - 周度全量复盘历史任务/流程指标。
   - 只产出“建议与任务包”，禁止自动修改工作流与技能。

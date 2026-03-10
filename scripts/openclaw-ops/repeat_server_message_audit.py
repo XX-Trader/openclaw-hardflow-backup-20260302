@@ -20,7 +20,6 @@ DEFAULT_SERVERS = [
     "大白pm",
     "nofx",
     "coingod",
-    "hangqing-zhongxin",
     "tokyo-claw",
 ]
 DEFAULT_TOTAL_ROUNDS = 4
