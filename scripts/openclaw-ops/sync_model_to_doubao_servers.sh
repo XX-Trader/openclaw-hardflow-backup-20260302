@@ -24,6 +24,7 @@ fi
 
 DRY_RUN="${DRY_RUN:-0}"
 RESTART_GATEWAY="${RESTART_GATEWAY:-1}"
+LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/scripts/openclaw-ops/policy/gateway_service_manager.py"
 
 PRIMARY_MODEL="${PRIMARY_MODEL:-kimicode/Doubao-Seed-2.0-Code}"
 FALLBACK_MODEL="${FALLBACK_MODEL:-glmcode/glm-5}"
@@ -31,6 +32,13 @@ DOUBAO_PROVIDER="${DOUBAO_PROVIDER:-kimicode}"
 DOUBAO_MODEL_ID="${DOUBAO_MODEL_ID:-Doubao-Seed-2.0-Code}"
 DOUBAO_BASE_URL="${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/coding/v3}"
 DOUBAO_API_KEY="${DOUBAO_API_KEY:-82c9795c-30f3-47d8-9cfe-e2275c35b28e}"
+
+if [[ ! -f "${LOCAL_GATEWAY_SERVICE_MANAGER}" ]]; then
+  echo "[sync-model] gateway service manager missing: ${LOCAL_GATEWAY_SERVICE_MANAGER}" >&2
+  exit 1
+fi
+
+REMOTE_GATEWAY_MANAGER="$(cat "${LOCAL_GATEWAY_SERVICE_MANAGER}")"
 
 SSH_OPTS=(
   -F "${SSH_CFG}"
@@ -188,6 +196,13 @@ PY
 ok_count=0
 fail_count=0
 
+restart_gateway_remote() {
+  local server="$1"
+  ssh "${SSH_OPTS[@]}" "${server}" "python3 - --action restart --prefer system --emit-json >/dev/null <<'PY'
+${REMOTE_GATEWAY_MANAGER}
+PY"
+}
+
 for server in "${SERVERS[@]}"; do
   echo "=========="
   echo "[sync-model] server=${server}"
@@ -215,7 +230,7 @@ PY"; then
   fi
 
   if [[ "${DRY_RUN}" != "1" && "${RESTART_GATEWAY}" == "1" ]]; then
-    ssh "${SSH_OPTS[@]}" "${server}" "openclaw gateway restart >/dev/null 2>&1 || true"
+    restart_gateway_remote "${server}" || true
   fi
 
   ok_count=$((ok_count + 1))

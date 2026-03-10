@@ -656,6 +656,8 @@ class TaskCenter:
             "risk_level",
             "assignee",
             "status",
+            "retry_count",
+            "failure_count",
             "need_human_confirm",
             "human_confirmed",
             "needs_clarification",
@@ -709,6 +711,16 @@ class TaskCenter:
             updates["status"] = str(updates["status"]).strip().lower()
             if updates["status"] not in TASK_STATUSES:
                 raise TaskCenterError(f"invalid status: {updates['status']}")
+        if "retry_count" in updates:
+            try:
+                updates["retry_count"] = max(0, int(updates["retry_count"] or 0))
+            except (TypeError, ValueError) as exc:
+                raise TaskCenterError(f"invalid retry_count: {updates['retry_count']}") from exc
+        if "failure_count" in updates:
+            try:
+                updates["failure_count"] = max(0, int(updates["failure_count"] or 0))
+            except (TypeError, ValueError) as exc:
+                raise TaskCenterError(f"invalid failure_count: {updates['failure_count']}") from exc
         if "review_status" in updates:
             updates["review_status"] = normalize_review_status(updates["review_status"], default="unreviewed")
         if "review_mode" in updates:

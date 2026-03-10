@@ -7,6 +7,7 @@ LOCAL_HOOKS_DIR="${REPO_ROOT}/.claude/hardflow/hooks"
 LOCAL_PROCESS_OPTIMIZE_SCRIPT="${REPO_ROOT}/scripts/hardflow/process-optimize.mjs"
 LOCAL_PROCESS_OPTIMIZE_CRON="${REPO_ROOT}/scripts/hardflow/process-optimize-cron.sh"
 LOCAL_INSTALL_CRON_SCRIPT="${REPO_ROOT}/scripts/hardflow/remote-install-maintenance-cron.sh"
+LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/scripts/openclaw-ops/policy/gateway_service_manager.py"
 
 SSH_CONFIG=""
 for candidate in \
@@ -56,6 +57,19 @@ if [[ ! -d "${LOCAL_HOOKS_DIR}" ]]; then
   echo "[deploy] hooks dir not found: ${LOCAL_HOOKS_DIR}" >&2
   exit 1
 fi
+if [[ ! -f "${LOCAL_GATEWAY_SERVICE_MANAGER}" ]]; then
+  echo "[deploy] gateway service manager not found: ${LOCAL_GATEWAY_SERVICE_MANAGER}" >&2
+  exit 1
+fi
+
+REMOTE_GATEWAY_MANAGER="$(cat "${LOCAL_GATEWAY_SERVICE_MANAGER}")"
+
+restart_gateway_remote() {
+  local alias="$1"
+  "${SSH_BIN}" -F "${SSH_CONFIG}" "${alias}" "python3 - --action restart --prefer system --emit-json >/dev/null <<'PY'
+${REMOTE_GATEWAY_MANAGER}
+PY"
+}
 
 deploy_one() {
   local alias="$1"
@@ -78,7 +92,7 @@ deploy_one() {
   # 4) Verify hooks and runtime status.
   "${SSH_BIN}" -F "${SSH_CONFIG}" "${alias}" "openclaw hooks check || true"
   "${SSH_BIN}" -F "${SSH_CONFIG}" "${alias}" "openclaw hooks list | sed -n '1,200p' || true"
-  "${SSH_BIN}" -F "${SSH_CONFIG}" "${alias}" "openclaw gateway restart || true"
+  restart_gateway_remote "${alias}" || true
   "${SSH_BIN}" -F "${SSH_CONFIG}" "${alias}" "openclaw gateway health || true"
 }
 

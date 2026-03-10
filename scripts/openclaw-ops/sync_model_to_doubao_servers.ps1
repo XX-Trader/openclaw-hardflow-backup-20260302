@@ -17,6 +17,11 @@ $ErrorActionPreference = "Stop"
 if (!(Test-Path $SshConfig)) {
     throw "ssh_config not found: $SshConfig"
 }
+$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$localGatewayServiceManager = Join-Path $repoRoot "scripts\openclaw-ops\policy\gateway_service_manager.py"
+if (!(Test-Path $localGatewayServiceManager)) {
+    throw "missing gateway service manager: $localGatewayServiceManager"
+}
 
 $RemotePy = @'
 import json
@@ -160,7 +165,6 @@ if token_pricing.exists():
         else:
             print(f"PRICING_DRY_RUN_CHANGE={token_pricing}")
 '@
-
 function Invoke-Remote {
     param([string]$Server, [string]$Command)
     & ssh -F $SshConfig -o BatchMode=yes -o ConnectTimeout=12 -o StrictHostKeyChecking=accept-new $Server $Command
@@ -186,15 +190,17 @@ foreach ($server in $Servers) {
 
         $remoteDir = "$remoteHome/.openclaw/workspace-ops-agent/ops"
         $remoteScript = "$remoteDir/model_sync_remote.py"
+        $remoteGatewayManager = "$remoteDir/gateway_service_manager.py"
 
         Invoke-Remote -Server $server -Command "mkdir -p '$remoteDir'"
         Upload-File -Server $server -LocalPath $tmpScript -RemotePath $remoteScript
+        Upload-File -Server $server -LocalPath $localGatewayServiceManager -RemotePath $remoteGatewayManager
 
         $dryFlag = if ($DryRun) { "1" } else { "0" }
         Invoke-Remote -Server $server -Command "SYNC_PRIMARY_MODEL='$PrimaryModel' SYNC_FALLBACK_MODEL='$FallbackModel' SYNC_DOUBAO_PROVIDER='$DoubaoProvider' SYNC_DOUBAO_MODEL_ID='$DoubaoModelId' SYNC_DOUBAO_BASE_URL='$DoubaoBaseUrl' SYNC_DOUBAO_API_KEY='$DoubaoApiKey' SYNC_DRY_RUN='$dryFlag' python3 '$remoteScript'"
 
         if (!$DryRun -and $RestartGateway) {
-            Invoke-Remote -Server $server -Command "openclaw gateway restart >/dev/null 2>&1 || true"
+            Invoke-Remote -Server $server -Command "python3 '$remoteGatewayManager' --action restart --prefer system --emit-json >/dev/null"
         }
 
         $ok++

@@ -69,6 +69,7 @@ $opsFiles = @(
 )
 
 $policyFiles = @(
+    "scripts/openclaw-ops/policy/gateway_service_manager.py",
     "scripts/openclaw-ops/policy/io_write_gateway.py",
     "scripts/openclaw-ops/policy/policy-config.json",
     "scripts/openclaw-ops/policy/policy_enforcer.py",
@@ -311,7 +312,7 @@ foreach ($server in $Servers) {
                 Write-Warning "[sync-gpt54] validate-runtime failed on $server, continue"
             }
             if (-not $SkipGatewayRestart) {
-                Invoke-Ssh -Server $server -Command "openclaw gateway restart >/dev/null 2>&1 || true"
+                Invoke-Ssh -Server $server -Command "python3 '$remoteWorkspaceOpsPolicyDir/gateway_service_manager.py' --action restart --prefer system --emit-json >/dev/null"
             }
         }
 

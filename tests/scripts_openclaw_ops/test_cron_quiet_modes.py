@@ -1,3 +1,4 @@
+import json
 import contextlib
 import io
 import importlib.util
@@ -753,8 +754,10 @@ class CronQuietModeTests(unittest.TestCase):
             task_id="cron:project-index-maintainer-30m",
             actor="project-agent",
             git_pull=False,
+            disable_memory_index_on_change=True,
         )
         self.assertNotIn("--git-pull", command)
+        self.assertIn("--disable-memory-index-on-change", command)
 
     def test_project_index_job_prompt_requires_single_exec_call(self):
         module = load_module(
@@ -771,6 +774,7 @@ class CronQuietModeTests(unittest.TestCase):
             task_id="cron:project-index-maintainer-30m",
             actor="project-agent",
             git_pull=False,
+            disable_memory_index_on_change=True,
             channel="telegram",
             target="-1003333097130",
         )
@@ -795,6 +799,7 @@ class CronQuietModeTests(unittest.TestCase):
             task_id="cron:project-index-maintainer-30m",
             actor="project-agent",
             git_pull=False,
+            disable_memory_index_on_change=True,
             channel="telegram",
             target="-1003333097130",
         )
@@ -999,6 +1004,83 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--manifest /repo/scripts/openclaw-ops/runtime-required-skills.json", rendered)
         self.assertIn("--dry-run", rendered)
         self.assertIn("--emit-json", rendered)
+
+    def test_sync_overlay_config_preserves_local_telegram_bot_token(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            workflow_repo = root / "workflow-repo"
+            (workflow_repo / "openclaw").mkdir(parents=True, exist_ok=True)
+            (workflow_repo / "hooks").mkdir(parents=True, exist_ok=True)
+            (workflow_repo / "skills").mkdir(parents=True, exist_ok=True)
+            source = workflow_repo / "openclaw" / "openclaw.json"
+            target = root / "openclaw-home" / "openclaw.json"
+            target.parent.mkdir(parents=True, exist_ok=True)
+
+            source.write_text(
+                json.dumps(
+                    {
+                        "channels": {
+                            "telegram": {
+                                "enabled": True,
+                                "botToken": "repo-unified-token",
+                                "groupPolicy": "open",
+                            }
+                        },
+                        "plugins": {"entries": {"telegram": {"enabled": True}}},
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            target.write_text(
+                json.dumps(
+                    {
+                        "channels": {
+                            "telegram": {
+                                "enabled": True,
+                                "botToken": "local-server-token",
+                                "allowFrom": ["1309629117"],
+                            }
+                        }
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = module.sync_overlay_config(
+                source_path=str(source),
+                target_path=str(target),
+                vendor_runtime_root=str(root / "vendor"),
+                boundary_doc_path=str(root / "boundary.md"),
+                workflow_repo_path=str(workflow_repo),
+                dry_run=False,
+            )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(
+                result["merge_mode"],
+                "repo-overlay-wins-with-local-telegram-credentials",
+            )
+            self.assertIn(
+                "channels.telegram.botToken",
+                result.get("preserved_local_config_keys", []),
+            )
+
+            merged = json.loads(target.read_text(encoding="utf-8"))
+            telegram = merged["channels"]["telegram"]
+            self.assertEqual(telegram["botToken"], "local-server-token")
+            self.assertEqual(telegram["groupPolicy"], "open")
+            self.assertEqual(telegram["allowFrom"], ["1309629117"])
 
     def test_todo_patrol_job_defaults_to_silent_delivery(self):
         module = load_module(

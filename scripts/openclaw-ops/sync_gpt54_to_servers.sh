@@ -72,6 +72,7 @@ OPS_FILES=(
 )
 
 POLICY_FILES=(
+  "scripts/openclaw-ops/policy/gateway_service_manager.py"
   "scripts/openclaw-ops/policy/io_write_gateway.py"
   "scripts/openclaw-ops/policy/policy-config.json"
   "scripts/openclaw-ops/policy/policy_enforcer.py"
@@ -302,7 +303,7 @@ PY"
   if [[ "${DRY_RUN}" != "1" ]]; then
     ssh_run "${server}" "python3 '${remote_workspace_ops_policy_dir}/policy_enforcer.py' --db '${remote_task_db}' --policy-file '${remote_workspace_ops_policy_dir}/policy-config.json' --routing-file '${remote_workspace_ops_policy_dir}/routing-rules.json' --pricing-file '${remote_workspace_ops_policy_dir}/token-pricing.json' validate-runtime" || true
     if [[ "${RESTART_GATEWAY}" == "1" ]]; then
-      ssh_run "${server}" "openclaw gateway restart >/dev/null 2>&1 || true"
+      ssh_run "${server}" "python3 '${remote_workspace_ops_policy_dir}/gateway_service_manager.py' --action restart --prefer system --emit-json >/dev/null"
     fi
   fi
 

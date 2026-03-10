@@ -20,6 +20,13 @@ if [[ -z "${SSH_CONFIG}" || ! -f "${SSH_CONFIG}" ]]; then
   exit 1
 fi
 
+LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/scripts/openclaw-ops/policy/gateway_service_manager.py"
+if [[ ! -f "${LOCAL_GATEWAY_SERVICE_MANAGER}" ]]; then
+  echo "[sync-agents] gateway service manager missing: ${LOCAL_GATEWAY_SERVICE_MANAGER}" >&2
+  exit 1
+fi
+REMOTE_GATEWAY_MANAGER="$(cat "${LOCAL_GATEWAY_SERVICE_MANAGER}")"
+
 DRY_RUN="${DRY_RUN:-0}"
 
 if (( $# > 0 )); then
@@ -195,6 +202,13 @@ print("IDS", ",".join(ids))
 PY
 )"
 
+restart_gateway_remote() {
+  local server="$1"
+  ssh -F "${SSH_CONFIG}" "${server}" "python3 - --action restart --prefer system --emit-json >/dev/null <<'PY'
+${REMOTE_GATEWAY_MANAGER}
+PY"
+}
+
 for server in "${SERVERS[@]}"; do
   echo "[sync-agents] === ${server} ==="
 
@@ -208,7 +222,7 @@ ${REMOTE_UPDATE_SCRIPT}
 PY"
 
   if [[ "${DRY_RUN}" != "1" ]]; then
-    ssh -F "${SSH_CONFIG}" "${server}" "openclaw gateway restart >/dev/null 2>&1 || true"
+    restart_gateway_remote "${server}" || true
   fi
 
   ssh -F "${SSH_CONFIG}" "${server}" "python3 - <<'PY'

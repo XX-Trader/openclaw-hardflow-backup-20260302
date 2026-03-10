@@ -13,6 +13,7 @@ if (!(Test-Path $SshConfig)) {
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $localPolicyDir = Join-Path $repoRoot "scripts\openclaw-ops\policy"
 $localHooksDir = Join-Path $repoRoot "hooks"
+$localGatewayServiceManager = Join-Path $localPolicyDir "gateway_service_manager.py"
 if (!(Test-Path $localHooksDir)) {
     $fallbackHooksDir = Join-Path $repoRoot ".claude\hardflow\hooks"
     if (Test-Path $fallbackHooksDir) {
@@ -22,6 +23,7 @@ if (!(Test-Path $localHooksDir)) {
 
 if (!(Test-Path $localPolicyDir)) { throw "missing policy dir: $localPolicyDir" }
 if (!(Test-Path $localHooksDir)) { throw "missing hooks dir: $localHooksDir" }
+if (!(Test-Path $localGatewayServiceManager)) { throw "missing gateway service manager: $localGatewayServiceManager" }
 
 function Invoke-Remote {
     param([string]$Server, [string]$Command)
@@ -47,6 +49,7 @@ foreach ($server in $Servers) {
         $remoteHooksDir = "$remoteHome/.claude/hooks"
         $remoteDb = "$remoteHome/.openclaw/ops/task-center/task_center.db"
         $remoteOpsDir = "$remoteHome/.openclaw/ops"
+        $remoteGatewayManager = "$remotePolicyDir/gateway_service_manager.py"
 
         Invoke-Remote -Server $server -Command "mkdir -p '$remotePolicyDir' '$remoteHooksDir' '$remoteHome/.openclaw/ops/task-center' '$remoteOpsDir'"
 
@@ -70,7 +73,7 @@ foreach ($server in $Servers) {
         Invoke-Remote -Server $server -Command "python3 '$remotePolicyDir/policy_enforcer.py' --db '$remoteDb' --policy-file '$remotePolicyDir/policy-config.json' --routing-file '$remotePolicyDir/routing-rules.json' --pricing-file '$remotePolicyDir/token-pricing.json' validate-runtime"
 
         if ($RestartGateway) {
-            Invoke-Remote -Server $server -Command "openclaw gateway restart >/dev/null 2>&1 || true"
+            Invoke-Remote -Server $server -Command "python3 '$remoteGatewayManager' --action restart --prefer system --emit-json >/dev/null"
         }
 
         Invoke-Remote -Server $server -Command "openclaw hooks check --json | sed -n '1,80p'"

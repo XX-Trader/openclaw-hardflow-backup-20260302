@@ -1947,23 +1947,9 @@ def emit_policy_observability(args: argparse.Namespace, result: RunResult, run_f
     if not ok_comm and err_comm:
         policy_observability["errors"].append(err_comm)
 
-    report_task_ids: list[str] = []
-    seen_ids: set[str] = set()
-    if bound_task_id:
-        report_task_ids.append(bound_task_id)
-        seen_ids.add(bound_task_id)
-    context_gate = result.record.get("context_gate", {})
-    if isinstance(context_gate, dict):
-        items = context_gate.get("items", [])
-        if isinstance(items, list):
-            for item in items:
-                if not isinstance(item, dict):
-                    continue
-                task_id = str(item.get("task_id", "")).strip()
-                if not task_id or task_id in seen_ids:
-                    continue
-                report_task_ids.append(task_id)
-                seen_ids.add(task_id)
+    # Reviewer observability must never mutate project-agent context gate tasks.
+    # Those tasks stay pending until project-agent actually executes them.
+    report_task_ids: list[str] = [bound_task_id] if bound_task_id else []
 
     report_count = 0
     for task_id in report_task_ids:

@@ -41,6 +41,14 @@ RETRYABLE_AGENT_ERROR_PATTERNS = (
 )
 
 
+BENIGN_STDERR_PATTERNS = (
+    "loaded without install/load-path provenance",
+    "treat as untracked local code and pin trust via plugins.allow or install records",
+)
+GATEWAY_ACK_TIMEOUT_MS = 30_000
+GATEWAY_HISTORY_LIMIT = 200
+
+
 def now_iso() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat()
 
@@ -229,6 +237,45 @@ def normalize_contract(reply_text: str) -> dict[str, Any]:
     }
 
 
+def sanitize_agent_stderr(stderr_text: str) -> str:
+    lines = [line.strip() for line in str(stderr_text or "").splitlines() if line.strip()]
+    kept: list[str] = []
+    for line in lines:
+        lowered = line.lower()
+        if any(pattern in lowered for pattern in BENIGN_STDERR_PATTERNS):
+            continue
+        kept.append(line)
+    return "\n".join(kept).strip()
+
+
+def contract_from_agent_result(exit_code: int, stdout_text: str, stderr_text: str) -> tuple[dict[str, Any], dict[str, Any], str, str]:
+    agent_json = parse_json_output(stdout_text) or {}
+    payloads = agent_json.get("payloads", [])
+    reply_text = ""
+    if isinstance(payloads, list):
+        reply_text = "\n".join(str(x.get("text", "")).strip() for x in payloads if isinstance(x, dict) and str(x.get("text", "")).strip())
+    if not reply_text:
+        reply_text = str(stdout_text or "").strip()
+
+    sanitized_stderr = sanitize_agent_stderr(stderr_text)
+    if int(exit_code or 0) != 0 and (not reply_text):
+        reply_text = sanitized_stderr or str(stderr_text or "").strip()
+
+    contract = normalize_contract(reply_text)
+    if int(exit_code or 0) != 0:
+        contract["status"] = "failed"
+        contract["solved"] = False
+        contract["failure_count"] = max(1, int(contract.get("failure_count", 0)))
+    elif not reply_text:
+        contract["status"] = "failed"
+        contract["solved"] = False
+        contract["failure_count"] = max(1, int(contract.get("failure_count", 0)))
+        contract["resolution_summary"] = "agent_returned_no_structured_output"
+        contract["raw_text"] = sanitized_stderr
+
+    return contract, agent_json, reply_text, sanitized_stderr
+
+
 def default_stage(assignee: str) -> str:
     agent = str(assignee or "").strip().lower()
     if agent in {"coordinator", "project-agent", "agent-factory"}:
@@ -268,6 +315,43 @@ def build_task_session_id(task_id: str, max_len: int = 48) -> str:
     head = normalized[:head_budget].rstrip("-._") or "task"
     session_id = f"task-{head}-{digest}"
     return session_id[:max_len]
+
+
+def normalize_agent_session_token(value: str, fallback: str = "main") -> str:
+    token = re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-_")
+    return token[:64] or fallback
+
+
+def build_gateway_agent_session_key(assignee: str, session_id: str) -> str:
+    agent_id = normalize_agent_session_token(assignee, fallback="main")
+    run_token = normalize_agent_session_token(session_id, fallback="task")
+    return f"agent:{agent_id}:cron:task-executor:run:{run_token}"
+
+
+def extract_latest_assistant_text(history_payload: dict[str, Any]) -> str:
+    messages = history_payload.get("messages", [])
+    if not isinstance(messages, list):
+        return ""
+    for candidate in reversed(messages):
+        if not isinstance(candidate, dict):
+            continue
+        if str(candidate.get("role", "")).strip().lower() != "assistant":
+            continue
+        content = candidate.get("content", [])
+        if not isinstance(content, list):
+            continue
+        texts: list[str] = []
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type", "")).strip().lower() != "text":
+                continue
+            text = str(item.get("text", "")).strip()
+            if text:
+                texts.append(text)
+        if texts:
+            return "\n".join(texts).strip()
+    return ""
 
 
 def humanize_executor_detail(detail: str) -> str:
@@ -541,6 +625,116 @@ def call_agent(
     return int(proc.returncode), str(proc.stdout or ""), str(proc.stderr or "")
 
 
+def call_gateway_method(
+    openclaw_bin: str,
+    method: str,
+    params: dict[str, Any],
+    timeout_ms: int,
+) -> tuple[int, str, str]:
+    openclaw_cmd = str(openclaw_bin or "openclaw").strip() or "openclaw"
+    cmd = [
+        openclaw_cmd,
+        "gateway",
+        "call",
+        str(method or "").strip(),
+        "--json",
+        "--timeout",
+        str(max(1, int(timeout_ms))),
+        "--params",
+        json.dumps(params, ensure_ascii=False),
+    ]
+    proc = subprocess.run(
+        cmd,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        timeout=max(30, int(timeout_ms / 1000) + 30),
+        check=False,
+    )
+    return int(proc.returncode), str(proc.stdout or ""), str(proc.stderr or "")
+
+
+def call_agent_via_gateway_step(
+    openclaw_bin: str,
+    assignee: str,
+    message: str,
+    session_id: str,
+    timeout_sec: int,
+    thinking: str = "",
+) -> tuple[int, str, str]:
+    timeout_value = max(30, int(timeout_sec))
+    normalized_thinking = normalize_thinking(thinking)
+    session_key = build_gateway_agent_session_key(assignee, session_id)
+    idempotency_key = (
+        f"task-exec-{normalize_agent_session_token(session_id, fallback='task')}-"
+        f"{uuid.uuid4().hex[:8]}"
+    )
+    agent_params: dict[str, Any] = {
+        "message": str(message or ""),
+        "agentId": str(assignee or "").strip(),
+        "sessionKey": session_key,
+        "idempotencyKey": idempotency_key,
+        "timeout": timeout_value,
+    }
+    if normalized_thinking:
+        agent_params["thinking"] = normalized_thinking
+
+    rc, out, err = call_gateway_method(
+        openclaw_bin,
+        "agent",
+        agent_params,
+        GATEWAY_ACK_TIMEOUT_MS,
+    )
+    if rc != 0:
+        return rc, out, err
+
+    accepted = parse_json_output(out) or {}
+    run_id = str(accepted.get("runId", "")).strip() or idempotency_key
+    wait_timeout_ms = max(GATEWAY_ACK_TIMEOUT_MS, timeout_value * 1000)
+    rc_wait, out_wait, err_wait = call_gateway_method(
+        openclaw_bin,
+        "agent.wait",
+        {"runId": run_id, "timeoutMs": wait_timeout_ms},
+        wait_timeout_ms + 2_000,
+    )
+    if rc_wait != 0:
+        return rc_wait, out_wait, err_wait
+
+    wait_payload = parse_json_output(out_wait) or {}
+    wait_status = str(wait_payload.get("status", "")).strip().lower()
+    if wait_status != "ok":
+        wait_error = str(wait_payload.get("error", "")).strip()
+        return 1, "", wait_error or f"agent.wait status={wait_status or 'unknown'}"
+
+    rc_history, out_history, err_history = call_gateway_method(
+        openclaw_bin,
+        "chat.history",
+        {"sessionKey": session_key, "limit": GATEWAY_HISTORY_LIMIT},
+        GATEWAY_ACK_TIMEOUT_MS,
+    )
+    if rc_history != 0:
+        return rc_history, out_history, err_history
+
+    history_payload = parse_json_output(out_history) or {}
+    reply_text = extract_latest_assistant_text(history_payload)
+    if not reply_text:
+        return 1, "", "chat.history returned no assistant text"
+
+    wrapped = {
+        "payloads": [{"text": reply_text}],
+        "meta": {
+            "agentMeta": {
+                "runId": run_id,
+                "waitStatus": wait_status,
+                "sessionKey": session_key,
+                "sessionId": str(history_payload.get("sessionId", "")).strip(),
+            }
+        },
+    }
+    return 0, json.dumps(wrapped, ensure_ascii=False), ""
+
+
 def is_retryable_agent_failure(exit_code: int, out: str, err: str) -> bool:
     if int(exit_code or 0) == 0:
         return False
@@ -559,20 +753,31 @@ def call_agent_with_retries(
     *,
     max_retries: int,
     retry_delay_sec: int,
+    prefer_gateway: bool = False,
 ) -> tuple[int, str, str, int, list[dict[str, Any]]]:
     attempts: list[dict[str, Any]] = []
     total_attempts = max(1, int(max_retries or 0) + 1)
     delay_base = max(1, int(retry_delay_sec or 1))
     for attempt_idx in range(total_attempts):
-        rc, out, err = call_agent(
-            openclaw_bin,
-            assignee,
-            message,
-            session_id,
-            timeout_sec,
-            local_mode,
-            thinking,
-        )
+        if prefer_gateway:
+            rc, out, err = call_agent_via_gateway_step(
+                openclaw_bin,
+                assignee,
+                message,
+                session_id,
+                timeout_sec,
+                thinking,
+            )
+        else:
+            rc, out, err = call_agent(
+                openclaw_bin,
+                assignee,
+                message,
+                session_id,
+                timeout_sec,
+                local_mode,
+                thinking,
+            )
         retryable = is_retryable_agent_failure(rc, out, err)
         attempts.append(
             {
@@ -756,6 +961,7 @@ def main() -> int:
                     task_cli_thinking,
                     max_retries=int(args.agent_max_retries),
                     retry_delay_sec=int(args.agent_retry_delay_sec),
+                    prefer_gateway=bool(args.local_agent),
                 )
             except Exception as exc:
                 rc, out, err, agent_attempts, agent_attempt_details = 1, "", f"call_agent_exception:{exc}", 1, []
@@ -791,22 +997,10 @@ def main() -> int:
             except Exception:
                 pass
 
-            agent_json = parse_json_output(out) or {}
-            payloads = agent_json.get("payloads", [])
-            reply_text = ""
-            if isinstance(payloads, list):
-                reply_text = "\n".join(str(x.get("text", "")).strip() for x in payloads if isinstance(x, dict) and str(x.get("text", "")).strip())
-            if not reply_text:
-                reply_text = str(out or "").strip() or str(err or "").strip()
-
-            contract = normalize_contract(reply_text)
+            contract, agent_json, reply_text, sanitized_stderr = contract_from_agent_result(rc, out, err)
             in_tokens, out_tokens, duration_ms = extract_usage(agent_json)
             if duration_ms <= 0:
                 duration_ms = max(0, int((datetime.now(tz=UTC) - started).total_seconds() * 1000))
-            if rc != 0:
-                contract["status"] = "failed"
-                contract["solved"] = False
-                contract["failure_count"] = max(1, int(contract.get("failure_count", 0)))
 
             if bool(contract.get("need_clarification")):
                 try:
@@ -847,6 +1041,7 @@ def main() -> int:
                 "agent_attempts": agent_attempts,
                 "agent_attempt_details": agent_attempt_details,
                 "stderr_excerpt": str(err or "")[:1200],
+                "stderr_sanitized_excerpt": str(sanitized_stderr or "")[:1200],
                 "local_context_hits": len(local_hits),
                 "web_context_hits": len(web_hits),
                 "raw_reply_excerpt": str(contract.get("raw_text", ""))[:1200],

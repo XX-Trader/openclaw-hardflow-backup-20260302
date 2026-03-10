@@ -27,6 +27,7 @@ SSH_CMD_TIMEOUT="${SSH_CMD_TIMEOUT:-180}"
 
 LOCAL_POLICY_DIR="${REPO_ROOT}/scripts/openclaw-ops/policy"
 LOCAL_HOOKS_DIR="${REPO_ROOT}/hooks"
+LOCAL_GATEWAY_SERVICE_MANAGER="${LOCAL_POLICY_DIR}/gateway_service_manager.py"
 if [[ ! -d "${LOCAL_HOOKS_DIR}" && -d "${REPO_ROOT}/.claude/hardflow/hooks" ]]; then
   LOCAL_HOOKS_DIR="${REPO_ROOT}/.claude/hardflow/hooks"
 fi
@@ -37,6 +38,10 @@ if [[ ! -d "${LOCAL_POLICY_DIR}" ]]; then
 fi
 if [[ ! -d "${LOCAL_HOOKS_DIR}" ]]; then
   echo "[sync-policy] local hooks dir missing: ${LOCAL_HOOKS_DIR}" >&2
+  exit 1
+fi
+if [[ ! -f "${LOCAL_GATEWAY_SERVICE_MANAGER}" ]]; then
+  echo "[sync-policy] gateway service manager missing: ${LOCAL_GATEWAY_SERVICE_MANAGER}" >&2
   exit 1
 fi
 
@@ -62,6 +67,11 @@ scp_run() {
   local src="$1"
   local dst="$2"
   timeout "${SSH_CMD_TIMEOUT}" scp "${SSH_OPTS[@]}" "${src}" "${dst}"
+}
+
+restart_gateway_remote() {
+  local server="$1"
+  ssh_run "${server}" "python3 '${remote_policy_dir}/gateway_service_manager.py' --action restart --prefer system --emit-json >/dev/null"
 }
 
 for server in "${SERVERS[@]}"; do
@@ -105,7 +115,7 @@ for server in "${SERVERS[@]}"; do
   ssh_run "${server}" "python3 '${remote_policy_dir}/policy_enforcer.py' --db '${remote_db}' --policy-file '${remote_policy_dir}/policy-config.json' --routing-file '${remote_policy_dir}/routing-rules.json' --pricing-file '${remote_policy_dir}/token-pricing.json' validate-runtime"
 
   if [[ "${RESTART_GATEWAY}" == "1" ]]; then
-    ssh_run "${server}" "openclaw gateway restart >/dev/null 2>&1 || true"
+    restart_gateway_remote "${server}" || true
   fi
 
   ssh_run "${server}" "openclaw hooks check --json | sed -n '1,80p'" || true
