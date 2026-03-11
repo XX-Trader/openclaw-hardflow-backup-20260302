@@ -33,8 +33,8 @@ def to_json_pointer(parts: list[str]) -> str:
 
 
 def normalize_string(value: str, openclaw_home: str, claude_home: str) -> tuple[str, bool]:
-    updated = OPENCLAW_PATTERN.sub(openclaw_home, value)
-    updated = CLAUDE_PATTERN.sub(claude_home, updated)
+    updated = OPENCLAW_PATTERN.sub(lambda _match: openclaw_home, value)
+    updated = CLAUDE_PATTERN.sub(lambda _match: claude_home, updated)
     return updated, updated != value
 
 

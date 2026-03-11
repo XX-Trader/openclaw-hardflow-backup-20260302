@@ -455,6 +455,7 @@ def infer_delivery(jobs: list[dict[str, Any]], preferred_agents: list[str]) -> t
 
 
 def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str, str]) -> dict[str, Any]:
+    home = Path(os.path.expanduser("~"))
     if config_file.exists() and not overwrite:
         data = json.loads(config_file.read_text(encoding="utf-8-sig"))
         if not isinstance(data, dict):
@@ -464,7 +465,6 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
         if isinstance(base, dict):
             data = base
         else:
-            home = Path(os.path.expanduser("~"))
             data = {
                 "schema_version": "2026-03-02",
                 "log_roots": [
@@ -552,7 +552,6 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
     incident_handoff = data.get("incident_handoff")
     if not isinstance(incident_handoff, dict):
         incident_handoff = {}
-    home = Path(os.path.expanduser("~"))
     handoff_defaults = {
         "enabled": True,
         "mode": "todo_only",

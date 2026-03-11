@@ -1004,6 +1004,27 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("Command still running", message)
         self.assertIn("process poll or process log", message)
 
+    def test_cron_setup_monitor_config_uses_home_defaults_when_runner_config_is_dict(self):
+        module = load_module(
+            "cron_setup",
+            "scripts/openclaw-ops/cron_setup.py",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_file = Path(tmpdir) / "cron-monitor-config.json"
+            with mock.patch.object(module, "runner_default_config", return_value={}):
+                cfg = module.ensure_monitor_config(config_file, overwrite=True, switches={})
+
+        home = Path.home()
+        self.assertEqual(
+            cfg["runtime_monitor"]["project_registry"],
+            str(home / ".openclaw" / "ops" / "task-center" / "project-registry.json"),
+        )
+        self.assertEqual(
+            cfg["workflow_monitor"]["jobs_file"],
+            str(home / ".openclaw" / "cron" / "jobs.json"),
+        )
+
     def test_ops_cron_runner_invoke_policy_enforcer_retries_database_locked(self):
         module = load_module(
             "ops_cron_runner",
