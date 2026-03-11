@@ -60,6 +60,19 @@ VOLATILE_PATTERNS = (
     r"\b\d{5,}\b",
 )
 DEFAULT_SENDER_PREFIX = "ops-agent/ops-cron-runner"
+DEFAULT_WORKFLOW_MONITOR_IGNORED_JOB_NAMES = {
+    "todo_patrol_15m",
+    "project_index_maintainer_30m",
+    "ops_conversation_evolution_incremental",
+    "ops_governance_evolution_incremental",
+    "ops_github_web_evolution_incremental",
+    "ops_git_sync_push",
+    "ops_auto_update_install_hourly",
+    "task_retry_10m",
+    "web_intel_collect_hourly",
+    "web_intel_review_optimization_4h",
+    "web_intel_review_project_docs_6h",
+}
 
 
 def now() -> datetime:
@@ -278,6 +291,7 @@ def default_config() -> dict[str, Any]:
             "jobs_file": str(home / ".openclaw" / "cron" / "jobs.json"),
             "max_report_jobs": 8,
             "stale_error_minutes": 30,
+            "ignore_job_names": sorted(DEFAULT_WORKFLOW_MONITOR_IGNORED_JOB_NAMES),
         },
         "token_monitor": {
             "enabled": True,
@@ -1424,6 +1438,15 @@ def collect_workflow_health(cfg: dict[str, Any], state: dict[str, Any]) -> dict[
     now_ms = int(now().timestamp() * 1000)
     new_failed = 0
     recovered = 0
+    ignored_failed = 0
+    raw_ignored_job_names = monitor.get("ignore_job_names", [])
+    if not isinstance(raw_ignored_job_names, list):
+        raw_ignored_job_names = []
+    raw_ignored_job_ids = monitor.get("ignore_job_ids", [])
+    if not isinstance(raw_ignored_job_ids, list):
+        raw_ignored_job_ids = []
+    ignored_job_names = {str(item).strip() for item in raw_ignored_job_names if str(item).strip()}
+    ignored_job_ids = {str(item).strip() for item in raw_ignored_job_ids if str(item).strip()}
 
     for item in jobs:
         if not isinstance(item, dict):
@@ -1432,6 +1455,7 @@ def collect_workflow_health(cfg: dict[str, Any], state: dict[str, Any]) -> dict[
         jid = str(item.get("id", "")).strip() or f"job-{jobs_total}"
         name = str(item.get("name", "")).strip() or jid
         enabled = bool(item.get("enabled", False))
+        ignored = jid in ignored_job_ids or name in ignored_job_names
         if enabled:
             jobs_enabled += 1
 
@@ -1442,12 +1466,15 @@ def collect_workflow_health(cfg: dict[str, Any], state: dict[str, Any]) -> dict[
         current_status[jid] = last_status
 
         prev = str(prev_status.get(jid, "")).strip().lower()
-        if enabled and last_status in {"error", "failed"} and prev not in {"error", "failed"}:
+        if enabled and (not ignored) and last_status in {"error", "failed"} and prev not in {"error", "failed"}:
             new_failed += 1
-        if enabled and last_status not in {"error", "failed"} and prev in {"error", "failed"}:
+        if enabled and (not ignored) and last_status not in {"error", "failed"} and prev in {"error", "failed"}:
             recovered += 1
 
         if not enabled or last_status not in {"error", "failed"}:
+            continue
+        if ignored:
+            ignored_failed += 1
             continue
 
         run_at_ms = _safe_int(st.get("lastRunAtMs"), 0)
@@ -1486,6 +1513,7 @@ def collect_workflow_health(cfg: dict[str, Any], state: dict[str, Any]) -> dict[
         "jobs_total": jobs_total,
         "jobs_enabled": jobs_enabled,
         "failed_count": len(failed_jobs),
+        "ignored_failed_count": ignored_failed,
     }
 
     if not jobs_file.exists():
@@ -1497,6 +1525,7 @@ def collect_workflow_health(cfg: dict[str, Any], state: dict[str, Any]) -> dict[
         "jobs_total": jobs_total,
         "jobs_enabled": jobs_enabled,
         "failed_count": len(failed_jobs),
+        "ignored_failed_count": ignored_failed,
         "stale_failed_count": stale_failed_count,
         "stale_error_minutes": stale_error_minutes,
         "new_failed_count": new_failed,

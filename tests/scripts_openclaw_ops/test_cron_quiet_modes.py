@@ -804,7 +804,7 @@ class CronQuietModeTests(unittest.TestCase):
             target="-1003333097130",
         )
         self.assertEqual(jobs[0]["delivery"]["mode"], "none")
-        self.assertEqual(jobs[0]["failureAlert"]["channel"], "telegram")
+        self.assertNotIn("failureAlert", jobs[0])
 
     def test_reviewer_install_message_blocks_follow_up_chatter(self):
         module = load_module(
@@ -1101,7 +1101,7 @@ class CronQuietModeTests(unittest.TestCase):
             target="-1003333097130",
         )
         self.assertEqual(jobs[0]["delivery"]["mode"], "none")
-        self.assertEqual(jobs[0]["failureAlert"]["to"], "-1003333097130")
+        self.assertNotIn("failureAlert", jobs[0])
 
     def test_local_git_backup_job_defaults_to_silent_delivery(self):
         module = load_module(
@@ -1142,14 +1142,34 @@ class CronQuietModeTests(unittest.TestCase):
             target="-1003333097130",
         )
         self.assertEqual(job["delivery"]["mode"], "none")
-        self.assertEqual(job["failureAlert"]["channel"], "telegram")
+        self.assertNotIn("failureAlert", job)
 
-    def test_cron_setup_internal_jobs_default_to_silent_delivery(self):
+    def test_cron_setup_maintenance_jobs_disable_failure_alert_by_default(self):
         module = load_module(
             "cron_setup",
             "scripts/openclaw-ops/cron_setup.py",
         )
-        job = module.build_governance_evolution_job(
+        conversation_job = module.build_conversation_evolution_job(
+            script_py="/tmp/conversation.py",
+            db_file="/tmp/task_center.db",
+            openclaw_home="/tmp/openclaw",
+            state_file="/tmp/state.json",
+            report_dir="/tmp/reports",
+            every_ms=21600000,
+            log_mode="silent",
+            lookback_hours=24,
+            min_interval_minutes=180,
+            max_files=120,
+            max_evidence_per_candidate=4,
+            min_evidence_lines=3,
+            min_unique_files=2,
+            min_quality_score=60,
+            recent_dedupe_days=30,
+            max_tasks_per_run=2,
+            schedule_gap_minutes=120,
+            assignee="optimization-agent",
+        )
+        governance_job = module.build_governance_evolution_job(
             script_py="/tmp/governance.py",
             db_file="/tmp/task_center.db",
             state_file="/tmp/state.json",
@@ -1175,8 +1195,115 @@ class CronQuietModeTests(unittest.TestCase):
             reviewer_gh_user="",
             push_before_pr=False,
         )
-        self.assertEqual(job["delivery"]["mode"], "none")
-        self.assertEqual(job["failureAlert"]["cooldownMs"], 1800000)
+        github_job = module.build_github_web_evolution_job(
+            script_py="/tmp/github.py",
+            db_file="/tmp/task_center.db",
+            openclaw_home="/tmp/openclaw",
+            web_root="/tmp/openclaw/web",
+            state_file="/tmp/state.json",
+            report_dir="/tmp/reports",
+            every_ms=43200000,
+            log_mode="silent",
+            min_interval_minutes=360,
+            max_queries=4,
+            max_repos_per_query=8,
+            max_total_repos=16,
+            min_stars=50,
+            min_quality_score=60,
+            min_new_or_updated=1,
+            recent_dedupe_days=30,
+            max_tasks_per_run=2,
+            schedule_gap_minutes=120,
+            assignee="optimization-agent",
+            github_token_env="GITHUB_TOKEN",
+        )
+        git_sync_job = module.build_git_sync_job(
+            script_py="/tmp/git_sync.py",
+            repo_path="/tmp/repo",
+            every_ms=21600000,
+            log_mode="silent",
+            remote="origin",
+            branch="main",
+            max_files=120,
+            commit_prefix="chore(sync): update",
+            auto_pull=True,
+            push=True,
+            include_prefixes=[],
+            exclude_prefixes=[],
+            required_remote_urls=[],
+            notify_on="error",
+        )
+        auto_update_job = module.build_auto_update_install_job(
+            script_py="/tmp/auto_update.py",
+            repo_path="/tmp/repo",
+            every_ms=3600000,
+            log_mode="silent",
+            remote="origin",
+            branch="main",
+            install_cmd="python3 install.py",
+            install_on_no_change=False,
+            git_timeout=120,
+            install_timeout=900,
+            report_dir="/tmp/reports",
+            required_remote_urls=[],
+            notify_on="error",
+        )
+
+        for job in [conversation_job, governance_job, github_job, git_sync_job, auto_update_job]:
+            self.assertEqual(job["delivery"]["mode"], "none")
+            self.assertNotIn("failureAlert", job)
+
+    def test_ops_cron_runner_ignores_low_value_maintenance_job_failures(self):
+        module = load_module(
+            "ops_cron_runner",
+            "scripts/openclaw-ops/ops_cron_runner.py",
+        )
+        cfg = module.default_config()
+        state = {}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            jobs_file = Path(tmpdir) / "jobs.json"
+            jobs_file.write_text(
+                json.dumps(
+                    {
+                        "jobs": [
+                            {
+                                "id": "job-ignored",
+                                "name": "web_intel_collect_hourly",
+                                "agentId": "web-agent",
+                                "enabled": True,
+                                "state": {
+                                    "lastStatus": "error",
+                                    "consecutiveErrors": 2,
+                                    "lastRunAtMs": 1710111111000,
+                                    "lastError": "cron: job execution timed out",
+                                },
+                            },
+                            {
+                                "id": "job-important",
+                                "name": "reviewer_weekly_structure_review",
+                                "agentId": "reviewer",
+                                "enabled": True,
+                                "state": {
+                                    "lastStatus": "error",
+                                    "consecutiveErrors": 1,
+                                    "lastRunAtMs": 1710112222000,
+                                    "lastError": "cron: job execution timed out",
+                                },
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            cfg["workflow_monitor"]["jobs_file"] = str(jobs_file)
+            summary = module.collect_workflow_health(cfg, state)
+
+        self.assertEqual(summary["failed_count"], 1)
+        self.assertEqual(summary["ignored_failed_count"], 1)
+        self.assertEqual(len(summary["failed_jobs"]), 1)
+        self.assertEqual(summary["failed_jobs"][0]["name"], "reviewer_weekly_structure_review")
 
     def test_install_workflow_profile_dry_run_uses_hardened_runtime_flags(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -31,6 +31,19 @@ LEGACY_OPTIMIZE_JOB_MODES = {"auto", "keep", "disable", "remove"}
 DAILY_REPORT_DEDUPE_MODES = {"auto", "keep", "disable-digest", "disable-daily-work"}
 DEFAULT_FAILURE_ALERT_AFTER = 1
 DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+DEFAULT_WORKFLOW_MONITOR_IGNORED_JOB_NAMES = {
+    "todo_patrol_15m",
+    "project_index_maintainer_30m",
+    "ops_conversation_evolution_incremental",
+    "ops_governance_evolution_incremental",
+    "ops_github_web_evolution_incremental",
+    "ops_git_sync_push",
+    "ops_auto_update_install_hourly",
+    "task_retry_10m",
+    "web_intel_collect_hourly",
+    "web_intel_review_optimization_4h",
+    "web_intel_review_project_docs_6h",
+}
 LEGACY_OPTIMIZE_JOB_IDS = {
     "948d7307-6941-44ee-a8aa-57da767a31b7",  # optimization-agent 治理巡检 (external optimize_incremental_scan.py)
     "22b1712a-ff4a-4502-bce6-4e39c44cbe9f",  # optimize 自我进化总结 (external optimize_incremental_scan.py)
@@ -513,6 +526,29 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
         runtime_monitor.setdefault(key, value)
     data["runtime_monitor"] = runtime_monitor
 
+    workflow_monitor = data.get("workflow_monitor")
+    if not isinstance(workflow_monitor, dict):
+        workflow_monitor = {}
+    workflow_defaults = {
+        "enabled": True,
+        "jobs_file": str(home / ".openclaw" / "cron" / "jobs.json"),
+        "max_report_jobs": 8,
+        "stale_error_minutes": 30,
+        "ignore_job_names": sorted(DEFAULT_WORKFLOW_MONITOR_IGNORED_JOB_NAMES),
+    }
+    for key, value in workflow_defaults.items():
+        workflow_monitor.setdefault(key, value)
+    ignore_job_names = workflow_monitor.get("ignore_job_names")
+    if not isinstance(ignore_job_names, list):
+        ignore_job_names = []
+    merged_ignore_names = {
+        str(item).strip()
+        for item in [*ignore_job_names, *sorted(DEFAULT_WORKFLOW_MONITOR_IGNORED_JOB_NAMES)]
+        if str(item).strip()
+    }
+    workflow_monitor["ignore_job_names"] = sorted(merged_ignore_names)
+    data["workflow_monitor"] = workflow_monitor
+
     incident_handoff = data.get("incident_handoff")
     if not isinstance(incident_handoff, dict):
         incident_handoff = {}
@@ -920,7 +956,6 @@ def build_self_evolution_job(
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1800},
         "delivery": build_delivery(mode="none"),
-        "failureAlert": build_failure_alert(),
     }
 
 
@@ -976,7 +1011,6 @@ def build_conversation_evolution_job(
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1800},
         "delivery": build_delivery(mode="none"),
-        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1063,7 +1097,6 @@ def build_governance_evolution_job(
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
         "delivery": build_delivery(mode="none"),
-        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1121,7 +1154,6 @@ def build_github_web_evolution_job(
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
         "delivery": build_delivery(mode="none"),
-        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1194,7 +1226,6 @@ def build_git_sync_job(
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 2400},
         "delivery": build_delivery(mode="none"),
-        "failureAlert": build_failure_alert(),
     }
 
 
@@ -1257,7 +1288,6 @@ def build_auto_update_install_job(
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 3000},
         "delivery": build_delivery(mode="none"),
-        "failureAlert": build_failure_alert(),
     }
 
 
