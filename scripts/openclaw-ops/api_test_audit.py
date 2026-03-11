@@ -25,6 +25,7 @@ if str(POLICY_DIR) not in sys.path:
 
 from io_write_gateway import FileWriteError, write_json_atomic
 from scrapling_runtime import fetch_with_scrapling_browser, fetch_with_scrapling_static  # type: ignore
+from chat_output import build_trace_id, render_chat_notice
 
 TZ = timezone(timedelta(hours=8))
 LOG_MODES = {"silent", "chat"}
@@ -1480,24 +1481,33 @@ def main() -> int:
                         policy_observability["errors"].append(err_report)
             run_record["policy_observability"] = policy_observability
             save_json(run_file, run_record)
-            output = (
-                "# api-test-audit\n"
-                f"- sender_identity: {sender_identity}\n"
-                f"- task: {args.task_id or '-'}\n"
-                f"- time: {now_iso()}\n"
-                f"- normal_log_mode: {normal_log_mode}\n"
-                "- risk_reasons: config_missing\n"
-                f"- config_file: {config_path}\n"
-                "- action: run init_api_test_config.py and replace placeholders"
-            )
+            detail_lines: list[str] = [
+                "问题类型：巡检配置缺失",
+                "配置文件：已留痕",
+            ]
             if policy_observability.get("errors"):
-                output += f"\n- exception_count: {len(policy_observability.get('errors', []))}"
-                for reason in policy_observability.get("errors", [])[:12]:
-                    output += f"\n- exception: {reason}"
+                detail_lines.append(
+                    f"运行异常：{len(policy_observability.get('errors', []))} 项。"
+                )
+            output = render_chat_notice(
+                "接口巡检异常",
+                status="需处理",
+                task_id=str(args.task_id or ""),
+                sender_identity=sender_identity,
+                run_time=now_iso(),
+                trace_id=build_trace_id(report_file=run_file),
+                summary="接口巡检无法启动，原因是配置文件缺失或仍包含占位符。",
+                extra_lines=[
+                    f"通知模式：{normal_log_mode}",
+                    "处理动作：请运行初始化脚本并替换配置中的占位符。",
+                ],
+                details=detail_lines,
+                next_step="请按留痕编号查看内部报告，并完成巡检配置初始化。",
+            )
             if args.emit_json:
                 print(json.dumps({"notify": True, "output": output, "record": str(run_file)}, ensure_ascii=False))
             else:
-                print(f"{output}\n- evidence: {run_file}")
+                print(output)
             return 0
 
     state = load_json(state_path, None)
@@ -1846,68 +1856,74 @@ def main() -> int:
 
     output = "NO_REPLY"
     if notify:
-        lines: list[str] = []
-        lines.append("# api-test-audit")
-        lines.append(f"- sender_identity: {sender_identity}")
-        lines.append(f"- task: {args.task_id or '-'}")
-        lines.append(f"- time: {now_iso()}")
-        lines.append(f"- engine: {engine}")
-        lines.append(f"- endpoint_engine: {endpoint_engine}")
-        lines.append(f"- freshness_auto_detect: {freshness_auto_detect}")
-        lines.append(f"- normal_log_mode: {normal_log_mode}")
-        if risk_reasons:
-            lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
-        lines.append(f"- tested_endpoints: {len(endpoint_results)}")
-        lines.append(f"- tested_browser_checks: {len(browser_results)}")
-        lines.append(f"- high_issues: {len(alert_issues)}")
-        for item in alert_issues[:6]:
-            lines.append(f"- high[{item.get('id')}]: {', '.join(item.get('reasons', []))}")
+        detail_lines: list[str] = []
+        for idx, item in enumerate(alert_issues[:6], start=1):
+            reasons = "，".join(str(x) for x in item.get("reasons", [])[:4]) or "高风险"
+            detail_lines.append(f"高风险项{idx}：{item.get('id')}，原因 {reasons}")
             if item.get("score") is not None:
-                lines.append(f"- high[{item.get('id')}]_score: {item.get('score')}/{item.get('min_score', '-')}")
-            screenshot = str(item.get("screenshot", "")).strip()
-            if screenshot:
-                lines.append(f"- high[{item.get('id')}]_screenshot: {screenshot}")
-            devtools_log = str(item.get("devtools_log", "")).strip()
-            if devtools_log:
-                lines.append(f"- high[{item.get('id')}]_devtools: {devtools_log}")
-        lines.append("- visual_review: use native AI vision on screenshots; do not run image parsing scripts")
-        output = "\n".join(lines)
+                detail_lines.append(
+                    f"高风险项{idx}评分：{item.get('score')}/{item.get('min_score', '-')}"
+                )
+            if str(item.get("screenshot", "")).strip():
+                detail_lines.append(f"高风险项{idx}截图：已留痕")
+            if str(item.get("devtools_log", "")).strip():
+                detail_lines.append(f"高风险项{idx}调试日志：已留痕")
+        output = render_chat_notice(
+            "接口巡检提醒",
+            status="需关注",
+            task_id=str(args.task_id or ""),
+            sender_identity=sender_identity,
+            run_time=now_iso(),
+            trace_id=build_trace_id(report_file=run_file),
+            summary=f"接口巡检发现 {len(alert_issues)} 个高风险问题。",
+            extra_lines=[
+                f"执行引擎：{engine}",
+                f"接口检查引擎：{endpoint_engine}",
+                f"时效自动识别：{'开启' if freshness_auto_detect else '关闭'}",
+                f"通知模式：{normal_log_mode}",
+                f"接口检测数量：{len(endpoint_results)} 个",
+                f"浏览器检查数量：{len(browser_results)} 个",
+                f"高风险问题：{len(alert_issues)} 项",
+                "视觉复核：统一使用原生视觉能力，不再在群聊中展示截图路径。",
+            ],
+            details=detail_lines,
+            next_step="请按留痕编号查看截图和调试日志，再决定修复优先级。",
+        )
     exception_reasons = [str(x) for x in policy_observability.get("errors", []) if str(x).strip()]
     notify = bool(notify or exception_reasons)
     if planner_summary_snapshot:
         summary_line = (
-            f"- planner_summary: reports={planner_summary_snapshot.get('report_count', 0)}, "
-            f"resolved={planner_summary_snapshot.get('resolved_task_count', 0)}, "
-            f"failed={planner_summary_snapshot.get('failed_task_count', 0)}, "
-            f"tokens={planner_summary_snapshot.get('total_tokens', 0)}"
+            "近24小时处理："
+            f"报告 {int(planner_summary_snapshot.get('report_count', 0) or 0)} 条，"
+            f"已解决 {int(planner_summary_snapshot.get('resolved_task_count', 0) or 0)} 项，"
+            f"失败 {int(planner_summary_snapshot.get('failed_task_count', 0) or 0)} 项。"
         )
         if output == "NO_REPLY":
-            output = "\n".join(
-                [
-                    "# api-test-audit",
-                    f"- sender_identity: {sender_identity}",
-                    f"- task: {args.task_id or '-'}",
-                    f"- time: {now_iso()}",
-                    summary_line,
-                ]
+            output = render_chat_notice(
+                "接口巡检提醒",
+                status="需关注",
+                task_id=str(args.task_id or ""),
+                sender_identity=sender_identity,
+                run_time=now_iso(),
+                summary="接口巡检发现需要关注的变化。",
+                extra_lines=[summary_line],
+                next_step="请按留痕编号查看内部巡检报告。",
             )
         else:
-            output = output + "\n" + summary_line
+            output = output + "\n- " + summary_line
     if exception_reasons:
         if output == "NO_REPLY":
-            output = "\n".join(
-                [
-                    "# api-test-audit",
-                    f"- sender_identity: {sender_identity}",
-                    f"- task: {args.task_id or '-'}",
-                    f"- time: {now_iso()}",
-                    f"- exception_count: {len(exception_reasons)}",
-                ]
+            output = render_chat_notice(
+                "接口巡检异常",
+                status="需处理",
+                task_id=str(args.task_id or ""),
+                sender_identity=sender_identity,
+                run_time=now_iso(),
+                summary=f"接口巡检运行时发现 {len(exception_reasons)} 个异常。",
+                next_step="请按留痕编号查看内部错误记录。",
             )
         else:
-            output = output + f"\n- exception_count: {len(exception_reasons)}"
-        for reason in exception_reasons[:12]:
-            output = output + f"\n- exception: {reason}"
+            output = output + f"\n- 运行异常：{len(exception_reasons)} 项。"
     run_record["notify"] = notify
     save_json(run_file, run_record)
 
@@ -1915,7 +1931,7 @@ def main() -> int:
         print(json.dumps({"notify": notify, "output": output, "record": str(run_file)}, ensure_ascii=False))
     else:
         if notify:
-            print(f"{output}\n- evidence: {run_file}")
+            print(output)
         else:
             print("NO_REPLY")
     return 0

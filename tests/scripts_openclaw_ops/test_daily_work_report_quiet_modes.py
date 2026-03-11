@@ -60,7 +60,9 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
         self.assertEqual(output.splitlines()[0], "每日工作报告异常")
         self.assertIn("钉钉发送失败", output)
         self.assertIn("Webhook 未配置", output)
-        self.assertIn("daily_work_report.json", output)
+        self.assertIn("留痕编号", output)
+        self.assertNotIn("/tmp/daily_work_report.json", output)
+        self.assertNotIn(".json", output)
         self.assertNotIn("# 每日工作报告", output)
 
     def test_daily_work_report_main_uses_digest_notify_without_name_error(self):

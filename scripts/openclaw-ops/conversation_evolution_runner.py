@@ -29,6 +29,7 @@ if str(POLICY_DIR) not in sys.path:
 
 from task_center import TaskCenter  # type: ignore
 from io_write_gateway import FileWriteError, write_json_atomic  # type: ignore
+from chat_output import build_trace_id, render_chat_notice
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
@@ -1230,48 +1231,52 @@ def main() -> int:
 
     output = "NO_REPLY"
     if notify:
-        lines = [
-            "# conversation-evolution",
-            f"- sender_identity: {sender_identity}",
-            f"- task: {args.task_id or '-'}",
-            f"- time: {now_iso()}",
-            f"- run_allowed: {run_allowed}",
-            f"- files_scanned: {len(files)}",
-            f"- findings: {int(finding_summary.get('total_findings', 0) or 0)}",
-            f"- candidates: {len(candidates)}",
-            f"- rejected: {len(candidate_rejected)}",
-            f"- created_todo: {len(created)}",
-            f"- skipped: {len(skipped)}",
-            f"- assignee: {str(args.assignee or 'optimization-agent')}",
-            f"- exception_count: {len(exception_reasons)}",
+        detail_lines = [
+            f"建议任务{idx}：{item.get('task_id')}，质量分 {item.get('quality_score', 0)}，计划时间 {item.get('scheduled_at')}"
+            for idx, item in enumerate(created[:8], start=1)
+        ]
+        per_cat = finding_summary.get("per_category", {})
+        extra_lines = [
+            f"允许执行：{'是' if run_allowed else '否'}",
+            f"扫描文件：{len(files)} 个",
+            f"发现问题：{int(finding_summary.get('total_findings', 0) or 0)} 项",
+            f"候选建议：{len(candidates)} 项",
+            f"已过滤：{len(candidate_rejected)} 项",
+            f"新建建议任务：{len(created)} 项",
+            f"跳过项：{len(skipped)} 项",
+            f"默认负责人：{str(args.assignee or 'optimization-agent')}",
+            f"异常数量：{len(exception_reasons)} 项",
             (
-                "- quality_gate: "
-                f"score>={max(1, int(args.min_quality_score))}, "
-                f"evidence>={max(1, int(args.min_evidence_lines))}, "
-                f"files>={max(1, int(args.min_unique_files))}, "
-                f"dedupe_days={max(0, int(args.recent_dedupe_days))}"
+                "质量门槛："
+                f"分数不少于 {max(1, int(args.min_quality_score))}，"
+                f"证据不少于 {max(1, int(args.min_evidence_lines))} 行，"
+                f"文件不少于 {max(1, int(args.min_unique_files))} 个，"
+                f"去重窗口 {max(0, int(args.recent_dedupe_days))} 天。"
             ),
         ]
-        for reason in exception_reasons[:12]:
-            lines.append(f"- exception: {reason}")
-        per_cat = finding_summary.get("per_category", {})
         if isinstance(per_cat, dict) and per_cat:
-            lines.append(
-                "- findings_by_category: "
-                + ", ".join(f"{k}={int(v)}" for k, v in sorted(per_cat.items(), key=lambda kv: str(kv[0])))
+            extra_lines.append(
+                "分类分布："
+                + "，".join(f"{k} {int(v)} 项" for k, v in sorted(per_cat.items(), key=lambda kv: str(kv[0])))
             )
-        for item in created[:8]:
-            lines.append(
-                f"- todo[{item.get('task_id')}]: score={item.get('quality_score', 0)}, "
-                f"scheduled_at={item.get('scheduled_at')}"
-            )
-        output = "\n".join(lines)
+        output = render_chat_notice(
+            "对话复盘异常",
+            status="需关注",
+            task_id=str(args.task_id or ""),
+            sender_identity=sender_identity,
+            run_time=now_iso(),
+            trace_id=build_trace_id(report_file=report_file),
+            summary=f"对话复盘发现 {len(exception_reasons)} 个异常，并生成 {len(created)} 条建议任务。",
+            extra_lines=extra_lines,
+            details=detail_lines,
+            next_step="请按留痕编号查看详细复盘结果，并确认是否进入后续排期。",
+        )
 
     if args.emit_json:
         print(json.dumps({"notify": notify, "output": output, "report": str(report_file)}, ensure_ascii=False))
     else:
         if notify:
-            print(f"{output}\n- evidence: {report_file}")
+            print(output)
         else:
             print("NO_REPLY")
     return 0

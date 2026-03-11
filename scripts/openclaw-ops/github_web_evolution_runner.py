@@ -39,6 +39,7 @@ sys.path.insert(0, policy_dir)
 from task_center import TaskCenter  # type: ignore
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
 from web_sources_runtime import load_project_repo_targets  # type: ignore
+from chat_output import build_trace_id, render_chat_notice
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
@@ -2016,38 +2017,37 @@ def main() -> int:
 
     output = "NO_REPLY"
     if notify:
-        lines = [
-            "# github-web-evolution",
-            f"- sender_identity: {sender_identity}",
-            f"- task: {args.task_id or '-'}",
-            f"- time: {now_iso()}",
-            f"- run_allowed: {run_allowed}",
-            f"- queries: {len(query_list)}",
-            f"- selected_repos: {len(selected)}",
-            f"- selected_skills: {len(selected_skills)}",
-            f"- changed_items: {len(changes)} (new={report['new_count']}, updated={report['updated_count']}, skills={report['skill_changes_count']})",
-            f"- created_todo: {len(created_tasks)}",
-            f"- skipped_reason: {task_skipped_reason or '-'}",
-            f"- web_root: {web_root}",
-            f"- catalog: {catalog_file}",
-            f"- report: {report_file}",
-            f"- exception_count: {len(exception_reasons)}",
+        detail_lines = [
+            f"变更样例{idx}：{item.get('full_name', '')}，类型 {item.get('change_type', 'updated')}，质量分 {int(item.get('quality_score', 0) or 0)}"
+            for idx, item in enumerate(changes[:12], start=1)
         ]
-        for reason in exception_reasons[:12]:
-            lines.append(f"- exception: {reason}")
-        for item in changes[:12]:
-            lines.append(
-                "- change: "
-                + f"{item.get('change_type', 'updated')} {item.get('full_name', '')} "
-                + f"score={int(item.get('quality_score', 0) or 0)}"
-            )
-        output = "\n".join(lines)
+        output = render_chat_notice(
+            "GitHub 情报巡检异常",
+            status="需关注",
+            task_id=str(args.task_id or ""),
+            sender_identity=sender_identity,
+            run_time=now_iso(),
+            trace_id=build_trace_id(report_file=report_file),
+            summary=f"GitHub 情报巡检发现 {len(exception_reasons)} 个异常，并生成 {len(created_tasks)} 条建议任务。",
+            extra_lines=[
+                f"允许执行：{'是' if run_allowed else '否'}",
+                f"查询词：{len(query_list)} 组",
+                f"入选仓库：{len(selected)} 个",
+                f"入选技能：{len(selected_skills)} 个",
+                f"变化项：{len(changes)} 项（新增 {report['new_count']} 项，更新 {report['updated_count']} 项，技能变化 {report['skill_changes_count']} 项）",
+                f"新建建议任务：{len(created_tasks)} 项",
+                f"跳过原因：{task_skipped_reason or '无'}",
+                f"异常数量：{len(exception_reasons)} 项",
+            ],
+            details=detail_lines,
+            next_step="请按留痕编号查看详细采集报告，并确认是否纳入后续优化。",
+        )
 
     if args.emit_json:
         print(json.dumps({"notify": notify, "output": output, "report": str(report_file)}, ensure_ascii=False))
     else:
         if notify:
-            print(f"{output}\n- evidence: {report_file}")
+            print(output)
         else:
             print("NO_REPLY")
     return 0

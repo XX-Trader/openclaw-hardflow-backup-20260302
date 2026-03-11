@@ -68,16 +68,16 @@ export default async function hardflowStopGateReminder(event: any): Promise<void
   }
 
   if (missing.length === 0 && failed.length === 0) {
-    event.messages.push("[HardFlow Stop Check] all required gates are passed.");
+    event.messages.push("HardFlow 收口检查已通过，所有必需门禁均已通过。");
     return;
   }
 
   event.messages.push(
     [
-      "[HardFlow Stop Check] workflow has unresolved gate constraints.",
-      `missing: ${missing.length > 0 ? missing.join(", ") : "none"}`,
-      `failed: ${failed.length > 0 ? failed.join(", ") : "none"}`,
-      "Continue fix -> rescore -> retest before ending this workflow.",
+      "HardFlow 收口检查未通过，当前仍有未闭环门禁。",
+      `缺失门禁：${missing.length > 0 ? missing.join(", ") : "无"}`,
+      `失败门禁：${failed.length > 0 ? failed.join(", ") : "无"}`,
+      "请先继续修复、重新评分并复测，再结束当前流程。",
     ].join("\n"),
   );
 }

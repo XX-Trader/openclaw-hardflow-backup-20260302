@@ -21,6 +21,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, write_json_atomic
+from chat_output import build_trace_id, render_chat_notice
 
 TZ = timezone(timedelta(hours=8))
 CRITICAL_TIMER_UNITS = {
@@ -375,25 +376,30 @@ def build_output(
     if not notify:
         return False, "NO_REPLY"
 
-    lines: list[str] = []
-    lines.append("# ops-system-schedule-audit")
-    lines.append(f"- sender_identity: {sender_identity}")
-    lines.append(f"- task: {task_id or '-'}")
-    lines.append(f"- time: {now_iso()}")
-    lines.append(f"- normal_log_mode: {normal_log_mode}")
-    if risk_reasons:
-        lines.append(f"- risk_reasons: {', '.join(risk_reasons)}")
-    if change_reasons:
-        lines.append(f"- change_reasons: {', '.join(change_reasons)}")
-
     openclaw = snapshot.get("openclaw", {})
-    lines.append(f"- openclaw_jobs: ok={openclaw.get('ok')}, count={openclaw.get('job_count', 0)}")
-    lines.append(f"- user_crontab_lines: {len(snapshot.get('user_crontab', {}).get('lines', []))}")
-    lines.append(f"- root_crontab_lines: {len(snapshot.get('root_crontab', {}).get('lines', []))}")
-    lines.append(f"- cron_d_files: {len(snapshot.get('cron_d', {}).get('list', []))}")
-    lines.append(f"- systemd_timers: {len(snapshot.get('systemd_timers', {}).get('units', []))}")
-    lines.append(f"- evidence: {snapshot_file}")
-    return True, "\n".join(lines)
+    output = render_chat_notice(
+        "系统定时巡检提醒",
+        status="需关注",
+        task_id=task_id,
+        sender_identity=sender_identity,
+        run_time=now_iso(),
+        trace_id=build_trace_id(report_file=snapshot_file),
+        summary=(
+            f"检测到 {len(risk_reasons)} 个高风险项"
+            if risk_reasons
+            else f"检测到 {len(change_reasons)} 个配置变更"
+        ),
+        extra_lines=[
+            f"通知模式：{normal_log_mode}",
+            f"OpenClaw 定时任务：{int(openclaw.get('job_count', 0) or 0)} 个",
+            f"用户 crontab 条目：{len(snapshot.get('user_crontab', {}).get('lines', []))}",
+            f"root crontab 条目：{len(snapshot.get('root_crontab', {}).get('lines', []))}",
+            f"/etc/cron.d 文件：{len(snapshot.get('cron_d', {}).get('list', []))}",
+            f"systemd 定时器：{len(snapshot.get('systemd_timers', {}).get('units', []))}",
+        ],
+        next_step="如需排查，请按留痕编号查看系统定时快照和差异记录。",
+    )
+    return True, output
 
 
 def main() -> int:
@@ -634,38 +640,37 @@ def main() -> int:
     output = str(result.get("output", "NO_REPLY"))
     if planner_summary_snapshot and notify:
         summary_line = (
-            f"- planner_summary: reports={planner_summary_snapshot.get('report_count', 0)}, "
-            f"resolved={planner_summary_snapshot.get('resolved_task_count', 0)}, "
-            f"failed={planner_summary_snapshot.get('failed_task_count', 0)}, "
-            f"tokens={planner_summary_snapshot.get('total_tokens', 0)}"
+            "近24小时处理："
+            f"报告 {int(planner_summary_snapshot.get('report_count', 0) or 0)} 条，"
+            f"已解决 {int(planner_summary_snapshot.get('resolved_task_count', 0) or 0)} 项，"
+            f"失败 {int(planner_summary_snapshot.get('failed_task_count', 0) or 0)} 项。"
         )
         if output == "NO_REPLY":
-            output = "\n".join(
-                [
-                    "# ops-system-schedule-audit",
-                    f"- sender_identity: {sender_identity}",
-                    f"- task: {args.task_id or '-'}",
-                    f"- time: {now_iso()}",
-                    summary_line,
-                ]
+            output = render_chat_notice(
+                "系统定时巡检提醒",
+                status="需关注",
+                task_id=str(args.task_id or ""),
+                sender_identity=sender_identity,
+                run_time=now_iso(),
+                summary="系统定时巡检发现需要关注的变化。",
+                extra_lines=[summary_line],
+                next_step="如需排查，请按留痕编号查看系统定时快照。",
             )
         else:
-            output = f"{output}\n{summary_line}"
+            output = f"{output}\n- {summary_line}"
     if exception_reasons:
         if output == "NO_REPLY":
-            output = "\n".join(
-                [
-                    "# ops-system-schedule-audit-exception",
-                    f"- sender_identity: {sender_identity}",
-                    f"- task: {args.task_id or '-'}",
-                    f"- time: {now_iso()}",
-                    f"- exception_count: {len(exception_reasons)}",
-                ]
+            output = render_chat_notice(
+                "系统定时巡检异常",
+                status="需处理",
+                task_id=str(args.task_id or ""),
+                sender_identity=sender_identity,
+                run_time=now_iso(),
+                summary=f"系统定时巡检运行时发现 {len(exception_reasons)} 个异常。",
+                next_step="请按留痕编号查看内部错误记录。",
             )
         else:
-            output = f"{output}\n- exception_count: {len(exception_reasons)}"
-        for reason in exception_reasons[:12]:
-            output = f"{output}\n- exception: {reason}"
+            output = f"{output}\n- 运行异常：{len(exception_reasons)} 项。"
     if not notify:
         output = "NO_REPLY"
 

@@ -30,6 +30,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
+from chat_output import build_trace_id, render_chat_notice
 from scrapling_runtime import fetch_with_scrapling_browser  # type: ignore
 from web_sources_runtime import load_runtime_sources  # type: ignore
 
@@ -574,6 +575,11 @@ def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def trace_token(value: str | Path) -> str:
+    token = build_trace_id(report_file=value)
+    return token or "已归档"
+
+
 def build_output(
     *,
     sender_identity: str,
@@ -587,54 +593,78 @@ def build_output(
     report_file: Path,
     changed_ids: list[str],
     failed_items: list[dict[str, Any]],
+    follow_up_tasks: list[dict[str, Any]] | None = None,
+    follow_up_errors: list[str] | None = None,
 ) -> str:
     has_failures = bool(failed_items)
-    lines = [
-        "网页情报采集异常" if has_failures else "网页情报采集",
-        f"- 任务: {task_id}",
-        f"- 时间: {started_at}",
-        f"- 汇总: 来源总数={total}，扫描={scanned}，变更={changed}，跳过={skipped}，失败={failed}",
-        f"- 报告文件: {report_file}",
+    title = "网页情报采集异常" if has_failures else "网页情报采集提醒"
+    status = "需处理" if has_failures else ("有更新" if int(changed or 0) > 0 else "已完成")
+    extra_lines = [
+        f"来源总数：{int(total or 0)} 个",
+        f"扫描数量：{int(scanned or 0)} 个",
+        f"发生变更：{int(changed or 0)} 个",
+        f"跳过数量：{int(skipped or 0)} 个",
+        f"失败数量：{int(failed or 0)} 个",
     ]
+    detail_lines: list[str] = []
     if changed_ids:
-        lines.append("- 发生变更:")
-        for sid in changed_ids[:12]:
-            lines.append(f"  - {sid}")
+        for idx, sid in enumerate(changed_ids[:12], start=1):
+            detail_lines.append(f"变更来源{idx}：{sid}")
     if failed_items:
-        lines.append("- 异常明细:")
-        for item in failed_items[:8]:
+        for idx, item in enumerate(failed_items[:8], start=1):
             issue, detail = humanize_collect_error(
                 str(item.get("error", "") or item.get("status", "failed")),
                 int(item.get("status_code", 0) or 0),
             )
-            lines.append(f"  - 来源: {item.get('id')}")
-            lines.append(f"    问题: {issue}")
-            lines.append(f"    详情: {detail}")
-    return "\n".join(lines)
+            detail_lines.append(
+                f"异常来源{idx}：{item.get('id')}，问题 {issue}，详情 {detail}"
+            )
+    if follow_up_tasks:
+        detail_lines.append(f"已派生修复任务：{len(follow_up_tasks)} 项")
+        for idx, item in enumerate(follow_up_tasks[:8], start=1):
+            detail_lines.append(
+                f"后续任务{idx}：{item.get('task_id')} -> {item.get('assignee') or '-'}"
+            )
+    if follow_up_errors:
+        detail_lines.append(f"后续建单失败：{len(follow_up_errors)} 项")
+        for idx, item in enumerate(follow_up_errors[:8], start=1):
+            detail_lines.append(f"建单异常{idx}：{item}")
+    return render_chat_notice(
+        title,
+        status=status,
+        task_id=task_id,
+        sender_identity=sender_identity,
+        run_time=started_at,
+        trace_id=build_trace_id(report_file=report_file),
+        summary=(
+            f"网页情报采集已处理 {int(scanned or 0)} 个来源，"
+            f"发现 {int(changed or 0)} 个变更，失败 {int(failed or 0)} 个。"
+        ),
+        extra_lines=extra_lines,
+        details=detail_lines,
+        next_step=(
+            "请按留痕编号查看采集报告，并优先处理失败来源。"
+            if has_failures
+            else "如需跟进，请按留痕编号查看本轮采集明细。"
+        ),
+    )
 
 
 def build_failure_output(task_id: str, started_at: str, error_text: str) -> str:
     issue, detail = humanize_collect_error(error_text, 0)
-    lines = [
+    return render_chat_notice(
         "网页情报采集异常",
-        f"- 任务: {task_id}",
-        f"- 时间: {started_at}",
-        "- 问题: 采集器入口异常",
-        f"- 详情: {issue}：{detail}",
-    ]
-    return "\n".join(lines)
-
-
-def follow_up_lines(tasks: list[dict[str, Any]]) -> list[str]:
-    if not tasks:
-        return []
-    lines = ["- 已派生修复任务:"]
-    for item in tasks[:8]:
-        task_id = str(item.get("task_id", "")).strip() or "-"
-        assignee = str(item.get("assignee", "")).strip() or "-"
-        status = str(item.get("status", "")).strip() or "created"
-        lines.append(f"  - {task_id} -> {assignee} ({status})")
-    return lines
+        status="需处理",
+        task_id=task_id,
+        sender_identity=DEFAULT_SENDER_IDENTITY,
+        run_time=started_at,
+        summary="网页情报采集器入口运行失败。",
+        details=[
+            "问题：采集器入口异常",
+            f"详情：{issue}：{detail}",
+        ],
+        next_step="请先检查运行环境与采集配置，再重新执行采集任务。",
+    )
 
 
 def classify_collect_follow_up(item: dict[str, Any]) -> dict[str, str]:
@@ -688,16 +718,17 @@ def create_collect_follow_up_tasks(
         issue_key = sha256_text(f"{sid}|{follow_up['kind']}|{day_token}")[:10]
         task_id = f"todo-web-intel-collect-{sid}-{day_token}-{issue_key}"
         issue, detail = humanize_collect_error(error_text, status_code)
+        report_trace = trace_token(report_file)
 
         requirement = "\n".join(
             [
-                f"web-intel collect task: {run_task_id}",
-                f"source_id: {sid}",
-                f"url: {url}",
-                f"first_seen_at: {started_at}",
-                f"report_file: {report_file}",
-                f"status_code: {status_code}",
-                f"error: {error_text}",
+                f"采集任务编号：{run_task_id}",
+                f"来源编号：{sid}",
+                f"来源地址：{url or '-'}",
+                f"首次发现时间：{started_at}",
+                f"留痕编号：{report_trace}",
+                f"状态码：{status_code}",
+                f"当前错误：{error_text}",
                 "",
                 "需要闭环处理，而不是仅聊天告警：",
                 "1. 复现 HTTP 抓取失败，并判断是否为 Cloudflare/验证码/403。",
@@ -706,18 +737,21 @@ def create_collect_follow_up_tasks(
                 "4. 修复后重新执行 web_intel_collect_runner，确认该来源不再失败。",
             ]
         )
-        acceptance = "至少完成一次复现、一次修复尝试、一次复验，并把证据写回任务。"
+        acceptance = "至少完成一次复现、一次修复尝试、一次复验，并把留痕编号写回任务。"
         context_payload = {
-            "problem": f"{sid} collect failed: {issue}",
+            "problem": f"{sid} 采集失败：{issue}",
             "location": url or sid,
             "first_seen_at": started_at,
             "impact": issue,
-            "evidence": f"{report_file}",
-            "current_state": error_text,
+            "evidence": f"留痕编号：{report_trace}",
+            "current_state": f"当前仍处于失败状态：{error_text}",
             "expected_state": "目标来源可稳定采集，不再返回反爬挑战或运行时依赖错误。",
             "operation_path": f"web_intel_collect_runner::{sid}",
-            "reproduction_steps": f"运行 {run_task_id} 或手动执行 web_intel_collect_runner 并观察 {sid} 的采集结果。",
-            "scope": f"web-intel collect source={sid}",
+            "reproduction_steps": (
+                f"运行 {run_task_id} 或手动执行 web_intel_collect_runner，"
+                f"再按留痕编号查看 {sid} 的采集记录并复验。"
+            ),
+            "scope": f"网页情报采集 source={sid}",
             "constraints": "优先保持官方来源；若必须改为替代源，需要在任务中写明原因与验证结果。",
             "acceptance_criteria": acceptance,
             "full_background": requirement,
@@ -755,7 +789,7 @@ def create_collect_follow_up_tasks(
             "--acceptance",
             acceptance,
             "--observable-outputs",
-            f"report_file={report_file},source_id={sid},url={url}",
+            f"留痕编号={report_trace},source_id={sid},url={url}",
             "--acceptance-thresholds",
             "修复后重跑 web-intel 任务，该来源 failed=0；或留下明确不可自动解决结论。",
             "--scheduled-at",
@@ -1000,18 +1034,18 @@ def main() -> None:
             [
                 f"# {title}",
                 "",
-                f"- source_id: {sid}",
-                f"- url: {url}",
-                f"- fetched_at: {now_mark}",
-                f"- method: {method}",
-                f"- status_code: {int(fetched.get('status', 200) or 200)}",
-                f"- changed: {str(bool(changed)).lower()}",
-                f"- parsed_file: {parsed_file}",
-                f"- raw_file: {raw_file}",
+                f"- 来源编号：{sid}",
+                f"- 来源地址：{url}",
+                f"- 抓取时间：{now_mark}",
+                f"- 抓取方式：{method}",
+                f"- 状态码：{int(fetched.get('status', 200) or 200)}",
+                f"- 内容变化：{'是' if bool(changed) else '否'}",
+                f"- 解析留痕编号：{trace_token(parsed_file)}",
+                f"- 原始留痕编号：{trace_token(raw_file)}",
                 "",
-                "## Excerpt",
+                "## 摘要摘录",
                 "",
-                plain_text[:2000] or "(empty)",
+                plain_text[:2000] or "（空）",
             ]
         )
         save_text(summary_file, summary_text)
@@ -1097,14 +1131,9 @@ def main() -> None:
         report_file=report_file,
         changed_ids=changed_ids,
         failed_items=failed_items,
+        follow_up_tasks=follow_up_tasks,
+        follow_up_errors=follow_up_errors,
     )
-    extra_lines = follow_up_lines(follow_up_tasks)
-    if follow_up_errors:
-        extra_lines.append("- 建单失败:")
-        for item in follow_up_errors[:8]:
-            extra_lines.append(f"  - {item}")
-    if extra_lines:
-        final_output = final_output + "\n" + "\n".join(extra_lines)
     save_text(latest_summary_file, final_output + "\n")
 
     quiet_no_reply = should_quiet(

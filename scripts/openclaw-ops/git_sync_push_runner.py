@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from chat_output import render_chat_notice, short_location_label
+
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
 NOTIFY_ON_MODES = {"error", "all"}
@@ -488,33 +490,43 @@ def main() -> int:
     output = "NO_REPLY"
     if notify:
         if result["errors"]:
-            lines = [
-                "# Git 同步异常",
-                f"- 任务: {result['task_id'] or '-'}",
-                f"- 时间: {result['time']}",
-                f"- 仓库: {result['repo']}",
-                f"- 分支: {result['branch'] or '-'}",
-                f"- 远程: {result['remote_url'] or '-'}",
-                f"- 上游: {result['upstream'] or '-'}",
-                f"- 错误数量: {len(result['errors'])}",
-            ]
-            for idx, err in enumerate(result["errors"][:10], start=1):
-                lines.append(f"- 异常{idx}: {humanize_error(err)}")
+            output = render_chat_notice(
+                "Git 同步异常",
+                status="需处理",
+                task_id=str(result["task_id"] or ""),
+                sender_identity="optimization-agent/git-sync",
+                run_time=str(result["time"] or ""),
+                summary=f"Git 同步发现 {len(result['errors'])} 个异常。",
+                extra_lines=[
+                    f"目标仓库：{short_location_label(str(result['repo'] or ''))}",
+                    f"分支：{result['branch'] or '-'}",
+                    f"远程地址：{result['remote_url'] or '-'}",
+                    f"上游分支：{result['upstream'] or '-'}",
+                ],
+                details=[f"异常{idx}：{humanize_error(err)}" for idx, err in enumerate(result["errors"][:10], start=1)],
+                next_step="请先检查远端连通性、分支状态和自动提交结果。",
+            )
         else:
-            lines = [
-                "# Git 同步结果",
-                f"- 任务: {result['task_id'] or '-'}",
-                f"- 时间: {result['time']}",
-                f"- 仓库: {result['repo']}",
-                f"- 分支: {result['branch'] or '-'}",
-                f"- fetch: {'成功' if result['fetch_ok'] else '失败'}",
-                f"- pull: {'已执行' if result['pulled'] else '未执行'}",
-                f"- commit: {'已提交' if result['committed'] else '无变更'}",
-                f"- push: {'已推送' if result['pushed'] else '未推送'}",
+            extra_lines = [
+                f"目标仓库：{short_location_label(str(result['repo'] or ''))}",
+                f"分支：{result['branch'] or '-'}",
+                f"抓取远端：{'成功' if result['fetch_ok'] else '失败'}",
+                f"拉取更新：{'已执行' if result['pulled'] else '未执行'}",
+                f"自动提交：{'已提交' if result['committed'] else '无变更'}",
+                f"远端推送：{'已推送' if result['pushed'] else '未推送'}",
             ]
             if str(result.get("commit_sha", "")).strip():
-                lines.append(f"- 提交哈希: {result['commit_sha']}")
-        output = "\n".join(lines)
+                extra_lines.append(f"提交哈希：{result['commit_sha']}")
+            output = render_chat_notice(
+                "Git 同步结果",
+                status="已完成",
+                task_id=str(result["task_id"] or ""),
+                sender_identity="optimization-agent/git-sync",
+                run_time=str(result["time"] or ""),
+                summary="Git 同步流程已执行完成。",
+                extra_lines=extra_lines,
+                next_step="如需复核，请查看远端提交记录与内部运行日志。",
+            )
 
     if bool(args.emit_json):
         print(json.dumps({"notify": notify, "output": output, "result": result}, ensure_ascii=False))

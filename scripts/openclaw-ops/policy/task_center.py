@@ -10,6 +10,7 @@ Bridge contract:
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import time as time_module
 import uuid
@@ -49,6 +50,24 @@ SQLITE_LOCK_ERROR_SNIPPETS = ("database is locked", "database table is locked")
 SQLITE_WRITE_RETRY_ATTEMPTS = 4
 SQLITE_WRITE_RETRY_INITIAL_DELAY_SEC = 1.0
 SQLITE_WRITE_RETRY_MAX_DELAY_SEC = 8.0
+DISPLAY_TRACE_LABELS = {
+    "context_payload": "留痕编号",
+    "evidence": "留痕编号",
+    "input_ref": "输入留痕编号",
+    "output_ref": "输出留痕编号",
+    "parsed_file": "解析留痕编号",
+    "payload_ref": "留痕编号",
+    "raw_file": "原始留痕编号",
+    "report_file": "留痕编号",
+}
+DISPLAY_PATH_RE = re.compile(
+    r"(?<!://)(?:"
+    r"[A-Za-z]:\\[^\s,;:，；。]+"
+    r"|(?<!:)/(?:[^/\s,;:，；。]+/)*[^/\s,;:，；。]+"
+    r"|(?:\.\.?[/\\])(?:[^\\/\s,;:，；。]+[/\\])*[^\\/\s,;:，；。]+"
+    r"|[\w.-]+\.(?:json|log|txt|md|png|jpg|jpeg|webp|csv|sqlite|db)"
+    r")"
+)
 
 
 class TaskCenterError(RuntimeError):
@@ -140,6 +159,77 @@ def parse_json(text: str | None) -> dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {}
     except json.JSONDecodeError:
         return {}
+
+
+def display_trace_label(key_hint: str = "") -> str:
+    normalized = str(key_hint or "").strip().lower()
+    if normalized in DISPLAY_TRACE_LABELS:
+        return DISPLAY_TRACE_LABELS[normalized]
+    if "parsed" in normalized:
+        return "解析留痕编号"
+    if "raw" in normalized:
+        return "原始留痕编号"
+    if normalized.startswith("input") or "_input" in normalized:
+        return "输入留痕编号"
+    if normalized.startswith("output") or "_output" in normalized:
+        return "输出留痕编号"
+    if normalized.endswith(("_file", "_path", "_ref")):
+        return "留痕编号"
+    return "留痕编号"
+
+
+def build_trace_token(value: str | Path) -> str:
+    raw = str(value or "").strip().strip("'\"")
+    if not raw:
+        return "已归档"
+    normalized = raw.replace("\\", "/").split("?", 1)[0].split("#", 1)[0].rstrip("/")
+    tail = normalized.rsplit("/", 1)[-1] if normalized else raw
+    token = Path(tail).stem or Path(normalized or raw).stem or tail or raw
+    return str(token).strip() or "已归档"
+
+
+def looks_like_trace_path(value: str) -> bool:
+    raw = str(value or "").strip().strip("'\"")
+    if not raw:
+        return False
+    if raw.startswith(("http://", "https://")):
+        return False
+    if DISPLAY_PATH_RE.fullmatch(raw):
+        return True
+    normalized = raw.replace("\\", "/")
+    if normalized.startswith("file://"):
+        return True
+    return False
+
+
+def sanitize_display_text(value: str, *, key_hint: str = "") -> str:
+    text = str(value or "")
+    if not text.strip():
+        return text
+    label = display_trace_label(key_hint)
+    stripped = text.strip()
+    if looks_like_trace_path(stripped):
+        return f"{label}：{build_trace_token(stripped)}"
+
+    def replace_match(match: re.Match[str]) -> str:
+        matched = str(match.group(0) or "").strip().strip("'\"")
+        if not matched or matched.startswith(("http://", "https://")):
+            return matched
+        return f"{label}：{build_trace_token(matched)}"
+
+    return DISPLAY_PATH_RE.sub(replace_match, text)
+
+
+def sanitize_display_payload(value: Any, *, key_hint: str = "") -> Any:
+    if isinstance(value, dict):
+        return {key: sanitize_display_payload(item, key_hint=str(key)) for key, item in value.items()}
+    if isinstance(value, list):
+        return [sanitize_display_payload(item, key_hint=key_hint) for item in value]
+    if isinstance(value, tuple):
+        return [sanitize_display_payload(item, key_hint=key_hint) for item in value]
+    if isinstance(value, str):
+        return sanitize_display_text(value, key_hint=key_hint)
+    return value
 
 
 def normalize_text_list(value: Any) -> str:
@@ -802,7 +892,7 @@ class TaskCenter:
 
         return self.get_task(task_id)
 
-    def get_task(self, task_id: str) -> dict[str, Any]:
+    def get_task(self, task_id: str, display_safe: bool = True) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
         if not row:
             raise TaskCenterError(f"task not found: {task_id}")
@@ -826,7 +916,7 @@ class TaskCenter:
         data["cost_estimate_total"] = round(float(data.get("cost_estimate_total") or 0.0), 6)
         data["started_at"] = str(data.get("started_at") or "").strip()
         data["completed_at"] = str(data.get("completed_at") or "").strip()
-        return data
+        return sanitize_display_payload(data) if display_safe else data
 
     def add_event(
         self,
@@ -899,13 +989,13 @@ class TaskCenter:
 
         return self.get_stage_run(stage_run_id)
 
-    def get_stage_run(self, stage_run_id: int) -> dict[str, Any]:
+    def get_stage_run(self, stage_run_id: int, display_safe: bool = True) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM stage_runs WHERE id = ?", (int(stage_run_id),)).fetchone()
         if not row:
             raise TaskCenterError(f"stage_run not found: {stage_run_id}")
         out = dict(row)
         out["details"] = parse_json(out.pop("details_json", ""))
-        return out
+        return sanitize_display_payload(out) if display_safe else out
 
     def finish_stage_run(
         self,
@@ -973,7 +1063,7 @@ class TaskCenter:
 
         return self.get_stage_run(int(row["id"]))
 
-    def list_stage_runs(self, task_id: str) -> list[dict[str, Any]]:
+    def list_stage_runs(self, task_id: str, display_safe: bool = True) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT *
@@ -988,15 +1078,15 @@ class TaskCenter:
             item = dict(row)
             item["details"] = parse_json(item.pop("details_json", ""))
             out.append(item)
-        return out
+        return sanitize_display_payload(out) if display_safe else out
 
-    def get_module_log(self, log_id: int) -> dict[str, Any]:
+    def get_module_log(self, log_id: int, display_safe: bool = True) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM module_logs WHERE id = ?", (int(log_id),)).fetchone()
         if not row:
             raise TaskCenterError(f"module_log not found: {log_id}")
         item = dict(row)
         item["details"] = parse_json(item.pop("details_json", ""))
-        return item
+        return sanitize_display_payload(item) if display_safe else item
 
     def record_module_log(
         self,
@@ -1069,7 +1159,7 @@ class TaskCenter:
         log_id = int(self._run_write_with_retry(write_op))
         return self.get_module_log(log_id)
 
-    def list_module_logs(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
+    def list_module_logs(self, task_id: str, limit: int = 200, display_safe: bool = True) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit or 200), 2000))
         rows = self.conn.execute(
             """
@@ -1087,15 +1177,15 @@ class TaskCenter:
             item["details"] = parse_json(item.pop("details_json", ""))
             out.append(item)
         out.reverse()
-        return out
+        return sanitize_display_payload(out) if display_safe else out
 
-    def get_module_communication(self, comm_id: int) -> dict[str, Any]:
+    def get_module_communication(self, comm_id: int, display_safe: bool = True) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM module_communications WHERE id = ?", (int(comm_id),)).fetchone()
         if not row:
             raise TaskCenterError(f"module_communication not found: {comm_id}")
         item = dict(row)
         item["details"] = parse_json(item.pop("details_json", ""))
-        return item
+        return sanitize_display_payload(item) if display_safe else item
 
     def record_module_communication(
         self,
@@ -1173,7 +1263,12 @@ class TaskCenter:
         comm_id = int(self._run_write_with_retry(write_op))
         return self.get_module_communication(comm_id)
 
-    def list_module_communications(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
+    def list_module_communications(
+        self,
+        task_id: str,
+        limit: int = 200,
+        display_safe: bool = True,
+    ) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit or 200), 2000))
         rows = self.conn.execute(
             """
@@ -1191,9 +1286,9 @@ class TaskCenter:
             item["details"] = parse_json(item.pop("details_json", ""))
             out.append(item)
         out.reverse()
-        return out
+        return sanitize_display_payload(out) if display_safe else out
 
-    def get_agent_task_report(self, report_id: int) -> dict[str, Any]:
+    def get_agent_task_report(self, report_id: int, display_safe: bool = True) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM agent_task_reports WHERE id = ?", (int(report_id),)).fetchone()
         if not row:
             raise TaskCenterError(f"agent_task_report not found: {report_id}")
@@ -1204,7 +1299,7 @@ class TaskCenter:
         item["resolution_steps"] = split_text_list(item.get("resolution_steps"))
         item["failed_items"] = split_text_list(item.get("failed_items"))
         item["details"] = parse_json(item.pop("details_json", ""))
-        return item
+        return sanitize_display_payload(item) if display_safe else item
 
     def upsert_agent_task_report(
         self,
@@ -1361,6 +1456,7 @@ class TaskCenter:
         task_id: str = "",
         planner_id: str = "",
         limit: int = 200,
+        display_safe: bool = True,
     ) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit or 200), 2000))
         clauses: list[str] = []
@@ -1392,16 +1488,16 @@ class TaskCenter:
             item["failed_items"] = split_text_list(item.get("failed_items"))
             item["details"] = parse_json(item.pop("details_json", ""))
             out.append(item)
-        return out
+        return sanitize_display_payload(out) if display_safe else out
 
-    def get_agent_points_record(self, record_id: int) -> dict[str, Any]:
+    def get_agent_points_record(self, record_id: int, display_safe: bool = True) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM agent_points_ledger WHERE id = ?", (int(record_id),)).fetchone()
         if not row:
             raise TaskCenterError(f"agent_points_ledger not found: {record_id}")
         item = dict(row)
         item["solved"] = bool(item.get("solved"))
         item["details"] = parse_json(item.pop("details_json", ""))
-        return item
+        return sanitize_display_payload(item) if display_safe else item
 
     def upsert_agent_points(
         self,
@@ -1647,7 +1743,7 @@ class TaskCenter:
         if normalized_status not in TASK_STATUSES:
             raise TaskCenterError(f"invalid status: {new_status}")
 
-        current = self.get_task(task_id)
+        current = self.get_task(task_id, display_safe=False)
         current_status = str(current["status"])
         if allowed_from and current_status not in allowed_from:
             raise TaskCenterError(
@@ -1684,7 +1780,7 @@ class TaskCenter:
         max_failure_before_escalate: int,
         reason: str,
     ) -> dict[str, Any]:
-        task = self.get_task(task_id)
+        task = self.get_task(task_id, display_safe=False)
         next_failure = int(task["failure_count"]) + 1
         next_retry = int(task["retry_count"]) + 1
 
@@ -1776,7 +1872,7 @@ class TaskCenter:
         context_fields_missing: list[str] | None = None,
         context_fields_recommended_missing: list[str] | None = None,
     ) -> dict[str, Any]:
-        current = self.get_task(task_id)
+        current = self.get_task(task_id, display_safe=False)
         payload = context_payload if isinstance(context_payload, dict) else current.get("context_payload", {})
         if not isinstance(payload, dict):
             payload = {}
@@ -1950,7 +2046,7 @@ class TaskCenter:
             "cost_estimate": round(float(row["cost_estimate"] or 0.0), 6),
         }
 
-    def list_task_events(self, task_id: str, limit: int = 200) -> list[dict[str, Any]]:
+    def list_task_events(self, task_id: str, limit: int = 200, display_safe: bool = True) -> list[dict[str, Any]]:
         limit = max(1, min(int(limit or 200), 1000))
         rows = self.conn.execute(
             """
@@ -1968,7 +2064,7 @@ class TaskCenter:
             item["details"] = parse_json(item.pop("details_json", ""))
             out.append(item)
         out.reverse()
-        return out
+        return sanitize_display_payload(out) if display_safe else out
 
     def task_timing_summary(self, task: dict[str, Any]) -> dict[str, Any]:
         created_text = str(task.get("created_at", "") or "").strip()
@@ -2004,7 +2100,7 @@ class TaskCenter:
             "execution_min": round((execution_ms / 60000.0), 2) if execution_ms is not None else None,
         }
 
-    def task_points_summary(self, task_id: str) -> dict[str, Any]:
+    def task_points_summary(self, task_id: str, display_safe: bool = True) -> dict[str, Any]:
         rows = self.conn.execute(
             """
             SELECT *
@@ -2043,7 +2139,7 @@ class TaskCenter:
             reverse=True,
         )
         top_agent = ranked_agent_rows[0] if ranked_agent_rows else None
-        return {
+        summary = {
             "record_count": len(records),
             "total_points": round(sum(float(item.get("points") or 0.0) for item in records), 6),
             "by_actor_type": by_actor_type,
@@ -2051,16 +2147,25 @@ class TaskCenter:
             "top_agent": top_agent,
             "records": records,
         }
+        return sanitize_display_payload(summary) if display_safe else summary
 
-    def task_report(self, task_id: str, event_limit: int = 200) -> dict[str, Any]:
-        task = self.get_task(task_id)
+    def task_report(self, task_id: str, event_limit: int = 200, display_safe: bool = True) -> dict[str, Any]:
+        task = self.get_task(task_id, display_safe=False)
         token_usage = self.task_token_summary(task_id)
         timing = self.task_timing_summary(task)
-        points = self.task_points_summary(task_id)
-        stage_runs = self.list_stage_runs(task_id)
-        module_logs = self.list_module_logs(task_id, limit=min(max(50, event_limit), 1000))
-        communications = self.list_module_communications(task_id, limit=min(max(50, event_limit), 1000))
-        agent_reports = self.list_agent_task_reports(task_id=task_id, limit=min(max(50, event_limit), 1000))
+        points = self.task_points_summary(task_id, display_safe=False)
+        stage_runs = self.list_stage_runs(task_id, display_safe=False)
+        module_logs = self.list_module_logs(task_id, limit=min(max(50, event_limit), 1000), display_safe=False)
+        communications = self.list_module_communications(
+            task_id,
+            limit=min(max(50, event_limit), 1000),
+            display_safe=False,
+        )
+        agent_reports = self.list_agent_task_reports(
+            task_id=task_id,
+            limit=min(max(50, event_limit), 1000),
+            display_safe=False,
+        )
         report_input_tokens = sum(int(row.get("input_tokens") or 0) for row in agent_reports)
         report_output_tokens = sum(int(row.get("output_tokens") or 0) for row in agent_reports)
         report_total_tokens = report_input_tokens + report_output_tokens
@@ -2083,7 +2188,7 @@ class TaskCenter:
             row for row in communications if str(row.get("status", "")).lower() in {"failed", "timeout"}
         ]
         stage_failures = [row for row in stage_runs if str(row.get("status", "")).lower() in {"failed"}]
-        return {
+        report = {
             "task": task,
             "timing": timing,
             "token_usage": token_usage,
@@ -2094,7 +2199,7 @@ class TaskCenter:
             "module_logs": module_logs,
             "module_communications": communications,
             "agent_reports": agent_reports,
-            "events": self.list_task_events(task_id, limit=event_limit),
+            "events": self.list_task_events(task_id, limit=event_limit, display_safe=False),
             "diagnostics": {
                 "module_failure_count": len(module_failures),
                 "communication_failure_count": len(communication_failures),
@@ -2104,8 +2209,9 @@ class TaskCenter:
                 "flow_failures": stage_failures[:20],
             },
         }
+        return sanitize_display_payload(report) if display_safe else report
 
-    def unresolved_tasks(self) -> list[dict[str, Any]]:
+    def unresolved_tasks(self, display_safe: bool = True) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
             SELECT *
@@ -2121,7 +2227,8 @@ class TaskCenter:
             """,
             (utc_now_iso(),),
         ).fetchall()
-        return [dict(row) for row in rows]
+        tasks = [dict(row) for row in rows]
+        return sanitize_display_payload(tasks) if display_safe else tasks
 
     def planner_summary(
         self,
@@ -2129,6 +2236,7 @@ class TaskCenter:
         planner_id: str,
         since: str = "",
         limit: int = 100,
+        display_safe: bool = True,
     ) -> dict[str, Any]:
         normalized_planner = str(planner_id or "").strip()
         if not normalized_planner:
@@ -2241,7 +2349,7 @@ class TaskCenter:
                 }
             )
 
-        return {
+        summary = {
             "planner_id": normalized_planner,
             "since": normalized_since,
             "report_count": len(reports),
@@ -2260,8 +2368,9 @@ class TaskCenter:
             "by_agent": by_agent,
             "reports": reports,
         }
+        return sanitize_display_payload(summary) if display_safe else summary
 
-    def daily_summary(self, target_date: date) -> dict[str, Any]:
+    def daily_summary(self, target_date: date, display_safe: bool = True) -> dict[str, Any]:
         tr = iso_day_range(target_date)
 
         by_status_rows = self.conn.execute(
@@ -2548,7 +2657,7 @@ class TaskCenter:
                 }
             )
 
-        return {
+        summary = {
             "date": target_date.isoformat(),
             "task_counts": by_status,
             "task_pools": by_pool,
@@ -2610,8 +2719,9 @@ class TaskCenter:
             "escalated": escalated,
             "escalated_count": escalated_count,
             "failure_over_limit": failure_over_limit,
-            "unresolved_count": len(self.unresolved_tasks()),
+            "unresolved_count": len(self.unresolved_tasks(display_safe=False)),
         }
+        return sanitize_display_payload(summary) if display_safe else summary
 
 
 def format_daily_summary_markdown(summary: dict[str, Any]) -> str:

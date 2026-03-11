@@ -42,6 +42,7 @@ except Exception:  # pragma: no cover
     TaskCenter = None
     FileWriteError = RuntimeError  # type: ignore
     write_json_atomic = None  # type: ignore
+from chat_output import render_chat_notice, short_location_label
 
 CONTEXT_GATE_BLOCK_MODES = {"daily_incremental", "bi_daily_recurring", "weekly_structure"}
 SKIP_DIR_NAMES = {
@@ -159,6 +160,17 @@ def humanize_reviewer_reason(reason: str) -> str:
     return label
 
 
+def humanize_reviewer_runtime_error(text: str) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+    mapping = {
+        "task center unavailable": "任务中心暂不可用",
+        "database locked": "数据库暂时被占用",
+    }
+    return mapping.get(raw.lower(), raw)
+
+
 def build_reviewer_exception_output(
     *,
     mode: str,
@@ -173,28 +185,32 @@ def build_reviewer_exception_output(
     detail_lines: list[str] | None = None,
     manual_action: str = "",
 ) -> str:
-    lines = [
-        "代码审查巡检异常",
-        f"- 模式: {mode}",
-        f"- 任务: {task_id or '-'}",
-        f"- 运行ID: {run_id}",
-        f"- 时间: {datetime.now(TZ).strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
-        f"- 运行耗时: {max(0, int(run_duration_ms))}ms",
-        f"- 优先级: {priority}",
-        f"- 风险级别: {risk_level}",
-        f"- 日志模式: {normal_log_mode}",
+    detail_items = [
+        f"审查模式：{mode}",
+        f"运行耗时：{max(0, int(run_duration_ms))} 毫秒",
+        f"优先级：{priority}",
+        f"风险级别：{risk_level}",
+        f"日志模式：{normal_log_mode}",
     ]
     if risk_reasons:
-        lines.append("- 问题: " + "；".join(humanize_reviewer_reason(item) for item in risk_reasons))
+        detail_items.append("问题：" + "；".join(humanize_reviewer_reason(item) for item in risk_reasons))
     if change_reasons:
-        lines.append("- 变化: " + "；".join(humanize_reviewer_reason(item) for item in change_reasons))
+        detail_items.append("变化：" + "；".join(humanize_reviewer_reason(item) for item in change_reasons))
     for line in detail_lines or []:
         text = str(line or "").strip()
         if text:
-            lines.append(text)
-    if manual_action:
-        lines.append(f"- 处理建议: {manual_action}")
-    return "\n".join(lines)
+            detail_items.append(text)
+    return render_chat_notice(
+        "代码审查巡检异常",
+        status="需处理",
+        task_id=task_id,
+        sender_identity=DEFAULT_SENDER_PREFIX,
+        run_time=datetime.now(TZ).isoformat(timespec="seconds"),
+        trace_id=run_id,
+        summary="检测到需要人工关注的审查异常。",
+        details=detail_items,
+        next_step=manual_action or "请先查看内部留痕，再决定修复或升级处理。",
+    )
 
 
 def build_reviewer_exception_fallback_output(
@@ -1644,12 +1660,12 @@ def run_quality_scan(
         ).splitlines()
         err = str(context_gate.get("error", "")).strip()
         if err:
-            lines.append(f"- 详情: {err}")
+            lines.append(f"- 详情：{humanize_reviewer_runtime_error(err)}")
         for item in context_gate.get("items", [])[:12]:
             if not isinstance(item, dict):
                 continue
             lines.append(
-                f"- 仓库: {item.get('repo', '')} | 状态={item.get('status', '-')}"
+                f"- 仓库：{short_location_label(str(item.get('repo', '')))} | 状态={item.get('status', '-')}"
                 f" | 任务={item.get('task_id', '-')}"
             )
         record = {

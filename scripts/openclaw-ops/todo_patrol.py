@@ -21,6 +21,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic
+from chat_output import build_trace_id, render_chat_notice
 
 TZ = timezone(timedelta(hours=8))
 
@@ -749,123 +750,88 @@ def format_dispatch_message(
     if not dispatched and skipped_count == 0 and not dispatch_errors:
         return "NO_REPLY"
 
+    detail_lines: list[str] = []
+    if dispatched:
+        for idx, row in enumerate(dispatched[:8], start=1):
+            task_row = row["task"]
+            payload = row.get("payload", {}) if isinstance(row, dict) else {}
+            context_payload = payload.get("context_payload", {}) if isinstance(payload, dict) else {}
+            if not isinstance(context_payload, dict):
+                context_payload = {}
+            human_summary = to_text(context_payload.get("human_summary"))
+            detail_lines.append(
+                f"派发任务{idx}：{task_row.get('task_id')} -> {task_row.get('assignee') or 'unassigned'}，"
+                f"优先级 {task_row.get('priority')}，风险 {task_row.get('risk_level')}，"
+                f"上下文完整度 {task_row.get('context_completeness')}%"
+            )
+            if human_summary:
+                detail_lines.append(f"任务说明{idx}：{human_summary}")
+            if bool(task_row.get("needs_clarification")):
+                clar_reason = to_text(task_row.get("clarification_reason")) or "上下文仍需补充"
+                detail_lines.append(f"澄清要求{idx}：{clar_reason}")
+
+    if dispatch_errors:
+        for idx, err in enumerate(dispatch_errors[:10], start=1):
+            title, detail = humanize_dispatch_error(err)
+            detail_lines.append(f"异常{idx}：{title}")
+            detail_lines.append(f"详情{idx}：{detail}")
+
+    extra_lines = [
+        f"输出模式：{mode}",
+        f"新增派发：{len(dispatched)} 项",
+        f"跳过数量：{skipped_count} 项",
+        f"跳过运维事件：{ops_incident_skipped_count} 项",
+        f"运行异常：{len(dispatch_errors)} 项",
+        f"运维事件过滤：{'开启' if skip_ops_incidents else '关闭'}",
+    ]
+    summary = planner_summary if isinstance(planner_summary, dict) else {}
+    if summary:
+        extra_lines.append(
+            "近24小时规划："
+            f"任务 {summary.get('task_count', 0)} 项，"
+            f"已解决 {summary.get('resolved_task_count', 0)} 项，"
+            f"失败 {summary.get('failed_task_count', 0)} 项，"
+            f"解决率 {summary.get('solved_ratio_pct', 0.0)}。"
+        )
+
     if mode == "summary":
         if not dispatch_errors:
             return "NO_REPLY"
-
-        lines: list[str] = []
-        lines.append("任务巡检异常")
-        lines.append(f"- 任务: {task}")
-        lines.append(f"- 时间: {now_tz().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
-        lines.append(f"- 待办文件: {todo_file}")
-        lines.append(f"- 任务库: {db_path}")
-        lines.append(f"- 状态文件: {state_file}")
-        lines.append(
-            f"- 调度统计: 新增={len(dispatched)}，跳过={skipped_count}，"
-            f"跳过运维事件={ops_incident_skipped_count}，异常={len(dispatch_errors)}"
+        return render_chat_notice(
+            "任务巡检异常",
+            status="需处理",
+            task_id=task,
+            sender_identity="coordinator/todo-patrol",
+            run_time=now_iso(),
+            trace_id=build_trace_id(report_file=state_file),
+            summary=(
+                f"任务巡检发现 {len(dispatch_errors)} 个异常，"
+                f"本轮新增派发 {len(dispatched)} 项。"
+            ),
+            extra_lines=extra_lines,
+            details=detail_lines,
+            next_step="请按留痕编号查看内部记录，并优先处理巡检异常。",
         )
-        for idx, err in enumerate(dispatch_errors[:10], start=1):
-            title, detail = humanize_dispatch_error(err)
-            lines.append(f"- 异常{idx}: {title}")
-            lines.append(f"- 详情{idx}: {detail}")
-        summary = planner_summary if isinstance(planner_summary, dict) else {}
-        if summary:
-            lines.append(
-                "- 规划器摘要(24h): "
-                f"任务={summary.get('task_count', 0)}，"
-                f"已解决={summary.get('resolved_task_count', 0)}，"
-                f"失败={summary.get('failed_task_count', 0)}，"
-                f"解决率={summary.get('solved_ratio_pct', 0.0)}"
-            )
-        return "\n".join(lines).strip()
 
-    lines: list[str] = []
-    lines.append("sender_identity: ops-agent/todo-patrol")
-    lines.append(f"task: {task}")
-    lines.append(f"time: {now_tz().strftime('%Y-%m-%d %H:%M:%S')} UTC+8")
-    lines.append(f"todo_file: {todo_file}")
-    lines.append(f"task_center_db: {db_path}")
-    lines.append(f"state_file: {state_file}")
-    lines.append(f"skip_ops_incidents: {str(skip_ops_incidents).lower()}")
-    lines.append("")
-    lines.append(
-        f"dispatch_result: new={len(dispatched)} skipped={skipped_count} "
-        f"ops_incident_skipped={ops_incident_skipped_count} errors={len(dispatch_errors)}"
+    return render_chat_notice(
+        "任务巡检摘要" if not dispatch_errors else "任务巡检异常",
+        status=("需处理" if dispatch_errors else "有更新"),
+        task_id=task,
+        sender_identity="coordinator/todo-patrol",
+        run_time=now_iso(),
+        trace_id=build_trace_id(report_file=state_file),
+        summary=(
+            f"任务巡检已新增派发 {len(dispatched)} 项，"
+            f"跳过 {skipped_count} 项，异常 {len(dispatch_errors)} 项。"
+        ),
+        extra_lines=extra_lines,
+        details=detail_lines,
+        next_step=(
+            "请按留痕编号查看内部记录，并优先处理巡检异常。"
+            if dispatch_errors
+            else "如需跟进，请按任务编号进入任务中心查看已派发任务。"
+        ),
     )
-    lines.append("")
-
-    if dispatched:
-        lines.append("new_tasks:")
-        for idx, row in enumerate(dispatched, start=1):
-            task_row = row["task"]
-            route = row["route"]
-            payload = row["payload"]
-            context_payload = payload.get("context_payload") if isinstance(payload, dict) else {}
-            if not isinstance(context_payload, dict):
-                context_payload = {}
-            risk_points = context_payload.get("risk_points", [])
-            if not isinstance(risk_points, list):
-                risk_points = []
-            info_flow = context_payload.get("information_flow", {})
-            if not isinstance(info_flow, dict):
-                info_flow = {}
-            assign_packet = info_flow.get("assignment_packet", {})
-            if not isinstance(assign_packet, dict):
-                assign_packet = {}
-            dependencies = assign_packet.get("dependencies", [])
-            history_changes = assign_packet.get("history_changes", [])
-            deliverables = assign_packet.get("deliverables", [])
-
-            lines.append(
-                f"{idx}. task_id={task_row.get('task_id')} assignee={task_row.get('assignee') or 'unassigned'} "
-                f"priority={task_row.get('priority')} risk={task_row.get('risk_level')} "
-                f"source={task_row.get('request_source')} "
-                f"clarification={task_row.get('needs_clarification')} "
-                f"context={task_row.get('context_completeness')}% "
-                f"status={task_row.get('status')} retry={task_row.get('retry_count')} failure={task_row.get('failure_count')}"
-            )
-            lines.append("   human_review:")
-            lines.append(f"   human_summary: {context_payload.get('human_summary', '')}")
-            lines.append(f"   risk_points: {risk_points}")
-            lines.append("   ai_execution:")
-            lines.append(f"   owner: {task_row.get('owner') or context_payload.get('owner', '')}")
-            lines.append(f"   change_id: {task_row.get('change_id') or context_payload.get('change_id', '')}")
-            lines.append(f"   requirement: {task_row.get('requirement')}")
-            lines.append(f"   target_result: {task_row.get('result_output')}")
-            lines.append(f"   acceptance: {task_row.get('acceptance')}")
-            lines.append(f"   observable_outputs: {task_row.get('observable_outputs')}")
-            lines.append(f"   acceptance_thresholds: {task_row.get('acceptance_thresholds')}")
-            lines.append(f"   dependencies: {dependencies}")
-            lines.append(f"   history_changes: {history_changes}")
-            lines.append(f"   deliverables: {deliverables}")
-            lines.append(f"   context_missing: {task_row.get('context_fields_missing')}")
-            lines.append(f"   context_recommended_missing: {task_row.get('context_fields_recommended_missing', [])}")
-            lines.append(f"   eta_hours: {route.get('due_hours')} (due_at={route.get('due_at')})")
-            lines.append("")
-
-    if dispatch_errors:
-        lines.append("dispatch_errors:")
-        for idx, err in enumerate(dispatch_errors, start=1):
-            lines.append(f"{idx}. {err}")
-        lines.append("")
-
-    if skipped_count > 0:
-        lines.append(f"skipped_reason: max-dispatch reached, remaining={skipped_count}")
-
-    summary = planner_summary if isinstance(planner_summary, dict) else {}
-    if summary:
-        lines.append("")
-        lines.append("planner_summary_24h:")
-        lines.append(f"- planner_id: {summary.get('planner_id', '-')}")
-        lines.append(f"- report_count: {summary.get('report_count', 0)}")
-        lines.append(f"- task_count: {summary.get('task_count', 0)}")
-        lines.append(f"- resolved_task_count: {summary.get('resolved_task_count', 0)}")
-        lines.append(f"- failed_task_count: {summary.get('failed_task_count', 0)}")
-        lines.append(f"- solved_ratio_pct: {summary.get('solved_ratio_pct', 0.0)}")
-        lines.append(f"- total_tokens: {summary.get('total_tokens', 0)}")
-        lines.append(f"- total_cost_estimate: {summary.get('total_cost_estimate', 0.0)}")
-
-    return "\n".join(lines).strip()
 
 
 def build_policy_create_args(payload: dict[str, Any], actor: str, entry_agent: str) -> SimpleNamespace:
@@ -1149,7 +1115,19 @@ def main() -> int:
             try:
                 from policy_enforcer import PolicyEnforcer, PolicyError, RuntimePaths, TaskCenterError, cmd_init
             except Exception as exc:  # pragma: no cover
-                print(f"NO_REPLY\n# todo-patrol error: cannot import policy_enforcer: {exc}")
+                print(
+                    render_chat_notice(
+                        "任务巡检异常",
+                        status="需处理",
+                        task_id=str(args.task),
+                        sender_identity="coordinator/todo-patrol",
+                        run_time=now_iso(),
+                        trace_id=build_trace_id(report_file=state_file),
+                        summary="任务巡检无法启动，策略执行器导入失败。",
+                        details=[f"详情：{exc}"],
+                        next_step="请先检查策略模块路径和运行环境，再重新执行任务巡检。",
+                    )
+                )
                 return 0
 
             task_db.parent.mkdir(parents=True, exist_ok=True)

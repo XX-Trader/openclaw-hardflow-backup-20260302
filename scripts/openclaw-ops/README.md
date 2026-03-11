@@ -3,6 +3,11 @@
 这个目录用于维护 OpenClaw 工作流、定时任务和运维巡检脚本。
 
 所有自动消息输出与运行记录统一包含 `sender_identity` 字段，便于排查是谁发送、链路是否正常。
+对外聊天文案统一使用中文卡片，不直接展示文件路径，改为展示“留痕编号”。
+
+- `policy/task_center.py`
+  - 对外读取任务、stage run、module log、module communication、agent task report、planner summary、daily summary 等接口时，默认返回展示安全视图，只展示中文留痕编号。
+  - 如需原始存储值用于内部回写、底层审计或数据修复，显式传入 `display_safe=False`。
 
 ## TODO 巡检
 
@@ -19,9 +24,11 @@
   - HTTP 优先，浏览器兜底支持 `playwright -> selenium`。
   - 会识别 `403/429/503` 与 `Cloudflare/captcha/turnstile/checking your browser` 反爬页面。
   - 采集失败不再只聊天告警，会自动写入 task-center 修复任务，后续由 `task_executor_runner.py` 消费。
+  - 内部摘要与任务包不再直出 `report/raw/parsed` 文件路径，统一改为中文字段与留痕编号。
 - `web_intel_review_runner.py`
   - 对解析后的网页情报做 optimization/project-doc 两种复核。
   - 发现变化后会自动打包 follow-up 任务到 task-center，而不是只输出摘要。
+  - 复核摘要与 follow-up 任务包统一使用中文留痕编号，不再暴露 `report_file/parsed_file` 路径。
 - `install_web_intel_jobs.py`
   - 安装 web-intel cron 时会显式带上 `--db ~/.openclaw/ops/task-center/task_center.db`，接入统一闭环。
 
@@ -43,7 +50,7 @@
 - `system_schedule_snapshot.py`
   - 采集系统定时与 OpenClaw 定时快照。
   - 对比历史状态，识别变更与高风险项。
-  - 输出 `NO_REPLY` 或告警摘要（附证据路径）。
+  - 输出 `NO_REPLY` 或中文告警摘要（仅展示留痕编号，不展示证据路径）。
 - `api_test_audit.py`
   - 接口巡检采用单次执行，不做重复重测循环。
   - 支持 `http/playwright/selenium` 模式（浏览器检查可用 playwright/selenium）。

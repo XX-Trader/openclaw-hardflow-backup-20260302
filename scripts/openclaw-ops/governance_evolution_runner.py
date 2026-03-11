@@ -29,6 +29,7 @@ if str(POLICY_DIR) not in sys.path:
 
 from task_center import TaskCenter  # type: ignore
 from io_write_gateway import FileWriteError, write_json_atomic  # type: ignore
+from chat_output import build_trace_id, render_chat_notice, short_location_label
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
@@ -77,18 +78,16 @@ def build_startup_failure_output(
     error: str,
     detail: str = "",
 ) -> str:
-    lines = [
-        "# governance-evolution",
-        "- status: failed",
-        f"- sender_identity: {sender_identity}",
-        f"- task: {task_id or '-'}",
-        f"- time: {now_iso()}",
-        f"- error: {compact_text(error, 200)}",
-    ]
-    detail_text = compact_text(detail, 320)
-    if detail_text:
-        lines.append(f"- detail: {detail_text}")
-    return "\n".join(lines)
+    return render_chat_notice(
+        "治理巡检启动异常",
+        status="需处理",
+        task_id=task_id,
+        sender_identity=sender_identity,
+        run_time=now_iso(),
+        summary="治理巡检在启动阶段失败，详细原因已写入内部留痕。",
+        details=[f"启动摘要：{compact_text(error, 120)}"] if str(error or "").strip() else None,
+        next_step="请按留痕记录检查启动参数、环境变量和运行时依赖。",
+    )
 
 
 def print_startup_failure(
@@ -1577,57 +1576,66 @@ def main() -> int:
 
     output = "NO_REPLY"
     if notify:
-        lines = [
-            "# governance-evolution",
-            f"- sender_identity: {sender_identity}",
-            f"- task: {args.task_id or '-'}",
-            f"- time: {now_iso()}",
-            f"- repo: {repo}",
-            f"- repo_source: {repo_resolve.get('source', '-')}",
-            f"- run_allowed: {run_allowed}",
-            f"- scan_mode: {args.mode}",
-            f"- task_clarity: {task_clarity}",
-            f"- project_context_gate: required={require_project_context}",
-            f"- changes_scoped: {len(changes_scoped)}",
-            f"- changes_scoped_stats: +{change_stats_scoped.get('added', 0)} ~{change_stats_scoped.get('modified', 0)} -{change_stats_scoped.get('deleted', 0)} r{change_stats_scoped.get('renamed', 0)}",
-            f"- created_tasks: {len(task_packaging.get('created', []))}",
-            f"- fingerprint: {fingerprint or '-'}",
-            f"- exception_count: {len(exception_reasons)}",
+        extra_lines = [
+            f"目标仓库：{short_location_label(repo)}",
+            f"扫描模式：{args.mode}",
+            f"任务清晰度：{task_clarity}",
+            f"允许执行：{'是' if run_allowed else '否'}",
+            f"上下文门禁：{'开启' if require_project_context else '关闭'}",
+            f"范围内变更：{len(changes_scoped)} 项",
+            (
+                "变更统计："
+                f"新增 {int(change_stats_scoped.get('added', 0) or 0)} 项，"
+                f"修改 {int(change_stats_scoped.get('modified', 0) or 0)} 项，"
+                f"删除 {int(change_stats_scoped.get('deleted', 0) or 0)} 项，"
+                f"重命名 {int(change_stats_scoped.get('renamed', 0) or 0)} 项。"
+            ),
+            f"新建任务：{len(task_packaging.get('created', []))} 项",
+            f"异常数量：{len(exception_reasons)} 项",
+            (
+                "Git 更新："
+                f"{'成功' if git_update_result.get('fetch_ok', True) else '失败'}，"
+                f"策略 {git_update_result.get('strategy', '-') or '-'}，"
+                f"落后提交 {int(git_update_result.get('behind', 0) or 0)} 个。"
+            ),
         ]
-        lines.append(
-            "- git_update: "
-            f"enabled={git_update_result.get('enabled')}, "
-            f"strategy={git_update_result.get('strategy')}, "
-            f"fetch_ok={git_update_result.get('fetch_ok')}, "
-            f"head_changed={git_update_result.get('head_changed')}, "
-            f"behind={git_update_result.get('behind')}, "
-            f"reason={git_update_result.get('skipped_reason', '-')}"
-        )
         context_gate = task_packaging.get("context_gate", {}) if isinstance(task_packaging, dict) else {}
         if isinstance(context_gate, dict) and context_gate:
-            lines.append(
-                "- context_gate_status: "
-                f"ready={context_gate.get('ready')}, "
-                f"blocked={context_gate.get('blocked')}, "
-                f"status={context_gate.get('status', '-')}, "
-                f"task={context_gate.get('created_task_id') or context_gate.get('existing_task_id') or '-'}"
+            extra_lines.append(
+                "上下文门禁状态："
+                f"就绪 {int(context_gate.get('ready', 0) or 0)} 个，"
+                f"阻塞 {int(context_gate.get('blocked', 0) or 0)} 个，"
+                f"状态 {context_gate.get('status', '-') or '-'}。"
             )
         if auto_pr_result.get("attempted"):
-            lines.append(
-                f"- auto_pr: ok={auto_pr_result.get('ok')}, reason={auto_pr_result.get('reason', '-')}, "
-                f"url={auto_pr_result.get('pr_url', '-')}"
+            extra_lines.append(
+                "自动合并请求："
+                f"{'成功' if auto_pr_result.get('ok') else '未成功'}，"
+                f"原因 {auto_pr_result.get('reason', '-') or '-'}。"
             )
-        for reason in exception_reasons[:12]:
-            lines.append(f"- exception: {reason}")
-        for item in changes_scoped[:12]:
-            lines.append(f"- change: {item.get('status', 'M')} {item.get('path', '')}")
-        output = "\n".join(lines)
+        detail_lines = []
+        for idx, item in enumerate(changes_scoped[:6], start=1):
+            detail_lines.append(
+                f"变更样例{idx}：{item.get('status', 'M')} {short_location_label(str(item.get('path', '')))}"
+            )
+        output = render_chat_notice(
+            "治理巡检异常",
+            status="需处理",
+            task_id=str(args.task_id or ""),
+            sender_identity=sender_identity,
+            run_time=now_iso(),
+            trace_id=build_trace_id(report_file=report_file),
+            summary=f"治理巡检发现 {len(exception_reasons)} 个异常，已生成 {len(task_packaging.get('created', []))} 项后续任务。",
+            extra_lines=extra_lines,
+            details=detail_lines,
+            next_step="请按留痕编号查看内部报告，并确认是否需要人工接管。",
+        )
 
     if args.emit_json:
         print(json.dumps({"notify": notify, "output": output, "report": str(report_file)}, ensure_ascii=False))
     else:
         if notify:
-            print(f"{output}\n- evidence: {report_file}")
+            print(output)
         else:
             print("NO_REPLY")
     return 0

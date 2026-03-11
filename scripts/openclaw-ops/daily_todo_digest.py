@@ -20,6 +20,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, write_json_atomic
+from chat_output import build_trace_id, render_chat_notice, strip_list_marker
 
 TZ = timezone(timedelta(hours=8))
 LOG_MODES = {"silent", "chat"}
@@ -264,6 +265,70 @@ def summarize_items(items: list[dict[str, Any]], limit: int) -> list[str]:
     return lines
 
 
+def build_chat_output(
+    *,
+    sender_identity: str,
+    task_id: str,
+    run_time: str,
+    run_id: str,
+    new_todo: list[dict[str, Any]],
+    new_done: list[dict[str, Any]],
+    planner_summary: dict[str, Any] | None,
+    exception_reasons: list[str],
+    max_notify_items: int,
+) -> str:
+    has_updates = bool(new_todo or new_done)
+    has_exceptions = bool(exception_reasons)
+    if (not has_updates) and (not has_exceptions):
+        return "NO_REPLY"
+
+    title = "每日任务摘要" if has_updates else "每日任务摘要异常"
+    status = "有更新" if has_updates and (not has_exceptions) else "需关注"
+    summary_parts: list[str] = []
+    if has_updates:
+        summary_parts.append(f"新增待办 {len(new_todo)} 项")
+        summary_parts.append(f"新增完成 {len(new_done)} 项")
+    if has_exceptions:
+        summary_parts.append(f"发现 {len(exception_reasons)} 个运行异常")
+
+    extra_lines: list[str] = []
+    if has_updates:
+        extra_lines.append(f"新增待办：{len(new_todo)} 项")
+        extra_lines.append(f"新增完成：{len(new_done)} 项")
+    if isinstance(planner_summary, dict) and planner_summary:
+        extra_lines.append(
+            "近24小时处理："
+            f"任务 {int(planner_summary.get('task_count', 0) or 0)} 项，"
+            f"已解决 {int(planner_summary.get('resolved_task_count', 0) or 0)} 项，"
+            f"失败 {int(planner_summary.get('failed_task_count', 0) or 0)} 项。"
+        )
+
+    detail_lines: list[str] = []
+    for idx, text in enumerate(summarize_items(new_todo, int(max_notify_items)), start=1):
+        detail_lines.append(f"待办{idx}：{strip_list_marker(text)}")
+    for idx, text in enumerate(summarize_items(new_done, int(max_notify_items)), start=1):
+        detail_lines.append(f"完成{idx}：{strip_list_marker(text)}")
+    if has_exceptions:
+        detail_lines.append("运行详情已写入内部留痕，不再在群聊中展示底层文件路径。")
+
+    return render_chat_notice(
+        title,
+        status=status,
+        task_id=str(task_id or "").strip(),
+        sender_identity=str(sender_identity or DEFAULT_SENDER_IDENTITY).strip(),
+        run_time=str(run_time or now_iso()).strip(),
+        trace_id=build_trace_id(run_id=run_id),
+        summary="；".join(summary_parts),
+        details=detail_lines,
+        extra_lines=extra_lines,
+        next_step=(
+            "如需排查，请按留痕编号查看内部报告。"
+            if has_exceptions
+            else "如需跟进，请按任务编号进入任务中心处理。"
+        ),
+    )
+
+
 def main() -> int:
     run_started_at = now()
     home = Path(os.path.expanduser("~"))
@@ -306,24 +371,6 @@ def main() -> int:
     run_errors: list[str] = []
     notify = bool(new_todo or new_done)
     output = "NO_REPLY"
-    if notify:
-        lines = [
-            f"# Daily TODO Digest {now().strftime('%Y-%m-%d')}",
-            f"- sender_identity: {sender_identity}",
-            f"- task: {args.task_id or '-'}",
-            f"- time: {now_iso()}",
-            f"- new_todo: {len(new_todo)}",
-            f"- new_done: {len(new_done)}",
-            "",
-            "## TODO (new)",
-            *(summarize_items(new_todo, int(args.max_notify_items)) or ["- (none)"]),
-            "",
-            "## DONE (new)",
-            *(summarize_items(new_done, int(args.max_notify_items)) or ["- (none)"]),
-        ]
-        output = "\n".join(lines)
-    elif normal_log_mode == "chat":
-        output = "NO_REPLY"
 
     report = {
         "run_id": uuid.uuid4().hex[:12],
@@ -549,48 +596,23 @@ def main() -> int:
     report["run_errors"] = run_errors
     save_json(report_file, report)
 
-    if planner_summary_snapshot:
-        summary_line = (
-            f"- planner_summary: reports={planner_summary_snapshot.get('report_count', 0)}, "
-            f"resolved={planner_summary_snapshot.get('resolved_task_count', 0)}, "
-            f"failed={planner_summary_snapshot.get('failed_task_count', 0)}, "
-            f"tokens={planner_summary_snapshot.get('total_tokens', 0)}"
-        )
-        if output == "NO_REPLY":
-            output = "\n".join(
-                [
-                    f"# Daily TODO Digest {now().strftime('%Y-%m-%d')}",
-                    f"- sender_identity: {sender_identity}",
-                    f"- task: {args.task_id or '-'}",
-                    f"- time: {now_iso()}",
-                    summary_line,
-                ]
-            )
-        else:
-            output = output + "\n" + summary_line
-    if exception_reasons:
-        if output == "NO_REPLY":
-            output = "\n".join(
-                [
-                    "# Daily TODO Digest Exception",
-                    f"- sender_identity: {sender_identity}",
-                    f"- task: {args.task_id or '-'}",
-                    f"- time: {now_iso()}",
-                    f"- exception_count: {len(exception_reasons)}",
-                ]
-            )
-        else:
-            output = output + f"\n- exception_count: {len(exception_reasons)}"
-        for reason in exception_reasons[:12]:
-            output = output + f"\n- exception: {reason}"
-    if not notify:
-        output = "NO_REPLY"
+    output = build_chat_output(
+        sender_identity=sender_identity,
+        task_id=str(args.task_id or ""),
+        run_time=now_iso(),
+        run_id=str(report.get("run_id", "")),
+        new_todo=new_todo,
+        new_done=new_done,
+        planner_summary=planner_summary_snapshot,
+        exception_reasons=exception_reasons[:12],
+        max_notify_items=int(args.max_notify_items),
+    )
 
     if args.emit_json:
         print(json.dumps({"notify": notify, "output": output, "report": str(report_file)}, ensure_ascii=False))
     else:
         if notify:
-            print(f"{output}\n- evidence: {report_file}")
+            print(output)
         else:
             print("NO_REPLY")
     return 0

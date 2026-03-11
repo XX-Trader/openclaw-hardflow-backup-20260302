@@ -21,6 +21,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
+from chat_output import build_trace_id, render_chat_notice
 from web_sources_runtime import load_runtime_sources  # type: ignore
 
 UTC = timezone.utc
@@ -70,6 +71,11 @@ SIGNAL_RULES = [
         "project_action": "更新请求/响应模型与契约测试用例。",
     },
 ]
+
+
+def trace_token(value: str | Path) -> str:
+    token = build_trace_id(report_file=value)
+    return token or "已归档"
 HTTP_METHOD_RE = r"(?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD)"
 INTERFACE_RE = re.compile(
     rf"(?i)\b({HTTP_METHOD_RE})\s+((?:https?://[^\s`\"'<>]+)|(?:/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]*[A-Za-z0-9_/#-]))"
@@ -374,10 +380,11 @@ def analyze_content_change(previous_text: str, current_text: str, mode: str) -> 
 
 
 def render_review_item_summary(item: dict[str, Any]) -> list[str]:
+    parsed_trace = trace_token(str(item.get("parsed_file", "")).strip())
     lines = [
         f"## {item.get('id')}: {compact(str(item.get('title', '')), 120)}",
         f"- url: {item.get('url')}",
-        f"- parsed_file: {item.get('parsed_file')}",
+        f"- 解析留痕编号: {parsed_trace}",
     ]
     signals = item.get("signals") or []
     if isinstance(signals, list):
@@ -555,22 +562,46 @@ def build_output(
     changed: int,
     report_file: Path,
     sample_items: list[dict[str, Any]],
+    follow_up_tasks: list[dict[str, Any]] | None = None,
+    follow_up_errors: list[str] | None = None,
 ) -> str:
-    lines = [
-        "网页情报复核",
-        f"- 模式: {mode}",
-        f"- 任务: {task_id}",
-        f"- 时间: {started_at}",
-        f"- 汇总: 扫描文件={scanned}，复核文件={reviewed}，发生变更={changed}",
-        f"- 报告文件: {report_file}",
+    extra_lines = [
+        f"复核模式：{mode}",
+        f"扫描文件：{int(scanned or 0)} 个",
+        f"复核文件：{int(reviewed or 0)} 个",
+        f"发生变更：{int(changed or 0)} 个",
     ]
+    detail_lines: list[str] = []
     if sample_items:
-        lines.append("- 复核重点:")
-        for item in sample_items[:8]:
+        for idx, item in enumerate(sample_items[:8], start=1):
             sid = str(item.get("id", ""))
             title = compact(str(item.get("title", "")).strip() or sid, 80)
-            lines.append(f"  - {sid}: {title}")
-    return "\n".join(lines)
+            detail_lines.append(f"复核重点{idx}：{sid}，标题 {title}")
+    if follow_up_tasks:
+        detail_lines.append(f"已派生后续任务：{len(follow_up_tasks)} 项")
+        for idx, item in enumerate(follow_up_tasks[:8], start=1):
+            detail_lines.append(
+                f"后续任务{idx}：{item.get('task_id')} -> {item.get('assignee') or '-'}"
+            )
+    if follow_up_errors:
+        detail_lines.append(f"后续建单失败：{len(follow_up_errors)} 项")
+        for idx, item in enumerate(follow_up_errors[:8], start=1):
+            detail_lines.append(f"建单异常{idx}：{item}")
+    return render_chat_notice(
+        "网页情报复核提醒",
+        status="有更新" if int(changed or 0) > 0 else "需关注",
+        task_id=task_id,
+        sender_identity=sender_identity,
+        run_time=started_at,
+        trace_id=build_trace_id(report_file=report_file),
+        summary=(
+            f"网页情报复核已扫描 {int(scanned or 0)} 个文件，"
+            f"完成 {int(reviewed or 0)} 个复核，发现 {int(changed or 0)} 个变更。"
+        ),
+        extra_lines=extra_lines,
+        details=detail_lines,
+        next_step="请按留痕编号查看复核报告，并确认是否进入后续任务处理。",
+    )
 
 
 def build_failure_output(
@@ -582,27 +613,20 @@ def build_failure_output(
     error_text: str,
 ) -> str:
     issue, detail = humanize_review_error(error_text)
-    lines = [
+    return render_chat_notice(
         "网页情报复核异常",
-        f"- 模式: {mode}",
-        f"- 任务: {task_id}",
-        f"- 时间: {started_at}",
-        "- 问题: 复核器入口异常",
-        f"- 详情: {issue}：{detail}",
-    ]
-    return "\n".join(lines)
-
-
-def follow_up_lines(tasks: list[dict[str, Any]]) -> list[str]:
-    if not tasks:
-        return []
-    lines = ["- 已派生后续任务:"]
-    for item in tasks[:8]:
-        task_id = str(item.get("task_id", "")).strip() or "-"
-        assignee = str(item.get("assignee", "")).strip() or "-"
-        status = str(item.get("status", "")).strip() or "created"
-        lines.append(f"  - {task_id} -> {assignee} ({status})")
-    return lines
+        status="需处理",
+        task_id=task_id,
+        sender_identity=sender_identity,
+        run_time=started_at,
+        summary="网页情报复核器入口运行失败。",
+        extra_lines=[f"复核模式：{mode}"],
+        details=[
+            "问题：复核器入口异常",
+            f"详情：{issue}：{detail}",
+        ],
+        next_step="请先检查解析目录和复核输入，再重新执行复核任务。",
+    )
 
 
 def default_follow_up_assignee(mode: str) -> str:
@@ -631,6 +655,8 @@ def create_review_follow_up_tasks(
         title = str(item.get("title", "")).strip() or sid
         url = str(item.get("url", "")).strip()
         parsed_file = str(item.get("parsed_file", "")).strip()
+        parsed_trace = trace_token(parsed_file)
+        report_trace = trace_token(report_file)
         signals = item.get("signals") or []
         signal_lines: list[str] = []
         if isinstance(signals, list):
@@ -658,12 +684,12 @@ def create_review_follow_up_tasks(
 
         requirement = "\n".join(
             [
-                f"web-intel review mode: {mode}",
-                f"source_id: {sid}",
-                f"title: {title}",
-                f"url: {url}",
-                f"parsed_file: {parsed_file}",
-                f"report_file: {report_file}",
+                f"复核模式：{mode}",
+                f"来源编号：{sid}",
+                f"标题：{title}",
+                f"来源地址：{url or '-'}",
+                f"解析留痕编号：{parsed_trace}",
+                f"运行留痕编号：{report_trace}",
                 "",
                 "检测到的信号与动作建议:",
                 *signal_lines,
@@ -675,23 +701,23 @@ def create_review_follow_up_tasks(
                 "3. 完成后至少重跑一次相关脚本或验证命令，确认结果闭环。",
             ]
         )
-        acceptance = "任务结论可追溯到 report_file/parsed_file，并附最小验证结果。"
+        acceptance = "任务结论可追溯到运行留痕和解析留痕，并附最小验证结果。"
         signal_summary = ", ".join(
             compact(str(signal.get("signal", "")).strip(), 40)
             for signal in signals
             if isinstance(signal, dict) and str(signal.get("signal", "")).strip()
         ) or "doc-change"
         context_payload = {
-            "problem": f"{sid} review detected update: {signal_summary}",
-            "location": url or parsed_file or sid,
+            "problem": f"{sid} 复核发现更新：{signal_summary}",
+            "location": url or sid,
             "first_seen_at": str(item.get("fetched_at", "")).strip() or now_iso(),
             "impact": signal_summary,
-            "evidence": ",".join(x for x in [str(report_file), parsed_file] if x),
-            "current_state": f"review signal detected for {sid}, not yet applied",
+            "evidence": f"运行留痕编号：{report_trace}；解析留痕编号：{parsed_trace}",
+            "current_state": f"{sid} 已检测到复核信号，但尚未完成同步处理",
             "expected_state": "相关文档变化已被吸收为可执行方案并完成必要同步。",
             "operation_path": f"web_intel_review_runner::{mode}::{sid}",
-            "reproduction_steps": f"查看 {parsed_file} 与 {report_file}，根据信号执行最小变更并复验。",
-            "scope": f"web-intel review mode={mode}, source={sid}",
+            "reproduction_steps": "先查看运行留痕和解析留痕，再根据信号执行最小变更并复验。",
+            "scope": f"网页情报复核 mode={mode}, source={sid}",
             "constraints": "优先最小改动；若任务边界不清晰，先交给规划者再继续执行。",
             "acceptance_criteria": acceptance,
             "full_background": requirement,
@@ -729,7 +755,7 @@ def create_review_follow_up_tasks(
             "--acceptance",
             acceptance,
             "--observable-outputs",
-            f"report_file={report_file},parsed_file={parsed_file},source_id={sid}",
+            f"运行留痕编号={report_trace},解析留痕编号={parsed_trace},source_id={sid}",
             "--acceptance-thresholds",
             "至少包含影响分析、执行结果、验证命令；若不能自动解决，需要明确阻断原因。",
             "--scheduled-at",
@@ -960,20 +986,6 @@ def main() -> None:
     mode_state["last_report_file"] = str(report_file)
     save_json(state_file, state)
 
-    summary_file = summary_dir / f"latest_review_{mode}.md"
-    summary_lines = [
-        f"# web-intel-review ({mode})",
-        "",
-        f"- task: {task_id}",
-        f"- sender_identity: {sender_identity}",
-        f"- generated_at: {now_iso()}",
-        f"- report_file: {report_file}",
-        "",
-    ]
-    for item in review_items[:24]:
-        summary_lines.extend(render_review_item_summary(item))
-    save_text(summary_file, "\n".join(summary_lines).strip() + "\n")
-
     started_at = now_iso()
     output = build_output(
         mode=mode,
@@ -985,14 +997,19 @@ def main() -> None:
         changed=len(changed_entries),
         report_file=report_file,
         sample_items=review_items,
+        follow_up_tasks=follow_up_tasks,
+        follow_up_errors=follow_up_errors,
     )
-    extra_lines = follow_up_lines(follow_up_tasks)
-    if follow_up_errors:
-        extra_lines.append("- 建单失败:")
-        for item in follow_up_errors[:8]:
-            extra_lines.append(f"  - {item}")
-    if extra_lines:
-        output = output + "\n" + "\n".join(extra_lines)
+    summary_file = summary_dir / f"latest_review_{mode}.md"
+    summary_lines = [output]
+    if review_items:
+        summary_lines.append("")
+        summary_lines.append("复核重点明细")
+        for idx, item in enumerate(review_items[:24], start=1):
+            sid = str(item.get("id", "")).strip() or "-"
+            title = compact(str(item.get("title", "")).strip() or sid, 120)
+            summary_lines.append(f"- 重点{idx}：{sid}，标题 {title}")
+    save_text(summary_file, "\n".join(summary_lines).strip() + "\n")
     quiet_no_reply = should_quiet(log_mode, str(args.notify_on), changed_count=len(changed_entries))
     output_text = "NO_REPLY" if quiet_no_reply else output
     response_payload = {

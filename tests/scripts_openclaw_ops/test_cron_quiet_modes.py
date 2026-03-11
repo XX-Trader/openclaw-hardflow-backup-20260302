@@ -500,6 +500,9 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("openai-responses-doc", output)
         self.assertIn("429", output)
         self.assertEqual(output.splitlines()[0], "网页情报采集异常")
+        self.assertIn("留痕编号", output)
+        self.assertNotIn("/tmp/web_collect.json", output)
+        self.assertNotIn("报告文件", output)
 
     def test_web_review_error_only_mode_stays_quiet_on_changes(self):
         module = load_module(
@@ -525,6 +528,36 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("optimization", output)
         self.assertIn("解析结果目录缺失", output)
         self.assertEqual(output.splitlines()[0], "网页情报复核异常")
+        self.assertIn("留痕", output)
+        self.assertNotIn("/home/ubuntu/.openclaw/web/parsed", output)
+        self.assertNotIn("report_file", output)
+
+    def test_web_review_output_hides_report_path(self):
+        module = load_module(
+            "web_intel_review_runner",
+            "scripts/openclaw-ops/web_intel_review_runner.py",
+        )
+        output = module.build_output(
+            mode="project-doc",
+            sender_identity="project-agent/web-doc-review",
+            task_id="cron:web-intel-review-project-doc",
+            started_at="2026-03-06T10:00:00+00:00",
+            scanned=8,
+            reviewed=4,
+            changed=2,
+            report_file=Path("/tmp/web_review_report.json"),
+            sample_items=[
+                {
+                    "id": "openai-docs",
+                    "title": "OpenAI API Docs",
+                }
+            ],
+        )
+        self.assertEqual(output.splitlines()[0], "网页情报复核提醒")
+        self.assertIn("留痕编号", output)
+        self.assertIn("openai-docs", output)
+        self.assertNotIn("/tmp/web_review_report.json", output)
+        self.assertNotIn("报告文件", output)
 
     def test_web_review_extracts_new_information_and_updated_interfaces(self):
         module = load_module(
@@ -581,6 +614,9 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("Parameter: recvWindow", rendered)
         self.assertIn("接口更新", rendered)
         self.assertIn("新增接口: POST /v1/orders", rendered)
+        self.assertIn("解析留痕编号", rendered)
+        self.assertNotIn("/tmp/orders.json", rendered)
+        self.assertNotIn("parsed_file:", rendered)
 
     def test_local_git_backup_failure_output_is_human_friendly_chinese(self):
         module = load_module(
@@ -658,8 +694,76 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertEqual(output.splitlines()[0], "任务巡检异常")
         self.assertIn("规划器摘要读取失败", output)
         self.assertIn("database locked", output)
+        self.assertIn("留痕", output)
+        self.assertNotIn("/tmp/TODO.md", output)
+        self.assertNotIn("/tmp/task_center.db", output)
+        self.assertNotIn("/tmp/todo_patrol_state.json", output)
         self.assertNotIn("# todo-patrol", output)
         self.assertNotIn("- error:", output)
+
+    def test_todo_patrol_verbose_output_uses_human_card_without_machine_fields(self):
+        module = load_module(
+            "todo_patrol",
+            "scripts/openclaw-ops/todo_patrol.py",
+        )
+        output = module.format_dispatch_message(
+            task="cron:todo-patrol",
+            todo_file=Path("/tmp/TODO.md"),
+            dispatched=[
+                {
+                    "task": {
+                        "task_id": "todo-1",
+                        "assignee": "backend-dev",
+                        "priority": "medium",
+                        "risk_level": "low",
+                        "status": "pending",
+                        "retry_count": 0,
+                        "failure_count": 0,
+                        "request_source": "human",
+                        "needs_clarification": False,
+                        "context_completeness": 100,
+                        "context_fields_missing": [],
+                        "context_fields_recommended_missing": [],
+                        "requirement": "统一群聊输出",
+                        "result_output": "输出中文卡片",
+                        "acceptance": "群聊消息不再显示文件路径",
+                        "observable_outputs": "chat_output",
+                        "acceptance_thresholds": "包含留痕编号",
+                    },
+                    "route": {"due_hours": 4, "due_at": "2026-03-12T00:00:00+08:00"},
+                    "payload": {
+                        "context_payload": {
+                            "human_summary": "统一剩余入口输出样式",
+                            "risk_points": ["路径直出"],
+                            "information_flow": {
+                                "assignment_packet": {
+                                    "dependencies": ["chat_output"],
+                                    "history_changes": ["daily_work_report"],
+                                    "deliverables": ["中文通知卡片"],
+                                }
+                            },
+                        }
+                    },
+                }
+            ],
+            skipped_count=0,
+            ops_incident_skipped_count=0,
+            skip_ops_incidents=True,
+            db_path=Path("/tmp/task_center.db"),
+            state_file=Path("/tmp/todo_patrol_state.json"),
+            dispatch_errors=[],
+            planner_summary={"task_count": 1, "resolved_task_count": 0, "failed_task_count": 0},
+            output_mode="verbose",
+        )
+        self.assertEqual(output.splitlines()[0], "任务巡检摘要")
+        self.assertIn("任务编号：cron:todo-patrol", output)
+        self.assertIn("留痕", output)
+        self.assertIn("todo-1", output)
+        self.assertNotIn("sender_identity:", output)
+        self.assertNotIn("todo_file:", output)
+        self.assertNotIn("task_center_db:", output)
+        self.assertNotIn("state_file:", output)
+        self.assertNotIn("/tmp/TODO.md", output)
 
     def test_reviewer_context_gate_failure_output_is_human_friendly_chinese(self):
         module = load_module(
@@ -694,7 +798,7 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("项目上下文门禁阻塞", result.output)
         self.assertIn("原因解析", result.output)
         self.assertIn("project-agent", result.output)
-        self.assertIn("task center unavailable", result.output)
+        self.assertIn("任务中心暂不可用", result.output)
         self.assertNotIn("# reviewer-cron/", result.output)
 
     def test_reviewer_main_output_hides_machine_fields(self):

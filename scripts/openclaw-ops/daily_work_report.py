@@ -26,6 +26,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, write_json_atomic
+from chat_output import build_trace_id, render_chat_notice
 
 TZ = timezone(timedelta(hours=8))
 LOG_MODES = {"silent", "chat"}
@@ -367,6 +368,8 @@ def humanize_chat_error(reason: str) -> str:
         return "未知异常"
     if raw.startswith("dingtalk_post_failed:"):
         detail = raw.split(":", 1)[1].strip() or raw
+        if detail.lower() == "timeout":
+            detail = "请求超时"
         return f"钉钉发送失败：{detail}"
     if raw.startswith("webhook_missing:"):
         detail = raw.split(":", 1)[1].strip() or raw
@@ -390,17 +393,18 @@ def build_chat_output(
     reasons = [str(item).strip() for item in exception_reasons if str(item).strip()]
     if not reasons:
         return "NO_REPLY"
-    lines = [
+    detail_lines = [f"异常{idx}：{humanize_chat_error(reason)}" for idx, reason in enumerate(reasons[:8], start=1)]
+    return render_chat_notice(
         "每日工作报告异常",
-        f"• 任务: {str(task_id or '-').strip() or '-'}",
-        f"• 时间: {str(run_time or now_iso()).strip() or now_iso()}",
-        f"• 来源: {str(sender_identity or DEFAULT_SENDER_IDENTITY).strip() or DEFAULT_SENDER_IDENTITY}",
-        f"• 问题数: {len(reasons)}",
-    ]
-    for idx, reason in enumerate(reasons[:8], start=1):
-        lines.append(f"• 异常{idx}: {humanize_chat_error(reason)}")
-    lines.append(f"• 证据: {report_file}")
-    return "\n".join(lines)
+        status="需处理",
+        task_id=str(task_id or "").strip(),
+        sender_identity=str(sender_identity or DEFAULT_SENDER_IDENTITY).strip(),
+        run_time=str(run_time or now_iso()).strip(),
+        trace_id=build_trace_id(report_file=report_file),
+        summary=f"本轮发现 {len(reasons)} 个需要处理的问题。",
+        details=detail_lines,
+        next_step="请先检查钉钉配置、网络连通性和策略留痕。",
+    )
 
 
 def main() -> int:

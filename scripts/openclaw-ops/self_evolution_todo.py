@@ -29,6 +29,7 @@ if str(POLICY_DIR) not in sys.path:
 
 from task_center import TaskCenter  # type: ignore
 from io_write_gateway import FileWriteError, write_json_atomic  # type: ignore
+from chat_output import build_trace_id, render_chat_notice
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
@@ -1218,28 +1219,34 @@ def main() -> int:
 
     output = "NO_REPLY"
     if notify:
-        lines: list[str] = []
-        lines.append("# self-evolution-weekly")
-        lines.append(f"- sender_identity: {sender_identity}")
-        lines.append(f"- task: {args.task_id or '-'}")
-        lines.append(f"- time: {now_iso()}")
-        lines.append(f"- run_allowed: {run_allowed}")
-        lines.append(f"- candidates: {len(candidates)}")
-        lines.append(f"- created_todo: {len(created)}")
-        lines.append(f"- max_tasks_per_run: {int(args.max_tasks_per_run)}")
-        lines.append(f"- exception_count: {len(exception_reasons)}")
-        lines.append("- policy: suggestions_only=true, auto_workflow_change=false, human_confirm_required=true")
-        for reason in exception_reasons[:12]:
-            lines.append(f"- exception: {reason}")
-        for item in created[:8]:
-            lines.append(f"- todo[{item.get('task_id')}]: scheduled_at={item.get('scheduled_at')}")
-        output = "\n".join(lines)
+        detail_lines = [
+            f"建议任务{idx}：{item.get('task_id')}，计划时间 {item.get('scheduled_at')}"
+            for idx, item in enumerate(created[:8], start=1)
+        ]
+        output = render_chat_notice(
+            "周度自我进化异常",
+            status="需关注",
+            task_id=str(args.task_id or ""),
+            sender_identity=sender_identity,
+            run_time=now_iso(),
+            trace_id=build_trace_id(report_file=report_file),
+            summary=f"周度复盘发现 {len(exception_reasons)} 个异常，本轮生成 {len(created)} 条建议任务。",
+            extra_lines=[
+                f"允许执行：{'是' if run_allowed else '否'}",
+                f"候选项：{len(candidates)} 项",
+                f"新建建议任务：{len(created)} 项",
+                f"单轮上限：{int(args.max_tasks_per_run)} 项",
+                "执行策略：仅产出建议，不自动修改工作流，且需要人工确认。",
+            ],
+            details=detail_lines,
+            next_step="请按留痕编号查看详细复盘结果，并确认是否纳入后续排期。",
+        )
 
     if args.emit_json:
         print(json.dumps({"notify": notify, "output": output, "report": str(report_file)}, ensure_ascii=False))
     else:
         if notify:
-            print(f"{output}\n- evidence: {report_file}")
+            print(output)
         else:
             print("NO_REPLY")
     return 0
