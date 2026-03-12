@@ -293,7 +293,7 @@ def load_tasks(db_path: Path, limit: int) -> list[dict[str, Any]]:
     try:
         rows = conn.execute(
             """
-            SELECT task_id, pool, reason, priority, risk_level, assignee, status, created_at, updated_at
+            SELECT task_id, pool, task_type, reason, priority, risk_level, assignee, status, created_at, updated_at
             FROM tasks
             ORDER BY updated_at DESC
             LIMIT ?
@@ -303,6 +303,14 @@ def load_tasks(db_path: Path, limit: int) -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def is_runtime_binding_task(item: dict[str, Any]) -> bool:
+    if not isinstance(item, dict):
+        return False
+    if str(item.get("task_type", "")).strip().lower() == "ops_runtime_cron":
+        return True
+    return str(item.get("reason", "")).strip().startswith("[CRON_RUNTIME] bind ")
 
 
 def is_today_local(iso_text: str) -> bool:
@@ -597,9 +605,17 @@ def main() -> int:
     sent_done_ids = set(str(x) for x in state.get("sent_done_ids", []))
 
     unresolved_statuses = {"pending", "running", "failed", "escalated"}
-    todo_candidates = [x for x in tasks if str(x.get("status", "")).lower() in unresolved_statuses]
+    todo_candidates = [
+        x
+        for x in tasks
+        if str(x.get("status", "")).lower() in unresolved_statuses and not is_runtime_binding_task(x)
+    ]
     done_candidates = [
-        x for x in tasks if str(x.get("status", "")).lower() == "passed" and is_today_local(x.get("updated_at", ""))
+        x
+        for x in tasks
+        if str(x.get("status", "")).lower() == "passed"
+        and is_today_local(x.get("updated_at", ""))
+        and not is_runtime_binding_task(x)
     ]
 
     new_todo = [x for x in todo_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_todo_ids]

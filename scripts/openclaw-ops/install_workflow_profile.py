@@ -256,6 +256,25 @@ def build_sync_runtime_plugin_overrides_cmd(
     return cmd
 
 
+def build_normalize_runtime_binding_tasks_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    task_db: str,
+    dry_run: bool,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "normalize_runtime_binding_tasks.py"),
+        "--db",
+        task_db,
+        "--emit-json",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    return cmd
+
+
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
 
@@ -1011,6 +1030,12 @@ def main() -> None:
         openclaw_home=openclaw_home,
         dry_run=bool(args.dry_run),
     )
+    normalize_runtime_binding_tasks_cmd = build_normalize_runtime_binding_tasks_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        task_db=task_db,
+        dry_run=bool(args.dry_run),
+    )
 
     steps: list[tuple[str, list[str]]] = []
     if bool(args.normalize_openclaw_paths):
@@ -1019,6 +1044,7 @@ def main() -> None:
         steps.append(("ensure_runtime_skills (required skills and bins)", ensure_runtime_skills_cmd))
     if Path(plugin_overrides_source_dir).exists():
         steps.append(("sync_runtime_plugin_overrides (managed plugin patches)", sync_runtime_plugin_overrides_cmd))
+    steps.append(("normalize_runtime_binding_tasks (legacy backlog cleanup)", normalize_runtime_binding_tasks_cmd))
 
     steps.extend([
         ("install_todo_patrol_job (task#1)", install_todo_cmd),

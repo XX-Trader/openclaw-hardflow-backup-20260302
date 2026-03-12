@@ -179,5 +179,68 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
         self.assertTrue(any(args and args[0] == "planner-summary" for args in invoked))
 
 
+    def test_main_ignores_runtime_binding_tasks_in_pending_and_done_lists(self):
+        module = load_module(
+            "daily_todo_digest",
+            "scripts/openclaw-ops/daily_todo_digest.py",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            db_path = tmp / "task_center.db"
+            db_path.write_text("", encoding="utf-8")
+            state_path = tmp / "state.json"
+            report_dir = tmp / "reports"
+            report_dir.mkdir(parents=True, exist_ok=True)
+
+            argv = [
+                "daily_todo_digest.py",
+                "--db",
+                str(db_path),
+                "--state-file",
+                str(state_path),
+                "--report-dir",
+                str(report_dir),
+                "--task-id",
+                "cron:ops-daily-todo-digest",
+                "--emit-json",
+            ]
+            stdout = io.StringIO()
+            with mock.patch.object(sys, "argv", argv):
+                with mock.patch.object(
+                    module,
+                    "load_tasks",
+                    return_value=[
+                        {
+                            "task_id": "cron:ops-conversation-evolution",
+                            "task_type": "ops_runtime_cron",
+                            "reason": "[CRON_RUNTIME] bind cron:ops-conversation-evolution",
+                            "status": "pending",
+                            "updated_at": "2026-03-12T23:00:00+08:00",
+                        },
+                        {
+                            "task_id": "cron:ops-governance-evolution",
+                            "task_type": "ops_runtime_cron",
+                            "reason": "[CRON_RUNTIME] bind cron:ops-governance-evolution",
+                            "status": "passed",
+                            "updated_at": "2026-03-12T23:00:00+08:00",
+                        },
+                    ],
+                ):
+                    with mock.patch.object(
+                        module,
+                        "ensure_task_binding",
+                        return_value=("cron:ops-daily-todo-digest", ""),
+                    ):
+                        with mock.patch.object(module, "invoke_policy_enforcer", return_value=(True, {"ok": True}, "")):
+                            with redirect_stdout(stdout):
+                                rc = module.main()
+
+        self.assertEqual(rc, 0)
+        payload = json.loads(stdout.getvalue().strip())
+        self.assertFalse(payload["notify"])
+        self.assertEqual(payload["output"], "NO_REPLY")
+
+
 if __name__ == "__main__":
     unittest.main()

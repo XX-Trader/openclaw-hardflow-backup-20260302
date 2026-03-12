@@ -1213,6 +1213,23 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--dry-run", rendered)
         self.assertIn("--emit-json", rendered)
 
+    def test_install_workflow_profile_normalize_runtime_binding_tasks_cmd_uses_task_db(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        cmd = module.build_normalize_runtime_binding_tasks_cmd(
+            python_bin="python3",
+            here=Path("/repo/scripts/openclaw-ops"),
+            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
+            dry_run=True,
+        )
+        rendered = " ".join(cmd)
+        self.assertIn("normalize_runtime_binding_tasks.py", rendered)
+        self.assertIn("--db /home/ubuntu/.openclaw/ops/task-center/task_center.db", rendered)
+        self.assertIn("--dry-run", rendered)
+        self.assertIn("--emit-json", rendered)
+
     def test_sync_overlay_config_preserves_local_telegram_bot_token(self):
         module = load_module(
             "install_workflow_profile",

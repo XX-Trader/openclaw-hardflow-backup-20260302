@@ -596,6 +596,7 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 - `install_task_executor_job.py` 默认给 `task_executor_10m` 写入 `lightContext: true`，让 isolated cron run 只保留轻量 bootstrap，避免无关工作区上下文拖慢首轮 `exec`。
 - cron 安装器写入的 scheduled-runner 提示词现在要求：首次只允许一个 `exec`；如果工具返回 `Command still running`，只能对同一 session 使用 `process poll` 等到进程退出，禁止再开第二个 `exec`，避免后台悬挂命令继续占用 `task_center.db`。
 - `install_task_executor_job.py` 额外要求每次 `process poll` 的 `timeout` 不得超过 `15000` ms，并在收到 `Process still running` 后立即短轮询，避免长轮询把 gateway ws tick 拖到超时。
+- `ops_runtime_cron` 绑定任务现在创建即标记为 `passed/action=runtime_binding`；安装流程会额外执行 `normalize_runtime_binding_tasks.py`，把历史遗留的 runtime binding backlog 一次性归正，避免它们被误判成待执行任务或已完成摘要。
 - `install_project_index_job.py` 安装的 cron 任务默认不再追加 `--git-pull`。仓库拉取由 `ops_auto_update_install_hourly` 统一负责；如需人工排障，可显式传 `--git-pull`。
 - `web_intel_collect_runner.py` 与 `web_intel_review_runner.py` 新增 `--notify-on`，可选 `error/change/always`。
 - `install_web_intel_jobs.py` 新增 `--collect-notify-on` 与 `--review-notify-on`，在只想保留异常告警时传 `error`。

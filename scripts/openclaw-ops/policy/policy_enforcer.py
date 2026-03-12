@@ -1357,13 +1357,14 @@ class PolicyEnforcer:
             context_payload["acceptance"] = str(args.acceptance).strip()
         if not str(context_payload.get("evidence", "")).strip():
             context_payload["evidence"] = str(args.observable_outputs).strip()
+        runtime_binding_seen_at = ""
         if task_type == "ops_runtime_cron":
             runtime_ref = str(args.source or "").strip() or str(args.task_id or "").strip()
-            runtime_seen_at = str(args.scheduled_at or "").strip() or now_iso()
+            runtime_binding_seen_at = str(args.scheduled_at or "").strip() or now_iso()
             if not str(context_payload.get("location", "")).strip():
                 context_payload["location"] = runtime_ref
             if not str(context_payload.get("first_seen_at", "")).strip():
-                context_payload["first_seen_at"] = runtime_seen_at
+                context_payload["first_seen_at"] = runtime_binding_seen_at
             if not str(context_payload.get("impact", "")).strip():
                 context_payload["impact"] = "Runtime observability and status tracking would be lost if this binding task is missing."
             if not str(context_payload.get("operation_path", "")).strip():
@@ -1404,6 +1405,15 @@ class PolicyEnforcer:
             if task_type == "workflow":
                 task_type = "clarification_required"
 
+        initial_status = "pending"
+        initial_action = ""
+        completed_at = ""
+        if task_type == "ops_runtime_cron":
+            # Runtime binding tasks are observability anchors, not executable backlog items.
+            initial_status = "passed"
+            initial_action = "runtime_binding"
+            completed_at = runtime_binding_seen_at or now_iso()
+
         payload = {
             "task_id": args.task_id,
             "pool": pool,
@@ -1416,7 +1426,7 @@ class PolicyEnforcer:
             "assignee": assignee,
             "owner": owner,
             "change_id": change_id,
-            "status": "pending",
+            "status": initial_status,
             "needs_clarification": needs_clarification,
             "clarification_reason": clarification_reason,
             "need_human_confirm": need_human_confirm,
@@ -1430,7 +1440,9 @@ class PolicyEnforcer:
             "acceptance": args.acceptance,
             "observable_outputs": args.observable_outputs,
             "acceptance_thresholds": args.acceptance_thresholds,
+            "action": initial_action,
             "scheduled_at": scheduled_at,
+            "completed_at": completed_at,
         }
 
         created = self.db.create_task(payload, actor=args.actor)
