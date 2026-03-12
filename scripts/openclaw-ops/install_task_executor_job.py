@@ -106,7 +106,9 @@ def build_message(
         "Do not inspect files, list directories, or run any other command such as ls, pwd, cat, grep, find, or python probes. "
         "Execute the command exactly once. "
         "If the exec tool reports 'Command still running', do not start another exec command. "
-        "You MUST wait for completion by using only process poll or process log for that same session until the process exits. "
+        "You MUST wait for completion by using only process poll for that same session until the process exits. "
+        "Each process poll MUST use timeout 15000 and you MUST immediately poll again after each 'Process still running' result. "
+        "Do not let a single process poll wait exceed 15000 ms. "
         "Do not run unrelated follow-up commands or diagnostics. "
         "Return EXACTLY raw stdout/stderr text from the finished command; "
         "do not add explanation, greeting, or prefix text. "
@@ -156,6 +158,7 @@ def upsert_job(
         "updatedAtMs": timestamp,
         "schedule": {"kind": "every", "everyMs": every_ms, "anchorMs": created_ms},
         "sessionTarget": "isolated",
+        "lightContext": True,
         "wakeMode": "now",
         "payload": {
             "kind": "agentTurn",

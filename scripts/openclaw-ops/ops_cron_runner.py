@@ -35,6 +35,15 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from io_write_gateway import FileWriteError, append_text_atomic, write_json_atomic
+from alert_dedupe import (
+    WORKFLOW_FAILURE_BUCKET,
+    build_workflow_failure_signature,
+    check_and_record_signature,
+    load_dedupe_state,
+    resolve_shared_alert_state_path,
+    save_dedupe_state,
+    workflow_tokens_from_job_ids,
+)
 
 TZ = timezone(timedelta(hours=8))
 UTC = timezone.utc
@@ -2412,6 +2421,36 @@ def run_scan(
     priority = "high" if risk_reasons else ("medium" if change_reasons else "low")
     open_issue_rows = sorted_open_issues(state, limit=3)
     workflow_failed_rows = list(workflow_health.get("failed_jobs", [])) if isinstance(workflow_health.get("failed_jobs"), list) else []
+    shared_alert_suppressed = False
+    shared_alert_suppressed_reason = ""
+    shared_alert_signature = ""
+    shared_alert_tokens: list[str] = []
+    workflow_risk_labels = {compact_reason(x) for x in risk_reasons if str(x).strip()}
+    workflow_only_risk = bool(workflow_failed_rows) and workflow_risk_labels.issubset(
+        {"workflow_job_error", "workflow_job_error_stale"}
+    )
+    if notify and workflow_only_risk:
+        shared_alert_tokens = workflow_tokens_from_job_ids(item.get("id", "") for item in workflow_failed_rows)
+        shared_alert_signature = build_workflow_failure_signature(shared_alert_tokens)
+        if shared_alert_signature:
+            shared_state_path = resolve_shared_alert_state_path(notify_policy.get("shared_alert_state_file", ""))
+            shared_state = load_dedupe_state(shared_state_path)
+            shared_alert_suppressed, shared_alert_suppressed_reason = check_and_record_signature(
+                shared_state,
+                bucket=WORKFLOW_FAILURE_BUCKET,
+                signature=shared_alert_signature,
+                now_text=now_iso(),
+                cooldown_minutes=risk_repeat_cooldown_minutes,
+                meta={
+                    "source": "ops_cron_runner",
+                    "mode": mode,
+                    "task_id": task_id,
+                    "tokens": list(shared_alert_tokens),
+                },
+            )
+            save_dedupe_state(shared_state_path, shared_state)
+            if shared_alert_suppressed:
+                notify = False
 
     output = "NO_REPLY"
     if notify:
@@ -2488,6 +2527,10 @@ def run_scan(
         "risk_signature": risk_signature,
         "risk_notify_suppressed": risk_notify_suppressed,
         "risk_notify_suppressed_reason": risk_notify_suppressed_reason,
+        "shared_alert_signature": shared_alert_signature,
+        "shared_alert_tokens": shared_alert_tokens,
+        "shared_alert_suppressed": shared_alert_suppressed,
+        "shared_alert_suppressed_reason": shared_alert_suppressed_reason,
         "full_mode": full_mode,
         "fallback_used": fallback_used,
         "fallback_reasons": sorted(set(fallback_reasons)),

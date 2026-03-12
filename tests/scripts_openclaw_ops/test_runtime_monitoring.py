@@ -189,6 +189,86 @@ class RuntimeMonitoringTests(unittest.TestCase):
         self.assertIn("project-b", result.output)
         self.assertIn("project-web", result.output)
 
+    def test_run_scan_suppresses_same_workflow_failure_across_modes(self):
+        module = load_module(
+            "ops_cron_runner",
+            "scripts/openclaw-ops/ops_cron_runner.py",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            jobs_file = tmp / "jobs.json"
+            shared_alert_state = tmp / "alert-dedupe-state.json"
+            jobs_file.write_text(
+                json.dumps(
+                    {
+                        "jobs": [
+                            {
+                                "id": "f603d2ac-2dcf-4f7a-9efe-26f0e0f8d24e",
+                                "name": "ops_system_schedule_audit",
+                                "agentId": "ops-agent",
+                                "enabled": True,
+                                "state": {
+                                    "lastStatus": "error",
+                                    "consecutiveErrors": 1,
+                                    "lastRunAtMs": 1710112222000,
+                                    "lastError": "GrammyError: Call to 'sendMessage' failed! (401: Unauthorized)",
+                                },
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            cfg = module.default_config()
+            cfg["log_roots"] = []
+            cfg["service_monitor"] = {"enabled": False}
+            cfg["system_monitor"] = {"enabled": False}
+            cfg["runtime_monitor"] = {"enabled": False}
+            cfg["token_monitor"] = {"enabled": False}
+            cfg["app_usage_monitor"] = {"enabled": False}
+            cfg["incident_handoff"] = {"enabled": False}
+            cfg["workflow_monitor"] = {
+                "enabled": True,
+                "jobs_file": str(jobs_file),
+                "max_report_jobs": 8,
+                "stale_error_minutes": 30,
+                "ignore_job_names": [],
+            }
+            cfg["notify_policy"]["shared_alert_state_file"] = str(shared_alert_state)
+
+            state = module.default_state()
+            with mock.patch.object(module, "collect_services", return_value=({}, "")):
+                first = module.run_scan(
+                    mode="incremental",
+                    cfg=cfg,
+                    state=state,
+                    task_id="cron:ops-incremental-monitor",
+                    daily_major_only=True,
+                    force_fallback=False,
+                    normal_log_mode_override="",
+                )
+                second = module.run_scan(
+                    mode="full",
+                    cfg=cfg,
+                    state=state,
+                    task_id="cron:ops-full-calibration",
+                    daily_major_only=True,
+                    force_fallback=False,
+                    normal_log_mode_override="",
+                )
+
+        self.assertTrue(first.notify)
+        self.assertFalse(first.record.get("shared_alert_suppressed", False))
+        self.assertFalse(second.notify)
+        self.assertTrue(second.record.get("shared_alert_suppressed", False))
+        self.assertIn(
+            "workflow_repeat_within_cooldown",
+            str(second.record.get("shared_alert_suppressed_reason", "")),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

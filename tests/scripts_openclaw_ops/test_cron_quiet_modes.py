@@ -950,7 +950,7 @@ class CronQuietModeTests(unittest.TestCase):
         message = jobs[0]["payload"]["message"]
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
         self.assertIn("Command still running", message)
-        self.assertIn("process poll or process log", message)
+        self.assertIn("process poll", message)
         self.assertIn("Never output sentences like 'Let's run ...'", message)
 
     def test_project_index_job_defaults_to_silent_delivery(self):
@@ -983,7 +983,7 @@ class CronQuietModeTests(unittest.TestCase):
         message = module.build_message("python3 /tmp/reviewer_cron_runner.py --mode daily_incremental")
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
         self.assertIn("Command still running", message)
-        self.assertIn("process poll or process log", message)
+        self.assertIn("process poll", message)
         self.assertIn("Never output sentences like 'Let's run ...'", message)
 
     def test_reviewer_jobs_default_to_silent_delivery(self):
@@ -1039,7 +1039,7 @@ class CronQuietModeTests(unittest.TestCase):
         )
         self.assertIn("--notify-on error", message)
         self.assertIn("Command still running", message)
-        self.assertIn("process poll or process log", message)
+        self.assertIn("process poll", message)
         self.assertNotIn("--emit-json", message)
 
     def test_cron_setup_hardens_project_index_without_git_pull(self):
@@ -1067,7 +1067,7 @@ class CronQuietModeTests(unittest.TestCase):
         message = module.build_message("python3 /tmp/demo.py")
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
         self.assertIn("Command still running", message)
-        self.assertIn("process poll or process log", message)
+        self.assertIn("process poll", message)
 
     def test_cron_setup_monitor_config_uses_home_defaults_when_runner_config_is_dict(self):
         module = load_module(
@@ -1192,6 +1192,24 @@ class CronQuietModeTests(unittest.TestCase):
         rendered = " ".join(cmd)
         self.assertIn("ensure_runtime_skills.py", rendered)
         self.assertIn("--manifest /repo/scripts/openclaw-ops/runtime-required-skills.json", rendered)
+        self.assertIn("--dry-run", rendered)
+        self.assertIn("--emit-json", rendered)
+
+    def test_install_workflow_profile_sync_runtime_plugin_overrides_cmd_uses_openclaw_home(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        cmd = module.build_sync_runtime_plugin_overrides_cmd(
+            python_bin="python3",
+            here=Path("/repo/scripts/openclaw-ops"),
+            openclaw_home="/home/ubuntu/.openclaw",
+            dry_run=True,
+        )
+        rendered = " ".join(cmd)
+        self.assertIn("sync_runtime_plugin_overrides.py", rendered)
+        self.assertIn("runtime-plugin-overrides", rendered)
+        self.assertIn("--openclaw-home /home/ubuntu/.openclaw", rendered)
         self.assertIn("--dry-run", rendered)
         self.assertIn("--emit-json", rendered)
 

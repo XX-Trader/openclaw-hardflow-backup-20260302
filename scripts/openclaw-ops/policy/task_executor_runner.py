@@ -19,6 +19,16 @@ from types import SimpleNamespace
 from typing import Any
 
 from policy_enforcer import PolicyEnforcer, RuntimePaths, cmd_init, runtime_defaults  # type: ignore
+from alert_dedupe import (
+    WORKFLOW_FAILURE_BUCKET,
+    build_workflow_failure_signature,
+    check_and_record_signature,
+    extract_workflow_failure_tokens_from_task,
+    load_dedupe_state,
+    resolve_shared_alert_state_path,
+    save_dedupe_state,
+    workflow_tokens_from_job_ids,
+)
 
 UTC = timezone.utc
 GOVERNANCE_BRIDGE_EPILOG = (
@@ -410,6 +420,9 @@ def result_is_error(item: dict[str, Any]) -> bool:
 
 def build_chat_output(summary: dict[str, Any], report_path: Path, notify_on: str) -> str:
     mode = normalize_notify_on(notify_on)
+    dedupe = summary.get("alert_dedupe", {})
+    if isinstance(dedupe, dict) and bool(dedupe.get("suppressed", False)):
+        return "NO_REPLY"
     results = summary.get("results", [])
     if not isinstance(results, list):
         results = []
@@ -457,6 +470,68 @@ def build_chat_output(summary: dict[str, Any], report_path: Path, notify_on: str
             lines.append(f"    问题: {issue}")
             lines.append(f"    详情: {detail}")
     return "\n".join(lines)
+
+
+def apply_shared_alert_dedupe(
+    summary: dict[str, Any],
+    state_path: Path,
+    *,
+    cooldown_minutes: int,
+    now_text: str = "",
+) -> dict[str, Any]:
+    dedupe = {
+        "suppressed": False,
+        "reason": "",
+        "bucket": WORKFLOW_FAILURE_BUCKET,
+        "signature": "",
+        "tokens": [],
+    }
+    results = summary.get("results", [])
+    if not isinstance(results, list):
+        return dedupe
+    error_items = [item for item in results if isinstance(item, dict) and result_is_error(item)]
+    if not error_items:
+        return dedupe
+
+    tokens: list[str] = []
+    for item in error_items:
+        item_tokens = item.get("workflow_alert_tokens", [])
+        if not isinstance(item_tokens, list) or not item_tokens:
+            item_tokens = extract_workflow_failure_tokens_from_task(
+                item.get("task_id", ""),
+                task_type=item.get("task_type", ""),
+                requirement=item.get("requirement", ""),
+                context_payload=item.get("context_payload"),
+            )
+        if not item_tokens:
+            return dedupe
+        tokens.extend(item_tokens)
+
+    normalized_tokens = workflow_tokens_from_job_ids(tokens)
+    signature = build_workflow_failure_signature(normalized_tokens)
+    if not signature:
+        return dedupe
+
+    state = load_dedupe_state(state_path)
+    suppressed, reason = check_and_record_signature(
+        state,
+        bucket=WORKFLOW_FAILURE_BUCKET,
+        signature=signature,
+        now_text=now_text or str(summary.get("started_at", "")),
+        cooldown_minutes=max(1, int(cooldown_minutes or 60)),
+        meta={
+            "source": "task_executor_runner",
+            "trigger_task": str(summary.get("trigger_task", "")).strip(),
+            "run_id": str(summary.get("run_id", "")).strip(),
+            "tokens": list(normalized_tokens),
+        },
+    )
+    save_dedupe_state(state_path, state)
+    dedupe["suppressed"] = suppressed
+    dedupe["reason"] = reason
+    dedupe["signature"] = signature
+    dedupe["tokens"] = normalized_tokens
+    return dedupe
 
 
 def cli_flag_enabled(flag: str) -> bool:
@@ -832,6 +907,8 @@ def main() -> int:
     parser.add_argument("--report-dir", default=str(repo_root / ".workflow/executor-runs"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--notify-on", default="error", choices=sorted(NOTIFY_ON_MODES))
+    parser.add_argument("--shared-alert-state-file", default=str(resolve_shared_alert_state_path()))
+    parser.add_argument("--shared-alert-cooldown-minutes", type=int, default=60)
     parser.add_argument("--agent-max-retries", type=int, default=2)
     parser.add_argument("--agent-retry-delay-sec", type=int, default=20)
     parser.add_argument("--emit-json", action="store_true")
@@ -880,6 +957,13 @@ def main() -> int:
             task_id = str(task.get("task_id", "")).strip()
             assignee = str(task.get("assignee", "")).strip() or "backend-dev"
             stage = default_stage(assignee)
+            task_type = str(task.get("task_type", "")).strip()
+            workflow_alert_tokens = extract_workflow_failure_tokens_from_task(
+                task_id,
+                task_type=task_type,
+                requirement=task.get("requirement", ""),
+                context_payload=task.get("context_payload"),
+            )
             task_model_name, task_model_source, task_thinking = resolve_executor_selection(
                 requested_model,
                 assignee,
@@ -895,6 +979,8 @@ def main() -> int:
                 "model": task_model_name,
                 "model_source": task_model_source,
                 "thinking": task_thinking,
+                "task_type": task_type,
+                "workflow_alert_tokens": workflow_alert_tokens,
             }
 
             if bool(task.get("needs_clarification")):
@@ -1097,6 +1183,12 @@ def main() -> int:
         enforcer.close()
 
     summary["finished_at"] = now_iso()
+    summary["alert_dedupe"] = apply_shared_alert_dedupe(
+        summary,
+        Path(args.shared_alert_state_file).expanduser(),
+        cooldown_minutes=max(1, int(args.shared_alert_cooldown_minutes)),
+        now_text=str(summary.get("started_at", "")),
+    )
     report_path = report_dir / f"{run_id}.json"
     report_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     summary["report_file"] = str(report_path)

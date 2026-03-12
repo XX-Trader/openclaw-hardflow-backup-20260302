@@ -235,6 +235,27 @@ def build_ensure_runtime_skills_cmd(
     return cmd
 
 
+def build_sync_runtime_plugin_overrides_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    openclaw_home: str,
+    dry_run: bool,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "sync_runtime_plugin_overrides.py"),
+        "--source-dir",
+        str(here / "runtime-plugin-overrides"),
+        "--openclaw-home",
+        openclaw_home,
+        "--emit-json",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    return cmd
+
+
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
 
@@ -825,6 +846,7 @@ def main() -> None:
     runtime_boundary_doc = str((Path(workflow_repo_path) / "integration" / "openclaw-bridge" / "runtime-boundary.md").resolve())
     hooks_source_dir = str((Path(workflow_repo_path) / "hooks").resolve())
     skills_source_dir = str((Path(workflow_repo_path) / "skills").resolve())
+    plugin_overrides_source_dir = str((here / "runtime-plugin-overrides").resolve())
     required_skills_manifest = normalize_path(args.required_skills_manifest) if str(args.required_skills_manifest).strip() else str(
         (here / "runtime-required-skills.json").resolve()
     )
@@ -983,12 +1005,20 @@ def main() -> None:
         manifest_path=required_skills_manifest,
         dry_run=bool(args.dry_run),
     )
+    sync_runtime_plugin_overrides_cmd = build_sync_runtime_plugin_overrides_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        openclaw_home=openclaw_home,
+        dry_run=bool(args.dry_run),
+    )
 
     steps: list[tuple[str, list[str]]] = []
     if bool(args.normalize_openclaw_paths):
         steps.append(("normalize_openclaw_home_paths (linux compatibility)", normalize_paths_cmd))
     if bool(args.ensure_runtime_skills):
         steps.append(("ensure_runtime_skills (required skills and bins)", ensure_runtime_skills_cmd))
+    if Path(plugin_overrides_source_dir).exists():
+        steps.append(("sync_runtime_plugin_overrides (managed plugin patches)", sync_runtime_plugin_overrides_cmd))
 
     steps.extend([
         ("install_todo_patrol_job (task#1)", install_todo_cmd),
@@ -1026,6 +1056,7 @@ def main() -> None:
     print(f"runtime_boundary_doc={runtime_boundary_doc}")
     print(f"hooks_source_dir={hooks_source_dir}")
     print(f"skills_source_dir={skills_source_dir}")
+    print(f"plugin_overrides_source_dir={plugin_overrides_source_dir}")
     print(f"required_skills_manifest={required_skills_manifest}")
 
     results: list[dict[str, Any]] = []
@@ -1084,6 +1115,7 @@ def main() -> None:
             "boundary_doc": runtime_boundary_doc,
             "hooks_source_dir": hooks_source_dir,
             "skills_source_dir": skills_source_dir,
+            "plugin_overrides_source_dir": plugin_overrides_source_dir,
             "sync_overlay_config": bool(args.sync_overlay_config),
             "required_skills_manifest": required_skills_manifest,
             "ensure_runtime_skills": bool(args.ensure_runtime_skills),
