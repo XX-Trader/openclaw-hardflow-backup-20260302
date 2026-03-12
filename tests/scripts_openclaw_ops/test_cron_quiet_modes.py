@@ -463,6 +463,71 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("执行结果回写失败", output)
         self.assertNotIn("# task-executor", output)
 
+    def test_task_executor_duplicate_workflow_repair_alert_returns_no_reply(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+        dedupe_module = load_module(
+            "alert_dedupe",
+            "scripts/openclaw-ops/policy/alert_dedupe.py",
+        )
+        summary = {
+            "trigger_task": "cron:task-executor",
+            "run_id": "exec-20260312_062434-432f88d7",
+            "started_at": "2026-03-10T10:27:01+00:00",
+            "executor_model": "auto(per-assignee)",
+            "tasks_selected": 1,
+            "tasks_executed": 1,
+            "tasks_skipped": 0,
+            "tasks_failed": 1,
+            "results": [
+                {
+                    "task_id": "todo-ops-workflow-repair-f603d2ac-2dcf-4f7a-9efe--08a4d9787c",
+                    "assignee": "optimization-agent",
+                    "status": "failed",
+                    "reason": "failed",
+                    "task_type": "ops_workflow_repair",
+                    "requirement": "workflow_job_id: f603d2ac-2dcf-4f7a-9efe-26f0e0f8d24e",
+                    "context_payload": {
+                        "operation_path": "ops_cron_runner::f603d2ac-2dcf-4f7a-9efe-26f0e0f8d24e"
+                    },
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "alert-dedupe-state.json"
+            state = dedupe_module.load_dedupe_state(state_path)
+            signature = dedupe_module.build_workflow_failure_signature(
+                ["f603d2ac-2dcf-4f7a-9efe"]
+            )
+            suppressed, _ = dedupe_module.check_and_record_signature(
+                state,
+                bucket="workflow_failure",
+                signature=signature,
+                now_text="2026-03-10T18:26:28+08:00",
+                cooldown_minutes=60,
+                meta={"source": "ops_cron_runner"},
+            )
+            self.assertFalse(suppressed)
+            dedupe_module.save_dedupe_state(state_path, state)
+
+            summary["alert_dedupe"] = module.apply_shared_alert_dedupe(
+                summary,
+                state_path,
+                cooldown_minutes=60,
+                now_text="2026-03-10T18:27:01+08:00",
+            )
+            output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
+
+        self.assertTrue(summary["alert_dedupe"]["suppressed"])
+        self.assertIn(
+            "workflow_repeat_within_cooldown",
+            summary["alert_dedupe"]["reason"],
+        )
+        self.assertEqual(output, "NO_REPLY")
+
     def test_web_collect_error_only_mode_stays_quiet_on_changes(self):
         module = load_module(
             "web_intel_collect_runner",
@@ -1249,6 +1314,32 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertEqual(jobs[0]["delivery"]["mode"], "none")
         self.assertEqual(jobs[0]["failureAlert"]["after"], 1)
 
+    def test_daily_work_report_job_announces_and_carries_todo_files(self):
+        module = load_module(
+            "cron_setup",
+            "scripts/openclaw-ops/cron_setup.py",
+        )
+        job = module.build_daily_work_job(
+            script_py="/home/ubuntu/.openclaw/ops/daily_work_report.py",
+            db_file="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
+            state_file="/home/ubuntu/.openclaw/ops/daily-work/state.json",
+            report_dir="/home/ubuntu/.openclaw/ops/daily-work/reports",
+            expr="15 0 * * *",
+            tz_name="Asia/Shanghai",
+            log_mode="silent",
+            webhook_env="DINGTALK_WEBHOOK_URL",
+            secret_env="DINGTALK_SECRET",
+            env_file="/home/ubuntu/.openclaw/ops/runtime.env",
+            todo_files=[
+                "/home/ubuntu/openclaw-hardflow-backup-20260302/todo.md",
+                "/home/ubuntu/openclaw-hardflow-backup-20260302/TODO.md",
+            ],
+        )
+        self.assertEqual(job["delivery"]["mode"], "announce")
+        message = job["payload"]["message"]
+        self.assertIn("--todo-file /home/ubuntu/openclaw-hardflow-backup-20260302/todo.md", message)
+        self.assertIn("--todo-file /home/ubuntu/openclaw-hardflow-backup-20260302/TODO.md", message)
+
     def test_web_intel_jobs_default_to_silent_delivery(self):
         module = load_module(
             "install_web_intel_jobs",
@@ -1475,6 +1566,9 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--no-git-pull", proc.stdout)
         self.assertIn("--collect-notify-on error", proc.stdout)
         self.assertIn("--review-notify-on error", proc.stdout)
+        self.assertIn("--daily-work-todo-file", proc.stdout)
+        self.assertIn(str(workflow_repo / "todo.md"), proc.stdout)
+        self.assertIn(str(workflow_repo / "TODO.md"), proc.stdout)
 
 
 if __name__ == "__main__":

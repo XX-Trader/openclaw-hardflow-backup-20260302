@@ -27,6 +27,7 @@ if str(POLICY_DIR) not in sys.path:
 
 from io_write_gateway import FileWriteError, write_json_atomic
 from chat_output import build_trace_id, render_chat_notice
+from todo_patrol import norm_text, parse_todo_items
 
 TZ = timezone(timedelta(hours=8))
 LOG_MODES = {"silent", "chat"}
@@ -353,13 +354,102 @@ def post_dingtalk(webhook: str, secret: str, title: str, text: str, timeout: int
 def summarize_items(items: list[dict[str, Any]], limit: int) -> list[str]:
     out: list[str] = []
     for row in items[: max(1, int(limit))]:
-        out.append(
-            "- "
-            + f"[{row.get('task_id')}] "
-            + f"{row.get('reason', '')[:70]} "
-            + f"(priority={row.get('priority')}, risk={row.get('risk_level')}, assignee={row.get('assignee')})"
-        )
+        task_id = str(row.get("task_id", "")).strip() or "-"
+        reason = str(row.get("reason", "")).strip()[:70] or "未填写原因"
+        priority = str(row.get("priority", "")).strip() or "-"
+        risk_level = str(row.get("risk_level", "")).strip() or "-"
+        assignee = str(row.get("assignee", "")).strip() or "-"
+        out.append(f"- [{task_id}] {reason}（优先级={priority}，风险={risk_level}，负责人={assignee}）")
     return out
+
+
+def summarize_todo_file_items(items: list[dict[str, Any]], limit: int) -> list[str]:
+    out: list[str] = []
+    for row in items[: max(1, int(limit))]:
+        task_id = str(row.get("task_id", "")).strip() or "-"
+        reason = str(row.get("reason", "")).strip()[:70] or "未填写待办"
+        source_file = str(row.get("source_file", "")).strip() or "todo.md"
+        section = str(row.get("section", "")).strip()
+        if section:
+            out.append(f"- [{task_id}] {reason}（来源={source_file} / {section}）")
+        else:
+            out.append(f"- [{task_id}] {reason}（来源={source_file}）")
+    return out
+
+
+def infer_todo_file_priority(section: str, priority_tag: str) -> tuple[str, str]:
+    tag = str(priority_tag or "").strip().upper()
+    section_text = norm_text(section)
+    if tag in {"P0", "P1"}:
+        return "high", "high"
+    if tag == "P2":
+        return "medium", "low"
+    if "重要紧急" in section_text:
+        return "high", "high"
+    if "重要不紧急" in section_text:
+        return "medium", "low"
+    if "不重要紧急" in section_text:
+        return "medium", "low"
+    return "planned", "low"
+
+
+def build_task_reason_keys(items: list[dict[str, Any]]) -> set[str]:
+    keys: set[str] = set()
+    for item in items:
+        status = str(item.get("status", "")).strip().lower()
+        if status == "passed":
+            continue
+        task_id = str(item.get("task_id", "")).strip()
+        reason = str(item.get("reason", "")).strip()
+        combined = " ".join(part for part in [task_id, reason] if part).strip()
+        if combined:
+            keys.add(norm_text(combined))
+        if task_id:
+            keys.add(norm_text(task_id))
+        if reason:
+            keys.add(norm_text(reason))
+    return keys
+
+
+def load_todo_file_pending_items(todo_files: list[Path], existing_tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not todo_files:
+        return []
+    existing_keys = build_task_reason_keys(existing_tasks)
+    pending_items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for todo_file in todo_files:
+        if not todo_file.exists():
+            continue
+        try:
+            content = todo_file.read_text(encoding="utf-8-sig")
+        except Exception:
+            continue
+        for item in parse_todo_items(content):
+            match_keys = {
+                norm_text(item.text),
+                norm_text(f"todo-file-{item.item_id}"),
+                norm_text(f"todo-file-{item.item_id} {item.text}"),
+            }
+            if existing_keys.intersection(match_keys):
+                continue
+            dedupe_key = f"{todo_file.name}:{item.item_id}"
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            priority, risk_level = infer_todo_file_priority(item.section, item.priority_tag)
+            pending_items.append(
+                {
+                    "task_id": f"todo-file-{item.item_id}",
+                    "reason": item.text,
+                    "priority": priority,
+                    "risk_level": risk_level,
+                    "assignee": "待入任务中心",
+                    "source_file": todo_file.name,
+                    "section": item.section,
+                    "line_num": item.line_num,
+                }
+            )
+    return pending_items
 
 
 def humanize_chat_error(reason: str) -> str:
@@ -387,23 +477,80 @@ def build_chat_output(
     sender_identity: str,
     task_id: str,
     run_time: str,
+    new_todo: list[dict[str, Any]],
+    new_done: list[dict[str, Any]],
+    todo_file_pending: list[dict[str, Any]],
+    planner_summary: dict[str, Any],
     exception_reasons: list[str],
     report_file: Path,
 ) -> str:
     reasons = [str(item).strip() for item in exception_reasons if str(item).strip()]
-    if not reasons:
+    has_digest = bool(new_todo or new_done or todo_file_pending)
+    if (not reasons) and (not has_digest):
         return "NO_REPLY"
-    detail_lines = [f"异常{idx}：{humanize_chat_error(reason)}" for idx, reason in enumerate(reasons[:8], start=1)]
+
+    if has_digest and reasons:
+        title = "每日工作报告需关注"
+        status = "需处理"
+        next_step = "请先处理异常，再确认日报中的待办和完成项是否需要进一步跟进。"
+    elif reasons:
+        title = "每日工作报告异常"
+        status = "需处理"
+        next_step = "请先检查钉钉配置、网络连通性和策略留痕。"
+    else:
+        title = "每日工作报告"
+        status = "已汇报"
+        next_step = "请按日报继续推进待办，并确认 todo 清单中的任务是否达到入任务中心条件。"
+
+    summary_parts: list[str] = []
+    if new_todo:
+        summary_parts.append(f"任务中心待办 {len(new_todo)} 项")
+    if todo_file_pending:
+        summary_parts.append(f"todo清单待办 {len(todo_file_pending)} 项")
+    if new_done:
+        summary_parts.append(f"任务中心完成 {len(new_done)} 项")
+    if reasons:
+        summary_parts.append(f"异常 {len(reasons)} 项")
+
+    extra_lines: list[str] = []
+    if planner_summary:
+        report_count = int(planner_summary.get("report_count", 0) or 0)
+        task_count = int(planner_summary.get("task_count", 0) or 0)
+        failed_task_count = int(planner_summary.get("failed_task_count", 0) or 0)
+        extra_lines.append(f"24小时留痕：报告 {report_count} 条，任务 {task_count} 条，失败 {failed_task_count} 条")
+
+    detail_lines: list[str] = []
+    for idx, item in enumerate(new_todo[:5], start=1):
+        task_label = str(item.get("task_id", "")).strip() or "-"
+        reason = str(item.get("reason", "")).strip() or "未填写原因"
+        detail_lines.append(f"任务中心待办{idx}：[{task_label}] {reason}")
+    for idx, item in enumerate(todo_file_pending[:5], start=1):
+        task_label = str(item.get("task_id", "")).strip() or "-"
+        reason = str(item.get("reason", "")).strip() or "未填写待办"
+        source_file = str(item.get("source_file", "")).strip() or "todo.md"
+        section = str(item.get("section", "")).strip()
+        if section:
+            detail_lines.append(f"todo清单待办{idx}：[{task_label}] {reason}（来源={source_file} / {section}）")
+        else:
+            detail_lines.append(f"todo清单待办{idx}：[{task_label}] {reason}（来源={source_file}）")
+    for idx, item in enumerate(new_done[:5], start=1):
+        task_label = str(item.get("task_id", "")).strip() or "-"
+        reason = str(item.get("reason", "")).strip() or "已完成"
+        detail_lines.append(f"任务中心完成{idx}：[{task_label}] {reason}")
+    for idx, reason in enumerate(reasons[:8], start=1):
+        detail_lines.append(f"异常{idx}：{humanize_chat_error(reason)}")
+
     return render_chat_notice(
-        "每日工作报告异常",
-        status="需处理",
+        title,
+        status=status,
         task_id=str(task_id or "").strip(),
         sender_identity=str(sender_identity or DEFAULT_SENDER_IDENTITY).strip(),
         run_time=str(run_time or now_iso()).strip(),
         trace_id=build_trace_id(report_file=report_file),
-        summary=f"本轮发现 {len(reasons)} 个需要处理的问题。",
+        summary="，".join(summary_parts),
+        extra_lines=extra_lines,
         details=detail_lines,
-        next_step="请先检查钉钉配置、网络连通性和策略留痕。",
+        next_step=next_step,
     )
 
 
@@ -422,6 +569,7 @@ def main() -> int:
     parser.add_argument("--dingtalk-secret", default="")
     parser.add_argument("--dingtalk-secret-env", default="DINGTALK_SECRET")
     parser.add_argument("--env-file", action="append", default=[])
+    parser.add_argument("--todo-file", action="append", default=[])
     parser.add_argument("--max-db-tasks", type=int, default=2000)
     parser.add_argument("--max-notify-items", type=int, default=15)
     parser.add_argument("--emit-json", action="store_true")
@@ -433,6 +581,7 @@ def main() -> int:
     report_dir.mkdir(parents=True, exist_ok=True)
 
     env_files: list[Path] = [Path(x).expanduser() for x in args.env_file if str(x).strip()]
+    todo_files: list[Path] = [Path(x).expanduser() for x in args.todo_file if str(x).strip()]
     openclaw_home = Path(os.environ.get("OPENCLAW_HOME", str(home / ".openclaw"))).expanduser()
     default_runtime_env = openclaw_home / "ops" / "runtime.env"
     if default_runtime_env not in env_files:
@@ -455,14 +604,14 @@ def main() -> int:
 
     new_todo = [x for x in todo_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_todo_ids]
     new_done = [x for x in done_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_done_ids]
+    todo_file_pending = load_todo_file_pending_items(todo_files, todo_candidates)
 
-    has_new_records = bool(new_todo or new_done)
     normal_log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
     sender_identity = normalize_sender_identity(args.sender_identity)
     run_errors: list[str] = []
 
-    should_send_digest = has_new_records
-    notify = bool(should_send_digest)
+    should_send_digest = bool(new_todo or new_done or todo_file_pending)
+    digest_notify = bool(should_send_digest)
 
     report = {
         "run_id": uuid.uuid4().hex[:12],
@@ -472,33 +621,39 @@ def main() -> int:
         "db": str(db_path),
         "normal_log_mode": normal_log_mode,
         "notify": False,
+        "todo_files": [str(path.name) for path in todo_files],
         "new_todo_count": len(new_todo),
         "new_done_count": len(new_done),
+        "todo_file_pending_count": len(todo_file_pending),
         "new_todo_ids": [str(x.get("task_id", "")) for x in new_todo if x.get("task_id")],
         "new_done_ids": [str(x.get("task_id", "")) for x in new_done if x.get("task_id")],
+        "todo_file_pending_ids": [str(x.get("task_id", "")) for x in todo_file_pending if x.get("task_id")],
         "run_errors": run_errors,
     }
     report_file = report_dir / f"{now().strftime('%Y%m%d_%H%M%S')}_{report['run_id']}.json"
 
     dingtalk_status = {"attempted": False, "ok": False, "note": ""}
-    output = "NO_REPLY"
+    dingtalk_text = ""
     if should_send_digest:
         lines: list[str] = []
         title = f"每日工作报告 {now().strftime('%Y-%m-%d')}"
         lines.append(f"# {title}")
-        lines.append(f"- sender_identity: {sender_identity}")
-        lines.append(f"- task: {args.task_id or '-'}")
-        lines.append(f"- time: {now_iso()}")
-        lines.append(f"- new_todo: {len(new_todo)}")
-        lines.append(f"- new_done: {len(new_done)}")
+        lines.append(f"- 发送方：{sender_identity}")
+        lines.append(f"- 任务编号：{args.task_id or '-'}")
+        lines.append(f"- 时间：{now_iso()}")
+        lines.append(f"- 任务中心待办：{len(new_todo)}")
+        lines.append(f"- todo清单待办：{len(todo_file_pending)}")
+        lines.append(f"- 任务中心完成：{len(new_done)}")
         lines.append("")
-        lines.append("## TODO (新增)")
+        lines.append("## 任务中心待办")
         lines.extend(summarize_items(new_todo, int(args.max_notify_items)) or ["- 无"])
         lines.append("")
-        lines.append("## DONE (新增)")
+        lines.append("## todo清单待办")
+        lines.extend(summarize_todo_file_items(todo_file_pending, int(args.max_notify_items)) or ["- 无"])
+        lines.append("")
+        lines.append("## 任务中心完成")
         lines.extend(summarize_items(new_done, int(args.max_notify_items)) or ["- 无"])
-        text = "\n".join(lines)
-        output = text
+        dingtalk_text = "\n".join(lines)
 
         webhook = str(
             args.dingtalk_webhook
@@ -512,7 +667,7 @@ def main() -> int:
         ).strip()
         if webhook:
             dingtalk_status["attempted"] = True
-            ok, note = post_dingtalk(webhook=webhook, secret=secret, title=title, text=text)
+            ok, note = post_dingtalk(webhook=webhook, secret=secret, title=title, text=dingtalk_text)
             dingtalk_status["ok"] = ok
             dingtalk_status["note"] = note
             if not ok:
@@ -593,14 +748,18 @@ def main() -> int:
             "--status",
             ("failed" if run_errors else "passed"),
             "--message",
-            f"daily work report generated: new_todo={len(new_todo)} new_done={len(new_done)}",
+            (
+                "daily work report generated: "
+                f"new_todo={len(new_todo)} todo_file_pending={len(todo_file_pending)} new_done={len(new_done)}"
+            ),
             "--duration-ms",
             str(run_duration_ms),
             "--details-json",
             json.dumps(
                 {
-                    "notify": bool(notify),
+                    "notify": bool(digest_notify),
                     "new_todo_count": len(new_todo),
+                    "todo_file_pending_count": len(todo_file_pending),
                     "new_done_count": len(new_done),
                     "run_error_count": len(run_errors),
                 },
@@ -637,9 +796,10 @@ def main() -> int:
             "--details-json",
             json.dumps(
                 {
-                    "notify": bool(notify),
+                    "notify": bool(digest_notify),
                     "dingtalk_attempted": dingtalk_status.get("attempted", False),
                     "dingtalk_ok": dingtalk_status.get("ok", False),
+                    "todo_file_pending_count": len(todo_file_pending),
                 },
                 ensure_ascii=False,
             ),
@@ -677,7 +837,7 @@ def main() -> int:
                     else "daily work report generated with runtime exceptions"
                 ),
                 "--resolution-steps",
-                "load_tasks,build_digest,post_dingtalk,record_state",
+                "load_tasks,load_todo_files,build_digest,post_dingtalk,record_state",
                 "--failed-items",
                 ",".join(str(x) for x in run_errors[:20]),
                 "--failure-count",
@@ -695,13 +855,14 @@ def main() -> int:
                 "--quality-grade",
                 ("c" if run_errors else "a"),
                 "--notify-chat",
-                ("true" if run_errors else "false"),
+                ("true" if (should_send_digest or run_errors) else "false"),
                 "--details-json",
                 json.dumps(
                     {
                         "run_id": report.get("run_id"),
                         "report_file": str(report_file),
                         "new_todo_count": len(new_todo),
+                        "todo_file_pending_count": len(todo_file_pending),
                         "new_done_count": len(new_done),
                     },
                     ensure_ascii=False,
@@ -725,6 +886,7 @@ def main() -> int:
                 policy_observability["errors"].append(err_report)
 
     report["run_errors"] = run_errors
+    report["todo_file_pending"] = todo_file_pending
     report["planner_summary"] = planner_summary_snapshot
     report["policy_observability"] = policy_observability
     report["dingtalk"] = dingtalk_status
@@ -740,14 +902,18 @@ def main() -> int:
     exception_reasons.extend(run_errors)
     if isinstance(policy_observability.get("errors"), list):
         exception_reasons.extend(str(x) for x in policy_observability.get("errors", []) if str(x).strip())
-    chat_notify = bool(exception_reasons)
     output = build_chat_output(
         sender_identity=sender_identity,
         task_id=str(args.task_id or ""),
         run_time=now_iso(),
+        new_todo=new_todo,
+        new_done=new_done,
+        todo_file_pending=todo_file_pending,
+        planner_summary=planner_summary_snapshot,
         exception_reasons=exception_reasons,
         report_file=report_file,
     )
+    chat_notify = output != "NO_REPLY"
 
     report["notify"] = chat_notify
     save_json(report_file, report)

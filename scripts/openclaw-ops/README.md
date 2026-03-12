@@ -57,9 +57,9 @@
   - 检查接口是否有返回值、必填字段、JSON 合法性、数据时效（旧数据自动高风险）。
   - 空返回值和旧数据都会归类为高风险并落盘证据。
 - `daily_work_report.py`
-  - 每日从任务中心提取 TODO/DONE。
+  - 每日从任务中心提取 TODO/DONE，并合并仓库根目录 `todo.md/TODO.md` 中尚未入任务中心的待办。
   - 仅发送新增记录，不重复发送历史 TODO/DONE。
-  - 支持钉钉 webhook 通知（无新增记录时输出 `NO_REPLY`）。
+  - 支持钉钉 webhook 通知；同时输出统一中文群聊摘要（无新增记录且无异常时输出 `NO_REPLY`）。
 - `daily_todo_digest.py`
   - 每日 TODO/DONE 摘要（仅聊天输出，不做外部 webhook 推送）。
   - 用于替代历史 `workspace/scripts/daily_todo_digest.py` 的不稳定路径依赖。
@@ -200,6 +200,8 @@ python3 scripts/openclaw-ops/remote_safe_update.py --mode sync --strategy stash-
 # 手动执行一次每日工作钉钉报告（仅新增 todo/done）
 python3 scripts/openclaw-ops/daily_work_report.py \
   --db ~/.openclaw/ops/task-center/task_center.db \
+  --todo-file ./todo.md \
+  --todo-file ./TODO.md \
   --normal-log-mode silent
 
 # 手动执行一次周度自我进化复盘（只产出 TODO 任务包）
@@ -591,7 +593,9 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 - `task_executor_runner.py` 保留 `--emit-json` 机器输出模式；非 `--emit-json` 模式新增 `--notify-on {error,activity,always}`，静默成功时输出 `NO_REPLY`。
 - `task_executor_runner.py` 遇到明确的模型限流/`429` 会做有限次退避重试；可用 `--agent-max-retries` 与 `--agent-retry-delay-sec` 调整。
 - `task_executor_runner.py` 现在按 assignee 读取 `policy-config.json` 里的 `agent_model_overrides`，并按 `model_thinking_overrides` 对 Codex 显式使用 `xhigh`，其他模型统一走 `high`。
-- cron 安装器写入的 scheduled-runner 提示词现在要求：首次只允许一个 `exec`；如果工具返回 `Command still running`，只能对同一 session 使用 `process poll/log` 等到进程退出，禁止再开第二个 `exec`，避免后台悬挂命令继续占用 `task_center.db`。
+- `install_task_executor_job.py` 默认给 `task_executor_10m` 写入 `lightContext: true`，让 isolated cron run 只保留轻量 bootstrap，避免无关工作区上下文拖慢首轮 `exec`。
+- cron 安装器写入的 scheduled-runner 提示词现在要求：首次只允许一个 `exec`；如果工具返回 `Command still running`，只能对同一 session 使用 `process poll` 等到进程退出，禁止再开第二个 `exec`，避免后台悬挂命令继续占用 `task_center.db`。
+- `install_task_executor_job.py` 额外要求每次 `process poll` 的 `timeout` 不得超过 `15000` ms，并在收到 `Process still running` 后立即短轮询，避免长轮询把 gateway ws tick 拖到超时。
 - `install_project_index_job.py` 安装的 cron 任务默认不再追加 `--git-pull`。仓库拉取由 `ops_auto_update_install_hourly` 统一负责；如需人工排障，可显式传 `--git-pull`。
 - `web_intel_collect_runner.py` 与 `web_intel_review_runner.py` 新增 `--notify-on`，可选 `error/change/always`。
 - `install_web_intel_jobs.py` 新增 `--collect-notify-on` 与 `--review-notify-on`，在只想保留异常告警时传 `error`。

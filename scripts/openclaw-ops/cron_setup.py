@@ -882,13 +882,19 @@ def build_daily_work_job(
     webhook_env: str,
     secret_env: str,
     env_file: str,
+    todo_files: list[str] | None = None,
 ) -> dict[str, Any]:
     ts = now_ms()
+    todo_args = " ".join(
+        f" --todo-file {str(item).strip()}"
+        for item in (todo_files or [])
+        if str(item or "").strip()
+    )
     cmd = (
         f"python3 {script_py} --db {db_file} --state-file {state_file} --report-dir {report_dir} "
         f"--task-id cron:ops-daily-work-report --normal-log-mode {normalize_log_mode(log_mode)} "
         f"--dingtalk-webhook-env {webhook_env} --dingtalk-secret-env {secret_env} "
-        f"--env-file {env_file}"
+        f"--env-file {env_file}{todo_args}"
     )
     return {
         "id": "9873ab34-c4af-4db0-8cd5-40df68f92efd",
@@ -902,7 +908,7 @@ def build_daily_work_job(
         "sessionTarget": "isolated",
         "wakeMode": "now",
         "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1200},
-        "delivery": build_delivery(mode="none"),
+        "delivery": build_delivery(mode="announce"),
         "failureAlert": build_failure_alert(),
     }
 
@@ -1711,6 +1717,7 @@ def main() -> int:
     parser.add_argument("--dingtalk-webhook-env", default="DINGTALK_WEBHOOK_URL")
     parser.add_argument("--dingtalk-secret-env", default="DINGTALK_SECRET")
     parser.add_argument("--daily-work-env-file", default=str(home / ".openclaw/ops/runtime.env"))
+    parser.add_argument("--daily-work-todo-file", action="append", default=[])
 
     parser.add_argument("--install-self-evolution-job", action="store_true")
     parser.add_argument("--self-evolution-py", default=str(default_self_evolution_py))
@@ -1962,6 +1969,7 @@ def main() -> int:
                 webhook_env=str(args.dingtalk_webhook_env),
                 secret_env=str(args.dingtalk_secret_env),
                 env_file=str(Path(args.daily_work_env_file).expanduser()),
+                todo_files=[str(Path(item).expanduser()) for item in args.daily_work_todo_file if str(item).strip()],
             )
         )
     if bool(args.install_self_evolution_job):
