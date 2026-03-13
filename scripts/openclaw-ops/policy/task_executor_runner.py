@@ -9,6 +9,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -18,6 +19,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from workflow_views import build_task_executor_event, render_human_view
 from policy_enforcer import PolicyEnforcer, RuntimePaths, cmd_init, runtime_defaults  # type: ignore
 from alert_dedupe import (
     WORKFLOW_FAILURE_BUCKET,
@@ -419,57 +425,8 @@ def result_is_error(item: dict[str, Any]) -> bool:
 
 
 def build_chat_output(summary: dict[str, Any], report_path: Path, notify_on: str) -> str:
-    mode = normalize_notify_on(notify_on)
-    dedupe = summary.get("alert_dedupe", {})
-    if isinstance(dedupe, dict) and bool(dedupe.get("suppressed", False)):
-        return "NO_REPLY"
-    results = summary.get("results", [])
-    if not isinstance(results, list):
-        results = []
-    error_items = [item for item in results if isinstance(item, dict) and result_is_error(item)]
-    executed = max(0, int(summary.get("tasks_executed", 0) or 0))
-
-    if mode == "error" and not error_items:
-        return "NO_REPLY"
-    if mode == "activity" and (not error_items) and executed <= 0:
-        return "NO_REPLY"
-
-    has_errors = bool(error_items)
-    lines = [
-        "任务执行异常" if has_errors else "任务执行摘要",
-        f"- 触发任务: {str(summary.get('trigger_task', '')).strip() or '-'}",
-        f"- 时间: {str(summary.get('started_at', '')).strip() or '-'}",
-        f"- 运行 ID: {str(summary.get('run_id', '')).strip() or '-'}",
-        f"- 执行模型: {str(summary.get('executor_model', '')).strip() or '-'}",
-        f"- 选中任务: {max(0, int(summary.get('tasks_selected', 0) or 0))}",
-        f"- 已执行: {executed}",
-        f"- 已跳过: {max(0, int(summary.get('tasks_skipped', 0) or 0))}",
-        f"- 失败任务: {len(error_items)}",
-        f"- 报告文件: {report_path}",
-    ]
-    if error_items:
-        lines.append("- 失败明细:")
-        for item in error_items[:8]:
-            task_id = str(item.get("task_id", "")).strip() or "-"
-            assignee = str(item.get("assignee", "")).strip() or "-"
-            status = (
-                str(item.get("report_status", "")).strip()
-                or str(item.get("task_status_after", "")).strip()
-                or str(item.get("status", "")).strip()
-            )
-            reason = (
-                str(item.get("reason", "")).strip()
-                or str(item.get("report_status", "")).strip()
-                or str(item.get("task_status_after", "")).strip()
-                or str(item.get("status", "")).strip()
-                or "-"
-            )
-            issue, detail = humanize_executor_reason(reason, status)
-            lines.append(f"  - 任务: {task_id}")
-            lines.append(f"    执行人: {assignee}")
-            lines.append(f"    问题: {issue}")
-            lines.append(f"    详情: {detail}")
-    return "\n".join(lines)
+    event = build_task_executor_event(summary, report_path, normalize_notify_on(notify_on))
+    return render_human_view(event["views"]["human"])
 
 
 def apply_shared_alert_dedupe(

@@ -44,6 +44,7 @@ from alert_dedupe import (
     save_dedupe_state,
     workflow_tokens_from_job_ids,
 )
+from workflow_views import build_follow_up_progress_lines, build_ops_scan_event, render_human_view
 
 TZ = timezone(timedelta(hours=8))
 UTC = timezone.utc
@@ -2163,32 +2164,10 @@ def create_workflow_follow_up_tasks(
 def append_workflow_follow_up_output(output: str, summary: dict[str, Any]) -> str:
     if str(output or "").strip() == "NO_REPLY":
         return output
-    created_count = int(summary.get("created_count", 0) or 0)
-    existing_count = int(summary.get("existing_count", 0) or 0)
-    tasks = summary.get("tasks", [])
-    if not isinstance(tasks, list):
-        tasks = []
-    errors = summary.get("errors", [])
-    if not isinstance(errors, list):
-        errors = []
-    if created_count <= 0 and existing_count <= 0 and not errors:
+    extra_lines = build_follow_up_progress_lines(summary)
+    if not extra_lines:
         return output
-
-    lines = [str(output).rstrip()]
-    if created_count > 0 or existing_count > 0:
-        lines.append("- 已派生修复任务:")
-        for idx, item in enumerate(tasks[:3], start=1):
-            if not isinstance(item, dict):
-                continue
-            lines.append(
-                f"  {idx}. {str(item.get('task_id', '')).strip() or '-'}"
-                f" -> {str(item.get('assignee', '')).strip() or '-'}"
-                f" ({str(item.get('status', '')).strip() or 'created'})"
-            )
-    if errors:
-        lines.append("- 修复建单异常:")
-        for idx, err in enumerate(errors[:3], start=1):
-            lines.append(f"  {idx}. {str(err)[:180]}")
+    lines = [str(output).rstrip(), *extra_lines]
     return "\n".join(lines)
 
 
@@ -2454,58 +2433,35 @@ def run_scan(
 
     output = "NO_REPLY"
     if notify:
-        lines: list[str] = []
-        lines.append("# \u8fd0\u7ef4\u5de1\u68c0\u5f02\u5e38")
-        lines.append(f"- \u6a21\u5f0f: {mode}")
-        lines.append(f"- \u65f6\u95f4: {now().strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)")
-        lines.append(f"- \u4efb\u52a1: {task_id or '-'}")
-        lines.append(f"- \u8fd0\u884c\u7f16\u53f7: {run_id}")
-        if risk_reasons:
-            lines.append("- \u98ce\u9669\u539f\u56e0:")
-            for idx, reason in enumerate(risk_reasons[:8], start=1):
-                lines.append(f"  {idx}. {humanize_risk_reason(reason)}")
+        event = build_ops_scan_event(
+            {
+                "task_id": task_id,
+                "mode": mode,
+                "time": f"{now().strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)",
+                "run_id": run_id,
+                "risk_reasons": risk_reasons,
+                "runtime_health": runtime_health,
+                "workflow_health": workflow_health,
+                "workflow_follow_up_summary": {},
+                "handoff_summary": handoff_summary,
+                "scan_errors": scan_errors,
+                "risk_notify_suppressed_reason": risk_notify_suppressed_reason if risk_notify_suppressed else "",
+            }
+        )
+        output = render_human_view(event["views"]["human"])
         if open_issue_rows:
-            lines.append("- \u5173\u952e\u5f02\u5e38:")
+            lines = [str(output).rstrip(), "- 关键异常:"]
             for idx, item in enumerate(open_issue_rows[:3], start=1):
                 lines.append(
                     f"  {idx}. [{item.get('severity')}] {str(item.get('title', ''))[:120]} "
-                    f"(\u6700\u8fd1: {iso_to_local_text(item.get('last_seen'))})"
+                    f"(最近: {iso_to_local_text(item.get('last_seen'))})"
                 )
-        runtime_missing_rows = runtime_health.get("missing_required", [])
-        if isinstance(runtime_missing_rows, list) and runtime_missing_rows:
-            lines.append("- \u5e38\u9a7b\u8fdb\u7a0b/\u670d\u52a1\u7f3a\u5931:")
-            for idx, item in enumerate(runtime_missing_rows[:5], start=1):
-                lines.append(
-                    f"  {idx}. {str(item.get('project_name', '-'))} / {str(item.get('item_name', '-'))} "
-                    f"({str(item.get('type', '-'))}) -> {str(item.get('status', '-'))}"
-                )
-                log_paths = item.get("log_paths", [])
-                if isinstance(log_paths, list) and log_paths:
-                    lines.append(f"     log: {str(log_paths[0])[:180]}")
-                if str(item.get("stop_command", "")).strip():
-                    lines.append(f"     stop: {str(item.get('stop_command', ''))[:180]}")
-        if workflow_failed_rows:
-            lines.append("- \u5931\u8d25\u5de5\u4f5c\u6d41:")
-            for idx, item in enumerate(workflow_failed_rows[:3], start=1):
-                lines.append(
-                    f"  {idx}. {item.get('id')} / {item.get('name')} "
-                    f"(\u8fde\u7eed\u5931\u8d25: {item.get('consecutive_errors')}, \u72b6\u6001: {item.get('last_status')})"
-                )
-                if str(item.get("last_error", "")).strip():
-                    lines.append(f"     \u9519\u8bef: {str(item.get('last_error', ''))[:140]}")
-        if scan_errors:
-            lines.append("- \u626b\u63cf\u9519\u8bef:")
-            for idx, err in enumerate(scan_errors[:3], start=1):
-                lines.append(f"  {idx}. {str(err)[:180]}")
-        if bool(handoff_summary.get("todo_new", 0)):
-            lines.append(f"- \u5df2\u5199\u5165\u5f85\u529e: {int(handoff_summary.get('todo_new', 0) or 0)} \u6761")
+            output = "\n".join(lines)
         if handoff_summary.get("errors"):
-            lines.append("- \u4ea4\u63a5\u5f02\u5e38:")
+            lines = [str(output).rstrip(), "- 交接异常:"]
             for idx, err in enumerate(handoff_summary.get("errors", [])[:3], start=1):
                 lines.append(f"  {idx}. {str(err)[:180]}")
-        if risk_notify_suppressed:
-            lines.append(f"- \u544a\u8b66\u6291\u5236: {risk_notify_suppressed_reason}")
-        output = "\n".join(lines)
+            output = "\n".join(lines)
 
 
     record = {

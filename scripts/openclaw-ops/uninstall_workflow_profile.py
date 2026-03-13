@@ -331,6 +331,17 @@ def plan_ops_manifest_uninstall(target_ops_dir: Path, manifest_file: Path) -> di
     return result
 
 
+def plan_workflow_registry_uninstall(workflow_registry_file: Path) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "ok": True,
+        "workflow_registry_file": str(workflow_registry_file),
+        "changed": workflow_registry_file.exists(),
+        "written": False,
+        "removed": False,
+    }
+    return result
+
+
 def apply_jobs_uninstall(result: dict[str, Any], dry_run: bool) -> None:
     if dry_run or (not result.get("changed")):
         return
@@ -377,6 +388,17 @@ def apply_ops_manifest_uninstall(result: dict[str, Any], dry_run: bool) -> None:
     result["delete_candidates"] = deleted
 
 
+def apply_workflow_registry_uninstall(result: dict[str, Any], dry_run: bool) -> None:
+    if dry_run or (not result.get("changed")):
+        return
+    target = Path(result["workflow_registry_file"])
+    if target.exists():
+        target.unlink()
+        cleanup_empty_parent_dirs(target.parent, target)
+    result["written"] = True
+    result["removed"] = True
+
+
 def main() -> int:
     home = Path.home()
     parser = argparse.ArgumentParser(description="Uninstall OpenClaw workflow runtime artifacts")
@@ -387,6 +409,7 @@ def main() -> int:
     parser.add_argument("--workflow-repo-path", default=str(home / "openclaw-hardflow-backup-20260302"))
     parser.add_argument("--target-ops-dir", default="")
     parser.add_argument("--manifest-file", default="")
+    parser.add_argument("--workflow-registry-file", default="")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
@@ -408,31 +431,44 @@ def main() -> int:
         if str(args.manifest_file).strip()
         else (target_ops_dir / ".hardflow-sync-manifest.json")
     )
+    workflow_registry_file = (
+        Path(args.workflow_registry_file).expanduser()
+        if str(args.workflow_registry_file).strip()
+        else (target_ops_dir / "workflow" / "schedule-registry.json")
+    )
     workflow_repo_path = Path(args.workflow_repo_path).expanduser()
 
     jobs_result = plan_jobs_uninstall(jobs_file, str(args.profile))
     runtime_result = plan_runtime_config_uninstall(runtime_config, workflow_repo_path)
     ops_result = plan_ops_manifest_uninstall(target_ops_dir, manifest_file)
+    workflow_registry_result = plan_workflow_registry_uninstall(workflow_registry_file)
 
     result = {
-        "ok": bool(jobs_result.get("ok")) and bool(runtime_result.get("ok")) and bool(ops_result.get("ok")),
+        "ok": (
+            bool(jobs_result.get("ok"))
+            and bool(runtime_result.get("ok"))
+            and bool(ops_result.get("ok"))
+            and bool(workflow_registry_result.get("ok"))
+        ),
         "dry_run": bool(args.dry_run),
         "profile": str(args.profile),
         "jobs": jobs_result,
         "runtime_config": runtime_result,
         "ops_files": ops_result,
+        "workflow_registry": workflow_registry_result,
     }
     result["changed"] = any(
         bool(section.get("changed"))
-        for section in (jobs_result, runtime_result, ops_result)
+        for section in (jobs_result, runtime_result, ops_result, workflow_registry_result)
     )
 
     if result["ok"] and result["changed"]:
         apply_jobs_uninstall(jobs_result, bool(args.dry_run))
         apply_runtime_config_uninstall(runtime_result, bool(args.dry_run))
         apply_ops_manifest_uninstall(ops_result, bool(args.dry_run))
+        apply_workflow_registry_uninstall(workflow_registry_result, bool(args.dry_run))
 
-    for section in (jobs_result, runtime_result, ops_result):
+    for section in (jobs_result, runtime_result, ops_result, workflow_registry_result):
         section.pop("_planned_payload", None)
 
     if args.emit_json:
@@ -444,6 +480,7 @@ def main() -> int:
         print(f"jobs_removed={jobs_result.get('removed_count', 0)}")
         print(f"runtime_config_changed={str(bool(runtime_result.get('changed'))).lower()}")
         print(f"ops_files_deleted={ops_result.get('deleted_count', 0)}")
+        print(f"workflow_registry_removed={str(bool(workflow_registry_result.get('removed'))).lower()}")
 
     return 0 if result["ok"] else 1
 

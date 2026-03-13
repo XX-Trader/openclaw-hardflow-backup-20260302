@@ -297,6 +297,34 @@ def build_recover_stale_cron_running_state_cmd(
     return cmd
 
 
+def build_export_schedule_registry_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    mapping_file: str,
+    output_file: str,
+    profile: str,
+    dry_run: bool,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "export_schedule_registry.py"),
+        "--jobs-file",
+        jobs_file,
+        "--mapping-file",
+        mapping_file,
+        "--output-file",
+        output_file,
+        "--profile",
+        str(profile or "all").strip() or "all",
+        "--emit-json",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    return cmd
+
+
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
 
@@ -823,6 +851,7 @@ def main() -> None:
     parser.add_argument("--sync-overlay-config", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--ensure-runtime-skills", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--required-skills-manifest", default="")
+    parser.add_argument("--workflow-registry-file", default="")
     parser.add_argument("--workflow-repo-id", default="")
     parser.add_argument("--project-registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
     parser.add_argument("--task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
@@ -866,6 +895,7 @@ def main() -> None:
     parser.add_argument("--normalize-openclaw-paths", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--recover-stale-cron-running-state", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--stale-running-minutes", type=int, default=30)
+    parser.add_argument("--export-schedule-registry", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
@@ -893,6 +923,10 @@ def main() -> None:
     required_skills_manifest = normalize_path(args.required_skills_manifest) if str(args.required_skills_manifest).strip() else str(
         (here / "runtime-required-skills.json").resolve()
     )
+    workflow_registry_file = normalize_path(args.workflow_registry_file) if str(args.workflow_registry_file).strip() else str(
+        (Path(openclaw_home) / "ops" / "workflow" / "schedule-registry.json").resolve()
+    )
+    jobs_agent_mapping_file = str((here.parent.parent / "cron" / "jobs_agent_mapping.md").resolve())
 
     install_todo_cmd = [
         args.python_bin,
@@ -1067,6 +1101,15 @@ def main() -> None:
         stale_minutes=max(1, int(args.stale_running_minutes)),
         dry_run=bool(args.dry_run),
     )
+    export_schedule_registry_cmd = build_export_schedule_registry_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        jobs_file=jobs_file,
+        mapping_file=jobs_agent_mapping_file,
+        output_file=workflow_registry_file,
+        profile=profile,
+        dry_run=bool(args.dry_run),
+    )
 
     steps: list[tuple[str, list[str]]] = []
     if bool(args.normalize_openclaw_paths):
@@ -1096,6 +1139,8 @@ def main() -> None:
         steps.append(("install_web_intel_jobs (task#10-web)", install_web_intel_cmd))
     if bool(args.recover_stale_cron_running_state):
         steps.append(("recover_stale_cron_running_state (stale runningAtMs cleanup)", recover_stale_cron_running_state_cmd))
+    if bool(args.export_schedule_registry):
+        steps.append(("export_schedule_registry (workflow registry snapshot)", export_schedule_registry_cmd))
 
     expected_tasks = list(ALL_TASKS if profile == "all" else CORE_TASKS)
     if install_web_intel and 10 not in expected_tasks:
@@ -1117,6 +1162,8 @@ def main() -> None:
     print(f"skills_source_dir={skills_source_dir}")
     print(f"plugin_overrides_source_dir={plugin_overrides_source_dir}")
     print(f"required_skills_manifest={required_skills_manifest}")
+    print(f"workflow_registry_file={workflow_registry_file}")
+    print(f"jobs_agent_mapping_file={jobs_agent_mapping_file}")
 
     results: list[dict[str, Any]] = []
     failed = False

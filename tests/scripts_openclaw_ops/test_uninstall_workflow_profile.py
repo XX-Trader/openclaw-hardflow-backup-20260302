@@ -27,6 +27,8 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
         cron_dir.mkdir(parents=True, exist_ok=True)
         ops_dir = openclaw_home / "ops"
         (ops_dir / "policy").mkdir(parents=True, exist_ok=True)
+        workflow_dir = ops_dir / "workflow"
+        workflow_dir.mkdir(parents=True, exist_ok=True)
 
         jobs_file = cron_dir / "jobs.json"
         jobs_file.write_text(
@@ -62,6 +64,23 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
                         "todo_patrol.py",
                         "policy/task_executor_runner.py",
                     ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        schedule_registry_file = workflow_dir / "schedule-registry.json"
+        schedule_registry_file.write_text(
+            json.dumps(
+                {
+                    "schema_version": "2026-03-13",
+                    "generated_at": "2026-03-13T00:00:00+08:00",
+                    "openclaw_managed": [],
+                    "external_attached": [],
+                    "agents": [],
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -129,6 +148,7 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
             "managed_runner": managed_runner,
             "managed_root_file": managed_root_file,
             "keep_file": keep_file,
+            "schedule_registry_file": schedule_registry_file,
         }
 
     def test_uninstall_removes_managed_runtime_artifacts_and_keeps_unrelated_config(self):
@@ -157,6 +177,7 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
             self.assertEqual(payload["jobs"]["removed_count"], 3)
             self.assertEqual(payload["ops_files"]["deleted_count"], 2)
             self.assertTrue(payload["runtime_config"]["changed"])
+            self.assertTrue(payload["workflow_registry"]["changed"])
 
             jobs_data = json.loads(fixture["jobs_file"].read_text(encoding="utf-8"))
             self.assertEqual([job["name"] for job in jobs_data["jobs"]], ["keep_me"])
@@ -174,6 +195,7 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
             self.assertFalse(fixture["managed_root_file"].exists())
             self.assertTrue(fixture["keep_file"].exists())
             self.assertFalse(fixture["manifest_file"].exists())
+            self.assertFalse(fixture["schedule_registry_file"].exists())
 
     def test_uninstall_dry_run_reports_changes_without_touching_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -208,12 +230,14 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
             self.assertEqual(payload["ops_files"]["deleted_count"], 2)
             self.assertFalse(payload["jobs"]["written"])
             self.assertFalse(payload["runtime_config"]["written"])
+            self.assertFalse(payload["workflow_registry"]["written"])
 
             self.assertEqual(fixture["jobs_file"].read_text(encoding="utf-8"), before_jobs)
             self.assertEqual(fixture["openclaw_json"].read_text(encoding="utf-8"), before_config)
             self.assertEqual(fixture["manifest_file"].read_text(encoding="utf-8"), before_manifest)
             self.assertTrue(fixture["managed_runner"].exists())
             self.assertTrue(fixture["managed_root_file"].exists())
+            self.assertTrue(fixture["schedule_registry_file"].exists())
 
 
 if __name__ == "__main__":
