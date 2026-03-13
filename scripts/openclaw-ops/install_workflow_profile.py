@@ -1006,7 +1006,7 @@ def main() -> None:
         "--normal-log-mode",
         "silent",
         "--daily-fix-command",
-        f"{args.python_bin} {Path(ops_home) / 'policy_enforcer.py'} next-todo --limit 5",
+        f"{args.python_bin} {Path(ops_home) / 'policy' / 'policy_enforcer.py'} next-todo --limit 5",
     ]
     install_reviewer_cmd.extend(delivery_args(args.channel, args.to))
     install_reviewer_cmd.append("--emit-json")

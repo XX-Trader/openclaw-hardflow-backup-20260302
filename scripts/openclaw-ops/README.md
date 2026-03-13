@@ -264,7 +264,7 @@ python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
   --state-file ~/.openclaw/ops/reviewer-scan-state.json \
   --history-dir ~/.openclaw/ops/reviewer-scan-runs \
   --normal-log-mode silent \
-  --daily-fix-command "python3 ~/.openclaw/ops/policy_enforcer.py next-todo --limit 5"
+  --daily-fix-command "python3 ~/.openclaw/ops/policy/policy_enforcer.py next-todo --limit 5"
 ```
 
 ## New Docs
@@ -284,7 +284,7 @@ python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
   --state-file ~/.openclaw/ops/reviewer-scan-state.json \
   --history-dir ~/.openclaw/ops/reviewer-scan-runs \
   --normal-log-mode silent \
-  --daily-fix-command "python3 ~/.openclaw/ops/policy_enforcer.py next-todo --limit 5" \
+  --daily-fix-command "python3 ~/.openclaw/ops/policy/policy_enforcer.py next-todo --limit 5" \
   --hourly-git-fetch \
   --hourly-check-pr \
   --no-hourly-allow-merge
@@ -636,6 +636,18 @@ openclaw gateway run
   - `web/sources.json`
   - `web/project_docs_sources.json`
   - `project-registry.json` dynamic `doc_sources`, vendor hints, and per-project `doc-knowledge.json`
+
+## Human-Friendly Cron Alert Update (2026-03-13)
+
+- `task_executor_runner.py` chat output now adds three human-facing summary lines before the task list:
+  - `结论`: this round is closed or not, and how many tasks are still unresolved
+  - `原因解析`: grouped root-cause counts such as `任务仅部分完成 2 个`
+  - `修复进展`: executed/closed/partial/failed counts in one line
+- `ops_cron_runner.py` incremental/full alerts now add:
+  - `结论`: how many workflow jobs are still failing, and how many are stale/unrecovered
+  - `原因解析`: grouped failure causes such as timeout, network error, auth error, missing detail
+  - `修复进展`: newly created follow-up repair tasks and already-existing repair tasks
+- The original detailed lists are still preserved, so operators can first read the conclusion and then drill into job-level details only when needed.
 - `project-registry.json` now supports a top-level `discovery` block. If enabled, runtime will auto-discover additional local git projects under configured scan roots and merge them with explicit registry entries, while skipping internal repos such as `.openclaw/skills` and runner worktrees.
 - Auto-discovered and explicit projects are normalized with a `project_role` plus `vendor_monitoring.enabled`. Only `business` projects participate in vendor doc / repo monitoring by default; `workflow-ops`, `openclaw-runtime`, and upstream reference repos stay indexed but do not trigger vendor scans unless explicitly overridden.
 - `project_index_maintainer.py` now extracts external API URLs from actual project source files and writes vendor-aware `doc_sources` plus `repo_sources` into `.workflow/project-index-local/doc-knowledge.json`.

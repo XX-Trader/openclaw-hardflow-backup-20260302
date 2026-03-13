@@ -331,6 +331,16 @@ class TaskCenter:
             raise last_exc
         raise TaskCenterError("sqlite write retry exhausted without captured exception")
 
+    def _run_transaction_with_retry(self, operation: Any) -> Any:
+        if self.conn.in_transaction:
+            return operation()
+
+        def tx_op() -> Any:
+            with self.conn:
+                return operation()
+
+        return self._run_write_with_retry(tx_op)
+
     def init_schema(self) -> None:
         self.conn.executescript(
             """
@@ -671,7 +681,7 @@ class TaskCenter:
     def create_task(self, task: dict[str, Any], actor: str = "system") -> dict[str, Any]:
         payload = self._normalize_task(task)
 
-        with self.conn:
+        def write_op() -> None:
             exists = self.conn.execute(
                 "SELECT 1 FROM tasks WHERE task_id = ?",
                 (payload["task_id"],),
@@ -729,6 +739,7 @@ class TaskCenter:
                 },
             )
 
+        self._run_transaction_with_retry(write_op)
         return self.get_task(payload["task_id"])
 
     def update_task(self, task_id: str, actor: str, fields: dict[str, Any]) -> dict[str, Any]:
@@ -877,7 +888,7 @@ class TaskCenter:
         cols = [f"{name} = ?" for name in updates.keys()]
         vals = list(updates.values()) + [task_id]
 
-        with self.conn:
+        def write_op() -> None:
             self.conn.execute(
                 f"UPDATE tasks SET {', '.join(cols)} WHERE task_id = ?",
                 vals,
@@ -890,6 +901,7 @@ class TaskCenter:
                 details={"updated_fields": sorted(k for k in updates.keys() if k != "updated_at")},
             )
 
+        self._run_transaction_with_retry(write_op)
         return self.get_task(task_id)
 
     def get_task(self, task_id: str, display_safe: bool = True) -> dict[str, Any]:
@@ -926,13 +938,16 @@ class TaskCenter:
         stage: str | None = None,
         details: dict[str, Any] | None = None,
     ) -> None:
-        self.conn.execute(
-            """
-            INSERT INTO task_events (task_id, ts, actor, event_type, stage, details_json)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (task_id, utc_now_iso(), actor, event_type, stage, ensure_json(details)),
-        )
+        def write_op() -> None:
+            self.conn.execute(
+                """
+                INSERT INTO task_events (task_id, ts, actor, event_type, stage, details_json)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (task_id, utc_now_iso(), actor, event_type, stage, ensure_json(details)),
+            )
+
+        self._run_transaction_with_retry(write_op)
 
     def start_stage_run(
         self,
@@ -970,7 +985,7 @@ class TaskCenter:
             "details_json": ensure_json(details),
         }
 
-        with self.conn:
+        def write_op() -> int:
             cursor = self.conn.execute(
                 """
                 INSERT INTO stage_runs (
@@ -985,8 +1000,9 @@ class TaskCenter:
                 """,
                 payload,
             )
-            stage_run_id = int(cursor.lastrowid)
+            return int(cursor.lastrowid)
 
+        stage_run_id = int(self._run_transaction_with_retry(write_op))
         return self.get_stage_run(stage_run_id)
 
     def get_stage_run(self, stage_run_id: int, display_safe: bool = True) -> dict[str, Any]:
@@ -1036,7 +1052,7 @@ class TaskCenter:
         if details:
             merged_details.update(details)
 
-        with self.conn:
+        def write_op() -> None:
             self.conn.execute(
                 """
                 UPDATE stage_runs
@@ -1061,6 +1077,7 @@ class TaskCenter:
                 ),
             )
 
+        self._run_transaction_with_retry(write_op)
         return self.get_stage_run(int(row["id"]))
 
     def list_stage_runs(self, task_id: str, display_safe: bool = True) -> list[dict[str, Any]]:
@@ -1541,7 +1558,8 @@ class TaskCenter:
             "timeliness_factor": round(float(timeliness_factor or 0.0), 6),
             "details_json": ensure_json(details),
         }
-        with self.conn:
+
+        def write_op() -> int:
             self.conn.execute(
                 """
                 INSERT INTO agent_points_ledger (
@@ -1592,6 +1610,9 @@ class TaskCenter:
                     "timeliness_factor": payload["timeliness_factor"],
                 },
             )
+            return record_id
+
+        record_id = int(self._run_transaction_with_retry(write_op))
         return self.get_agent_points_record(record_id)
 
     def list_agent_points(
@@ -1705,17 +1726,18 @@ class TaskCenter:
         if not assignee:
             raise TaskCenterError("assignee cannot be empty")
 
-        with self.conn:
+        def write_op() -> None:
             self.conn.execute(
                 "UPDATE tasks SET assignee = ?, updated_at = ? WHERE task_id = ?",
                 (assignee, utc_now_iso(), task_id),
             )
             self.add_event(task_id, actor, "task_assigned", stage="assign", details={"assignee": assignee})
 
+        self._run_transaction_with_retry(write_op)
         return self.get_task(task_id)
 
     def confirm_human(self, task_id: str, actor: str, confirmed: bool = True) -> dict[str, Any]:
-        with self.conn:
+        def write_op() -> None:
             self.conn.execute(
                 "UPDATE tasks SET human_confirmed = ?, updated_at = ? WHERE task_id = ?",
                 (1 if confirmed else 0, utc_now_iso(), task_id),
@@ -1728,6 +1750,7 @@ class TaskCenter:
                 details={"confirmed": confirmed},
             )
 
+        self._run_transaction_with_retry(write_op)
         return self.get_task(task_id)
 
     def transition_status(
@@ -1760,7 +1783,7 @@ class TaskCenter:
         elif normalized_status in {"passed", "failed", "escalated", "cancelled"}:
             completed_at = now_value
 
-        with self.conn:
+        def write_op() -> None:
             self.conn.execute(
                 "UPDATE tasks SET status = ?, started_at = ?, completed_at = ?, updated_at = ? WHERE task_id = ?",
                 (normalized_status, started_at, completed_at, now_value, task_id),
@@ -1770,6 +1793,7 @@ class TaskCenter:
                 merged_details.update(details)
             self.add_event(task_id, actor, "status_changed", stage=stage, details=merged_details)
 
+        self._run_transaction_with_retry(write_op)
         return self.get_task(task_id)
 
     def increment_failure(
@@ -1794,7 +1818,7 @@ class TaskCenter:
         now_value = utc_now_iso()
         completed_at = now_value if next_status in {"failed", "escalated"} else ""
 
-        with self.conn:
+        def write_op() -> None:
             self.conn.execute(
                 """
                 UPDATE tasks
@@ -1817,6 +1841,7 @@ class TaskCenter:
                 },
             )
 
+        self._run_transaction_with_retry(write_op)
         return self.get_task(task_id)
 
     def upsert_score(
@@ -1836,7 +1861,7 @@ class TaskCenter:
                 "action": action,
             }
         updated_at = utc_now_iso()
-        with self.conn:
+        def write_op() -> None:
             self.conn.execute(
                 """
                 UPDATE tasks
@@ -1858,6 +1883,7 @@ class TaskCenter:
                 },
             )
 
+        self._run_transaction_with_retry(write_op)
         return self.get_task(task_id)
 
     def update_clarification(
@@ -1900,7 +1926,7 @@ class TaskCenter:
         if needs_clarification and not reason:
             reason = "context_incomplete"
 
-        with self.conn:
+        def write_op() -> None:
             self.conn.execute(
                 """
                 UPDATE tasks
@@ -1938,6 +1964,7 @@ class TaskCenter:
                 },
             )
 
+        self._run_transaction_with_retry(write_op)
         return self.get_task(task_id)
 
     def record_token_usage(
@@ -1951,7 +1978,9 @@ class TaskCenter:
         details: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         total_tokens = int(input_tokens) + int(output_tokens)
-        with self.conn:
+        summary: dict[str, Any] = {}
+
+        def write_op() -> dict[str, Any]:
             self.conn.execute(
                 """
                 INSERT INTO token_usage (
@@ -1985,7 +2014,7 @@ class TaskCenter:
                     "cost_estimate": float(cost_estimate),
                 },
             )
-            summary = self.task_token_summary(task_id)
+            current_summary = self.task_token_summary(task_id)
             self.conn.execute(
                 """
                 UPDATE tasks
@@ -1993,12 +2022,15 @@ class TaskCenter:
                 WHERE task_id = ?
                 """,
                 (
-                    ensure_json(summary),
-                    float(summary.get("cost_estimate", 0.0)),
+                    ensure_json(current_summary),
+                    float(current_summary.get("cost_estimate", 0.0)),
                     utc_now_iso(),
                     task_id,
                 ),
             )
+            return current_summary
+
+        summary = self._run_transaction_with_retry(write_op)
 
         return {
             "task_id": task_id,

@@ -165,6 +165,50 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertEqual(summary["existing_count"], 1)
         self.assertEqual(summary["errors"], [])
 
+    def test_ops_cron_runner_follow_up_output_includes_progress_summary(self):
+        module = load_module(
+            "ops_cron_runner",
+            "scripts/openclaw-ops/ops_cron_runner.py",
+        )
+        base_output = "\n".join(
+            [
+                "# 运维巡检异常",
+                "- 模式: incremental",
+                "- 任务: cron:ops-incremental-monitor",
+                "- 失败工作流:",
+                "  1. job-1 / ops_daily_work_report_dingtalk",
+            ]
+        )
+        summary = {
+            "created_count": 1,
+            "existing_count": 1,
+            "tasks": [
+                {
+                    "task_id": "todo-ops-workflow-repair-job-1",
+                    "assignee": "optimization-agent",
+                    "status": "created",
+                    "workflow_job_id": "job-1",
+                    "workflow_job_name": "ops_daily_work_report_dingtalk",
+                },
+                {
+                    "task_id": "todo-ops-workflow-repair-job-2",
+                    "assignee": "optimization-agent",
+                    "status": "existing",
+                    "workflow_job_id": "job-2",
+                    "workflow_job_name": "ops_local_openclaw_git_backup",
+                },
+            ],
+            "errors": [],
+        }
+
+        output = module.append_workflow_follow_up_output(base_output, summary)
+
+        self.assertIn("- 修复进展:", output)
+        self.assertIn("新建修复任务 1 条", output)
+        self.assertIn("已有待处理修复任务 1 条", output)
+        self.assertIn("ops_daily_work_report_dingtalk", output)
+        self.assertIn("ops_local_openclaw_git_backup", output)
+
     def test_task_executor_skips_ops_runtime_cron_binding_tasks(self):
         module = load_module(
             "task_executor_runner",
@@ -462,6 +506,54 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("volcengine/kimi-k2.5", output)
         self.assertIn("执行结果回写失败", output)
         self.assertNotIn("# task-executor", output)
+
+    def test_task_executor_failure_output_includes_conclusion_reason_and_progress(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+        summary = {
+            "trigger_task": "cron:task-executor",
+            "run_id": "exec-3",
+            "started_at": "2026-03-13T03:18:25+00:00",
+            "executor_model": "auto(per-assignee)",
+            "tasks_selected": 3,
+            "tasks_executed": 3,
+            "tasks_skipped": 0,
+            "tasks_failed": 3,
+            "results": [
+                {
+                    "task_id": "todo-1",
+                    "assignee": "optimization-agent",
+                    "status": "partial",
+                    "reason": "partial",
+                },
+                {
+                    "task_id": "todo-2",
+                    "assignee": "optimization-agent",
+                    "status": "partial",
+                    "reason": "partial",
+                },
+                {
+                    "task_id": "todo-3",
+                    "assignee": "optimization-agent",
+                    "status": "failed",
+                    "reason": "failed",
+                },
+            ],
+        }
+
+        output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
+
+        self.assertIn("- 结论:", output)
+        self.assertIn("3 个任务均未闭环", output)
+        self.assertIn("- 原因解析:", output)
+        self.assertIn("任务仅部分完成 2 个", output)
+        self.assertIn("任务执行失败 1 个", output)
+        self.assertIn("- 修复进展:", output)
+        self.assertIn("已执行 3/3", output)
+        self.assertIn("部分推进 2", output)
+        self.assertIn("失败 1", output)
 
     def test_task_executor_duplicate_workflow_repair_alert_returns_no_reply(self):
         module = load_module(
@@ -1209,6 +1301,43 @@ class CronQuietModeTests(unittest.TestCase):
         rendered = " ".join(cmd)
         self.assertIn("--collect-notify-on error", rendered)
         self.assertIn("--review-notify-on error", rendered)
+
+    def test_install_workflow_profile_reviewer_fix_command_uses_policy_subdir(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            stdout = io.StringIO()
+            argv = [
+                "install_workflow_profile.py",
+                "--profile",
+                "core",
+                "--jobs-file",
+                str(tmp / ".openclaw" / "cron" / "jobs.json"),
+                "--openclaw-home",
+                str(tmp / ".openclaw"),
+                "--workflow-repo-path",
+                str(tmp / "workflow-repo"),
+                "--project-registry",
+                str(tmp / ".openclaw" / "ops" / "task-center" / "project-registry.json"),
+                "--task-db",
+                str(tmp / ".openclaw" / "ops" / "task-center" / "task_center.db"),
+                "--dry-run",
+                "--no-sync-overlay-config",
+                "--no-ensure-runtime-skills",
+                "--no-normalize-openclaw-paths",
+                "--no-recover-stale-cron-running-state",
+            ]
+            with mock.patch.object(sys, "argv", argv):
+                with contextlib.redirect_stdout(stdout):
+                    module.main()
+
+        output = stdout.getvalue().replace("\\", "/")
+        self.assertIn("/ops/policy/policy_enforcer.py next-todo --limit 5", output)
+        self.assertNotIn("/ops/policy_enforcer.py next-todo --limit 5", output)
 
     def test_install_workflow_profile_ensure_runtime_skills_cmd_uses_manifest(self):
         module = load_module(
