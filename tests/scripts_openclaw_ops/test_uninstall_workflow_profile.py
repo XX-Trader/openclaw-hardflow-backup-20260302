@@ -36,6 +36,7 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
                 {
                     "jobs": [
                         {"id": "16cb8d03-beb9-4697-927d-35952353bf8e", "name": "todo_patrol_15m", "enabled": True},
+                        {"id": "d4c8f5e3-0d4a-4d9a-bc5d-6e7f8a9b0c1d", "name": "task_retry_10m", "enabled": True},
                         {"id": "legacy-ops-monitor", "name": "ops_incremental_monitor", "enabled": True},
                         {"id": "web-intel-collect", "name": "web_intel_collect_hourly", "enabled": True},
                         {"id": "keep-job", "name": "keep_me", "enabled": True},
@@ -174,7 +175,7 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
 
             payload = json.loads(proc.stdout)
             self.assertTrue(payload["ok"])
-            self.assertEqual(payload["jobs"]["removed_count"], 3)
+            self.assertEqual(payload["jobs"]["removed_count"], 4)
             self.assertEqual(payload["ops_files"]["deleted_count"], 2)
             self.assertTrue(payload["runtime_config"]["changed"])
             self.assertTrue(payload["workflow_registry"]["changed"])
@@ -226,7 +227,7 @@ class UninstallWorkflowProfileTests(unittest.TestCase):
             self.assertTrue(payload["ok"])
             self.assertTrue(payload["dry_run"])
             self.assertTrue(payload["changed"])
-            self.assertEqual(payload["jobs"]["removed_count"], 3)
+            self.assertEqual(payload["jobs"]["removed_count"], 4)
             self.assertEqual(payload["ops_files"]["deleted_count"], 2)
             self.assertFalse(payload["jobs"]["written"])
             self.assertFalse(payload["runtime_config"]["written"])

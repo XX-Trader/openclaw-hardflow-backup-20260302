@@ -23,6 +23,7 @@ CORE_RUNTIME_HOOKS = (
 )
 CORE_JOB_IDS = {
     "16cb8d03-beb9-4697-927d-35952353bf8e",  # todo_patrol_15m
+    "d4c8f5e3-0d4a-4d9a-bc5d-6e7f8a9b0c1d",  # task_retry_10m
     "c2c75adf-5e80-4b50-bf18-40ceadfa6bd6",  # task_executor_10m
     "5797cd5b-5539-4e95-8d58-dc65a4633ec5",  # project_index_maintainer_30m
     "31f0c650-53d2-4b86-9d8b-6ad8e8f0d053",  # ops_local_openclaw_git_backup
@@ -33,6 +34,7 @@ CORE_JOB_IDS = {
 }
 CORE_JOB_NAMES = {
     "todo_patrol_15m",
+    "task_retry_10m",
     "task_executor_10m",
     "project_index_maintainer_30m",
     "ops_incremental_monitor",
