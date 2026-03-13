@@ -13,6 +13,7 @@ from typing import Any
 
 DEFAULT_FAILURE_ALERT_AFTER = 1
 DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+DEFAULT_LOCAL_BACKUP_MODEL = "glmcode/glm-4.7"
 
 
 def now_ms() -> int:
@@ -158,6 +159,8 @@ def upsert_job(
                 "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
                 "If the finished output is NO_REPLY, reply NO_REPLY."
             ),
+            "model": DEFAULT_LOCAL_BACKUP_MODEL,
+            "lightContext": True,
             "timeoutSeconds": 1800,
         },
         "delivery": build_delivery(channel, target, mode="none"),

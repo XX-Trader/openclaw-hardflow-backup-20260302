@@ -275,6 +275,28 @@ def build_normalize_runtime_binding_tasks_cmd(
     return cmd
 
 
+def build_recover_stale_cron_running_state_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    stale_minutes: int,
+    dry_run: bool,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "recover_stale_cron_running_state.py"),
+        "--jobs-file",
+        jobs_file,
+        "--stale-minutes",
+        str(max(1, int(stale_minutes))),
+        "--emit-json",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    return cmd
+
+
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
 
@@ -842,6 +864,8 @@ def main() -> None:
     parser.add_argument("--reviewer-daily-expr", default="0 4 * * *")
     parser.add_argument("--reviewer-weekly-expr", default="40 4 * * 1")
     parser.add_argument("--normalize-openclaw-paths", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--recover-stale-cron-running-state", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--stale-running-minutes", type=int, default=30)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
@@ -1036,6 +1060,13 @@ def main() -> None:
         task_db=task_db,
         dry_run=bool(args.dry_run),
     )
+    recover_stale_cron_running_state_cmd = build_recover_stale_cron_running_state_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        jobs_file=jobs_file,
+        stale_minutes=max(1, int(args.stale_running_minutes)),
+        dry_run=bool(args.dry_run),
+    )
 
     steps: list[tuple[str, list[str]]] = []
     if bool(args.normalize_openclaw_paths):
@@ -1063,6 +1094,8 @@ def main() -> None:
     install_web_intel = bool(args.install_web_intel_jobs) or (profile == "all")
     if install_web_intel:
         steps.append(("install_web_intel_jobs (task#10-web)", install_web_intel_cmd))
+    if bool(args.recover_stale_cron_running_state):
+        steps.append(("recover_stale_cron_running_state (stale runningAtMs cleanup)", recover_stale_cron_running_state_cmd))
 
     expected_tasks = list(ALL_TASKS if profile == "all" else CORE_TASKS)
     if install_web_intel and 10 not in expected_tasks:

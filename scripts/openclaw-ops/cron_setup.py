@@ -31,6 +31,7 @@ LEGACY_OPTIMIZE_JOB_MODES = {"auto", "keep", "disable", "remove"}
 DAILY_REPORT_DEDUPE_MODES = {"auto", "keep", "disable-digest", "disable-daily-work"}
 DEFAULT_FAILURE_ALERT_AFTER = 1
 DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+DEFAULT_MAINTENANCE_CRON_MODEL = "glmcode/glm-4.7"
 DEFAULT_WORKFLOW_MONITOR_IGNORED_JOB_NAMES = {
     "todo_patrol_15m",
     "project_index_maintainer_30m",
@@ -907,7 +908,13 @@ def build_daily_work_job(
         "schedule": {"kind": "cron", "expr": expr, "tz": tz_name},
         "sessionTarget": "isolated",
         "wakeMode": "now",
-        "payload": {"kind": "agentTurn", "message": build_message(cmd), "timeoutSeconds": 1200},
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 1200,
+        },
         "delivery": build_delivery(mode="announce"),
         "failureAlert": build_failure_alert(),
     }

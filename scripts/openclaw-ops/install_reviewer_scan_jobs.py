@@ -63,6 +63,7 @@ REVIEWER_PROFILE_BASELINE: dict[str, dict[str, int | bool]] = {
 }
 DEFAULT_FAILURE_ALERT_AFTER = 1
 DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
+DEFAULT_REVIEWER_CRON_MODEL = "glmcode/glm-5"
 
 
 def now_ms() -> int:
@@ -254,7 +255,13 @@ def build_jobs(
             "schedule": {"kind": "every", "everyMs": max(600000, int(hourly_every_ms)), "anchorMs": ts},
             "sessionTarget": "isolated",
             "wakeMode": "now",
-            "payload": {"kind": "agentTurn", "message": build_message(cmd_hourly), "timeoutSeconds": 1200},
+            "payload": {
+                "kind": "agentTurn",
+                "message": build_message(cmd_hourly),
+                "model": DEFAULT_REVIEWER_CRON_MODEL,
+                "lightContext": True,
+                "timeoutSeconds": 1200,
+            },
             "delivery": {"mode": "none"},
             "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
         },
@@ -269,7 +276,13 @@ def build_jobs(
             "schedule": {"kind": "cron", "expr": str(daily_expr), "tz": tz_name},
             "sessionTarget": "isolated",
             "wakeMode": "now",
-            "payload": {"kind": "agentTurn", "message": build_message(cmd_daily), "timeoutSeconds": 1800},
+            "payload": {
+                "kind": "agentTurn",
+                "message": build_message(cmd_daily),
+                "model": DEFAULT_REVIEWER_CRON_MODEL,
+                "lightContext": True,
+                "timeoutSeconds": 1800,
+            },
             "delivery": {"mode": "none"},
             "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
         },
@@ -284,7 +297,13 @@ def build_jobs(
             "schedule": {"kind": "cron", "expr": str(bi_daily_expr), "tz": tz_name},
             "sessionTarget": "isolated",
             "wakeMode": "now",
-            "payload": {"kind": "agentTurn", "message": build_message(cmd_bi_daily), "timeoutSeconds": 1800},
+            "payload": {
+                "kind": "agentTurn",
+                "message": build_message(cmd_bi_daily),
+                "model": DEFAULT_REVIEWER_CRON_MODEL,
+                "lightContext": True,
+                "timeoutSeconds": 1800,
+            },
             "delivery": {"mode": "none"},
             "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
         },
@@ -299,7 +318,13 @@ def build_jobs(
             "schedule": {"kind": "cron", "expr": str(weekly_expr), "tz": tz_name},
             "sessionTarget": "isolated",
             "wakeMode": "now",
-            "payload": {"kind": "agentTurn", "message": build_message(cmd_weekly), "timeoutSeconds": 1800},
+            "payload": {
+                "kind": "agentTurn",
+                "message": build_message(cmd_weekly),
+                "model": DEFAULT_REVIEWER_CRON_MODEL,
+                "lightContext": True,
+                "timeoutSeconds": 1800,
+            },
             "delivery": {"mode": "none"},
             "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
         },

@@ -1020,6 +1020,39 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertTrue(all(item["delivery"]["mode"] == "none" for item in merged[:4]))
         self.assertTrue(all(item["failureAlert"]["to"] == "-1003333097130" for item in merged[:4]))
 
+    def test_reviewer_jobs_pin_stable_model_and_light_context(self):
+        module = load_module(
+            "install_reviewer_scan_jobs",
+            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
+        )
+        fresh = module.build_jobs(
+            runner_py="/tmp/reviewer.py",
+            workspace="/tmp/workspace",
+            state_file="/tmp/state.json",
+            history_dir="/tmp/history",
+            tz_name="Asia/Shanghai",
+            hourly_every_ms=3600000,
+            daily_expr="0 4 * * *",
+            bi_daily_expr="20 4 */2 * *",
+            weekly_expr="40 4 * * 1",
+            enable_hourly=True,
+            enable_daily=True,
+            enable_bi_daily=True,
+            enable_weekly=True,
+            normal_log_mode="silent",
+            daily_fix_command="",
+            hourly_git_fetch=True,
+            hourly_check_pr=True,
+            hourly_allow_merge=False,
+            hourly_push_after_merge=False,
+            hourly_merge_approval_file="",
+            project_context_gate=True,
+            project_context_db="/tmp/task_center.db",
+            project_context_assignee="project-agent",
+        )
+        self.assertTrue(all(item["payload"]["model"] == "glmcode/glm-5" for item in fresh))
+        self.assertTrue(all(item["payload"]["lightContext"] is True for item in fresh))
+
     def test_task_executor_message_uses_notify_on_error(self):
         module = load_module(
             "install_task_executor_job",
@@ -1230,6 +1263,54 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--dry-run", rendered)
         self.assertIn("--emit-json", rendered)
 
+    def test_install_workflow_profile_recover_stale_cron_running_state_cmd_uses_jobs_file(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        cmd = module.build_recover_stale_cron_running_state_cmd(
+            python_bin="python3",
+            here=Path("/repo/scripts/openclaw-ops"),
+            jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
+            stale_minutes=45,
+            dry_run=True,
+        )
+        rendered = " ".join(cmd)
+        self.assertIn("recover_stale_cron_running_state.py", rendered)
+        self.assertIn("--jobs-file /home/ubuntu/.openclaw/cron/jobs.json", rendered)
+        self.assertIn("--stale-minutes 45", rendered)
+        self.assertIn("--dry-run", rendered)
+        self.assertIn("--emit-json", rendered)
+
+    def test_install_workflow_profile_main_includes_recover_stale_cron_step(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        step_names: list[str] = []
+
+        def fake_run_step(name: str, cmd: list[str], dry_run: bool):
+            step_names.append(name)
+            return {"step": name, "ok": True, "dry_run": dry_run, "returncode": 0}
+
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "install_workflow_profile.py",
+                "--profile",
+                "core",
+                "--dry-run",
+                "--emit-json",
+            ],
+        ):
+            with mock.patch.object(module, "sync_overlay_config", return_value={"step": module.OVERLAY_SYNC_STEP, "ok": True}):
+                with mock.patch.object(module, "run_step", side_effect=fake_run_step):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        module.main()
+
+        self.assertIn("recover_stale_cron_running_state (stale runningAtMs cleanup)", step_names)
+
     def test_sync_overlay_config_preserves_local_telegram_bot_token(self):
         module = load_module(
             "install_workflow_profile",
@@ -1348,6 +1429,8 @@ class CronQuietModeTests(unittest.TestCase):
         )
         self.assertEqual(jobs[0]["delivery"]["mode"], "none")
         self.assertEqual(jobs[0]["failureAlert"]["after"], 1)
+        self.assertEqual(jobs[0]["payload"]["model"], "glmcode/glm-4.7")
+        self.assertTrue(jobs[0]["payload"]["lightContext"])
 
     def test_daily_work_report_job_announces_and_carries_todo_files(self):
         module = load_module(
@@ -1374,6 +1457,8 @@ class CronQuietModeTests(unittest.TestCase):
         message = job["payload"]["message"]
         self.assertIn("--todo-file /home/ubuntu/openclaw-hardflow-backup-20260302/todo.md", message)
         self.assertIn("--todo-file /home/ubuntu/openclaw-hardflow-backup-20260302/TODO.md", message)
+        self.assertEqual(job["payload"]["model"], "glmcode/glm-4.7")
+        self.assertTrue(job["payload"]["lightContext"])
 
     def test_web_intel_jobs_default_to_silent_delivery(self):
         module = load_module(

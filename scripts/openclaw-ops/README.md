@@ -575,6 +575,7 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 ## Upstream Runtime Boundary (2026-03-06)
 
 - `install_workflow_profile.py` 现在会把仓库 overlay 配置合并到 `~/.openclaw/openclaw.json`，并把仓库 `hooks/`、`skills/` 动态注入官方 loader。
+- `install_workflow_profile.py` 安装时还会顺手执行 `normalize_runtime_binding_tasks.py` 与 `recover_stale_cron_running_state.py`，分别清理历史 runtime binding backlog 和超过阈值的僵尸 `runningAtMs`。
 - `uninstall_workflow_profile.py` 按“精确删除已知安装产物”的方式卸载 runtime workflow，只清理受安装器管理的 cron jobs、runtime bridge 注入项和 `ops` manifest 文件。
 - `sync_openclaw_ops_files.py` 的职责明确为 `ops-only`，不再负责 hooks runtime 同步。
 - `cron_setup.py`、`install_project_index_job.py`、`install_reviewer_scan_jobs.py`、`install_task_executor_job.py` 会显式输出官方 `openclaw cron` 验证命令；业务定义仍保留在 `jobs.json`。
@@ -594,6 +595,7 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 - `task_executor_runner.py` 遇到明确的模型限流/`429` 会做有限次退避重试；可用 `--agent-max-retries` 与 `--agent-retry-delay-sec` 调整。
 - `task_executor_runner.py` 现在按 assignee 读取 `policy-config.json` 里的 `agent_model_overrides`，并按 `model_thinking_overrides` 对 Codex 显式使用 `xhigh`，其他模型统一走 `high`。
 - `install_task_executor_job.py` 默认给 `task_executor_10m` 写入 `lightContext: true`，让 isolated cron run 只保留轻量 bootstrap，避免无关工作区上下文拖慢首轮 `exec`。
+- `ops_daily_work_report_dingtalk`、`ops_local_openclaw_git_backup`、reviewer 系列维护型 cron job 安装时会显式写入稳定模型和 `payload.lightContext: true`，避免跟随默认 `openai-codex` 造成 isolated session 启动超时。
 - cron 安装器写入的 scheduled-runner 提示词现在要求：首次只允许一个 `exec`；如果工具返回 `Command still running`，只能对同一 session 使用 `process poll` 等到进程退出，禁止再开第二个 `exec`，避免后台悬挂命令继续占用 `task_center.db`。
 - `install_task_executor_job.py` 额外要求每次 `process poll` 的 `timeout` 不得超过 `15000` ms，并在收到 `Process still running` 后立即短轮询，避免长轮询把 gateway ws tick 拖到超时。
 - `ops_runtime_cron` 绑定任务现在创建即标记为 `passed/action=runtime_binding`；安装流程会额外执行 `normalize_runtime_binding_tasks.py`，把历史遗留的 runtime binding backlog 一次性归正，避免它们被误判成待执行任务或已完成摘要。
