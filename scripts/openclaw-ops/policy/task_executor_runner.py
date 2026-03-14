@@ -936,6 +936,8 @@ def main() -> int:
                 "model_source": task_model_source,
                 "thinking": task_thinking,
                 "task_type": task_type,
+                "task_reason": compact_text(task.get("reason", ""), 96),
+                "task_requirement": compact_text(task.get("requirement", ""), 120),
                 "workflow_alert_tokens": workflow_alert_tokens,
             }
 

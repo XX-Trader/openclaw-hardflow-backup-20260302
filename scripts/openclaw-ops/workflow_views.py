@@ -168,6 +168,73 @@ def build_follow_up_progress_lines(summary: dict[str, Any]) -> list[str]:
     return lines
 
 
+def compact_task_text(value: Any, max_len: int = 72) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def humanize_task_stage(stage: str) -> str:
+    normalized = str(stage or "").strip().lower()
+    if normalized == "plan":
+        return "规划"
+    if normalized in {"implement", "implementation"}:
+        return "实现"
+    if normalized in {"test-loop", "test"}:
+        return "验证"
+    if normalized == "review":
+        return "审查"
+    if normalized == "document":
+        return "文档"
+    if normalized == "deploy":
+        return "部署"
+    return ""
+
+
+def describe_task_subject(item: dict[str, Any]) -> str:
+    requirement = compact_task_text(item.get("task_requirement", ""), 88)
+    if requirement:
+        return requirement
+    task_reason = compact_task_text(item.get("task_reason", ""), 72)
+    if task_reason and task_reason.lower() not in IGNORED_STATUSES:
+        return task_reason
+    task_type = compact_task_text(item.get("task_type", ""), 40)
+    if task_type:
+        return f"{task_type} 任务"
+    return "未命名任务"
+
+
+def humanize_selected_task_status(item: dict[str, Any]) -> str:
+    raw_reason = str(item.get("reason", "")).strip().lower()
+    category = classify_result(item)
+    if raw_reason == "waiting_human_confirm":
+        return "等待人工确认"
+    if raw_reason == "needs_clarification":
+        return "待补充上下文"
+    if category == "passed":
+        return "已完成"
+    if category == "partial":
+        return "部分完成"
+    if category == "failed":
+        issue, _detail = humanize_executor_reason(item)
+        return issue
+    return "已跳过"
+
+
+def describe_selected_task(item: dict[str, Any]) -> str:
+    assignee = str(item.get("assignee", "")).strip()
+    stage_label = humanize_task_stage(str(item.get("stage", "")).strip())
+    subject = describe_task_subject(item)
+    status_label = humanize_selected_task_status(item)
+    owner = assignee or "未分配"
+    if stage_label:
+        owner = f"{owner} / {stage_label}"
+    return f"{owner}：{subject}（{status_label}）"
+
+
 def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify_on: str) -> dict[str, Any]:
     mode = normalize_notify_mode(notify_on)
     dedupe = summary.get("alert_dedupe", {})
@@ -247,6 +314,14 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
             f"跳过 {skipped} 个，未闭环 {unresolved} 个。"
         ),
     ]
+    if results:
+        lines.append("- 本轮任务：")
+        for idx, item in enumerate(results[:5], start=1):
+            if not isinstance(item, dict):
+                continue
+            lines.append(f"  {idx}. {describe_selected_task(item)}")
+        if len(results) > 5:
+            lines.append(f"  - 其余 {len(results) - 5} 个任务请按留痕编号查看。")
     if passed_items:
         lines.append(f"- 已闭环：{len(passed_items)} 个")
     if waiting_confirm_items:
@@ -257,10 +332,8 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
     if unresolved_items:
         lines.append("- 未闭环任务：")
         for item in unresolved_items[:8]:
-            task_id = str(item.get("task_id", "")).strip() or "-"
-            assignee = str(item.get("assignee", "")).strip() or "-"
             issue, detail = humanize_executor_reason(item)
-            lines.append(f"  - {task_id} -> {assignee}：{issue}；{detail}")
+            lines.append(f"  - {describe_selected_task(item)}：{issue}；{detail}")
 
     human_view = {
         "visible": visible,
