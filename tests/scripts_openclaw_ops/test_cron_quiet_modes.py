@@ -1434,6 +1434,24 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--dry-run", rendered)
         self.assertIn("--emit-json", rendered)
 
+    def test_install_workflow_profile_reconcile_gateway_service_cmd_prefers_user(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        cmd = module.build_reconcile_gateway_service_cmd(
+            python_bin="python3",
+            here=Path("/repo/scripts/openclaw-ops"),
+            prefer="user",
+            dry_run=True,
+        )
+        rendered = " ".join(cmd)
+        self.assertIn("gateway_service_manager.py", rendered)
+        self.assertIn("--action restart", rendered)
+        self.assertIn("--prefer user", rendered)
+        self.assertIn("--dry-run", rendered)
+        self.assertIn("--emit-json", rendered)
+
     def test_install_workflow_profile_main_includes_recover_stale_cron_step(self):
         module = load_module(
             "install_workflow_profile",
@@ -1491,6 +1509,35 @@ class CronQuietModeTests(unittest.TestCase):
                         module.main()
 
         self.assertIn("export_schedule_registry (workflow registry snapshot)", step_names)
+
+    def test_install_workflow_profile_main_includes_reconcile_gateway_service_step(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        step_names: list[str] = []
+
+        def fake_run_step(name: str, cmd: list[str], dry_run: bool):
+            step_names.append(name)
+            return {"step": name, "ok": True, "dry_run": dry_run, "returncode": 0}
+
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "install_workflow_profile.py",
+                "--profile",
+                "core",
+                "--dry-run",
+                "--emit-json",
+            ],
+        ):
+            with mock.patch.object(module, "sync_overlay_config", return_value={"step": module.OVERLAY_SYNC_STEP, "ok": True}):
+                with mock.patch.object(module, "run_step", side_effect=fake_run_step):
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        module.main()
+
+        self.assertIn("reconcile_gateway_service (canonical gateway supervisor)", step_names)
 
     def test_sync_overlay_config_preserves_local_telegram_bot_token(self):
         module = load_module(

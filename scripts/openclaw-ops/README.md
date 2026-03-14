@@ -575,7 +575,7 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 ## Upstream Runtime Boundary (2026-03-06)
 
 - `install_workflow_profile.py` 现在会把仓库 overlay 配置合并到 `~/.openclaw/openclaw.json`，并把仓库 `hooks/`、`skills/` 动态注入官方 loader。
-- `install_workflow_profile.py` 安装时还会顺手执行 `normalize_runtime_binding_tasks.py` 与 `recover_stale_cron_running_state.py`，分别清理历史 runtime binding backlog 和超过阈值的僵尸 `runningAtMs`。
+- `install_workflow_profile.py` 安装时还会顺手执行 `normalize_runtime_binding_tasks.py`、`recover_stale_cron_running_state.py` 和 `policy/gateway_service_manager.py`，分别清理历史 runtime binding backlog、超过阈值的僵尸 `runningAtMs`，以及把 Gateway supervisor 收敛到 canonical `openclaw-gateway.service` / systemd user service。
 - `uninstall_workflow_profile.py` 按“精确删除已知安装产物”的方式卸载 runtime workflow，只清理受安装器管理的 cron jobs、runtime bridge 注入项和 `ops` manifest 文件。
 - `sync_openclaw_ops_files.py` 的职责明确为 `ops-only`，不再负责 hooks runtime 同步。
 - `cron_setup.py`、`install_project_index_job.py`、`install_reviewer_scan_jobs.py`、`install_task_executor_job.py` 会显式输出官方 `openclaw cron` 验证命令；业务定义仍保留在 `jobs.json`。

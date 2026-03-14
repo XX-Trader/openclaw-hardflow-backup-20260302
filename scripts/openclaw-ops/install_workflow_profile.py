@@ -325,6 +325,27 @@ def build_export_schedule_registry_cmd(
     return cmd
 
 
+def build_reconcile_gateway_service_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    prefer: str,
+    dry_run: bool,
+) -> list[str]:
+    cmd = [
+        python_bin,
+        str(here / "policy" / "gateway_service_manager.py"),
+        "--action",
+        "restart",
+        "--prefer",
+        str(prefer or "user").strip() or "user",
+        "--emit-json",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    return cmd
+
+
 def normalize_path(text: str) -> str:
     return str(Path(os.path.expanduser(text)).resolve())
 
@@ -896,6 +917,8 @@ def main() -> None:
     parser.add_argument("--recover-stale-cron-running-state", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--stale-running-minutes", type=int, default=30)
     parser.add_argument("--export-schedule-registry", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--reconcile-gateway-service", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--gateway-service-prefer", choices=["user", "system"], default="user")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
@@ -1110,6 +1133,12 @@ def main() -> None:
         profile=profile,
         dry_run=bool(args.dry_run),
     )
+    reconcile_gateway_service_cmd = build_reconcile_gateway_service_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        prefer=str(args.gateway_service_prefer),
+        dry_run=bool(args.dry_run),
+    )
 
     steps: list[tuple[str, list[str]]] = []
     if bool(args.normalize_openclaw_paths):
@@ -1141,6 +1170,8 @@ def main() -> None:
         steps.append(("recover_stale_cron_running_state (stale runningAtMs cleanup)", recover_stale_cron_running_state_cmd))
     if bool(args.export_schedule_registry):
         steps.append(("export_schedule_registry (workflow registry snapshot)", export_schedule_registry_cmd))
+    if bool(args.reconcile_gateway_service):
+        steps.append(("reconcile_gateway_service (canonical gateway supervisor)", reconcile_gateway_service_cmd))
 
     expected_tasks = list(ALL_TASKS if profile == "all" else CORE_TASKS)
     if install_web_intel and 10 not in expected_tasks:
@@ -1164,6 +1195,7 @@ def main() -> None:
     print(f"required_skills_manifest={required_skills_manifest}")
     print(f"workflow_registry_file={workflow_registry_file}")
     print(f"jobs_agent_mapping_file={jobs_agent_mapping_file}")
+    print(f"gateway_service_prefer={args.gateway_service_prefer}")
 
     results: list[dict[str, Any]] = []
     failed = False
@@ -1225,6 +1257,8 @@ def main() -> None:
             "sync_overlay_config": bool(args.sync_overlay_config),
             "required_skills_manifest": required_skills_manifest,
             "ensure_runtime_skills": bool(args.ensure_runtime_skills),
+            "reconcile_gateway_service": bool(args.reconcile_gateway_service),
+            "gateway_service_prefer": str(args.gateway_service_prefer),
         },
         "results": results,
     }
