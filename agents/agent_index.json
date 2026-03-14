@@ -2,7 +2,7 @@
   {
     "id": "main",
     "name": "大总管",
-    "default": false,
+    "default": true,
     "workspace": "/home/ubuntu/.openclaw/workspace",
     "agentDir": null,
     "model": "openai-codex/gpt-5.4",
@@ -25,7 +25,7 @@
   {
     "id": "coordinator",
     "name": "coordinator",
-    "default": true,
+    "default": false,
     "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
     "agentDir": null,
     "model": "openai-codex/gpt-5.4",

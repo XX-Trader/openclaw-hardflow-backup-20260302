@@ -1,0 +1,81 @@
+{
+  "hooks": [
+    {
+      "name": "boot-md",
+      "enabled": true,
+      "classification": "builtin",
+      "events": [],
+      "has_doc": false
+    },
+    {
+      "name": "command-logger",
+      "enabled": true,
+      "classification": "builtin",
+      "events": [],
+      "has_doc": false
+    },
+    {
+      "name": "hardflow-audit",
+      "enabled": true,
+      "classification": "custom",
+      "events": [
+        "command"
+      ],
+      "has_doc": true
+    },
+    {
+      "name": "hardflow-command-guard",
+      "enabled": true,
+      "classification": "custom",
+      "events": [
+        "command:new",
+        "command:reset"
+      ],
+      "has_doc": true
+    },
+    {
+      "name": "hardflow-policy-enforcer",
+      "enabled": true,
+      "classification": "custom",
+      "events": [
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_doc": true
+    },
+    {
+      "name": "hardflow-stop-gate-reminder",
+      "enabled": true,
+      "classification": "custom",
+      "events": [
+        "command:stop"
+      ],
+      "has_doc": true
+    },
+    {
+      "name": "session-memory",
+      "enabled": true,
+      "classification": "builtin",
+      "events": [],
+      "has_doc": false
+    }
+  ],
+  "events": {
+    "command": [
+      "hardflow-audit"
+    ],
+    "command:new": [
+      "hardflow-command-guard",
+      "hardflow-policy-enforcer"
+    ],
+    "command:reset": [
+      "hardflow-command-guard",
+      "hardflow-policy-enforcer"
+    ],
+    "command:stop": [
+      "hardflow-policy-enforcer",
+      "hardflow-stop-gate-reminder"
+    ]
+  }
+}

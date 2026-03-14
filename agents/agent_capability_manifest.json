@@ -1,0 +1,440 @@
+{
+  "source_report": "scripts/openclaw-ops/inspect_runtime_bindings.py",
+  "agents": [
+    {
+      "agent_id": "main",
+      "name": "大总管",
+      "default": true,
+      "model": "openai-codex/gpt-5.4",
+      "workspace": "/home/ubuntu/.openclaw/workspace",
+      "allow_agents": [
+        "agent-factory",
+        "backend-dev",
+        "coordinator",
+        "deployer",
+        "doc-writer",
+        "frontend-dev",
+        "main",
+        "ops-agent",
+        "optimization-agent",
+        "project-agent",
+        "reviewer",
+        "tester",
+        "web-agent"
+      ],
+      "declared_skills": [
+        "agent-manager",
+        "requirements-clarity",
+        "smart-workflow",
+        "result-synthesizer",
+        "intelligent-router",
+        "task-decomposer",
+        "codex",
+        "using-superpowers"
+      ],
+      "missing_skills": [
+        "using-superpowers"
+      ],
+      "soul_skills": [
+        "agent-manager",
+        "requirements-clarity",
+        "smart-workflow",
+        "result-synthesizer",
+        "intelligent-router",
+        "task-decomposer",
+        "codex",
+        "using-superpowers"
+      ],
+      "runtime_skill_overrides": [],
+      "capability_mode": "skill_backed",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "coordinator",
+      "name": "coordinator",
+      "default": false,
+      "model": "openai-codex/gpt-5.4",
+      "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
+      "allow_agents": [
+        "agent-factory",
+        "backend-dev",
+        "coordinator",
+        "deployer",
+        "doc-writer",
+        "frontend-dev",
+        "main",
+        "ops-agent",
+        "optimization-agent",
+        "project-agent",
+        "reviewer",
+        "tester",
+        "web-agent"
+      ],
+      "declared_skills": [
+        "task-decomposer",
+        "smart-workflow",
+        "dispatching-parallel-agents",
+        "parallel-executor",
+        "agent-manager",
+        "requirements-clarity"
+      ],
+      "missing_skills": [],
+      "soul_skills": [],
+      "runtime_skill_overrides": [],
+      "capability_mode": "skill_backed",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "doc-writer",
+      "name": "doc-writer",
+      "default": false,
+      "model": "glmcode/glm-4.7",
+      "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
+      "allow_agents": [],
+      "declared_skills": [
+        "writing-plans",
+        "docx",
+        "changelog-generator",
+        "internal-comms",
+        "product-requirements",
+        "baoyu-format-markdown",
+        "pdf",
+        "pptx",
+        "xlsx"
+      ],
+      "missing_skills": [],
+      "soul_skills": [
+        "writing-plans",
+        "docx",
+        "changelog-generator",
+        "internal-comms",
+        "product-requirements",
+        "baoyu-format-markdown",
+        "pdf",
+        "pptx",
+        "xlsx"
+      ],
+      "runtime_skill_overrides": [],
+      "capability_mode": "skill_backed",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "frontend-dev",
+      "name": "frontend-dev",
+      "default": false,
+      "model": "openai-codex/gpt-5.3-codex",
+      "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
+      "allow_agents": [],
+      "declared_skills": [
+        "frontend-design",
+        "feature-development",
+        "ui-ux-pro-max",
+        "verification-before-completion",
+        "auto-fix",
+        "playwright-interactive",
+        "webapp-testing",
+        "using-git-worktrees"
+      ],
+      "missing_skills": [],
+      "soul_skills": [
+        "frontend-design",
+        "feature-development",
+        "ui-ux-pro-max",
+        "verification-before-completion",
+        "auto-fix",
+        "playwright-interactive",
+        "webapp-testing",
+        "using-git-worktrees"
+      ],
+      "runtime_skill_overrides": [
+        {
+          "runtime_skill": "frontend-design-ultimate",
+          "conflicts": [
+            "frontend-design"
+          ]
+        }
+      ],
+      "capability_mode": "skill_backed",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "backend-dev",
+      "name": "backend-dev",
+      "default": false,
+      "model": "openai-codex/gpt-5.3-codex",
+      "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
+      "allow_agents": [],
+      "declared_skills": [
+        "feature-development",
+        "systematic-debugging",
+        "auto-fix",
+        "verification-before-completion",
+        "mcp-builder",
+        "using-git-worktrees"
+      ],
+      "missing_skills": [],
+      "soul_skills": [
+        "feature-development",
+        "systematic-debugging",
+        "auto-fix",
+        "verification-before-completion",
+        "mcp-builder",
+        "using-git-worktrees"
+      ],
+      "runtime_skill_overrides": [],
+      "capability_mode": "skill_backed",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "reviewer",
+      "name": "代码审核",
+      "default": false,
+      "model": "openai-codex/gpt-5.4",
+      "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
+      "allow_agents": [],
+      "declared_skills": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ],
+      "missing_skills": [],
+      "soul_skills": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ],
+      "runtime_skill_overrides": [],
+      "capability_mode": "skill_backed",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "tester",
+      "name": "测试验收",
+      "default": false,
+      "model": "glmcode/glm-4.7",
+      "workspace": "/home/ubuntu/.openclaw/workspace-tester",
+      "allow_agents": [],
+      "declared_skills": [
+        "playwright-interactive",
+        "webapp-testing",
+        "auto-fix",
+        "deployment-test",
+        "systematic-debugging"
+      ],
+      "missing_skills": [],
+      "soul_skills": [
+        "playwright-interactive",
+        "webapp-testing",
+        "auto-fix",
+        "deployment-test",
+        "systematic-debugging"
+      ],
+      "runtime_skill_overrides": [],
+      "capability_mode": "skill_backed",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "deployer",
+      "name": "deployer",
+      "default": false,
+      "model": "glmcode/glm-4.7",
+      "workspace": "/home/ubuntu/.openclaw/workspace-deployer",
+      "allow_agents": [],
+      "declared_skills": [
+        "db-deploy",
+        "deployment-test",
+        "github-actions-runner",
+        "windows-fullstack-deploy",
+        "openclaw-security-audit"
+      ],
+      "missing_skills": [],
+      "soul_skills": [
+        "db-deploy",
+        "deployment-test",
+        "github-actions-runner",
+        "windows-fullstack-deploy",
+        "openclaw-security-audit"
+      ],
+      "runtime_skill_overrides": [],
+      "capability_mode": "skill_backed",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "agent-factory",
+      "name": "agent-factory",
+      "default": false,
+      "model": "openai-codex/gpt-5.3-codex",
+      "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
+      "allow_agents": [
+        "optimization-agent",
+        "project-agent",
+        "web-agent"
+      ],
+      "declared_skills": [],
+      "missing_skills": [],
+      "soul_skills": [],
+      "runtime_skill_overrides": [],
+      "capability_mode": "role_only",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "ops-agent",
+      "name": "ops-agent",
+      "default": false,
+      "model": "glmcode/glm-4.7",
+      "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
+      "allow_agents": [
+        "optimization-agent",
+        "project-agent"
+      ],
+      "declared_skills": [],
+      "missing_skills": [],
+      "soul_skills": [],
+      "runtime_skill_overrides": [],
+      "capability_mode": "role_only",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "optimization-agent",
+      "name": "optimization-agent",
+      "default": false,
+      "model": "openai-codex/gpt-5.3-codex",
+      "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
+      "allow_agents": [
+        "project-agent",
+        "web-agent"
+      ],
+      "declared_skills": [],
+      "missing_skills": [],
+      "soul_skills": [],
+      "runtime_skill_overrides": [],
+      "capability_mode": "role_only",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "project-agent",
+      "name": "project-agent",
+      "default": false,
+      "model": "openai-codex/gpt-5.3-codex",
+      "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
+      "allow_agents": [
+        "web-agent"
+      ],
+      "declared_skills": [],
+      "missing_skills": [],
+      "soul_skills": [],
+      "runtime_skill_overrides": [],
+      "capability_mode": "role_only",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": true,
+      "has_soul_doc": true
+    },
+    {
+      "agent_id": "web-agent",
+      "name": "web-agent",
+      "default": false,
+      "model": "glmcode/glm-4.7",
+      "workspace": "/home/ubuntu/.openclaw/workspace-web-agent",
+      "allow_agents": [],
+      "declared_skills": [],
+      "missing_skills": [],
+      "soul_skills": [],
+      "runtime_skill_overrides": [],
+      "capability_mode": "role_only",
+      "hook_events_affected": [
+        "command",
+        "command:new",
+        "command:reset",
+        "command:stop"
+      ],
+      "has_by_agent_doc": false,
+      "has_soul_doc": true
+    }
+  ]
+}
