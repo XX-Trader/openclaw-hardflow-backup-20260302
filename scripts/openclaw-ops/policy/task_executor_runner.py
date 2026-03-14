@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from chat_output import format_beijing_time
 from workflow_views import build_task_executor_event, render_human_view
 from policy_enforcer import PolicyEnforcer, RuntimePaths, cmd_init, runtime_defaults  # type: ignore
 from alert_dedupe import (
@@ -509,12 +510,10 @@ def build_fatal_output(exc: Exception) -> str:
     task_name = cli_flag_value("--task", "cron:task-executor") or "cron:task-executor"
     issue, detail = humanize_executor_reason(str(exc), "failed")
     lines = [
-        "任务执行异常",
-        f"- 触发任务: {task_name}",
-        f"- 时间: {now_iso()}",
-        "- 问题: 执行器入口异常",
-        f"- 异常类型: {exc.__class__.__name__}",
-        f"- 详情: {issue}；{detail}",
+        f"{format_beijing_time(now_iso())} 任务执行器：执行入口异常。",
+        f"- 触发任务：{task_name}",
+        f"- 异常类型：{exc.__class__.__name__}",
+        f"- 详情：{issue}；{detail}",
     ]
     return "\n".join(lines)
 

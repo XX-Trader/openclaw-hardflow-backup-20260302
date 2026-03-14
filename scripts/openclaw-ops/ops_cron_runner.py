@@ -2437,7 +2437,7 @@ def run_scan(
             {
                 "task_id": task_id,
                 "mode": mode,
-                "time": f"{now().strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)",
+                "time": f"{now().strftime('%Y-%m-%d %H:%M:%S')} UTC+8",
                 "run_id": run_id,
                 "risk_reasons": risk_reasons,
                 "runtime_health": runtime_health,
@@ -2650,11 +2650,13 @@ def build_daily_report(
     )
 
     lines: list[str] = []
-    lines.append("# \u8fd0\u7ef4\u65e5\u6c47\u603b\u5f02\u5e38")
-    lines.append(f"- \u65f6\u95f4: {now().strftime('%Y-%m-%d %H:%M:%S')} (UTC+8)")
-    lines.append("- \u7a97\u53e3: \u6700\u8fd1 24 \u5c0f\u65f6")
-    lines.append(f"- \u4efb\u52a1: {task_id or '-'}")
-    lines.append(f"- \u8fd0\u884c\u7f16\u53f7: {run_id}")
+    lines.append(
+        f"{now().strftime('%Y-%m-%d %H:%M:%S')} UTC+8 每日巡检：最近 24 小时共运行 {total} 次，"
+        f"异常通知 {major} 次，扫描失败 {failed} 次。"
+    )
+    lines.append(f"- 任务：{task_id or '-'}")
+    lines.append(f"- 运行编号：{run_id}")
+    lines.append("- 窗口：最近 24 小时")
     if risk_reasons:
         lines.append("- \u98ce\u9669\u539f\u56e0:")
         for idx, reason in enumerate(risk_reasons[:10], start=1):

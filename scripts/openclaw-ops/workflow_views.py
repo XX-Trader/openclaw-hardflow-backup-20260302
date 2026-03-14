@@ -6,6 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from chat_output import format_beijing_time
+
 SUCCESS_STATUSES = {"passed", "resolved", "solved", "ok", "success"}
 PARTIAL_STATUSES = {"partial", "escalated"}
 FAILED_STATUSES = {"failed", "error", "timeout"}
@@ -114,11 +116,18 @@ def render_human_view(view: dict[str, Any]) -> str:
     if not isinstance(view, dict) or not bool(view.get("visible", False)):
         return "NO_REPLY"
     title = str(view.get("title", "")).strip() or "系统通知"
-    lines = [title]
+    summary = str(view.get("summary", "")).strip()
+    headline = f"{format_beijing_time(str(view.get('run_time', '')).strip())} {title}"
+    if summary:
+        headline = f"{headline}：{summary}"
+    lines = [headline]
     for line in view.get("lines", []):
         text = str(line or "").rstrip()
         if text:
             lines.append(text)
+    trace_id = str(view.get("trace_id", "")).strip()
+    if trace_id:
+        lines.append(f"- 留痕编号：{trace_id}")
     return "\n".join(lines)
 
 
@@ -169,6 +178,7 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
     passed_items: list[dict[str, Any]] = []
     partial_items: list[dict[str, Any]] = []
     failed_items: list[dict[str, Any]] = []
+    ignored_items: list[dict[str, Any]] = []
     for item in results:
         if not isinstance(item, dict):
             continue
@@ -178,7 +188,7 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
         elif bucket == "partial":
             partial_items.append(item)
         elif bucket == "ignored":
-            continue
+            ignored_items.append(item)
         else:
             failed_items.append(item)
 
@@ -186,6 +196,22 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
     executed = max(0, int(summary.get("tasks_executed", 0) or 0))
     skipped = max(0, int(summary.get("tasks_skipped", 0) or 0))
     unresolved = len(partial_items) + len(failed_items)
+    waiting_confirm_items = [
+        item
+        for item in ignored_items
+        if str(item.get("reason", "")).strip().lower() == "waiting_human_confirm"
+        or str(item.get("status", "")).strip().lower() == "waiting_human_confirm"
+        or str(item.get("report_status", "")).strip().lower() == "waiting_human_confirm"
+        or str(item.get("task_status_after", "")).strip().lower() == "waiting_human_confirm"
+    ]
+    clarification_items = [
+        item
+        for item in ignored_items
+        if str(item.get("reason", "")).strip().lower() == "needs_clarification"
+        or str(item.get("status", "")).strip().lower() == "needs_clarification"
+        or str(item.get("report_status", "")).strip().lower() == "needs_clarification"
+        or str(item.get("task_status_after", "")).strip().lower() == "needs_clarification"
+    ]
     visible = True
     if isinstance(dedupe, dict) and bool(dedupe.get("suppressed", False)):
         visible = False
@@ -194,54 +220,55 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
     elif mode == "activity" and unresolved <= 0 and executed <= 0:
         visible = False
 
-    if unresolved <= 0:
-        conclusion = f"本轮选中的 {selected} 个任务已闭环。"
-    elif selected > 0 and unresolved >= selected:
-        conclusion = f"本轮选中的 {selected} 个任务均未闭环。"
-    else:
-        conclusion = f"本轮选中的 {selected} 个任务里，仍有 {unresolved} 个未闭环。"
+    waiting_confirm_count = max(len(waiting_confirm_items), skipped if waiting_confirm_items else 0)
+    clarification_count = max(len(clarification_items), skipped if clarification_items else 0)
 
-    reason_parts: list[str] = []
-    if partial_items:
-        reason_parts.append(f"任务仅部分完成 {len(partial_items)} 个")
-    if failed_items:
-        reason_parts.append(f"任务执行失败 {len(failed_items)} 个")
-    if not reason_parts:
-        reason_parts.append("未发现失败或部分完成项")
+    if unresolved > 0:
+        summary_text = f"选中 {selected} 个任务，未闭环 {unresolved} 个。"
+    elif executed > 0:
+        summary_text = f"已执行 {executed} 个任务，全部闭环。"
+    elif waiting_confirm_items and skipped > 0:
+        summary_text = f"{waiting_confirm_count} 个任务等待人工确认，本轮未执行。"
+    elif clarification_items and skipped > 0:
+        summary_text = f"{clarification_count} 个任务因上下文不足而跳过。"
+    elif skipped > 0:
+        summary_text = f"{skipped} 个任务已跳过，本轮未执行。"
+    elif selected > 0:
+        summary_text = f"选中 {selected} 个任务，本轮无需执行。"
+    else:
+        summary_text = "当前没有待处理任务。"
 
     lines = [
-        f"- 触发任务: {str(summary.get('trigger_task', '')).strip() or '-'}",
-        f"- 时间: {str(summary.get('started_at', '')).strip() or '-'}",
-        f"- 运行 ID: {str(summary.get('run_id', '')).strip() or '-'}",
-        f"- 执行模型: {str(summary.get('executor_model', '')).strip() or '-'}",
-        f"- 选中任务: {selected}",
-        f"- 已执行: {executed}",
-        f"- 已跳过: {skipped}",
-        f"- 失败任务: {unresolved}",
-        f"- 报告文件: {report_path}",
-        f"- 结论: {conclusion}",
-        f"- 原因解析: {'；'.join(reason_parts)}。",
+        f"- 触发任务：{str(summary.get('trigger_task', '')).strip() or '-'}",
+        f"- 运行编号：{str(summary.get('run_id', '')).strip() or '-'}",
+        f"- 执行模型：{str(summary.get('executor_model', '')).strip() or '-'}",
         (
-            f"- 修复进展: 已执行 {executed}/{selected}，"
-            f"已闭环 {len(passed_items)}，部分推进 {len(partial_items)}，失败 {len(failed_items)}。"
+            f"- 结果：选中 {selected} 个，已执行 {executed} 个，"
+            f"跳过 {skipped} 个，未闭环 {unresolved} 个。"
         ),
     ]
+    if passed_items:
+        lines.append(f"- 已闭环：{len(passed_items)} 个")
+    if waiting_confirm_items:
+        lines.append(f"- 待人工确认：{waiting_confirm_count} 个")
+    if clarification_items:
+        lines.append(f"- 待补充上下文：{clarification_count} 个")
     unresolved_items = [*partial_items, *failed_items]
     if unresolved_items:
-        lines.append("- 失败明细:")
+        lines.append("- 未闭环任务：")
         for item in unresolved_items[:8]:
             task_id = str(item.get("task_id", "")).strip() or "-"
             assignee = str(item.get("assignee", "")).strip() or "-"
             issue, detail = humanize_executor_reason(item)
-            lines.append(f"  - 任务: {task_id}")
-            lines.append(f"    执行人: {assignee}")
-            lines.append(f"    问题: {issue}")
-            lines.append(f"    详情: {detail}")
+            lines.append(f"  - {task_id} -> {assignee}：{issue}；{detail}")
 
     human_view = {
         "visible": visible,
-        "title": "任务执行异常" if unresolved > 0 else "任务执行摘要",
+        "title": "任务执行器",
+        "summary": summary_text,
+        "run_time": str(summary.get("finished_at", "")).strip() or str(summary.get("started_at", "")).strip(),
         "lines": lines,
+        "trace_id": report_path.stem,
     }
     facts = {
         "trigger_task": str(summary.get("trigger_task", "")).strip(),
@@ -331,17 +358,31 @@ def build_ops_scan_event(record: dict[str, Any]) -> dict[str, Any]:
     if not reason_parts and risk_reasons:
         reason_parts.append("存在风险信号，待进一步分诊")
 
+    mode = str(record.get("mode", "")).strip().lower()
+    title = {
+        "incremental": "增量巡检",
+        "full": "全量巡检",
+        "daily": "每日巡检",
+    }.get(mode, "运维巡检")
+    summary_text = (
+        f"发现 {failed_count} 个工作流失败，{stale_failed_count} 个持续失败。"
+        if failed_count > 0
+        else f"发现 {len(risk_reasons)} 个需关注信号。"
+    )
+    todo_new = int(handoff_summary.get("todo_new", 0) or 0)
+
     lines = [
-        f"- 模式: {str(record.get('mode', '')).strip() or '-'}",
-        f"- 时间: {str(record.get('time', '')).strip() or '-'}",
-        f"- 任务: {str(record.get('task_id', '')).strip() or '-'}",
-        f"- 运行编号: {str(record.get('run_id', '')).strip() or '-'}",
-        f"- 结论: 当前有 {failed_count} 个工作流失败，其中 {stale_failed_count} 个持续失败仍未恢复。",
-        f"- 原因解析: {'；'.join(reason_parts)}。",
+        f"- 任务：{str(record.get('task_id', '')).strip() or '-'}",
+        f"- 运行编号：{str(record.get('run_id', '')).strip() or '-'}",
+        (
+            f"- 结果：风险信号 {len(risk_reasons)} 项，扫描异常 {len(scan_errors)} 项，"
+            f"新增待办 {todo_new} 条。"
+        ),
+        f"- 原因解析：{'；'.join(reason_parts)}。",
     ]
     lines.extend(build_follow_up_progress_lines(follow_up))
     if runtime_missing:
-        lines.append("- 常驻进程/服务缺失:")
+        lines.append("- 缺失常驻进程/服务：")
         for idx, item in enumerate(runtime_missing[:5], start=1):
             if not isinstance(item, dict):
                 continue
@@ -351,33 +392,34 @@ def build_ops_scan_event(record: dict[str, Any]) -> dict[str, Any]:
                 f"({str(item.get('type', '-'))}) -> {str(item.get('status', '-'))}"
             )
     if failed_jobs:
-        lines.append("- 失败工作流:")
+        lines.append("- 失败工作流：")
         for idx, item in enumerate(failed_jobs[:3], start=1):
             if not isinstance(item, dict):
                 continue
             lines.append(
-                f"  {idx}. {str(item.get('id', '')).strip() or '-'} / "
-                f"{str(item.get('name', '')).strip() or '-'} "
-                f"(连续失败: {int(item.get('consecutive_errors', 0) or 0)}, "
-                f"状态: {str(item.get('last_status', '')).strip() or '-'})"
+                f"  {idx}. {str(item.get('name', '')).strip() or '-'} "
+                f"（{str(item.get('id', '')).strip() or '-'}，连续失败 {int(item.get('consecutive_errors', 0) or 0)} 次，"
+                f"状态 {str(item.get('last_status', '')).strip() or '-'}）"
             )
             if str(item.get("last_error", "")).strip():
-                lines.append(f"     错误: {str(item.get('last_error', ''))[:160]}")
+                lines.append(f"     原因：{humanize_executor_detail(str(item.get('last_error', ''))[:160])}")
     if scan_errors:
-        lines.append("- 扫描错误:")
+        lines.append("- 扫描错误：")
         for idx, err in enumerate(scan_errors[:3], start=1):
             lines.append(f"  {idx}. {str(err)[:180]}")
-    todo_new = int(handoff_summary.get("todo_new", 0) or 0)
     if todo_new > 0:
-        lines.append(f"- 已写入待办: {todo_new} 条")
+        lines.append(f"- 已写入待办：{todo_new} 条")
     risk_notify_suppressed_reason = str(record.get("risk_notify_suppressed_reason", "")).strip()
     if risk_notify_suppressed_reason:
-        lines.append(f"- 告警抑制: {risk_notify_suppressed_reason}")
+        lines.append(f"- 告警抑制：{risk_notify_suppressed_reason}")
 
     human_view = {
         "visible": failed_count > 0 or bool(risk_reasons),
-        "title": "运维巡检异常",
+        "title": title,
+        "summary": summary_text,
+        "run_time": str(record.get("time", "")).strip(),
         "lines": lines,
+        "trace_id": str(record.get("run_id", "")).strip(),
     }
     facts = {
         "task_id": str(record.get("task_id", "")).strip(),

@@ -17,6 +17,7 @@ POLICY_DIR = ROOT / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
+from scheduled_runner_prompt import build_scheduled_runner_message
 from io_write_gateway import write_json_atomic
 
 def now_ms() -> int:
@@ -93,19 +94,10 @@ def build_runner_command(
 
 
 def build_message(command: str) -> str:
-    return (
-        "You are project-index maintainer. Run command only:\n"
-        f"{str(command or '').strip()}\n"
-        "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
-        "Do not inspect files, list directories, or run any other command. "
-        "Execute the command exactly once. "
-        "If the exec tool reports 'Command still running', do not start another exec command. "
-        "You MUST wait for completion by using only process poll or process log for that same session until the process exits. "
-        "Do not run unrelated follow-up commands or diagnostics. "
-        "Return EXACTLY raw stdout/stderr text from the finished command; "
-        "do not add explanation, greeting, or prefix text. "
-        "Never output sentences like 'Let's run ...', 'Now let's execute ...', or 'Okay, ...'. "
-        "If the finished output is NO_REPLY, reply NO_REPLY."
+    return build_scheduled_runner_message(
+        str(command or "").strip(),
+        role="project-index maintainer",
+        forbid_file_inspection=True,
     )
 
 

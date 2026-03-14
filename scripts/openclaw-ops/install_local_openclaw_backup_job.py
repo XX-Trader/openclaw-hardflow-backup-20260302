@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from scheduled_runner_prompt import build_scheduled_runner_message
+
 DEFAULT_FAILURE_ALERT_AFTER = 1
 DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 DEFAULT_LOCAL_BACKUP_MODEL = "glmcode/glm-4.7"
@@ -146,18 +148,9 @@ def upsert_job(
         "wakeMode": "now",
         "payload": {
             "kind": "agentTurn",
-            "message": (
-                "You are ops-agent scheduled runner. Run command only:\n"
-                f"{cmd}\n"
-                "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
-                "Execute the command exactly once. "
-                "If the exec tool reports 'Command still running', do not start another exec command. "
-                "You MUST wait for completion by using only process poll or process log for that same session until the process exits. "
-                "Do not run unrelated follow-up commands or diagnostics. "
-                "Return EXACTLY raw stdout/stderr text from the finished command; "
-                "do not add explanation, greeting, or prefix text. "
-                "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
-                "If the finished output is NO_REPLY, reply NO_REPLY."
+            "message": build_scheduled_runner_message(
+                cmd,
+                role="ops-agent scheduled runner",
             ),
             "model": DEFAULT_LOCAL_BACKUP_MODEL,
             "lightContext": True,

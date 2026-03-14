@@ -17,6 +17,7 @@ POLICY_DIR = ROOT / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
+from scheduled_runner_prompt import build_scheduled_runner_message
 from io_write_gateway import write_json_atomic
 
 try:
@@ -582,31 +583,18 @@ def ensure_monitor_config(config_file: Path, overwrite: bool, switches: dict[str
 
 
 def build_message(command: str, extra_rules: list[str] | None = None) -> str:
-    cmd = str(command or "").strip()
     rules = [
-        "Execute the command exactly once.",
-        "If the exec tool reports 'Command still running', do not start another exec command.",
-        "You MUST wait for completion by using only process poll or process log for that same session until the process exits.",
         "Do not run unrelated follow-up diagnostics (for example: ls/cat/read/lsof/rm).",
-        "If the finished command prints NO_REPLY, you must respond exactly NO_REPLY and stop.",
     ]
     if isinstance(extra_rules, list):
         for item in extra_rules:
             text = str(item or "").strip()
             if text:
                 rules.append(text)
-    rules_text = " ".join(rules)
-    return (
-        "You are scheduled runner. Run command only:\n"
-        f"{cmd}\n"
-        "Your first assistant turn MUST contain exactly one exec tool call for that command and no text. "
-        "Do not write, edit, create, move, or delete any file. "
-        "Do not execute any other command. "
-        f"{rules_text}\n"
-        "Return EXACTLY raw stdout/stderr text from the finished command. "
-        "Do not add explanation, greeting, or prefix text. "
-        "Never output sentences like 'Let's run ...' or 'Okay, ...'. "
-        "If the finished output is empty, reply NO_REPLY."
+    return build_scheduled_runner_message(
+        str(command or "").strip(),
+        role="scheduled runner",
+        extra_rules=rules,
     )
 
 

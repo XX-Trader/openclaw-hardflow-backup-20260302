@@ -9,8 +9,12 @@ from pathlib import Path
 from typing import Iterable
 
 TZ = timezone(timedelta(hours=8))
+UTC8_SUFFIX = "UTC+8"
 PATH_RE = re.compile(
     r"(?:[A-Za-z]:\\[^\s，。；;]+|/(?:[^/\s，。；;]+/)*[^/\s，。；;]+|[\w./-]+\.(?:json|log|txt|md|png|jpg|jpeg|webp))"
+)
+LOCAL_TIME_RE = re.compile(
+    r"^(?P<stamp>\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})(?:\s*(?:\(?UTC\+8\)?|（北京时间）|\(北京时间\)))?$"
 )
 
 SENDER_LABELS = {
@@ -53,21 +57,26 @@ def sanitize_text(value: object, max_len: int = 200) -> str:
 def format_beijing_time(value: str = "", fallback: datetime | None = None) -> str:
     raw = str(value or "").strip()
     if raw:
+        normalized = raw.replace("（", "(").replace("）", ")").replace("Z", "+00:00")
         try:
-            normalized = raw.replace("Z", "+00:00")
             parsed = datetime.fromisoformat(normalized)
             if parsed.tzinfo is None:
                 parsed = parsed.replace(tzinfo=TZ)
-            return parsed.astimezone(TZ).strftime("%Y-%m-%d %H:%M:%S（北京时间）")
+            return parsed.astimezone(TZ).strftime(f"%Y-%m-%d %H:%M:%S {UTC8_SUFFIX}")
         except Exception:
+            local_match = LOCAL_TIME_RE.match(normalized)
+            if local_match:
+                parsed = datetime.fromisoformat(local_match.group("stamp").replace("T", " "))
+                parsed = parsed.replace(tzinfo=TZ)
+                return parsed.astimezone(TZ).strftime(f"%Y-%m-%d %H:%M:%S {UTC8_SUFFIX}")
             cleaned = sanitize_text(raw, max_len=48)
             if cleaned:
-                return cleaned
+                return cleaned.replace("(UTC+8)", UTC8_SUFFIX).replace("（北京时间）", UTC8_SUFFIX)
     target = fallback or _now_beijing()
     if target.tzinfo is None:
         target = target.replace(tzinfo=TZ)
     target = target.astimezone(TZ)
-    return target.strftime("%Y-%m-%d %H:%M:%S（北京时间）")
+    return target.strftime(f"%Y-%m-%d %H:%M:%S {UTC8_SUFFIX}")
 
 
 def sender_label(sender_identity: str) -> str:
@@ -113,16 +122,18 @@ def render_chat_notice(
     extra_lines: Iterable[str] | None = None,
     next_step: str = "",
 ) -> str:
-    lines = [sanitize_text(title, max_len=80) or "系统通知"]
+    normalized_title = sanitize_text(title, max_len=80) or "系统通知"
+    normalized_summary = sanitize_text(summary, max_len=160)
+    headline = f"{format_beijing_time(run_time)} {normalized_title}"
+    if normalized_summary:
+        headline = f"{headline}：{normalized_summary}"
+    lines = [headline]
     lines.append(f"- 状态：{sanitize_text(status, max_len=40) or '待处理'}")
     lines.append(f"- 时间：{format_beijing_time(run_time)}")
     normalized_task = sanitize_text(task_id, max_len=80)
     if normalized_task:
         lines.append(f"- 任务编号：{normalized_task}")
     lines.append(f"- 发送方：{sender_label(sender_identity)}")
-    normalized_summary = sanitize_text(summary, max_len=160)
-    if normalized_summary:
-        lines.append(f"- 摘要：{normalized_summary}")
     for item in extra_lines or []:
         text = sanitize_text(strip_list_marker(str(item or "")), max_len=160)
         if text:

@@ -639,6 +639,13 @@ openclaw gateway run
 
 ## Human-Friendly Cron Alert Update (2026-03-13)
 
+- Human-facing cron / workflow messages are now normalized to one compact Chinese headline:
+  - format: `YYYY-MM-DD HH:MM:SS UTC+8 事件：摘要`
+  - body lines stay in Chinese and keep only operator-relevant fields such as task id, run id, counts, and trace id
+  - `NO_REPLY` remains machine-only quiet success and should not be expanded into explanatory chat text
+- Scheduled-runner install prompts now explicitly require passthrough of the finished human-facing output:
+  - preserve original Chinese text and `UTC+8` timestamps exactly
+  - never add process filler such as `Let me run it again`, `I understand`, or similar wrapper commentary
 - `task_executor_runner.py` chat output now adds three human-facing summary lines before the task list:
   - `结论`: this round is closed or not, and how many tasks are still unresolved
   - `原因解析`: grouped root-cause counts such as `任务仅部分完成 2 个`
