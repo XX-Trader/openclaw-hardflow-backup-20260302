@@ -2166,6 +2166,7 @@ class PolicyEnforcer:
         since = str(getattr(args, "since", "") or "").strip()
         limit = max(1, int(getattr(args, "limit", 100) or 100))
         summary = self.db.planner_summary(planner_id=planner_id, since=since, limit=limit)
+        summary["task_capability_coverage"] = self.db.task_capability_coverage(since=since)
         if self.points_enabled():
             policy = self.points_policy()
             lookback_days = max(1, int(policy.get("leaderboard_lookback_days", 14) or 14))
@@ -2194,6 +2195,15 @@ class PolicyEnforcer:
                     agent_id = str(item.get("agent_id", "")).strip()
                     item["score_points"] = round(float(agent_points_map.get(agent_id, 0.0) or 0.0), 6)
         return summary
+
+    def task_capability_coverage(self, args: argparse.Namespace) -> dict[str, Any]:
+        return self.db.task_capability_coverage(
+            since=str(getattr(args, "since", "") or "").strip(),
+            task_type=str(getattr(args, "task_type", "") or "").strip(),
+            assignee=str(getattr(args, "assignee", "") or "").strip(),
+            status=str(getattr(args, "status", "") or "").strip(),
+            pool=str(getattr(args, "pool", "") or "").strip(),
+        )
 
     def daily_summary(self, args: argparse.Namespace) -> dict[str, Any]:
         target_date = date.fromisoformat(args.date) if args.date else datetime.now(tz=UTC).date()
@@ -3080,6 +3090,13 @@ def build_parser() -> argparse.ArgumentParser:
     planner_summary.add_argument("--since", default="")
     planner_summary.add_argument("--limit", default="100")
 
+    capability_coverage = sub.add_parser("task-capability-coverage", help="summarize task schema upgrade coverage")
+    capability_coverage.add_argument("--since", default="")
+    capability_coverage.add_argument("--task-type", default="")
+    capability_coverage.add_argument("--assignee", default="")
+    capability_coverage.add_argument("--status", default="")
+    capability_coverage.add_argument("--pool", default="")
+
     daily = sub.add_parser("daily-summary", help="generate daily summary")
     daily.add_argument("--date", default="")
     daily.add_argument("--output", default="")
@@ -3206,6 +3223,8 @@ def main() -> int:
                 emit_json({"ok": True, "result": enforcer.reconcile_task_statuses(args)})
             elif args.command == "planner-summary":
                 emit_json({"ok": True, "summary": enforcer.planner_summary(args)})
+            elif args.command == "task-capability-coverage":
+                emit_json({"ok": True, "summary": enforcer.task_capability_coverage(args)})
             elif args.command == "daily-summary":
                 emit_json({"ok": True, "summary": enforcer.daily_summary(args)})
             elif args.command == "task-report":

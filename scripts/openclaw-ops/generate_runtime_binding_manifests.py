@@ -36,7 +36,12 @@ def write_text_if_changed(path: Path, content: str) -> bool:
 
 
 def render_agent_index_md(items: list[dict[str, JsonValue]]) -> str:
-    lines = ["# Agent Index", ""]
+    lines = [
+        "# Agent Index",
+        "",
+        "> Generated file by `scripts/openclaw-ops/generate_runtime_binding_manifests.py`. Do not edit manually.",
+        "",
+    ]
     for item in items:
         allow_agents = [str(value) for value in expect_list(item.get("allowAgents", []), "allowAgents")]
         lines.extend(
@@ -131,15 +136,46 @@ def build_hook_event_matrix(report: dict[str, JsonValue]) -> dict[str, JsonValue
     }
 
 
+def build_cron_agent_capability_matrix(report: dict[str, JsonValue]) -> dict[str, JsonValue]:
+    agent_index = {
+        str(item["agent_id"]): expect_dict(item, "agents[]")
+        for item in expect_list(report["agents"], "agents")
+    }
+    jobs: list[dict[str, JsonValue]] = []
+    for raw_binding in expect_list(report["cron_agent_bindings"], "cron_agent_bindings"):
+        binding = expect_dict(raw_binding, "cron_agent_bindings[]")
+        agent_id = str(binding["agent_id"])
+        agent = agent_index.get(agent_id, {})
+        jobs.append(
+            {
+                "job_id": str(binding["job_id"]),
+                "job_name": str(binding["job_name"]),
+                "schedule": str(binding["schedule"]),
+                "agent_id": agent_id,
+                "declared_exists": bool(binding["declared_exists"]),
+                "agent_exists": bool(binding["agent_exists"]),
+                "capability_mode": ("role_only" if bool(agent.get("role_only", False)) else "skill_backed"),
+                "declared_skills": [str(value) for value in expect_list(agent.get("declared_skills", []), "declared_skills")],
+                "allow_agents": [str(value) for value in expect_list(agent.get("allow_agents", []), "allow_agents")],
+            }
+        )
+    return {
+        "source_report": "scripts/openclaw-ops/inspect_runtime_bindings.py",
+        "jobs": jobs,
+    }
+
+
 def generate_runtime_binding_manifests(repo_root: Path = ROOT) -> list[str]:
     report = build_runtime_bindings_report(repo_root)
     changed_files: list[str] = []
     agent_manifest = build_agent_capability_manifest(report)
     hook_matrix = build_hook_event_matrix(report)
+    cron_matrix = build_cron_agent_capability_matrix(report)
     agent_index_items = build_agent_index_items(repo_root)
     outputs: list[tuple[Path, dict[str, JsonValue] | list[dict[str, JsonValue]]]] = [
         (repo_root / "agents/agent_capability_manifest.json", agent_manifest),
         (repo_root / "hooks/index/hook_event_matrix.json", hook_matrix),
+        (repo_root / "cron/index/cron_agent_capability_matrix.json", cron_matrix),
         (repo_root / "agents/agent_index.json", agent_index_items),
     ]
     for path, payload in outputs:

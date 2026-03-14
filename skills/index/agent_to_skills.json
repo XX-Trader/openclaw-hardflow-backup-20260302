@@ -7,8 +7,7 @@
       "result-synthesizer",
       "intelligent-router",
       "task-decomposer",
-      "codex",
-      "using-superpowers"
+      "codex"
     ],
     "source": {
       "matrix": [
@@ -18,8 +17,7 @@
         "result-synthesizer",
         "intelligent-router",
         "task-decomposer",
-        "codex",
-        "using-superpowers"
+        "codex"
       ],
       "soul": [
         "agent-manager",
@@ -28,8 +26,7 @@
         "result-synthesizer",
         "intelligent-router",
         "task-decomposer",
-        "codex",
-        "using-superpowers"
+        "codex"
       ]
     }
   },

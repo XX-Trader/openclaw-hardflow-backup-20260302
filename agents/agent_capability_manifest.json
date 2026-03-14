@@ -29,12 +29,9 @@
         "result-synthesizer",
         "intelligent-router",
         "task-decomposer",
-        "codex",
-        "using-superpowers"
+        "codex"
       ],
-      "missing_skills": [
-        "using-superpowers"
-      ],
+      "missing_skills": [],
       "soul_skills": [
         "agent-manager",
         "requirements-clarity",
@@ -42,16 +39,17 @@
         "result-synthesizer",
         "intelligent-router",
         "task-decomposer",
-        "codex",
-        "using-superpowers"
+        "codex"
       ],
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -90,10 +88,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -131,10 +131,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -177,10 +179,12 @@
       ],
       "capability_mode": "skill_backed",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -212,10 +216,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -245,10 +251,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -278,10 +286,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -311,10 +321,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -336,10 +348,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "role_only",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -360,10 +374,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "role_only",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -384,10 +400,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "role_only",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -407,10 +425,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "role_only",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true
@@ -428,10 +448,12 @@
       "runtime_skill_overrides": [],
       "capability_mode": "role_only",
       "hook_events_affected": [
+        "agent:bootstrap",
         "command",
         "command:new",
         "command:reset",
-        "command:stop"
+        "command:stop",
+        "gateway:startup"
       ],
       "has_by_agent_doc": true,
       "has_soul_doc": true

@@ -15,8 +15,7 @@
         "result-synthesizer",
         "intelligent-router",
         "task-decomposer",
-        "codex",
-        "using-superpowers"
+        "codex"
       ]
     },
     "coordinator": {

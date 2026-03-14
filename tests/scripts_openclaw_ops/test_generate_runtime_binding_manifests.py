@@ -46,6 +46,9 @@ class GenerateRuntimeBindingManifestsTests(unittest.TestCase):
             hook_matrix = json.loads(
                 (repo_root / "hooks/index/hook_event_matrix.json").read_text(encoding="utf-8")
             )
+            cron_matrix = json.loads(
+                (repo_root / "cron/index/cron_agent_capability_matrix.json").read_text(encoding="utf-8")
+            )
             agent_index = json.loads((repo_root / "agents/agent_index.json").read_text(encoding="utf-8"))
             agent_index_md = (repo_root / "agents/agent_index.md").read_text(encoding="utf-8")
 
@@ -54,6 +57,7 @@ class GenerateRuntimeBindingManifestsTests(unittest.TestCase):
             [
                 "agents/agent_capability_manifest.json",
                 "hooks/index/hook_event_matrix.json",
+                "cron/index/cron_agent_capability_matrix.json",
                 "agents/agent_index.json",
                 "agents/agent_index.md",
             ],
@@ -65,13 +69,27 @@ class GenerateRuntimeBindingManifestsTests(unittest.TestCase):
         self.assertEqual(agents["main"]["missing_skills"], ["using-superpowers"])
         self.assertEqual(agents["frontend-dev"]["runtime_skill_overrides"][0]["runtime_skill"], "frontend-design-ultimate")
         self.assertEqual(agents["web-agent"]["capability_mode"], "role_only")
-        self.assertEqual(agents["main"]["hook_events_affected"], ["command:new", "command:stop"])
+        self.assertEqual(
+            agents["main"]["hook_events_affected"],
+            ["agent:bootstrap", "command", "command:new", "command:reset", "command:stop", "gateway:startup"],
+        )
 
-        self.assertEqual(hook_matrix["events"]["command:new"], ["hardflow-policy-enforcer"])
+        self.assertEqual(hook_matrix["events"]["agent:bootstrap"], ["bootstrap-extra-files"])
+        self.assertEqual(hook_matrix["events"]["command"], ["command-logger"])
+        self.assertEqual(hook_matrix["events"]["command:new"], ["hardflow-policy-enforcer", "session-memory"])
+        self.assertEqual(hook_matrix["events"]["command:reset"], ["session-memory"])
         self.assertEqual(hook_matrix["events"]["command:stop"], ["hardflow-policy-enforcer"])
+        self.assertEqual(hook_matrix["events"]["gateway:startup"], ["boot-md"])
+
+        self.assertEqual(cron_matrix["jobs"][0]["job_id"], "job-1")
+        self.assertEqual(cron_matrix["jobs"][0]["agent_id"], "main")
+        self.assertEqual(cron_matrix["jobs"][0]["capability_mode"], "skill_backed")
+        self.assertEqual(cron_matrix["jobs"][1]["agent_exists"], False)
 
         self.assertEqual(agent_index[0]["id"], "main")
         self.assertTrue(agent_index[0]["default"])
+        self.assertIn("Generated file", agent_index_md)
+        self.assertIn("Do not edit manually", agent_index_md)
         self.assertIn("## main", agent_index_md)
         self.assertIn("- default: True", agent_index_md)
 

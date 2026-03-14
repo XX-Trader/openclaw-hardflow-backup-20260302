@@ -2425,6 +2425,118 @@ class TaskCenter:
         }
         return sanitize_display_payload(summary) if display_safe else summary
 
+    def task_capability_coverage(
+        self,
+        *,
+        since: str = "",
+        task_type: str = "",
+        assignee: str = "",
+        status: str = "",
+        pool: str = "",
+        display_safe: bool = True,
+    ) -> dict[str, Any]:
+        normalized_since = str(since or "").strip()
+        if normalized_since:
+            parsed_since = parse_utc_iso(normalized_since)
+            if parsed_since is None:
+                raise TaskCenterError(f"invalid since datetime: {normalized_since}")
+            normalized_since = parsed_since.isoformat()
+
+        normalized_task_type = str(task_type or "").strip()
+        normalized_assignee = str(assignee or "").strip()
+        normalized_status = str(status or "").strip()
+        normalized_pool = str(pool or "").strip()
+        filters = ["1 = 1"]
+        params: list[Any] = []
+        if normalized_since:
+            filters.append("created_at >= ?")
+            params.append(normalized_since)
+        if normalized_task_type:
+            filters.append("task_type = ?")
+            params.append(normalized_task_type)
+        if normalized_assignee:
+            filters.append("assignee = ?")
+            params.append(normalized_assignee)
+        if normalized_status:
+            filters.append("status = ?")
+            params.append(normalized_status)
+        if normalized_pool:
+            filters.append("pool = ?")
+            params.append(normalized_pool)
+        where_sql = " AND ".join(filters)
+
+        overview = self.conn.execute(
+            f"""
+            SELECT
+                COUNT(*) AS total_tasks,
+                SUM(
+                    CASE
+                        WHEN TRIM(required_capabilities) != ''
+                          OR TRIM(required_skills) != ''
+                          OR TRIM(allowed_agents) != ''
+                        THEN 1 ELSE 0
+                    END
+                ) AS upgraded_tasks,
+                SUM(CASE WHEN TRIM(required_capabilities) != '' THEN 1 ELSE 0 END) AS with_required_capabilities,
+                SUM(CASE WHEN TRIM(required_skills) != '' THEN 1 ELSE 0 END) AS with_required_skills,
+                SUM(CASE WHEN TRIM(allowed_agents) != '' THEN 1 ELSE 0 END) AS with_allowed_agents
+            FROM tasks
+            WHERE {where_sql}
+            """,
+            params,
+        ).fetchone()
+
+        by_task_type_rows = self.conn.execute(
+            f"""
+            SELECT
+                task_type,
+                COUNT(*) AS total_tasks,
+                SUM(
+                    CASE
+                        WHEN TRIM(required_capabilities) != ''
+                          OR TRIM(required_skills) != ''
+                          OR TRIM(allowed_agents) != ''
+                        THEN 1 ELSE 0
+                    END
+                ) AS upgraded_tasks
+            FROM tasks
+            WHERE {where_sql}
+            GROUP BY task_type
+            ORDER BY total_tasks DESC, task_type ASC
+            """,
+            params,
+        ).fetchall()
+
+        total_tasks = int((overview["total_tasks"] if overview else 0) or 0)
+        upgraded_tasks = int((overview["upgraded_tasks"] if overview else 0) or 0)
+        summary = {
+            "since": normalized_since,
+            "task_type_filter": normalized_task_type,
+            "assignee_filter": normalized_assignee,
+            "status_filter": normalized_status,
+            "pool_filter": normalized_pool,
+            "total_tasks": total_tasks,
+            "upgraded_tasks": upgraded_tasks,
+            "upgrade_ratio_pct": round((upgraded_tasks / total_tasks) * 100.0, 2) if total_tasks else 0.0,
+            "with_required_capabilities": int((overview["with_required_capabilities"] if overview else 0) or 0),
+            "with_required_skills": int((overview["with_required_skills"] if overview else 0) or 0),
+            "with_allowed_agents": int((overview["with_allowed_agents"] if overview else 0) or 0),
+            "by_task_type": [
+                {
+                    "task_type": str(row["task_type"] or ""),
+                    "total_tasks": int(row["total_tasks"] or 0),
+                    "upgraded_tasks": int(row["upgraded_tasks"] or 0),
+                    "upgrade_ratio_pct": (
+                        round((int(row["upgraded_tasks"] or 0) / int(row["total_tasks"] or 0)) * 100.0, 2)
+                        if int(row["total_tasks"] or 0)
+                        else 0.0
+                    ),
+                }
+                for row in by_task_type_rows
+            ],
+        }
+        return sanitize_display_payload(summary) if display_safe else summary
+
     def daily_summary(self, target_date: date, display_safe: bool = True) -> dict[str, Any]:
         tr = iso_day_range(target_date)
 

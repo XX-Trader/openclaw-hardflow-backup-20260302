@@ -14,7 +14,9 @@
    - [2026-03-14-external-pattern-learning-pipeline.md](./plans/2026-03-14-external-pattern-learning-pipeline.md)
 4. 再看实施计划
    - [2026-03-14-agent-skill-hook-implementation-plan.md](./plans/2026-03-14-agent-skill-hook-implementation-plan.md)
-5. 最后看数据契约
+5. 再看验收结果
+   - [2026-03-14-agent-skill-hook-实施验收报告.md](./2026-03-14-agent-skill-hook-实施验收报告.md)
+6. 最后看数据契约
    - [2026-03-14-pattern-card-field-spec.md](./plans/2026-03-14-pattern-card-field-spec.md)
 
 ## 文档分工
@@ -25,6 +27,7 @@
 | `2026-03-14-自我进化工作流问题记录.md` | 运行快照 | 低 | 某个时间点自我进化链路为什么不健康 |
 | `2026-03-14-external-pattern-learning-pipeline.md` | 方案设计 | 中 | 外部模式学习能力应该怎么建设 |
 | `2026-03-14-agent-skill-hook-implementation-plan.md` | 实施顺序 | 高 | 如果现在开始落地，先做什么，后做什么 |
+| `2026-03-14-agent-skill-hook-实施验收报告.md` | 验收结果 | 高 | 这轮治理最终实际落地了什么、怎么验证的 |
 | `2026-03-14-pattern-card-field-spec.md` | 数据契约 | 高 | `PatternCard` 的 JSON 结构和字段定义是什么 |
 | `2026-03-13-workflow-architecture-manifesto.md` | 架构背景 | 高 | 调度清单、能力字段、系统边界的既有定义 |
 | `integration/openclaw-bridge/*.md` | runtime bridge 契约 | 高 | overlay / 官方 surface / hooks / skills / plugin 的边界是什么 |

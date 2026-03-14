@@ -6,17 +6,14 @@
 
 ## 当前进度（2026-03-14）
 
-- Phase 1 到 Phase 6 已完成核心交付。
-- Phase 7 已进入“白名单 enforce”阶段：
-  - `task_executor_runner.py` 保留全量 warn-only 统计
-  - 对高风险任务类型启用执行前强拦截
-  - 当前白名单：
-    - `self_evolution`
-    - `github_web_evolution`
-    - `governance_evolution_context_preflight`
-    - `governance_evolution_optimize`
-    - `governance_evolution_review`
-    - `reviewer_technical_debt`
+- Phase 1 到 Phase 7 已完成，并补齐了收尾缺口。
+- 当前状态：
+  - `task_executor_runner.py` 保留全量 warn-only 统计，并对高风险任务启用严格拦截。
+  - `main` 的缺失 skill 声明已移除，当前 `missing_skills=0`。
+  - builtin hook 事件已纳入 `hook_event_matrix.json`，覆盖 `boot-md`、`bootstrap-extra-files`、`command-logger`、`session-memory`。
+  - preflight 已增加 planner `allowAgents` 自动校验。
+  - 已新增 `task-capability-coverage` 覆盖率统计命令。
+  - 已新增 `cron/index/cron_agent_capability_matrix.json`。
 - 强拦截命中后返回结构化 `need_reassign` 建议，不直接继续调用执行 agent。
 
 这份计划只回答一个问题：
@@ -309,6 +306,7 @@ preflight 首阶段只做告警，不中断执行：
 - `inspect_runtime_bindings.py`
 - `agent_capability_manifest.json`
 - `hook_event_matrix.json`
+- `cron_agent_capability_matrix.json`
 - 一致性校验命令
 
 ### 第二批交付
@@ -331,6 +329,7 @@ openclaw hooks check --json
 openclaw agents list
 python scripts/openclaw-ops/ensure_runtime_skills.py --dry-run --emit-json
 python scripts/openclaw-ops/bootstrap_runtime_agents.py --dry-run
+python scripts/openclaw-ops/policy/policy_enforcer.py task-capability-coverage
 ```
 
 进入任务层阶段后补充：
@@ -387,6 +386,7 @@ python -m unittest tests.scripts_openclaw_ops.test_task_executor_output_contract
 
 - [2026-03-14-doc-map-agent-workflow.md](../2026-03-14-doc-map-agent-workflow.md)
 - [2026-03-14-agent-skill-hook-绑定现状与优化清单.md](../2026-03-14-agent-skill-hook-绑定现状与优化清单.md)
+- [2026-03-14-agent-skill-hook-实施验收报告.md](../2026-03-14-agent-skill-hook-实施验收报告.md)
 - [2026-03-14-external-pattern-learning-pipeline.md](./2026-03-14-external-pattern-learning-pipeline.md)
 - [2026-03-14-pattern-card-field-spec.md](./2026-03-14-pattern-card-field-spec.md)
 - [2026-03-13-workflow-architecture-manifesto.md](./2026-03-13-workflow-architecture-manifesto.md)

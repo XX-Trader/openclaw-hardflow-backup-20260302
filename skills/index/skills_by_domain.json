@@ -36,8 +36,7 @@
     "requirements-clarity",
     "result-synthesizer",
     "smart-workflow",
-    "task-decomposer",
-    "using-superpowers"
+    "task-decomposer"
   ],
   "quality": [
     "playwright-interactive",

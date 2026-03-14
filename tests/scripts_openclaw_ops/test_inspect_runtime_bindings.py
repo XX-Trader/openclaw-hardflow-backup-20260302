@@ -246,8 +246,12 @@ class InspectRuntimeBindingsTests(unittest.TestCase):
         self.assertEqual(agents["main"]["soul_only_skills"], [])
 
         hook_events = report["hook_events"]
-        self.assertEqual(hook_events["command:new"], ["hardflow-policy-enforcer"])
+        self.assertEqual(hook_events["agent:bootstrap"], ["bootstrap-extra-files"])
+        self.assertEqual(hook_events["command"], ["command-logger"])
+        self.assertEqual(hook_events["command:new"], ["hardflow-policy-enforcer", "session-memory"])
+        self.assertEqual(hook_events["command:reset"], ["session-memory"])
         self.assertEqual(hook_events["command:stop"], ["hardflow-policy-enforcer"])
+        self.assertEqual(hook_events["gateway:startup"], ["boot-md"])
 
         runtime_conflicts = report["runtime_skill_conflicts"]
         self.assertEqual(len(runtime_conflicts), 1)
@@ -280,7 +284,7 @@ class InspectRuntimeBindingsTests(unittest.TestCase):
         self.assertEqual(exit_code, 0)
         report = json.loads(stdout.getvalue())
         self.assertEqual(report["summary"]["agent_count"], 3)
-        self.assertEqual(report["summary"]["hook_count"], 2)
+        self.assertEqual(report["summary"]["hook_count"], 5)
         self.assertEqual(report["summary"]["cron_binding_count"], 2)
 
 

@@ -1,0 +1,255 @@
+{
+  "source_report": "scripts/openclaw-ops/inspect_runtime_bindings.py",
+  "jobs": [
+    {
+      "job_id": "fd8ae471-69f7-4bb5-9d2e-46aa26b092f1",
+      "job_name": "log-watcher agent（双项目）",
+      "schedule": "900000",
+      "agent_id": "ops-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "optimization-agent",
+        "project-agent"
+      ]
+    },
+    {
+      "job_id": "57acbf75-0b04-461d-a888-ca02c70fc5d1",
+      "job_name": "agent-factory 自动创建(P1/P2)",
+      "schedule": "1800000",
+      "agent_id": "agent-factory",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "optimization-agent",
+        "project-agent",
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "8752680b-17d4-4a95-8f04-1360fc346fa9",
+      "job_name": "ops 汇总（cron+todo+done）",
+      "schedule": "1800000",
+      "agent_id": "ops-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "optimization-agent",
+        "project-agent"
+      ]
+    },
+    {
+      "job_id": "948d7307-6941-44ee-a8aa-57da767a31b7",
+      "job_name": "optimization-agent 治理巡检",
+      "schedule": "11 2,8,14,20 * * *",
+      "agent_id": "optimization-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "project-agent",
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "22b1712a-ff4a-4502-bce6-4e39c44cbe9f",
+      "job_name": "optimize 自我进化总结",
+      "schedule": "37 4 * * *",
+      "agent_id": "optimization-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "project-agent",
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "7e12c6d4-adb0-4ad4-83a6-58bffec8eb53",
+      "job_name": "optimize 全量校准",
+      "schedule": "23 3 */14 * *",
+      "agent_id": "optimization-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "project-agent",
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "8f9102f4-d62c-4a01-85ef-1d393e2244de",
+      "job_name": "optimize 频率策略管理",
+      "schedule": "11 4 * * *",
+      "agent_id": "optimization-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "project-agent",
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "16cb8d03-beb9-4697-927d-35952353bf8e",
+      "job_name": "TODO 巡检（15分钟）",
+      "schedule": "900000",
+      "agent_id": "ops-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "optimization-agent",
+        "project-agent"
+      ]
+    },
+    {
+      "job_id": "2ce5fe63-8316-4503-95e4-48515042b453",
+      "job_name": "daily_todo_digest_daily",
+      "schedule": "0 0 * * *",
+      "agent_id": "ops-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "optimization-agent",
+        "project-agent"
+      ]
+    },
+    {
+      "job_id": "e943eaf3-9049-4429-b71d-12b2dbe29178",
+      "job_name": "experience_maintain_daily",
+      "schedule": "15 1 * * *",
+      "agent_id": "optimization-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "project-agent",
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "a5057f0a-3734-44c7-8844-f82d72aacd12",
+      "job_name": "experience_maintain_weekly",
+      "schedule": "30 1 * * 1",
+      "agent_id": "optimization-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "project-agent",
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "270256a7-d119-41d0-b923-42f8dd4faf73",
+      "job_name": "experience_maintain_monthly",
+      "schedule": "45 1 1 * *",
+      "agent_id": "optimization-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "project-agent",
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "5797cd5b-5539-4e95-8d58-dc65a4633ec5",
+      "job_name": "project_index_maintainer_30m",
+      "schedule": "*/30 * * * *",
+      "agent_id": "project-agent",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "role_only",
+      "declared_skills": [],
+      "allow_agents": [
+        "web-agent"
+      ]
+    },
+    {
+      "job_id": "d3859fd5-3ea2-4ee5-ab1d-7fd526f26722",
+      "job_name": "reviewer_git_update_hourly",
+      "schedule": "3600000",
+      "agent_id": "reviewer",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "skill_backed",
+      "declared_skills": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ],
+      "allow_agents": []
+    },
+    {
+      "job_id": "0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a",
+      "job_name": "reviewer_incremental_daily_4am",
+      "schedule": "0 4 * * *",
+      "agent_id": "reviewer",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "skill_backed",
+      "declared_skills": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ],
+      "allow_agents": []
+    },
+    {
+      "job_id": "a9c4a133-bf5b-4b91-8d89-ec97995f95f9",
+      "job_name": "reviewer_recurring_bi_daily",
+      "schedule": "20 4 */2 * *",
+      "agent_id": "reviewer",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "skill_backed",
+      "declared_skills": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ],
+      "allow_agents": []
+    },
+    {
+      "job_id": "771fda88-c8ff-49dc-a4da-6f57167c1d26",
+      "job_name": "reviewer_weekly_structure_review",
+      "schedule": "40 4 * * 1",
+      "agent_id": "reviewer",
+      "declared_exists": true,
+      "agent_exists": true,
+      "capability_mode": "skill_backed",
+      "declared_skills": [
+        "requesting-code-review",
+        "receiving-code-review",
+        "systematic-debugging",
+        "verification-before-completion",
+        "openclaw-security-audit"
+      ],
+      "allow_agents": []
+    }
+  ]
+}

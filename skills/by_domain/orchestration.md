@@ -8,5 +8,3 @@
 - result-synthesizer (present) | agents: main
 - smart-workflow (present) | agents: coordinator, main
 - task-decomposer (present) | agents: coordinator, main
-- using-superpowers (missing) | agents: main
-

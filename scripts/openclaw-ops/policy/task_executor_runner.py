@@ -167,7 +167,11 @@ def load_agent_capability_index(manifest_file: Path) -> dict[str, dict[str, Any]
     return index
 
 
-def build_task_preflight(task: dict[str, Any], capability_index: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def build_task_preflight(
+    task: dict[str, Any],
+    capability_index: dict[str, dict[str, Any]],
+    planner_id: str = "",
+) -> dict[str, Any]:
     assignee = str(task.get("assignee", "")).strip() or "backend-dev"
     required_skills = split_list(task.get("required_skills"))
     required_capabilities = split_list(task.get("required_capabilities"))
@@ -178,12 +182,17 @@ def build_task_preflight(task: dict[str, Any], capability_index: dict[str, dict[
     capability_mode = str(agent_profile.get("capability_mode", "")).strip()
     if capability_mode:
         capability_tokens.add(capability_mode)
+    normalized_planner_id = str(planner_id or "").strip()
+    planner_profile = capability_index.get(normalized_planner_id, {}) if normalized_planner_id else {}
+    planner_allow_agents = split_list(planner_profile.get("allow_agents", []))
 
     warnings: list[str] = []
     if not agent_profile:
         warnings.append("assignee_not_registered")
     if allowed_agents and assignee not in allowed_agents:
         warnings.append("assignee_not_allowed")
+    if normalized_planner_id and planner_allow_agents and assignee not in planner_allow_agents:
+        warnings.append("assignee_not_in_planner_allowlist")
 
     declared_skill_set = set(declared_skills)
     missing_skills = [item for item in required_skills if item not in declared_skill_set]
@@ -192,12 +201,22 @@ def build_task_preflight(task: dict[str, Any], capability_index: dict[str, dict[
         warnings.append("required_skills_unmet")
     if missing_capabilities:
         warnings.append("required_capabilities_unmet")
+    recommended_agents = list(allowed_agents)
+    if planner_allow_agents:
+        if recommended_agents:
+            planner_intersection = [item for item in recommended_agents if item in planner_allow_agents]
+            recommended_agents = planner_intersection or list(planner_allow_agents)
+        else:
+            recommended_agents = list(planner_allow_agents)
 
     return {
         "ok": not warnings,
         "assignee": assignee,
+        "planner_id": normalized_planner_id,
         "warnings": warnings,
         "allowed_agents": allowed_agents,
+        "planner_allow_agents": planner_allow_agents,
+        "recommended_agents": recommended_agents,
         "required_skills": required_skills,
         "required_capabilities": required_capabilities,
         "missing_skills": missing_skills,
@@ -263,7 +282,7 @@ def build_preflight_reassign_payload(task: dict[str, Any], preflight: dict[str, 
     task_type = str(task.get("task_type", "")).strip()
     assignee = str(task.get("assignee", "")).strip() or "backend-dev"
     warnings = split_list(preflight.get("warnings"))
-    recommended_agents = split_list(preflight.get("allowed_agents"))
+    recommended_agents = split_list(preflight.get("recommended_agents")) or split_list(preflight.get("allowed_agents"))
     missing_skills = split_list(preflight.get("missing_skills"))
     missing_capabilities = split_list(preflight.get("missing_capabilities"))
     summary_parts = [
@@ -1083,7 +1102,7 @@ def main() -> int:
         for task in tasks:
             task_id = str(task.get("task_id", "")).strip()
             assignee = str(task.get("assignee", "")).strip() or "backend-dev"
-            preflight = build_task_preflight(task, capability_index)
+            preflight = build_task_preflight(task, capability_index, planner_id=str(args.planner_id))
             stage = default_stage(assignee)
             task_type = str(task.get("task_type", "")).strip()
             workflow_alert_tokens = extract_workflow_failure_tokens_from_task(

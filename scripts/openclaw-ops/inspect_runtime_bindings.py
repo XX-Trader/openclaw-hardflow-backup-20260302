@@ -16,7 +16,13 @@ JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 ROOT = Path(__file__).resolve().parents[2]
 TZ = timezone(timedelta(hours=8))
-BUILTIN_HOOKS = {"boot-md", "command-logger", "session-memory"}
+BUILTIN_HOOK_EVENTS: dict[str, list[str]] = {
+    "boot-md": ["gateway:startup"],
+    "bootstrap-extra-files": ["agent:bootstrap"],
+    "command-logger": ["command"],
+    "session-memory": ["command:new", "command:reset"],
+}
+BUILTIN_HOOKS = set(BUILTIN_HOOK_EVENTS)
 SKILL_STATUS_RE = re.compile(r"^- ([A-Za-z0-9_.-]+) \((present|missing)\)$")
 CRON_BINDING_RE = re.compile(
     r"^- (?P<job_id>[^|]+?) \| (?P<job_name>[^|]+?) \| "
@@ -314,14 +320,15 @@ def build_hook_reports(
 ) -> tuple[list[dict[str, JsonValue]], dict[str, list[str]]]:
     hooks: list[dict[str, JsonValue]] = []
     event_map: dict[str, list[str]] = {}
-    for hook_name in sorted(hook_entries):
-        hook_entry = expect_dict(hook_entries[hook_name], f"hooks.internal.entries.{hook_name}")
+    hook_names = sorted(set(hook_entries).union(BUILTIN_HOOKS))
+    for hook_name in hook_names:
+        hook_entry = expect_dict(hook_entries.get(hook_name, {}), f"hooks.internal.entries.{hook_name}")
         hook_doc = hook_docs.get(hook_name, HookDoc(name=hook_name, events=[]))
-        hook_events = ordered_unique(hook_doc.events)
+        hook_events = ordered_unique(hook_doc.events or BUILTIN_HOOK_EVENTS.get(hook_name, []))
         hooks.append(
             {
                 "name": hook_name,
-                "enabled": bool(hook_entry.get("enabled", False)),
+                "enabled": bool(hook_entry.get("enabled", True if hook_name in BUILTIN_HOOKS else False)),
                 "classification": "builtin" if hook_name in BUILTIN_HOOKS else "custom",
                 "events": hook_events,
                 "has_doc": hook_name in hook_docs,

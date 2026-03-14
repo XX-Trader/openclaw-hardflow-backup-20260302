@@ -1,5 +1,7 @@
 # Agent Index
 
+> Generated file by `scripts/openclaw-ops/generate_runtime_binding_manifests.py`. Do not edit manually.
+
 ## main
 - name: 大总管
 - default: True

@@ -42,6 +42,15 @@
 
 ## 当前结论
 
+## 状态更新（2026-03-14 晚）
+
+- `main` 已移除 `using-superpowers` 声明，当前仓库巡检 `missing_skills=0`
+- 零 skill agent 已在 manifest 中显式标注 `capability_mode=role_only`
+- runtime hook 矩阵已覆盖 builtin hook，包括 `boot-md`、`bootstrap-extra-files`、`command-logger`、`session-memory`
+- 任务层 `required_capabilities / required_skills / allowed_agents` 已落地，执行器 preflight 已启用
+- planner `allowAgents` 已接入 preflight 自动校验
+- 已新增 `task-capability-coverage` 统计命令与 `cron/index/cron_agent_capability_matrix.json`
+
 ### 1. 任务不是直接绑定 skill
 
 当前执行链路是：
@@ -101,7 +110,7 @@
 
 | agent | 声明 skills | 备注 |
 | --- | --- | --- |
-| `main` | `agent-manager`, `requirements-clarity`, `smart-workflow`, `result-synthesizer`, `intelligent-router`, `task-decomposer`, `codex`, `using-superpowers` | `using-superpowers` 当前缺失 |
+| `main` | `agent-manager`, `requirements-clarity`, `smart-workflow`, `result-synthesizer`, `intelligent-router`, `task-decomposer`, `codex` | 入口协调 |
 | `coordinator` | `task-decomposer`, `smart-workflow`, `dispatching-parallel-agents`, `parallel-executor`, `agent-manager`, `requirements-clarity` | 规划与分发 |
 | `backend-dev` | `feature-development`, `systematic-debugging`, `auto-fix`, `verification-before-completion`, `mcp-builder`, `using-git-worktrees` | 执行型 |
 | `frontend-dev` | `frontend-design`, `feature-development`, `ui-ux-pro-max`, `verification-before-completion`, `auto-fix`, `playwright-interactive`, `webapp-testing`, `using-git-worktrees` | 执行型 |
@@ -135,6 +144,12 @@
   - 事件：`command:new`, `command:reset`, `command:stop`
 
 ## 已确认问题
+
+说明：
+
+- 以下 8 项是实施前的原始问题清单。
+- 其中“默认入口索引漂移、缺失 skill、零 skill agent 机器声明、runtime 替换映射、任务层能力字段、hook 事件矩阵、planner allowlist 校验”已在 2026-03-14 晚完成收口。
+- 保留本节是为了追溯问题来源，而不是表示这些问题仍然未处理。
 
 ### 1. 绑定真值分散，且存在索引漂移
 

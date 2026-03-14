@@ -4,14 +4,27 @@
       "name": "boot-md",
       "enabled": true,
       "classification": "builtin",
-      "events": [],
+      "events": [
+        "gateway:startup"
+      ],
+      "has_doc": false
+    },
+    {
+      "name": "bootstrap-extra-files",
+      "enabled": true,
+      "classification": "builtin",
+      "events": [
+        "agent:bootstrap"
+      ],
       "has_doc": false
     },
     {
       "name": "command-logger",
       "enabled": true,
       "classification": "builtin",
-      "events": [],
+      "events": [
+        "command"
+      ],
       "has_doc": false
     },
     {
@@ -57,25 +70,37 @@
       "name": "session-memory",
       "enabled": true,
       "classification": "builtin",
-      "events": [],
+      "events": [
+        "command:new",
+        "command:reset"
+      ],
       "has_doc": false
     }
   ],
   "events": {
+    "agent:bootstrap": [
+      "bootstrap-extra-files"
+    ],
     "command": [
+      "command-logger",
       "hardflow-audit"
     ],
     "command:new": [
       "hardflow-command-guard",
-      "hardflow-policy-enforcer"
+      "hardflow-policy-enforcer",
+      "session-memory"
     ],
     "command:reset": [
       "hardflow-command-guard",
-      "hardflow-policy-enforcer"
+      "hardflow-policy-enforcer",
+      "session-memory"
     ],
     "command:stop": [
       "hardflow-policy-enforcer",
       "hardflow-stop-gate-reminder"
+    ],
+    "gateway:startup": [
+      "boot-md"
     ]
   }
 }

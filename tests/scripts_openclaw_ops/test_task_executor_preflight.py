@@ -103,6 +103,41 @@ class TaskExecutorPreflightTests(unittest.TestCase):
         self.assertEqual(preflight["missing_skills"], [])
         self.assertEqual(preflight["missing_capabilities"], [])
 
+    def test_preflight_warns_when_assignee_outside_planner_allowlist(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        capability_index = {
+            "main": {
+                "agent_id": "main",
+                "declared_skills": ["requirements-clarity"],
+                "capability_mode": "skill_backed",
+                "allow_agents": ["frontend-dev"],
+            },
+            "backend-dev": {
+                "agent_id": "backend-dev",
+                "declared_skills": ["feature-development"],
+                "capability_mode": "skill_backed",
+            },
+        }
+        preflight = module.build_task_preflight(
+            {
+                "assignee": "backend-dev",
+                "required_skills": [],
+                "required_capabilities": [],
+                "allowed_agents": [],
+            },
+            capability_index,
+            planner_id="main",
+        )
+
+        self.assertFalse(preflight["ok"])
+        self.assertIn("assignee_not_in_planner_allowlist", preflight["warnings"])
+        self.assertEqual(preflight["planner_id"], "main")
+        self.assertEqual(preflight["recommended_agents"], ["frontend-dev"])
+
     def test_preflight_rollup_tracks_warning_and_block_counts(self):
         module = load_module(
             "task_executor_runner",

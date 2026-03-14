@@ -1,8 +1,8 @@
 # main
 
-- skills_count: 8
-- source.matrix_count: 8
-- source.soul_count: 8
+- skills_count: 7
+- source.matrix_count: 7
+- source.soul_count: 7
 
 ## Skills
 
@@ -13,5 +13,3 @@
 - intelligent-router (present)
 - task-decomposer (present)
 - codex (present)
-- using-superpowers (missing)
-

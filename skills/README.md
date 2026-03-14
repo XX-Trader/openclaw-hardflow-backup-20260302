@@ -10,10 +10,6 @@
 ## Summary
 
 - agents_total: 13
-- used_skills_total: 36
+- used_skills_total: 35
 - existing_skills_total: 35
-- missing_skills_total: 1
-
-## Missing Skills
-
-- using-superpowers
+- missing_skills_total: 0

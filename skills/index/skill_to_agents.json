@@ -102,9 +102,6 @@
     "frontend-dev",
     "backend-dev"
   ],
-  "using-superpowers": [
-    "main"
-  ],
   "verification-before-completion": [
     "frontend-dev",
     "backend-dev",
