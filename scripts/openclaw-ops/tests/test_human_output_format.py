@@ -98,10 +98,10 @@ class HumanOutputFormatTests(unittest.TestCase):
                     "failed_jobs": [
                         {
                             "id": "job-1",
-                            "name": "task_executor_10m",
+                            "name": "ops_git_sync_push",
                             "consecutive_errors": 2,
-                            "last_status": "failed",
-                            "last_error": "timed out",
+                            "last_status": "error",
+                            "last_error": "Unhandled stop reason: network_error",
                         }
                     ]
                 },
@@ -115,6 +115,8 @@ class HumanOutputFormatTests(unittest.TestCase):
         output = render_human_view(event["views"]["human"])
         self.assertIn("2026-03-14 07:28:58 UTC+8 增量巡检：发现 2 个工作流失败，0 个持续失败。", output)
         self.assertIn("- 任务：cron:ops-incremental-monitor", output)
+        self.assertIn("Git 同步推送：网络错误", output)
+        self.assertNotIn("ops_git_sync_push", output)
         self.assertNotIn("- 时间:", output)
 
     def test_cron_message_requires_raw_cn_output_passthrough(self) -> None:

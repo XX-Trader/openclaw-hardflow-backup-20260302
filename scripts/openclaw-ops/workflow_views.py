@@ -13,6 +13,27 @@ PARTIAL_STATUSES = {"partial", "escalated"}
 FAILED_STATUSES = {"failed", "error", "timeout"}
 IGNORED_STATUSES = {"skipped", "needs_clarification", "waiting_human_confirm"}
 NOTIFY_ON_MODES = {"error", "activity", "always"}
+WORKFLOW_JOB_LABELS = {
+    "ops_git_sync_push": "Git 同步推送",
+    "web_intel_review_optimization_4h": "Web 情报优化复核",
+    "web_intel_review_project_docs_6h": "项目文档情报复核",
+    "project_index_maintainer_30m": "项目索引维护",
+    "reviewer_incremental_daily_4am": "每日增量审查",
+    "reviewer_git_update_hourly": "每小时代码审查",
+    "reviewer_recurring_bi_daily": "双日复发问题审查",
+    "reviewer_weekly_structure_review": "每周结构审查",
+    "ops_incremental_monitor": "增量巡检",
+    "ops_full_calibration": "全量巡检",
+    "ops_daily_summary": "每日巡检汇总",
+    "ops_system_schedule_audit": "系统定时审计",
+    "ops_daily_work_report_dingtalk": "日报汇总",
+    "ops_self_evolution_weekly_todo": "每周自进化复盘",
+    "ops_governance_evolution_incremental": "治理进化扫描",
+    "ops_github_web_evolution_incremental": "GitHub 生态扫描",
+    "ops_auto_update_install_hourly": "自动更新安装",
+    "todo_patrol_15m": "待办巡检分发",
+    "task_executor_10m": "任务执行器",
+}
 
 
 def normalize_notify_mode(value: str) -> str:
@@ -233,6 +254,27 @@ def describe_selected_task(item: dict[str, Any]) -> str:
     if stage_label:
         owner = f"{owner} / {stage_label}"
     return f"{owner}：{subject}（{status_label}）"
+
+
+def humanize_workflow_job_name(name: Any) -> str:
+    normalized = str(name or "").strip()
+    if not normalized:
+        return "未命名工作流"
+    if normalized in WORKFLOW_JOB_LABELS:
+        return WORKFLOW_JOB_LABELS[normalized]
+    return compact_task_text(normalized, 48)
+
+
+def humanize_workflow_failure_reason(item: dict[str, Any]) -> str:
+    last_error = str(item.get("last_error", "")).strip()
+    signal = _classify_failure_signal(last_error)
+    if signal == "timeout":
+        return "执行超时"
+    if signal == "network_error":
+        return "网络错误"
+    if signal == "missing_detail":
+        return "缺少明确错误详情"
+    return compact_task_text(last_error, 88) or "未提供失败原因"
 
 
 def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify_on: str) -> dict[str, Any]:
@@ -469,13 +511,18 @@ def build_ops_scan_event(record: dict[str, Any]) -> dict[str, Any]:
         for idx, item in enumerate(failed_jobs[:3], start=1):
             if not isinstance(item, dict):
                 continue
+            detail_parts: list[str] = []
+            consecutive_errors = int(item.get("consecutive_errors", 0) or 0)
+            if consecutive_errors > 0:
+                detail_parts.append(f"连续失败 {consecutive_errors} 次")
+            last_status = str(item.get("last_status", "")).strip()
+            if last_status:
+                detail_parts.append(f"状态 {last_status}")
+            detail_text = f"（{'，'.join(detail_parts)}）" if detail_parts else ""
             lines.append(
-                f"  {idx}. {str(item.get('name', '')).strip() or '-'} "
-                f"（{str(item.get('id', '')).strip() or '-'}，连续失败 {int(item.get('consecutive_errors', 0) or 0)} 次，"
-                f"状态 {str(item.get('last_status', '')).strip() or '-'}）"
+                f"  {idx}. {humanize_workflow_job_name(item.get('name', ''))}："
+                f"{humanize_workflow_failure_reason(item)}{detail_text}"
             )
-            if str(item.get("last_error", "")).strip():
-                lines.append(f"     原因：{humanize_executor_detail(str(item.get('last_error', ''))[:160])}")
     if scan_errors:
         lines.append("- 扫描错误：")
         for idx, err in enumerate(scan_errors[:3], start=1):

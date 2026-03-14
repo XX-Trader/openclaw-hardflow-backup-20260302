@@ -651,6 +651,7 @@ openclaw gateway run
   - `原因解析`: grouped root-cause counts such as `任务仅部分完成 2 个`
   - `修复进展`: executed/closed/partial/failed counts in one line
 - For selected/skipped executor tasks, human-facing output now prefers task requirement summaries instead of raw `todo-...` IDs, so operators can directly see which tasks were selected and why they were skipped.
+- For failed workflow alerts, human-facing output now prefers the task purpose plus the failure reason (for example `Git 同步推送：网络错误`) instead of exposing only internal cron job names.
 - `ops_cron_runner.py` incremental/full alerts now add:
   - `结论`: how many workflow jobs are still failing, and how many are stale/unrecovered
   - `原因解析`: grouped failure causes such as timeout, network error, auth error, missing detail
