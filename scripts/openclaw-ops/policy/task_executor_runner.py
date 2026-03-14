@@ -56,6 +56,14 @@ RETRYABLE_AGENT_ERROR_PATTERNS = (
     "status=429",
     "failovererror: ⚠️ api rate limit reached",
 )
+DEFAULT_STRICT_PREFLIGHT_TASK_TYPES = (
+    "self_evolution",
+    "github_web_evolution",
+    "governance_evolution_context_preflight",
+    "governance_evolution_optimize",
+    "governance_evolution_review",
+    "reviewer_technical_debt",
+)
 
 
 BENIGN_STDERR_PATTERNS = (
@@ -192,6 +200,93 @@ def build_task_preflight(task: dict[str, Any], capability_index: dict[str, dict[
         "allowed_agents": allowed_agents,
         "required_skills": required_skills,
         "required_capabilities": required_capabilities,
+        "missing_skills": missing_skills,
+        "missing_capabilities": missing_capabilities,
+    }
+
+
+def parse_strict_preflight_task_types(raw: Any) -> set[str]:
+    return {item.lower() for item in split_list(raw) if item}
+
+
+def _counter_key(value: Any, default: str) -> str:
+    text = str(value or "").strip()
+    return text or default
+
+
+def _increment_counter(bucket: dict[str, int], key: str) -> None:
+    bucket[key] = int(bucket.get(key, 0) or 0) + 1
+
+
+def record_preflight_observation(
+    summary: dict[str, Any],
+    *,
+    task_type: str,
+    assignee: str,
+    preflight: dict[str, Any],
+    strict_task_types: set[str],
+) -> dict[str, bool]:
+    warnings = split_list(preflight.get("warnings"))
+    normalized_task_type = _counter_key(task_type, "(unknown)")
+    normalized_assignee = _counter_key(assignee, "(unassigned)")
+    has_warnings = bool(warnings)
+    strict_blocked = has_warnings and normalized_task_type.lower() in strict_task_types
+    if not has_warnings:
+        return {"has_warnings": False, "strict_blocked": False}
+
+    summary["preflight_warning_tasks"] = int(summary.get("preflight_warning_tasks", 0) or 0) + 1
+    warning_by_type = summary.setdefault("preflight_warning_by_task_type", {})
+    warning_by_assignee = summary.setdefault("preflight_warning_by_assignee", {})
+    warning_codes = summary.setdefault("preflight_warning_codes", {})
+    if isinstance(warning_by_type, dict):
+        _increment_counter(warning_by_type, normalized_task_type)
+    if isinstance(warning_by_assignee, dict):
+        _increment_counter(warning_by_assignee, normalized_assignee)
+    if isinstance(warning_codes, dict):
+        for code in warnings:
+            _increment_counter(warning_codes, code)
+
+    if strict_blocked:
+        summary["preflight_blocked_tasks"] = int(summary.get("preflight_blocked_tasks", 0) or 0) + 1
+        blocked_by_type = summary.setdefault("preflight_blocked_by_task_type", {})
+        blocked_by_assignee = summary.setdefault("preflight_blocked_by_assignee", {})
+        if isinstance(blocked_by_type, dict):
+            _increment_counter(blocked_by_type, normalized_task_type)
+        if isinstance(blocked_by_assignee, dict):
+            _increment_counter(blocked_by_assignee, normalized_assignee)
+
+    return {"has_warnings": True, "strict_blocked": strict_blocked}
+
+
+def build_preflight_reassign_payload(task: dict[str, Any], preflight: dict[str, Any]) -> dict[str, Any]:
+    task_id = str(task.get("task_id", "")).strip()
+    task_type = str(task.get("task_type", "")).strip()
+    assignee = str(task.get("assignee", "")).strip() or "backend-dev"
+    warnings = split_list(preflight.get("warnings"))
+    recommended_agents = split_list(preflight.get("allowed_agents"))
+    missing_skills = split_list(preflight.get("missing_skills"))
+    missing_capabilities = split_list(preflight.get("missing_capabilities"))
+    summary_parts = [
+        f"high-risk task {task_id or '-'} was blocked before execution",
+        f"assignee={assignee}",
+    ]
+    if task_type:
+        summary_parts.append(f"task_type={task_type}")
+    if missing_skills:
+        summary_parts.append(f"missing_skills={','.join(missing_skills)}")
+    if missing_capabilities:
+        summary_parts.append(f"missing_capabilities={','.join(missing_capabilities)}")
+    if recommended_agents:
+        summary_parts.append(f"recommended_agents={','.join(recommended_agents)}")
+    return {
+        "need_reassign": True,
+        "reason_code": "preflight_strict_blocked",
+        "summary": "; ".join(summary_parts),
+        "task_id": task_id,
+        "task_type": task_type,
+        "current_assignee": assignee,
+        "recommended_agents": recommended_agents,
+        "warnings": warnings,
         "missing_skills": missing_skills,
         "missing_capabilities": missing_capabilities,
     }
@@ -927,6 +1022,11 @@ def main() -> int:
     parser.add_argument("--shared-alert-cooldown-minutes", type=int, default=60)
     parser.add_argument("--agent-max-retries", type=int, default=2)
     parser.add_argument("--agent-retry-delay-sec", type=int, default=20)
+    parser.add_argument(
+        "--strict-preflight-task-types",
+        default=",".join(DEFAULT_STRICT_PREFLIGHT_TASK_TYPES),
+        help="Comma-separated task types that should be blocked when preflight warnings exist.",
+    )
     parser.add_argument("--emit-json", action="store_true")
     args = parser.parse_args()
 
@@ -964,11 +1064,19 @@ def main() -> int:
         "executor_thinking": "auto(by-model)",
         "preflight_manifest": str(Path(args.agent_capability_manifest).expanduser()),
         "preflight_warning_tasks": 0,
+        "preflight_warning_by_task_type": {},
+        "preflight_warning_by_assignee": {},
+        "preflight_warning_codes": {},
+        "preflight_blocked_tasks": 0,
+        "preflight_blocked_by_task_type": {},
+        "preflight_blocked_by_assignee": {},
+        "preflight_strict_task_types": sorted(parse_strict_preflight_task_types(args.strict_preflight_task_types)),
         "results": [],
     }
 
     try:
         capability_index = load_agent_capability_index(Path(args.agent_capability_manifest).expanduser())
+        strict_task_types = parse_strict_preflight_task_types(args.strict_preflight_task_types)
         tasks = select_tasks(enforcer, str(args.only_task_id), max(1, int(args.max_tasks)))
         summary["tasks_selected"] = len(tasks)
 
@@ -1006,8 +1114,14 @@ def main() -> int:
                 "preflight": preflight,
             }
 
-            if preflight["warnings"]:
-                summary["preflight_warning_tasks"] = int(summary.get("preflight_warning_tasks", 0) or 0) + 1
+            preflight_observation = record_preflight_observation(
+                summary,
+                task_type=task_type,
+                assignee=assignee,
+                preflight=preflight,
+                strict_task_types=strict_task_types,
+            )
+            if preflight_observation["has_warnings"]:
                 try:
                     enforcer.db.add_event(
                         task_id=task_id,
@@ -1018,6 +1132,30 @@ def main() -> int:
                     )
                 except Exception:
                     pass
+            if preflight_observation["strict_blocked"]:
+                preflight_reassign = build_preflight_reassign_payload(task, preflight)
+                result.update(
+                    {
+                        "status": "failed",
+                        "reason": "preflight_strict_blocked",
+                        "preflight_enforced": True,
+                        "need_reassign": True,
+                        "preflight_reassign": preflight_reassign,
+                    }
+                )
+                summary["tasks_skipped"] += 1
+                summary["results"].append(result)
+                try:
+                    enforcer.db.add_event(
+                        task_id=task_id,
+                        actor=str(args.actor),
+                        event_type="task_preflight_blocked",
+                        stage="dispatch",
+                        details={"preflight": preflight, "reassign": preflight_reassign},
+                    )
+                except Exception:
+                    pass
+                continue
 
             if bool(task.get("needs_clarification")):
                 result["reason"] = "needs_clarification"

@@ -4,6 +4,21 @@
 
 把当前仓库中分散的 `agent`、`skill`、`hook`、`task assignee` 关系，逐步收敛成“可观测、可生成、可校验、可渐进上线”的治理体系。
 
+## 当前进度（2026-03-14）
+
+- Phase 1 到 Phase 6 已完成核心交付。
+- Phase 7 已进入“白名单 enforce”阶段：
+  - `task_executor_runner.py` 保留全量 warn-only 统计
+  - 对高风险任务类型启用执行前强拦截
+  - 当前白名单：
+    - `self_evolution`
+    - `github_web_evolution`
+    - `governance_evolution_context_preflight`
+    - `governance_evolution_optimize`
+    - `governance_evolution_review`
+    - `reviewer_technical_debt`
+- 强拦截命中后返回结构化 `need_reassign` 建议，不直接继续调用执行 agent。
+
 这份计划只回答一个问题：
 
 如果现在开始真正实施，先做什么，后做什么。

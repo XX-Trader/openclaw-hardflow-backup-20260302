@@ -103,6 +103,73 @@ class TaskExecutorPreflightTests(unittest.TestCase):
         self.assertEqual(preflight["missing_skills"], [])
         self.assertEqual(preflight["missing_capabilities"], [])
 
+    def test_preflight_rollup_tracks_warning_and_block_counts(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        summary = {
+            "preflight_warning_tasks": 0,
+            "preflight_warning_by_task_type": {},
+            "preflight_warning_by_assignee": {},
+            "preflight_warning_codes": {},
+            "preflight_blocked_tasks": 0,
+            "preflight_blocked_by_task_type": {},
+            "preflight_blocked_by_assignee": {},
+        }
+        decision = module.record_preflight_observation(
+            summary,
+            task_type="self_evolution",
+            assignee="backend-dev",
+            preflight={
+                "warnings": ["assignee_not_allowed", "required_skills_unmet"],
+                "missing_skills": ["task-decomposer"],
+                "missing_capabilities": [],
+                "allowed_agents": ["coordinator"],
+            },
+            strict_task_types={"self_evolution"},
+        )
+
+        self.assertTrue(decision["has_warnings"])
+        self.assertTrue(decision["strict_blocked"])
+        self.assertEqual(summary["preflight_warning_tasks"], 1)
+        self.assertEqual(summary["preflight_warning_by_task_type"]["self_evolution"], 1)
+        self.assertEqual(summary["preflight_warning_by_assignee"]["backend-dev"], 1)
+        self.assertEqual(summary["preflight_warning_codes"]["assignee_not_allowed"], 1)
+        self.assertEqual(summary["preflight_warning_codes"]["required_skills_unmet"], 1)
+        self.assertEqual(summary["preflight_blocked_tasks"], 1)
+        self.assertEqual(summary["preflight_blocked_by_task_type"]["self_evolution"], 1)
+        self.assertEqual(summary["preflight_blocked_by_assignee"]["backend-dev"], 1)
+
+    def test_preflight_reassign_payload_prefers_allowed_agents(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        payload = module.build_preflight_reassign_payload(
+            {
+                "task_id": "todo-high-risk-1",
+                "task_type": "governance_evolution_optimize",
+                "assignee": "backend-dev",
+            },
+            {
+                "warnings": ["assignee_not_allowed", "required_capabilities_unmet"],
+                "missing_skills": [],
+                "missing_capabilities": ["role_only"],
+                "allowed_agents": ["optimization-agent"],
+                "required_skills": [],
+                "required_capabilities": ["role_only"],
+            },
+        )
+
+        self.assertTrue(payload["need_reassign"])
+        self.assertEqual(payload["reason_code"], "preflight_strict_blocked")
+        self.assertEqual(payload["recommended_agents"], ["optimization-agent"])
+        self.assertEqual(payload["missing_capabilities"], ["role_only"])
+        self.assertIn("high-risk", payload["summary"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()

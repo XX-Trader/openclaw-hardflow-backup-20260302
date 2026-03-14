@@ -67,12 +67,12 @@ class WorkflowViewsTests(unittest.TestCase):
         text = module.render_human_view(human)
 
         self.assertEqual(event["kind"], "task_executor")
-        self.assertEqual(human["title"], "任务执行异常")
-        self.assertIn("结论: 本轮选中的 3 个任务均未闭环。", text)
-        self.assertIn("原因解析: 任务仅部分完成 2 个；任务执行失败 1 个。", text)
-        self.assertIn("修复进展: 已执行 3/3，已闭环 0，部分推进 2，失败 1。", text)
-        self.assertIn("失败明细:", text)
-        self.assertIn("todo-c", text)
+        self.assertEqual(human["title"], "任务执行器（10分钟）")
+        self.assertIn("选中 3 个任务，未闭环 3 个。", text)
+        self.assertIn("选中 3 个，已执行 3 个，跳过 0 个，未闭环 3 个。", text)
+        self.assertIn("任务仅部分完成", text)
+        self.assertIn("任务执行失败", text)
+        self.assertIn("optimization-agent：未命名任务", text)
 
     def test_task_executor_error_notify_hides_success_run_from_human_view(self):
         module = load_module(
@@ -104,6 +104,43 @@ class WorkflowViewsTests(unittest.TestCase):
 
         self.assertFalse(human["visible"])
         self.assertEqual(module.render_human_view(human), "NO_REPLY")
+
+    def test_task_executor_human_view_explains_preflight_blocked_reassign(self):
+        module = load_module(
+            "workflow_views",
+            "scripts/openclaw-ops/workflow_views.py",
+        )
+
+        summary = {
+            "trigger_task": "cron:task-executor",
+            "started_at": "2026-03-14T07:20:00+00:00",
+            "run_id": "exec-20260314_072000-aaaa1111",
+            "executor_model": "auto(per-assignee)",
+            "tasks_selected": 1,
+            "tasks_executed": 0,
+            "tasks_skipped": 1,
+            "preflight_warning_tasks": 1,
+            "preflight_blocked_tasks": 1,
+            "results": [
+                {
+                    "task_id": "todo-risk-1",
+                    "assignee": "backend-dev",
+                    "task_type": "governance_evolution_optimize",
+                    "status": "failed",
+                    "reason": "preflight_strict_blocked",
+                    "preflight_reassign": {
+                        "recommended_agents": ["optimization-agent"],
+                    },
+                }
+            ],
+        }
+
+        event = module.build_task_executor_event(summary, Path("/tmp/report.json"), notify_on="error")
+        text = module.render_human_view(event["views"]["human"])
+
+        self.assertIn("Preflight 告警 1 个", text)
+        self.assertIn("强拦截 1 个高风险任务", text)
+        self.assertIn("建议改派：optimization-agent", text)
 
     def test_ops_scan_human_view_summarizes_failure_reason_and_repair_progress(self):
         module = load_module(
@@ -156,10 +193,10 @@ class WorkflowViewsTests(unittest.TestCase):
         text = module.render_human_view(human)
 
         self.assertEqual(event["kind"], "ops_scan")
-        self.assertIn("结论: 当前有 3 个工作流失败，其中 3 个持续失败仍未恢复。", text)
-        self.assertIn("原因解析: 超时 2 项；缺少明确错误详情 1 项。", text)
+        self.assertIn("发现 3 个工作流失败，3 个持续失败。", text)
+        self.assertIn("原因解析：超时 2 项；缺少明确错误详情 1 项。", text)
         self.assertIn("修复进展: 新建修复任务 1 条，已有待处理修复任务 2 条。", text)
-        self.assertIn("ops_daily_work_report_dingtalk", text)
+        self.assertIn("工作日报汇总", text)
 
 
 if __name__ == "__main__":

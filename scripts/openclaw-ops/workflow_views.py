@@ -133,6 +133,18 @@ def humanize_executor_reason(item: dict[str, Any]) -> tuple[str, str]:
         or "-"
     )
     lower = raw.lower()
+    if lower == "preflight_strict_blocked":
+        reassign = item.get("preflight_reassign", {})
+        if not isinstance(reassign, dict):
+            reassign = {}
+        recommended_agents = reassign.get("recommended_agents", [])
+        if not isinstance(recommended_agents, list):
+            recommended_agents = []
+        agent_text = ",".join(str(x).strip() for x in recommended_agents if str(x).strip())
+        detail = "高风险任务未满足执行前能力约束，已阻止执行"
+        if agent_text:
+            detail += f"，建议改派：{agent_text}"
+        return "派单能力不匹配", detail
     if lower.startswith("pre_stage_failed:model blocked by policy:"):
         model = raw.split(":", 2)[-1].strip() or "-"
         return "模型被策略拦截", f"执行前检查失败：模型 {model} 被策略禁止"
@@ -418,6 +430,15 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
             f"跳过 {skipped} 个，未闭环 {unresolved} 个。"
         ),
     ]
+    preflight_warning_tasks = max(0, int(summary.get("preflight_warning_tasks", 0) or 0))
+    preflight_blocked_tasks = max(0, int(summary.get("preflight_blocked_tasks", 0) or 0))
+    if preflight_warning_tasks > 0:
+        line = f"- Preflight 告警 {preflight_warning_tasks} 个"
+        if preflight_blocked_tasks > 0:
+            line += f"，强拦截 {preflight_blocked_tasks} 个高风险任务。"
+        else:
+            line += "。"
+        lines.append(line)
     if results:
         lines.append("- 本轮任务：")
         for idx, item in enumerate(results[:5], start=1):
