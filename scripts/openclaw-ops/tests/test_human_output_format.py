@@ -76,13 +76,14 @@ class HumanOutputFormatTests(unittest.TestCase):
         )
 
         output = render_human_view(event["views"]["human"])
-        self.assertIn("2026-03-14 08:53:02 UTC+8 任务执行器：3 个任务等待人工确认，本轮未执行。", output)
+        self.assertIn("2026-03-14 08:53:02 UTC+8 任务执行器（10分钟）：3 个任务等待人工确认，本轮未执行。", output)
         self.assertIn("补齐项目索引治理方案", output)
         self.assertIn("梳理增量巡检输出格式", output)
         self.assertIn("整理任务执行器的人类摘要模板", output)
         self.assertNotIn("todo-a76d92b6fce91185", output)
         self.assertNotIn("todo-919de13c19b14128", output)
         self.assertNotIn("todo-e97f97a2e088e68f", output)
+        self.assertIn("- 触发任务：任务执行器（10分钟）", output)
         self.assertIn("- 运行编号：exec-20260314_085300-1517c872", output)
         self.assertIn("- 留痕编号：exec-20260314_085300-1517c872", output)
 
@@ -113,10 +114,11 @@ class HumanOutputFormatTests(unittest.TestCase):
         )
 
         output = render_human_view(event["views"]["human"])
-        self.assertIn("2026-03-14 07:28:58 UTC+8 增量巡检：发现 2 个工作流失败，0 个持续失败。", output)
-        self.assertIn("- 任务：cron:ops-incremental-monitor", output)
-        self.assertIn("Git 同步推送：网络错误", output)
+        self.assertIn("2026-03-14 07:28:58 UTC+8 运维增量巡检（15分钟）：发现 2 个工作流失败，0 个持续失败。", output)
+        self.assertIn("- 任务：运维增量巡检（15分钟）", output)
+        self.assertIn("Git 同步推送（6小时）：网络错误", output)
         self.assertNotIn("ops_git_sync_push", output)
+        self.assertNotIn("cron:ops-incremental-monitor", output)
         self.assertNotIn("- 时间:", output)
 
     def test_cron_message_requires_raw_cn_output_passthrough(self) -> None:
