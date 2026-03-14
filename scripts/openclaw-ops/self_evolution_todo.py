@@ -1108,16 +1108,13 @@ def main() -> int:
             policy_observability["errors"].append(err_comm)
 
         report_count = 0
-        for item in created:
-            task_id = str(item.get("task_id", "")).strip()
-            if not task_id:
-                continue
+        if bound_task_id:
             success = not run_errors
             quality_score = 90.0 if success else 55.0
             report_args = [
                 "report-agent-result",
                 "--task-id",
-                task_id,
+                bound_task_id,
                 "--agent-id",
                 "self-evolution-agent",
                 "--planner-id",
@@ -1127,15 +1124,15 @@ def main() -> int:
                 "--solved",
                 ("true" if success else "false"),
                 "--resolved-issues",
-                "self_evolution_todo_packaged",
+                "self_evolution_runtime_recorded",
                 "--resolution-summary",
                 (
-                    "self evolution todo package created"
+                    "self evolution weekly run recorded"
                     if success
-                    else "todo package created with partial runtime errors"
+                    else "self evolution weekly run recorded with runtime errors"
                 ),
                 "--resolution-steps",
-                "collect_metrics,build_candidates,create_todo_tasks",
+                "collect_metrics,build_candidates,create_todo_tasks,record_runtime_observability",
                 "--failed-items",
                 ",".join(run_errors[:20]),
                 "--failure-count",
@@ -1158,8 +1155,13 @@ def main() -> int:
                 json.dumps(
                     {
                         "run_id": report.get("run_id"),
-                        "fingerprint": item.get("fingerprint"),
-                        "scheduled_at": item.get("scheduled_at"),
+                        "created_count": len(created),
+                        "created_task_ids": [str(item.get("task_id", "")).strip() for item in created[:20]],
+                        "fingerprints": [
+                            str(item.get("fingerprint", "")).strip()
+                            for item in created[:20]
+                            if str(item.get("fingerprint", "")).strip()
+                        ],
                     },
                     ensure_ascii=False,
                 ),

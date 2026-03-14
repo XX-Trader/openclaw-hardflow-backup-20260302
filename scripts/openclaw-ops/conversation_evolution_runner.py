@@ -1119,15 +1119,17 @@ def main() -> int:
             policy_observability["errors"].append(err_comm)
 
         reported_count = 0
-        for item in created:
-            task_id = str(item.get("task_id", "")).strip()
-            if not task_id:
-                continue
-            score = float(item.get("quality_score", 0) or 0)
+        if bound_task_id:
+            success = not run_errors
+            quality_score = (
+                sum(float(item.get("quality_score", 0) or 0) for item in created) / len(created)
+                if created
+                else (55.0 if run_errors else 90.0)
+            )
             report_args = [
                 "report-agent-result",
                 "--task-id",
-                task_id,
+                bound_task_id,
                 "--agent-id",
                 "conversation-evolution-agent",
                 "--planner-id",
@@ -1137,15 +1139,15 @@ def main() -> int:
                 "--solved",
                 ("false" if run_errors else "true"),
                 "--resolved-issues",
-                "conversation_evolution_todo_packaged",
+                "conversation_evolution_runtime_recorded",
                 "--resolution-summary",
                 (
-                    "conversation evolution todo task packaged successfully"
-                    if not run_errors
-                    else "todo task created but run has runtime errors"
+                    "conversation evolution runtime recorded"
+                    if success
+                    else "conversation evolution runtime recorded with errors"
                 ),
                 "--resolution-steps",
-                "scan_recent_files,collect_findings,build_candidates,create_todo_task",
+                "scan_recent_files,collect_findings,build_candidates,create_todo_task,record_runtime_observability",
                 "--failed-items",
                 ",".join(run_errors[:20]),
                 "--failure-count",
@@ -1159,17 +1161,22 @@ def main() -> int:
                 "--cost-estimate",
                 "0",
                 "--quality-score",
-                str(round(score, 2)),
+                str(round(quality_score, 2)),
                 "--quality-grade",
-                quality_grade_from_score(score),
+                quality_grade_from_score(quality_score),
                 "--notify-chat",
                 ("true" if run_errors else "false"),
                 "--details-json",
                 json.dumps(
                     {
                         "run_id": report.get("run_id"),
-                        "fingerprint": item.get("fingerprint"),
-                        "scheduled_at": item.get("scheduled_at"),
+                        "created_count": len(created),
+                        "created_task_ids": [str(item.get("task_id", "")).strip() for item in created[:20]],
+                        "fingerprints": [
+                            str(item.get("fingerprint", "")).strip()
+                            for item in created[:20]
+                            if str(item.get("fingerprint", "")).strip()
+                        ],
                     },
                     ensure_ascii=False,
                 ),

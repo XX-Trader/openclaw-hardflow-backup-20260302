@@ -1455,18 +1455,15 @@ def main() -> int:
 
         report_count = 0
         base_steps = "collect_incremental_changes,build_task_packages,optional_auto_pr"
-        for item in created_items:
-            task_id = str(item.get("task_id", "")).strip()
-            if not task_id:
-                continue
+        if bound_task_id:
             success = not run_errors
             quality_score = 92.0 if success else 55.0
             report_args = [
                 "report-agent-result",
                 "--task-id",
-                task_id,
+                bound_task_id,
                 "--agent-id",
-                "optimization-agent",
+                "governance-evolution-agent",
                 "--planner-id",
                 "coordinator",
                 "--status",
@@ -1474,15 +1471,15 @@ def main() -> int:
                 "--solved",
                 ("true" if success else "false"),
                 "--resolved-issues",
-                "governance_evolution_task_packaged",
+                "governance_evolution_runtime_recorded",
                 "--resolution-summary",
                 (
-                    "governance evolution task package created"
+                    "governance evolution runtime recorded"
                     if success
-                    else "task package created with partial runtime errors"
+                    else "governance evolution runtime recorded with partial errors"
                 ),
                 "--resolution-steps",
-                base_steps,
+                base_steps + ",record_runtime_observability",
                 "--failed-items",
                 ",".join(run_errors[:20]),
                 "--failure-count",
@@ -1505,8 +1502,18 @@ def main() -> int:
                 json.dumps(
                     {
                         "run_id": report.get("run_id"),
-                        "task_type": item.get("type"),
-                        "assignee": item.get("assignee"),
+                        "created_count": len(created_items),
+                        "created_task_ids": [str(item.get("task_id", "")).strip() for item in created_items[:20]],
+                        "task_types": [
+                            str(item.get("type", "")).strip()
+                            for item in created_items[:20]
+                            if str(item.get("type", "")).strip()
+                        ],
+                        "assignees": [
+                            str(item.get("assignee", "")).strip()
+                            for item in created_items[:20]
+                            if str(item.get("assignee", "")).strip()
+                        ],
                     },
                     ensure_ascii=False,
                 ),

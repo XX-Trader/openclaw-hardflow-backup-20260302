@@ -1901,69 +1901,6 @@ def main() -> int:
                 report_count += 1
             elif err_runtime_report:
                 policy_observability["errors"].append(err_runtime_report)
-        for item in created_tasks:
-            task_id = str(item.get("task_id", "")).strip()
-            if not task_id:
-                continue
-            score = float(item.get("quality_score", 0) or 0)
-            success = not run_errors
-            report_args = [
-                "report-agent-result",
-                "--task-id",
-                task_id,
-                "--agent-id",
-                "optimization-agent",
-                "--planner-id",
-                "coordinator",
-                "--status",
-                ("passed" if success else "partial"),
-                "--solved",
-                ("true" if success else "false"),
-                "--resolved-issues",
-                "github_web_evolution_todo_packaged",
-                "--resolution-summary",
-                (
-                    "github web evolution todo task packaged"
-                    if success
-                    else "todo task packaged with partial runtime errors"
-                ),
-                "--resolution-steps",
-                "search_github,extract_readme_methods,detect_changes,create_todo_task",
-                "--failed-items",
-                ",".join(run_errors[:20]),
-                "--failure-count",
-                str(len(run_errors)),
-                "--duration-ms",
-                str(run_duration_ms),
-                "--input-tokens",
-                "0",
-                "--output-tokens",
-                "0",
-                "--cost-estimate",
-                "0",
-                "--quality-score",
-                str(round(score, 2)),
-                "--quality-grade",
-                quality_grade_from_score(score),
-                "--notify-chat",
-                ("true" if run_errors else "false"),
-                "--details-json",
-                json.dumps(
-                    {
-                        "run_id": run_id,
-                        "fingerprint": item.get("fingerprint"),
-                        "dedupe_key": item.get("dedupe_key"),
-                    },
-                    ensure_ascii=False,
-                ),
-                "--actor",
-                "github-web-evolution-agent",
-            ]
-            ok_report, _payload_report, err_report = invoke_policy_enforcer(db_file, report_args, timeout=35)
-            if ok_report:
-                report_count += 1
-            elif err_report:
-                policy_observability["errors"].append(err_report)
         policy_observability["report_agent_result_count"] = report_count
 
         since_24h = (now() - timedelta(hours=24)).replace(microsecond=0).isoformat()
