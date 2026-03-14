@@ -28,6 +28,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from task_center import TaskCenter  # type: ignore
+from task_capability_binding import build_task_constraint_fields  # type: ignore
 from io_write_gateway import FileWriteError, write_json_atomic  # type: ignore
 from chat_output import build_trace_id, render_chat_notice, short_location_label
 
@@ -753,6 +754,8 @@ def create_context_preflight_task(
     assignee: str,
     base_time: datetime,
 ) -> dict[str, Any]:
+    normalized_assignee = str(assignee or "project-agent").strip() or "project-agent"
+    constraint_fields = build_task_constraint_fields(normalized_assignee)
     requirement = "\n".join(
         [
             f"[fingerprint:{fingerprint}]",
@@ -778,7 +781,8 @@ def create_context_preflight_task(
             "request_source": "ai",
             "priority": "medium",
             "risk_level": "high",
-            "assignee": str(assignee or "project-agent").strip() or "project-agent",
+            "assignee": normalized_assignee,
+            **constraint_fields,
             "status": "pending",
             "need_human_confirm": False,
             "human_confirmed": False,
@@ -888,6 +892,7 @@ def create_task_packages(
                 "- 在 PR 描述写清: 问题、变更点、风险、回滚方式、验证命令",
             ]
         )
+        optimize_constraint_fields = build_task_constraint_fields("optimization-agent")
         optimize_task = tc.create_task(
             {
                 "task_id": f"todo-governance-evolution-{base_time.strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}",
@@ -899,6 +904,7 @@ def create_task_packages(
                 "priority": "medium",
                 "risk_level": "high",
                 "assignee": "optimization-agent",
+                **optimize_constraint_fields,
                 "status": "pending",
                 "need_human_confirm": False,
                 "human_confirmed": False,
@@ -942,6 +948,7 @@ def create_task_packages(
                     "- 不通过: 输出明确修复项并回流给 optimization-agent",
                 ]
             )
+            review_constraint_fields = build_task_constraint_fields("reviewer")
             review_task = tc.create_task(
                 {
                     "task_id": f"todo-governance-review-{base_time.strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}",
@@ -953,6 +960,7 @@ def create_task_packages(
                     "priority": "medium",
                     "risk_level": "high",
                     "assignee": "reviewer",
+                    **review_constraint_fields,
                     "status": "pending",
                     "need_human_confirm": False,
                     "human_confirmed": False,

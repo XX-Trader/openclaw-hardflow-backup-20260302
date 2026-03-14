@@ -28,6 +28,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from task_center import TaskCenter  # type: ignore
+from task_capability_binding import build_task_constraint_fields  # type: ignore
 from io_write_gateway import FileWriteError, write_json_atomic  # type: ignore
 from chat_output import build_trace_id, render_chat_notice
 
@@ -866,6 +867,7 @@ def create_todo_tasks(
 
         schedule_at = (base + timedelta(minutes=gap * (len(created) + 1))).replace(microsecond=0).isoformat()
         requirement = f"[fingerprint:{fp}]\n{requirement_raw}"
+        constraint_fields = build_task_constraint_fields(assignee)
         payload = {
             "task_id": f"todo-self-evolution-{now().strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:6]}",
             "pool": "todo",
@@ -875,6 +877,7 @@ def create_todo_tasks(
             "priority": "low",
             "risk_level": "high",
             "assignee": assignee,
+            **constraint_fields,
             "status": "pending",
             "need_human_confirm": True,
             "human_confirmed": False,

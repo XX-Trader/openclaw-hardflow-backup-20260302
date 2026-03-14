@@ -37,6 +37,7 @@ if policy_dir in sys.path:
 sys.path.insert(0, policy_dir)
 
 from task_center import TaskCenter  # type: ignore
+from task_capability_binding import build_task_constraint_fields  # type: ignore
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
 from web_sources_runtime import load_project_repo_targets  # type: ignore
 from chat_output import build_trace_id, render_chat_notice
@@ -1185,6 +1186,7 @@ def create_todo_task(
         return None
 
     who = str(assignee or "").strip() or "optimization-agent"
+    constraint_fields = build_task_constraint_fields(who)
     base = infer_next_schedule_base(tc)
     schedule_at = (base + timedelta(minutes=max(1, int(schedule_gap_minutes)))).replace(microsecond=0).isoformat()
 
@@ -1239,6 +1241,7 @@ def create_todo_task(
         "priority": "low",
         "risk_level": "high",
         "assignee": who,
+        **constraint_fields,
         "status": "pending",
         "need_human_confirm": True,
         "human_confirmed": False,
