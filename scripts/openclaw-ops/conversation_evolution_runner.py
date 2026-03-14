@@ -28,6 +28,7 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from task_center import TaskCenter  # type: ignore
+from task_capability_binding import build_task_constraint_fields  # type: ignore
 from io_write_gateway import FileWriteError, write_json_atomic  # type: ignore
 from chat_output import build_trace_id, render_chat_notice
 
@@ -789,6 +790,7 @@ def create_todo_tasks(
     limit = max(1, int(max_tasks_per_run))
     gap = max(1, int(schedule_gap_minutes))
     who = str(assignee or "").strip() or "optimization-agent"
+    constraint_fields = build_task_constraint_fields(who)
 
     for candidate in candidates:
         title = str(candidate.get("title", "")).strip()
@@ -826,6 +828,7 @@ def create_todo_tasks(
             "priority": "low",
             "risk_level": "high",
             "assignee": who,
+            **constraint_fields,
             "status": "pending",
             "need_human_confirm": True,
             "human_confirmed": False,

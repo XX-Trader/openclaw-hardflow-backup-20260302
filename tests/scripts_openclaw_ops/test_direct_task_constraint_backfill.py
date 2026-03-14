@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -205,6 +206,109 @@ class DirectTaskConstraintBackfillTests(unittest.TestCase):
         self.assertEqual(payload["required_capabilities"], ["role_only"])
         self.assertEqual(payload["required_skills"], [])
         self.assertEqual(payload["allowed_agents"], ["optimization-agent"])
+
+    def test_conversation_evolution_todo_task_include_capability_constraints(self):
+        module = load_module(
+            "conversation_evolution_runner",
+            "scripts/openclaw-ops/conversation_evolution_runner.py",
+        )
+        task_center = RecordingTaskCenter()
+        original_collect = module.collect_open_fingerprints
+        original_recent = module.collect_recent_dedupe_keys
+        original_base = module.infer_next_schedule_base
+        original_now = module.now
+        try:
+            module.collect_open_fingerprints = lambda _tc: set()
+            module.collect_recent_dedupe_keys = lambda _tc, recent_days=7: set()
+            module.infer_next_schedule_base = lambda _tc: self.fixed_now
+            module.now = lambda: self.fixed_now
+            created, skipped = module.create_todo_tasks(
+                task_center,
+                candidates=[
+                    {
+                        "title": "对话审查建议包",
+                        "reason": "近期 reviewer 反馈需要二次审查",
+                        "requirement": "补充审查建议与验证步骤。",
+                        "dedupe_key": "conversation:reviewer",
+                        "quality": {"score": 85},
+                    }
+                ],
+                assignee="reviewer",
+                max_tasks_per_run=1,
+                schedule_gap_minutes=30,
+                recent_dedupe_days=7,
+            )
+        finally:
+            module.collect_open_fingerprints = original_collect
+            module.collect_recent_dedupe_keys = original_recent
+            module.infer_next_schedule_base = original_base
+            module.now = original_now
+
+        self.assertEqual(len(created), 1)
+        self.assertEqual(skipped, [])
+        payload = task_center.created_tasks[0]
+        self.assertEqual(payload["required_capabilities"], ["skill_backed"])
+        self.assertEqual(payload["required_skills"], ["requesting-code-review"])
+        self.assertEqual(payload["allowed_agents"], ["reviewer"])
+
+    def test_reviewer_techdebt_task_include_capability_constraints(self):
+        module = load_module(
+            "reviewer_cron_runner",
+            "scripts/openclaw-ops/reviewer_cron_runner.py",
+        )
+        original_task_center = module.TaskCenter
+        original_sync = module.sync_resolved_techdebt_tasks
+        original_list_open = module.list_open_debt_tasks_for_issue
+        original_query_latest = module.query_latest_debt_task
+        try:
+            module.TaskCenter = RecordingTaskCenter
+            module.sync_resolved_techdebt_tasks = lambda **_kwargs: {"closed": 0, "errors": [], "task_ids": []}
+            module.list_open_debt_tasks_for_issue = lambda _tc, _issue_id: []
+            module.query_latest_debt_task = lambda _tc, _issue_id: None
+            with tempfile.TemporaryDirectory() as tmpdir:
+                db_path = Path(tmpdir) / "task_center.db"
+                db_path.write_text("", encoding="utf-8")
+                result = module.create_or_reopen_techdebt_tasks(
+                    args=type(
+                        "Args",
+                        (),
+                        {
+                            "create_techdebt_task": True,
+                            "project_context_db": str(db_path),
+                            "techdebt_max_tasks_per_run": 1,
+                            "techdebt_min_severity": "medium",
+                            "techdebt_assignee": "",
+                        },
+                    )(),
+                    findings=[
+                        {
+                            "key": "duplication:frontend:001",
+                            "severity": "high",
+                            "path": "src/components/App.tsx",
+                            "category": "duplication",
+                            "title": "Frontend duplication issue",
+                            "detail": "duplicate component logic",
+                            "repo": "repo-a",
+                            "repo_head": "head123",
+                        }
+                    ],
+                    state={},
+                    mode="daily_incremental",
+                    run_id="run-techdebt-1",
+                )
+        finally:
+            module.TaskCenter = original_task_center
+            module.sync_resolved_techdebt_tasks = original_sync
+            module.list_open_debt_tasks_for_issue = original_list_open
+            module.query_latest_debt_task = original_query_latest
+
+        self.assertEqual(result["created"], 1)
+        task_center = RecordingTaskCenter.instances[-1]
+        payload = task_center.created_tasks[0]
+        self.assertEqual(payload["assignee"], "frontend-dev")
+        self.assertEqual(payload["required_capabilities"], ["skill_backed"])
+        self.assertEqual(payload["required_skills"], ["frontend-design", "feature-development"])
+        self.assertEqual(payload["allowed_agents"], ["frontend-dev"])
 
 
 if __name__ == "__main__":

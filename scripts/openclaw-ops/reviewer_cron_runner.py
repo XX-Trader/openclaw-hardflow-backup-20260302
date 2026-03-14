@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parent
 POLICY_DIR = ROOT / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
+from task_capability_binding import build_task_constraint_fields  # type: ignore
 try:
     from task_center import TaskCenter  # type: ignore
     from io_write_gateway import FileWriteError, write_json_atomic  # type: ignore
@@ -1390,6 +1391,7 @@ def create_or_reopen_techdebt_tasks(
             assignee = infer_techdebt_assignee(path, str(args.techdebt_assignee or "").strip())
             priority = "high" if severity == "high" else "medium"
             risk_level = "high" if severity == "high" else "low"
+            constraint_fields = build_task_constraint_fields(assignee)
 
             try:
                 if latest and str(latest.get("status", "")).strip().lower() in {"passed", "cancelled"}:
@@ -1441,6 +1443,7 @@ def create_or_reopen_techdebt_tasks(
                         "priority": priority,
                         "risk_level": risk_level,
                         "assignee": assignee,
+                        **constraint_fields,
                         "status": "pending",
                         "need_human_confirm": False,
                         "human_confirmed": False,
