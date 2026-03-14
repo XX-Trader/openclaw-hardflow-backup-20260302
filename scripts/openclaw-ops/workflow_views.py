@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,26 +14,67 @@ PARTIAL_STATUSES = {"partial", "escalated"}
 FAILED_STATUSES = {"failed", "error", "timeout"}
 IGNORED_STATUSES = {"skipped", "needs_clarification", "waiting_human_confirm"}
 NOTIFY_ON_MODES = {"error", "activity", "always"}
-WORKFLOW_JOB_LABELS = {
-    "ops_git_sync_push": "Git 同步推送",
-    "web_intel_review_optimization_4h": "Web 情报优化复核",
-    "web_intel_review_project_docs_6h": "项目文档情报复核",
-    "project_index_maintainer_30m": "项目索引维护",
-    "reviewer_incremental_daily_4am": "每日增量审查",
-    "reviewer_git_update_hourly": "每小时代码审查",
-    "reviewer_recurring_bi_daily": "双日复发问题审查",
-    "reviewer_weekly_structure_review": "每周结构审查",
-    "ops_incremental_monitor": "增量巡检",
-    "ops_full_calibration": "全量巡检",
-    "ops_daily_summary": "每日巡检汇总",
-    "ops_system_schedule_audit": "系统定时审计",
-    "ops_daily_work_report_dingtalk": "日报汇总",
-    "ops_self_evolution_weekly_todo": "每周自进化复盘",
-    "ops_governance_evolution_incremental": "治理进化扫描",
-    "ops_github_web_evolution_incremental": "GitHub 生态扫描",
-    "ops_auto_update_install_hourly": "自动更新安装",
-    "todo_patrol_15m": "待办巡检分发",
-    "task_executor_10m": "任务执行器",
+
+
+@dataclass(frozen=True)
+class WorkflowDisplayMeta:
+    title: str
+    cadence: str = ""
+
+    def render(self, include_cadence: bool = True) -> str:
+        if include_cadence and self.cadence:
+            return f"{self.title}（{self.cadence}）"
+        return self.title
+
+
+WORKFLOW_DISPLAY_META: dict[str, WorkflowDisplayMeta] = {
+    "ops_git_sync_push": WorkflowDisplayMeta("Git 同步推送", "6小时"),
+    "ops_local_openclaw_git_backup": WorkflowDisplayMeta("OpenClaw 本地备份", "1小时"),
+    "web_intel_collect_hourly": WorkflowDisplayMeta("Web 情报采集", "1小时"),
+    "web_intel_review_optimization_4h": WorkflowDisplayMeta("Web 情报优化复核", "4小时"),
+    "web_intel_review_project_docs_6h": WorkflowDisplayMeta("项目文档情报复核", "6小时"),
+    "project_index_maintainer_30m": WorkflowDisplayMeta("项目索引维护", "30分钟"),
+    "reviewer_incremental_daily_4am": WorkflowDisplayMeta("每日增量审查", "每日 04:00"),
+    "reviewer_git_update_hourly": WorkflowDisplayMeta("每小时代码审查", "每小时"),
+    "reviewer_recurring_bi_daily": WorkflowDisplayMeta("双日复发问题审查"),
+    "reviewer_weekly_structure_review": WorkflowDisplayMeta("每周结构审查", "每周一"),
+    "ops_incremental_monitor": WorkflowDisplayMeta("运维增量巡检", "15分钟"),
+    "ops_full_calibration": WorkflowDisplayMeta("运维全量巡检", "6小时"),
+    "ops_daily_summary": WorkflowDisplayMeta("运维每日汇总", "每日"),
+    "ops_system_schedule_audit": WorkflowDisplayMeta("系统调度审计"),
+    "ops_api_test": WorkflowDisplayMeta("API 巡检"),
+    "ops_daily_work_report_dingtalk": WorkflowDisplayMeta("工作日报汇总", "每日"),
+    "ops_self_evolution_weekly_todo": WorkflowDisplayMeta("每周自进化复盘", "每周"),
+    "ops_conversation_evolution": WorkflowDisplayMeta("对话进化扫描"),
+    "ops_governance_evolution_incremental": WorkflowDisplayMeta("治理进化扫描"),
+    "ops_github_web_evolution_incremental": WorkflowDisplayMeta("GitHub 生态扫描"),
+    "ops_auto_update_install_hourly": WorkflowDisplayMeta("自动更新安装", "每小时"),
+    "todo_patrol_15m": WorkflowDisplayMeta("待办巡检分发", "15分钟"),
+    "task_executor_10m": WorkflowDisplayMeta("任务执行器", "10分钟"),
+}
+
+WORKFLOW_NAME_ALIASES: dict[str, str] = {
+    "cron:ops-incremental-monitor": "ops_incremental_monitor",
+    "cron:ops-full-calibration": "ops_full_calibration",
+    "cron:ops-daily-summary": "ops_daily_summary",
+    "cron:ops-system-schedule-audit": "ops_system_schedule_audit",
+    "cron:ops-api-test": "ops_api_test",
+    "cron:ops-daily-work-report": "ops_daily_work_report_dingtalk",
+    "cron:ops-self-evolution": "ops_self_evolution_weekly_todo",
+    "cron:ops-conversation-evolution": "ops_conversation_evolution",
+    "cron:ops-governance-evolution": "ops_governance_evolution_incremental",
+    "cron:ops-github-web-evolution": "ops_github_web_evolution_incremental",
+    "cron:ops-git-sync-push": "ops_git_sync_push",
+    "cron:ops-auto-update-install": "ops_auto_update_install_hourly",
+    "cron:ops-local-openclaw-git-backup": "ops_local_openclaw_git_backup",
+    "cron:task-executor": "task_executor_10m",
+    "cron:todo-patrol": "todo_patrol_15m",
+}
+
+OPS_SCAN_MODE_KEYS = {
+    "incremental": "ops_incremental_monitor",
+    "full": "ops_full_calibration",
+    "daily": "ops_daily_summary",
 }
 
 
@@ -180,7 +222,7 @@ def build_follow_up_progress_lines(summary: dict[str, Any]) -> list[str]:
             task_id = str(item.get("task_id", "")).strip() or "-"
             assignee = str(item.get("assignee", "")).strip() or "-"
             status = str(item.get("status", "")).strip() or "created"
-            label = workflow_name or task_id
+            label = humanize_workflow_job_name(workflow_name) if workflow_name else task_id
             lines.append(f"  {idx}. {label} -> {assignee} ({status})")
     if errors:
         lines.append("- 修复建单异常:")
@@ -256,13 +298,30 @@ def describe_selected_task(item: dict[str, Any]) -> str:
     return f"{owner}：{subject}（{status_label}）"
 
 
-def humanize_workflow_job_name(name: Any) -> str:
+def resolve_workflow_display_meta(name: Any) -> WorkflowDisplayMeta | None:
+    normalized = str(name or "").strip()
+    if not normalized:
+        return None
+    canonical = WORKFLOW_NAME_ALIASES.get(normalized, normalized)
+    if canonical in WORKFLOW_DISPLAY_META:
+        return WORKFLOW_DISPLAY_META[canonical]
+    normalized_key = normalized.replace("-", "_")
+    if normalized_key in WORKFLOW_DISPLAY_META:
+        return WORKFLOW_DISPLAY_META[normalized_key]
+    if normalized.startswith("cron:"):
+        cron_key = normalized.removeprefix("cron:").replace("-", "_")
+        return WORKFLOW_DISPLAY_META.get(cron_key)
+    return None
+
+
+def humanize_workflow_job_name(name: Any, include_cadence: bool = True) -> str:
     normalized = str(name or "").strip()
     if not normalized:
         return "未命名工作流"
-    if normalized in WORKFLOW_JOB_LABELS:
-        return WORKFLOW_JOB_LABELS[normalized]
-    return compact_task_text(normalized, 48)
+    meta = resolve_workflow_display_meta(normalized)
+    if meta is not None:
+        return meta.render(include_cadence=include_cadence)
+    return compact_task_text(normalized.removeprefix("cron:"), 48)
 
 
 def humanize_workflow_failure_reason(item: dict[str, Any]) -> str:
@@ -283,6 +342,9 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
     results = summary.get("results", [])
     if not isinstance(results, list):
         results = []
+    trigger_task_label = humanize_workflow_job_name(
+        str(summary.get("trigger_task", "")).strip() or "task_executor_10m"
+    )
 
     passed_items: list[dict[str, Any]] = []
     partial_items: list[dict[str, Any]] = []
@@ -348,7 +410,7 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
         summary_text = "当前没有待处理任务。"
 
     lines = [
-        f"- 触发任务：{str(summary.get('trigger_task', '')).strip() or '-'}",
+        f"- 触发任务：{trigger_task_label}",
         f"- 运行编号：{str(summary.get('run_id', '')).strip() or '-'}",
         f"- 执行模型：{str(summary.get('executor_model', '')).strip() or '-'}",
         (
@@ -379,7 +441,7 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
 
     human_view = {
         "visible": visible,
-        "title": "任务执行器",
+        "title": trigger_task_label,
         "summary": summary_text,
         "run_time": str(summary.get("finished_at", "")).strip() or str(summary.get("started_at", "")).strip(),
         "lines": lines,
@@ -474,11 +536,16 @@ def build_ops_scan_event(record: dict[str, Any]) -> dict[str, Any]:
         reason_parts.append("存在风险信号，待进一步分诊")
 
     mode = str(record.get("mode", "")).strip().lower()
-    title = {
-        "incremental": "增量巡检",
-        "full": "全量巡检",
-        "daily": "每日巡检",
-    }.get(mode, "运维巡检")
+    raw_task_name = str(record.get("task_id", "")).strip()
+    mode_task_name = OPS_SCAN_MODE_KEYS.get(mode, "")
+    task_name = raw_task_name or mode_task_name
+    title_meta = resolve_workflow_display_meta(task_name) or resolve_workflow_display_meta(mode_task_name)
+    if title_meta is not None:
+        title = title_meta.render()
+    elif task_name:
+        title = humanize_workflow_job_name(task_name)
+    else:
+        title = "运维巡检"
     summary_text = (
         f"发现 {failed_count} 个工作流失败，{stale_failed_count} 个持续失败。"
         if failed_count > 0
@@ -487,7 +554,7 @@ def build_ops_scan_event(record: dict[str, Any]) -> dict[str, Any]:
     todo_new = int(handoff_summary.get("todo_new", 0) or 0)
 
     lines = [
-        f"- 任务：{str(record.get('task_id', '')).strip() or '-'}",
+        f"- 任务：{title}",
         f"- 运行编号：{str(record.get('run_id', '')).strip() or '-'}",
         (
             f"- 结果：风险信号 {len(risk_reasons)} 项，扫描异常 {len(scan_errors)} 项，"
