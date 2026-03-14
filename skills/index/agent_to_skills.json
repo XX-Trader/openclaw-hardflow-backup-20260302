@@ -242,7 +242,21 @@
       "soul": []
     }
   },
+  "optimization-agent": {
+    "skills": [],
+    "source": {
+      "matrix": [],
+      "soul": []
+    }
+  },
   "project-agent": {
+    "skills": [],
+    "source": {
+      "matrix": [],
+      "soul": []
+    }
+  },
+  "web-agent": {
     "skills": [],
     "source": {
       "matrix": [],

@@ -433,7 +433,7 @@
         "command:reset",
         "command:stop"
       ],
-      "has_by_agent_doc": false,
+      "has_by_agent_doc": true,
       "has_soul_doc": true
     }
   ]
