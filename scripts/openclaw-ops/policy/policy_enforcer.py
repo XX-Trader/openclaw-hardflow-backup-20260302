@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic
+from task_capability_binding import infer_task_capability_constraints
 from task_center import (
     TASK_STATUSES,
     TaskCenter,
@@ -1440,10 +1441,20 @@ class PolicyEnforcer:
             "acceptance": args.acceptance,
             "observable_outputs": args.observable_outputs,
             "acceptance_thresholds": args.acceptance_thresholds,
+            "required_capabilities": getattr(args, "required_capabilities", ""),
+            "required_skills": getattr(args, "required_skills", ""),
+            "allowed_agents": getattr(args, "allowed_agents", ""),
             "action": initial_action,
             "scheduled_at": scheduled_at,
             "completed_at": completed_at,
         }
+        inferred_constraints = infer_task_capability_constraints(assignee)
+        if not str(payload["required_capabilities"] or "").strip():
+            payload["required_capabilities"] = inferred_constraints["required_capabilities"]
+        if not str(payload["required_skills"] or "").strip():
+            payload["required_skills"] = inferred_constraints["required_skills"]
+        if not str(payload["allowed_agents"] or "").strip():
+            payload["allowed_agents"] = inferred_constraints["allowed_agents"]
 
         created = self.db.create_task(payload, actor=args.actor)
         self.assert_required_fields(created)
@@ -2953,6 +2964,9 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--acceptance", required=True)
     create.add_argument("--observable-outputs", required=True)
     create.add_argument("--acceptance-thresholds", required=True)
+    create.add_argument("--required-capabilities", default="")
+    create.add_argument("--required-skills", default="")
+    create.add_argument("--allowed-agents", default="")
     create.add_argument("--context-json", default="")
     create.add_argument("--context-file", default="")
     create.add_argument("--force-needs-clarification", default="false")

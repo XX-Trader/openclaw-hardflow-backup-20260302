@@ -22,6 +22,7 @@ if str(POLICY_DIR) not in sys.path:
 
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
 from chat_output import build_trace_id, render_chat_notice
+from task_capability_binding import extend_create_task_args_with_constraints
 from web_sources_runtime import load_runtime_sources  # type: ignore
 
 UTC = timezone.utc
@@ -763,6 +764,7 @@ def create_review_follow_up_tasks(
             "--actor",
             actor,
         ]
+        extend_create_task_args_with_constraints(create_args, assignee)
         ok, payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
         if ok:
             created.append(

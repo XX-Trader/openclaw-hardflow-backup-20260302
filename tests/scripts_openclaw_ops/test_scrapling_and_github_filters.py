@@ -237,12 +237,16 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
         requirement = args[args.index("--requirement") + 1]
         context_payload = json.loads(args[args.index("--context-json") + 1])
         observable_outputs = args[args.index("--observable-outputs") + 1]
+        required_capabilities = args[args.index("--required-capabilities") + 1]
+        allowed_agents = args[args.index("--allowed-agents") + 1]
         self.assertIn("留痕编号", requirement)
         self.assertNotIn("/tmp/reports/web_collect_20260311.json", requirement)
         self.assertTrue(str(context_payload.get("evidence", "")).startswith("留痕编号："))
         self.assertNotIn("/tmp/reports/web_collect_20260311.json", str(context_payload))
         self.assertIn("留痕编号=", observable_outputs)
         self.assertNotIn("report_file=", observable_outputs)
+        self.assertEqual(required_capabilities, "role_only")
+        self.assertEqual(allowed_agents, "ops-agent")
 
     def test_web_intel_collect_summary_file_hides_internal_paths(self):
         module = load_module(
@@ -382,6 +386,8 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
         requirement = args[args.index("--requirement") + 1]
         context_payload = json.loads(args[args.index("--context-json") + 1])
         observable_outputs = args[args.index("--observable-outputs") + 1]
+        required_capabilities = args[args.index("--required-capabilities") + 1]
+        allowed_agents = args[args.index("--allowed-agents") + 1]
         self.assertIn("运行留痕编号", requirement)
         self.assertIn("解析留痕编号", requirement)
         self.assertNotIn("/tmp/reports/web_review_project_doc.json", requirement)
@@ -393,6 +399,8 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
         self.assertIn("解析留痕编号=", observable_outputs)
         self.assertNotIn("report_file=", observable_outputs)
         self.assertNotIn("parsed_file=", observable_outputs)
+        self.assertEqual(required_capabilities, "role_only")
+        self.assertEqual(allowed_agents, "project-agent")
 
 
 if __name__ == "__main__":

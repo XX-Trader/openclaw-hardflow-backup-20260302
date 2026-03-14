@@ -44,6 +44,7 @@ from alert_dedupe import (
     save_dedupe_state,
     workflow_tokens_from_job_ids,
 )
+from task_capability_binding import extend_create_task_args_with_constraints
 from workflow_views import build_follow_up_progress_lines, build_ops_scan_event, render_human_view
 
 TZ = timezone(timedelta(hours=8))
@@ -2125,6 +2126,7 @@ def create_workflow_follow_up_tasks(
             "--actor",
             str(actor or "ops-agent/ops-cron-runner"),
         ]
+        extend_create_task_args_with_constraints(create_args, default_assignee)
         ok, payload, err = invoke_policy_enforcer(db_path, create_args, timeout=35)
         if ok:
             summary["created_count"] += 1
