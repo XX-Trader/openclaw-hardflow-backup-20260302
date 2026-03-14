@@ -63,9 +63,12 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
                 {
                     "task_id": "todo-1",
                     "reason": "收敛群聊输出样式",
+                    "requirement": "统一群聊卡片中给人看的任务字段，只保留任务、要求、状态和值得做。",
+                    "acceptance": "人工看到摘要后，可以直接判断先做什么，不需要再打开任务中心。",
                     "priority": "high",
                     "risk_level": "high",
                     "assignee": "ops-agent",
+                    "status": "pending",
                 }
             ],
             new_done=[
@@ -86,15 +89,63 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
             max_notify_items=5,
         )
 
-        self.assertEqual(output.splitlines()[0], "每日任务摘要")
-        self.assertIn("新增待办 1 项", output)
-        self.assertIn("新增完成 1 项", output)
+        self.assertIn("每日任务摘要", output.splitlines()[0])
+        self.assertIn("人工判断：", output)
+        self.assertIn("任务1：收敛群聊输出样式", output)
+        self.assertIn("要求1：统一群聊卡片中给人看的任务字段", output)
+        self.assertIn("状态1：任务中心待处理", output)
+        self.assertIn("值得做1：", output)
+        self.assertIn("完成1：清理旧英文标题", output)
         self.assertIn("近24小时处理", output)
         self.assertIn("留痕编号：digest-run-001", output)
         self.assertNotIn("Daily TODO Digest", output)
         self.assertNotIn("evidence:", output)
         self.assertNotIn("/tmp/", output)
         self.assertNotIn(".json", output)
+
+    def test_build_chat_output_shows_failure_reason_and_execution_metrics_for_failed_todo(self):
+        module = load_module(
+            "daily_todo_digest",
+            "scripts/openclaw-ops/daily_todo_digest.py",
+        )
+
+        output = module.build_chat_output(
+            sender_identity="ops-agent/daily-todo-digest",
+            task_id="cron:ops-daily-todo-digest",
+            run_time="2026-03-11T08:00:00+08:00",
+            run_id="digest-run-003",
+            new_todo=[
+                {
+                    "task_id": "todo-2",
+                    "reason": "恢复钉钉日报发送",
+                    "requirement": "恢复钉钉日报发送，并确保失败任务展示完整执行信息。",
+                    "priority": "high",
+                    "risk_level": "high",
+                    "assignee": "ops-agent",
+                    "status": "failed",
+                    "failure_count": 2,
+                    "retry_count": 1,
+                    "latest_report": {
+                        "failed_items": ["dingtalk webhook request timeout"],
+                        "failure_count": 2,
+                        "duration_ms": 14500,
+                        "model_id": "openai-codex/gpt-5",
+                        "input_tokens": 1200,
+                        "output_tokens": 2000,
+                        "total_tokens": 3200,
+                        "cost_estimate": 0.01234,
+                    },
+                }
+            ],
+            new_done=[],
+            planner_summary=None,
+            exception_reasons=["webhook_missing:DINGTALK_WEBHOOK_URL"],
+            max_notify_items=5,
+        )
+
+        self.assertIn("失败信息1：原因=dingtalk webhook request timeout；失败次数=2次；最近耗时=14.5秒；已重试=1次", output)
+        self.assertIn("执行概况1：模型=openai-codex · gpt-5；tokens=总=3200（输入=1200，输出=2000）；成本≈$0.012340", output)
+        self.assertIn("异常1：钉钉 Webhook 未配置：DINGTALK_WEBHOOK_URL", output)
 
     def test_build_chat_output_emits_exception_card_when_only_exceptions(self):
         module = load_module(
@@ -114,7 +165,7 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
             max_notify_items=5,
         )
 
-        self.assertEqual(output.splitlines()[0], "每日任务摘要异常")
+        self.assertIn("每日任务摘要异常", output.splitlines()[0])
         self.assertIn("发现 1 个运行异常", output)
         self.assertIn("运行详情已写入内部留痕", output)
         self.assertIn("留痕编号：digest-run-002", output)
@@ -171,7 +222,7 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         payload = json.loads(stdout.getvalue().strip())
         self.assertTrue(payload["notify"])
-        self.assertEqual(payload["output"].splitlines()[0], "每日任务摘要异常")
+        self.assertIn("每日任务摘要异常", payload["output"].splitlines()[0])
         self.assertIn("留痕编号", payload["output"])
         self.assertNotIn("Daily TODO Digest", payload["output"])
         self.assertNotIn("evidence:", payload["output"])

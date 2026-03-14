@@ -9,6 +9,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import sqlite3
 import subprocess
 import sys
@@ -291,9 +292,33 @@ def load_tasks(db_path: Path, limit: int) -> list[dict[str, Any]]:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     try:
+        table_columns = {
+            str(row["name"]).strip()
+            for row in conn.execute("PRAGMA table_info(tasks)").fetchall()
+            if str(row["name"]).strip()
+        }
+        select_columns = [
+            "task_id",
+            "pool",
+            "task_type",
+            "reason",
+            "priority",
+            "risk_level",
+            "assignee",
+            "status",
+            "retry_count",
+            "failure_count",
+            "created_at",
+            "updated_at",
+        ]
+        for optional_column in ("requirement", "result_output", "acceptance"):
+            if optional_column in table_columns:
+                select_columns.append(optional_column)
+            else:
+                select_columns.append(f"'' AS {optional_column}")
         rows = conn.execute(
-            """
-            SELECT task_id, pool, task_type, reason, priority, risk_level, assignee, status, created_at, updated_at
+            f"""
+            SELECT {", ".join(select_columns)}
             FROM tasks
             ORDER BY updated_at DESC
             LIMIT ?
@@ -303,6 +328,83 @@ def load_tasks(db_path: Path, limit: int) -> list[dict[str, Any]]:
         return [dict(r) for r in rows]
     finally:
         conn.close()
+
+
+def split_compact_text_list(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("[") and raw.endswith("]"):
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    normalized = raw.replace("\r", "\n")
+    line_parts = [part.strip() for part in normalized.split("\n") if part.strip()]
+    if len(line_parts) > 1:
+        return line_parts
+    if "," in raw:
+        comma_parts = [part.strip() for part in raw.split(",") if part.strip()]
+        if len(comma_parts) > 1:
+            return comma_parts
+    return [raw]
+
+
+def load_latest_agent_reports(db_path: Path, task_ids: list[str]) -> dict[str, dict[str, Any]]:
+    normalized_ids = [str(task_id).strip() for task_id in task_ids if str(task_id).strip()]
+    if (not normalized_ids) or (not db_path.exists()):
+        return {}
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        table_exists = conn.execute(
+            "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'agent_task_reports'"
+        ).fetchone()
+        if not table_exists:
+            return {}
+        placeholders = ",".join("?" for _ in normalized_ids)
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM agent_task_reports
+            WHERE task_id IN ({placeholders})
+            ORDER BY task_id ASC, ts DESC, id DESC
+            """,
+            normalized_ids,
+        ).fetchall()
+        out: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            item = dict(row)
+            task_id = str(item.get("task_id", "")).strip()
+            if (not task_id) or (task_id in out):
+                continue
+            item["failed_items"] = split_compact_text_list(item.get("failed_items", ""))
+            item["resolved_issues"] = split_compact_text_list(item.get("resolved_issues", ""))
+            out[task_id] = item
+        return out
+    except Exception:
+        return {}
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def attach_latest_agent_reports(items: list[dict[str, Any]], latest_reports: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    if not items or not latest_reports:
+        return items
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        cloned = dict(item)
+        task_id = str(cloned.get("task_id", "")).strip()
+        if task_id and task_id in latest_reports:
+            cloned["latest_report"] = dict(latest_reports[task_id])
+        enriched.append(cloned)
+    return enriched
 
 
 def is_runtime_binding_task(item: dict[str, Any]) -> bool:
@@ -385,6 +487,28 @@ def summarize_todo_file_items(items: list[dict[str, Any]], limit: int) -> list[s
     return out
 
 
+def priority_rank(value: str) -> int:
+    normalized = str(value or "").strip().lower()
+    mapping = {
+        "p0": 0,
+        "p1": 0,
+        "high": 0,
+        "p2": 1,
+        "medium": 1,
+        "planned": 2,
+        "p3": 2,
+        "low": 3,
+        "p4": 3,
+    }
+    return mapping.get(normalized, 4)
+
+
+def risk_rank(value: str) -> int:
+    normalized = str(value or "").strip().lower()
+    mapping = {"high": 0, "medium": 1, "low": 2}
+    return mapping.get(normalized, 3)
+
+
 def infer_todo_file_priority(section: str, priority_tag: str) -> tuple[str, str]:
     tag = str(priority_tag or "").strip().upper()
     section_text = norm_text(section)
@@ -460,6 +584,314 @@ def load_todo_file_pending_items(todo_files: list[Path], existing_tasks: list[di
     return pending_items
 
 
+def pick_priority_pending_items(
+    new_todo: list[dict[str, Any]],
+    todo_file_pending: list[dict[str, Any]],
+    *,
+    limit: int,
+) -> list[tuple[str, dict[str, Any]]]:
+    pending_rows: list[tuple[int, int, int, str, dict[str, Any]]] = []
+    for idx, item in enumerate(new_todo):
+        pending_rows.append(
+            (
+                priority_rank(item.get("priority", "")),
+                risk_rank(item.get("risk_level", "")),
+                idx,
+                "task_center",
+                item,
+            )
+        )
+    for idx, item in enumerate(todo_file_pending):
+        pending_rows.append(
+            (
+                priority_rank(item.get("priority", "")),
+                risk_rank(item.get("risk_level", "")),
+                len(new_todo) + idx,
+                "todo_file",
+                item,
+            )
+        )
+    pending_rows.sort(key=lambda row: (row[0], row[1], row[2]))
+    return [(source, item) for _priority, _risk, _index, source, item in pending_rows[: max(1, int(limit))]]
+
+
+def build_subjective_summary(
+    *,
+    reasons: list[str],
+    new_todo: list[dict[str, Any]],
+    todo_file_pending: list[dict[str, Any]],
+    new_done: list[dict[str, Any]],
+) -> str:
+    pending_count = len(new_todo) + len(todo_file_pending)
+    if reasons and pending_count:
+        return f"先处理 {len(reasons)} 项异常，再确认 {pending_count} 项待办"
+    if reasons:
+        return f"先处理 {len(reasons)} 项异常，当前日报触达需复核"
+    if pending_count >= 8:
+        return f"今天重点清理 {pending_count} 项待办，完成项复盘可后置"
+    if pending_count:
+        return f"今天重点跟进 {pending_count} 项待办"
+    if new_done:
+        return f"今日新增完成 {len(new_done)} 项，可安排复盘确认"
+    return ""
+
+
+def build_operator_judgement(
+    *,
+    reasons: list[str],
+    new_todo: list[dict[str, Any]],
+    todo_file_pending: list[dict[str, Any]],
+    new_done: list[dict[str, Any]],
+) -> str:
+    pending_count = len(new_todo) + len(todo_file_pending)
+    if reasons:
+        if any(str(reason).strip().startswith("webhook_missing:") for reason in reasons):
+            return "异常优先，先恢复钉钉触达，再看待办推进。"
+        return "异常优先，先收口运行问题，再决定哪些待办需要人工介入。"
+    if pending_count >= 8:
+        return "待办堆积偏多，今天更适合先收敛高优先级事项。"
+    if pending_count:
+        return "今天以推进待办为主，完成项复盘可以后置。"
+    if new_done:
+        return "进展正常，当前更适合复核完成质量。"
+    return "当前节奏正常，按既定安排推进即可。"
+
+
+def build_primary_judgement_detail(reasons: list[str]) -> str:
+    if not reasons:
+        return ""
+    first_reason = str(reasons[0]).strip()
+    if first_reason.startswith("webhook_missing:"):
+        return "当前判断：钉钉 Webhook 未配置，今天最先要补的是告警出口。"
+    if first_reason.startswith("dingtalk_post_failed:"):
+        return "当前判断：钉钉发送链路异常，先恢复触达再看日报内容。"
+    return f"当前判断：{humanize_chat_error(first_reason)}，建议先收口异常。"
+
+
+def build_pending_pressure_detail(
+    *,
+    reasons: list[str],
+    new_todo: list[dict[str, Any]],
+    todo_file_pending: list[dict[str, Any]],
+) -> str:
+    task_center_count = len(new_todo)
+    todo_file_count = len(todo_file_pending)
+    if task_center_count and todo_file_count:
+        if reasons:
+            return (
+                f"待办压力：任务中心还有 {task_center_count} 项待办，"
+                f"todo 清单还有 {todo_file_count} 项待入库，异常没收口前不建议只看完成项。"
+            )
+        return (
+            f"待办压力：任务中心还有 {task_center_count} 项待办，"
+            f"todo 清单还有 {todo_file_count} 项待入库，建议先看高优先级事项。"
+        )
+    if task_center_count:
+        if reasons:
+            return f"待办压力：任务中心还有 {task_center_count} 项待办，异常没收口前不建议只看完成项。"
+        return f"待办压力：任务中心还有 {task_center_count} 项待办，建议先看高优先级事项。"
+    if todo_file_count:
+        return f"待办压力：todo 清单还有 {todo_file_count} 项待入库，建议先决定是否进入任务中心。"
+    return ""
+
+
+def compact_task_text(value: Any, max_len: int = 88) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def format_duration_ms_human(value: Any) -> str:
+    duration_ms = max(0, int(value or 0))
+    if duration_ms <= 0:
+        return "未记录"
+    if duration_ms < 1000:
+        return f"{duration_ms}毫秒"
+    duration_sec = duration_ms / 1000.0
+    if duration_sec < 60:
+        if abs(duration_sec - round(duration_sec)) < 0.05:
+            return f"{int(round(duration_sec))}秒"
+        return f"{duration_sec:.1f}秒"
+    minutes = int(duration_sec // 60)
+    remain_sec = duration_sec - (minutes * 60)
+    if abs(remain_sec - round(remain_sec)) < 0.05:
+        remain_text = f"{int(round(remain_sec))}秒"
+    else:
+        remain_text = f"{remain_sec:.1f}秒"
+    if remain_sec <= 0.05:
+        return f"{minutes}分"
+    return f"{minutes}分{remain_text}"
+
+
+def format_cost_estimate(value: Any) -> str:
+    try:
+        cost_value = float(value or 0.0)
+    except Exception:
+        cost_value = 0.0
+    if cost_value <= 0:
+        return "未记录"
+    return f"${cost_value:.6f}"
+
+
+def build_failure_reason_text(item: dict[str, Any]) -> str:
+    latest_report = item.get("latest_report", {})
+    if isinstance(latest_report, dict):
+        failed_items = split_compact_text_list(latest_report.get("failed_items", []))
+        if failed_items:
+            return compact_task_text(failed_items[0], 96)
+        resolution_summary = compact_task_text(latest_report.get("resolution_summary", ""), 96)
+        if resolution_summary:
+            return resolution_summary
+    raw_status = str(item.get("status", "")).strip().lower()
+    if raw_status == "escalated":
+        return "自动执行未闭环，当前需要人工介入。"
+    if raw_status == "failed":
+        return "执行失败，详细失败原因未留痕。"
+    return ""
+
+
+def build_failure_metrics_line(index: int, item: dict[str, Any]) -> str:
+    raw_status = str(item.get("status", "")).strip().lower()
+    if raw_status not in {"failed", "escalated"}:
+        return ""
+    latest_report = item.get("latest_report", {})
+    latest_report = latest_report if isinstance(latest_report, dict) else {}
+    reason = build_failure_reason_text(item)
+    failure_count = max(
+        0,
+        int(item.get("failure_count", 0) or 0),
+        int(latest_report.get("failure_count", 0) or 0),
+    )
+    retry_count = max(0, int(item.get("retry_count", 0) or 0))
+    duration_text = format_duration_ms_human(latest_report.get("duration_ms", 0))
+    parts = [
+        f"原因={reason or '未记录'}",
+        f"失败次数={max(1, failure_count) if raw_status in {'failed', 'escalated'} else failure_count}次",
+        f"最近耗时={duration_text}",
+    ]
+    if retry_count > 0:
+        parts.append(f"已重试={retry_count}次")
+    return f"失败信息{index}：" + "；".join(parts)
+
+
+def build_execution_metrics_line(index: int, item: dict[str, Any]) -> str:
+    raw_status = str(item.get("status", "")).strip().lower()
+    if raw_status not in {"failed", "escalated"}:
+        return ""
+    latest_report = item.get("latest_report", {})
+    latest_report = latest_report if isinstance(latest_report, dict) else {}
+    model_id = compact_task_text(str(latest_report.get("model_id", "")).replace("/", " · "), 48) or "未记录"
+    input_tokens = max(0, int(latest_report.get("input_tokens", 0) or 0))
+    output_tokens = max(0, int(latest_report.get("output_tokens", 0) or 0))
+    total_tokens = max(0, int(latest_report.get("total_tokens", 0) or 0))
+    if total_tokens <= 0 and (input_tokens or output_tokens):
+        total_tokens = input_tokens + output_tokens
+    cost_text = format_cost_estimate(latest_report.get("cost_estimate", 0))
+    if model_id == "未记录" and total_tokens <= 0 and cost_text == "未记录":
+        return ""
+    token_text = f"总={total_tokens}（输入={input_tokens}，输出={output_tokens}）" if total_tokens > 0 else "未记录"
+    return f"执行概况{index}：模型={model_id}；tokens={token_text}；成本≈{cost_text}"
+
+
+def build_focus_task_subject(item: dict[str, Any]) -> str:
+    reason = compact_task_text(item.get("reason", ""), 72)
+    requirement = compact_task_text(item.get("requirement", ""), 72)
+    if reason and ("task_id=" not in reason) and ("assignee=" not in reason) and ("|" not in reason):
+        return reason
+    if requirement:
+        return requirement
+    if reason:
+        return reason
+    task_label = str(item.get("task_id", "")).strip()
+    return task_label or "未命名任务"
+
+
+def build_focus_task_requirement(source: str, item: dict[str, Any]) -> str:
+    requirement = compact_task_text(item.get("requirement", ""), 92)
+    acceptance = compact_task_text(item.get("acceptance", ""), 64)
+    if source == "todo_file":
+        source_file = str(item.get("source_file", "")).strip() or "todo.md"
+        section = str(item.get("section", "")).strip()
+        source_label = f"{source_file} / {section}" if section else source_file
+        if requirement and acceptance:
+            return f"{requirement} 验收：{acceptance}"
+        if requirement:
+            return requirement
+        return f"先把这项待办明确成可执行任务，并确认是否进入任务中心（来源={source_label}）。"
+    if requirement and acceptance:
+        return f"{requirement} 验收：{acceptance}"
+    if requirement:
+        return requirement
+    if acceptance:
+        return f"验收：{acceptance}"
+    reason = compact_task_text(item.get("reason", ""), 92)
+    return reason or "未补充明确要求"
+
+
+def humanize_task_status(source: str, item: dict[str, Any]) -> str:
+    priority = str(item.get("priority", "")).strip() or "-"
+    risk_level = str(item.get("risk_level", "")).strip() or "-"
+    assignee = str(item.get("assignee", "")).strip() or "未分配"
+    if source == "todo_file":
+        source_file = str(item.get("source_file", "")).strip() or "todo.md"
+        section = str(item.get("section", "")).strip()
+        source_label = f"{source_file} / {section}" if section else source_file
+        return f"尚未进入任务中心（优先级={priority}，风险={risk_level}，来源={source_label}）"
+    raw_status = str(item.get("status", "")).strip().lower()
+    if raw_status == "pending":
+        status_label = "任务中心待处理"
+    elif raw_status == "running":
+        status_label = "任务中心进行中"
+    elif raw_status == "failed":
+        status_label = "任务中心执行失败"
+    elif raw_status == "escalated":
+        status_label = "任务中心待人工介入"
+    elif raw_status == "passed":
+        status_label = "任务中心已完成"
+    else:
+        status_label = "任务中心状态待确认"
+    return f"{status_label}（优先级={priority}，风险={risk_level}，负责人={assignee}）"
+
+
+def explain_task_value(index: int, source: str, item: dict[str, Any], has_exceptions: bool) -> str:
+    raw_status = str(item.get("status", "")).strip().lower()
+    priority = str(item.get("priority", "")).strip().lower()
+    risk_level = str(item.get("risk_level", "")).strip().lower()
+    if raw_status in {"failed", "escalated"}:
+        return "这项已经失败或升级，不先处理会继续阻塞后续推进。"
+    if source == "todo_file":
+        return "这项还没进入任务中心，尽早入库才能分派、跟踪和留痕。"
+    if priority == "high" or risk_level == "high":
+        return "这项属于高优先级或高风险事项，拖延会继续积压。"
+    if raw_status == "running":
+        return "这项已经在执行中，及时跟进能避免任务卡住。"
+    if has_exceptions and index == 1:
+        return "异常收口后，这项最适合作为今天的第一顺位推进。"
+    return "这项当前排位靠前，先推进能降低今天的待办压力。"
+
+
+def append_focus_task_details(
+    detail_lines: list[str],
+    *,
+    focus_items: list[tuple[str, dict[str, Any]]],
+    has_exceptions: bool,
+) -> None:
+    for idx, (source, item) in enumerate(focus_items, start=1):
+        detail_lines.append(f"任务{idx}：{build_focus_task_subject(item)}")
+        detail_lines.append(f"要求{idx}：{build_focus_task_requirement(source, item)}")
+        detail_lines.append(f"状态{idx}：{humanize_task_status(source, item)}")
+        failure_metrics = build_failure_metrics_line(idx, item)
+        if failure_metrics:
+            detail_lines.append(failure_metrics)
+        execution_metrics = build_execution_metrics_line(idx, item)
+        if execution_metrics:
+            detail_lines.append(execution_metrics)
+        detail_lines.append(f"值得做{idx}：{explain_task_value(idx, source, item, has_exceptions)}")
+
+
 def humanize_chat_error(reason: str) -> str:
     raw = str(reason or "").strip()
     if not raw:
@@ -471,7 +903,10 @@ def humanize_chat_error(reason: str) -> str:
         return f"钉钉发送失败：{detail}"
     if raw.startswith("webhook_missing:"):
         detail = raw.split(":", 1)[1].strip() or raw
-        return f"钉钉 Webhook 未配置：{detail}"
+        env_name = detail.split(";", 1)[0].strip() or detail
+        if "checked_env_files=" in detail:
+            return f"钉钉 Webhook 未配置：{env_name}（已检查 env 文件）"
+        return f"钉钉 Webhook 未配置：{env_name}"
     if raw.startswith("policy_enforcer_failed:"):
         detail = raw.split(":", 1)[1].strip() or raw
         return f"策略记录失败：{detail}"
@@ -497,30 +932,55 @@ def build_chat_output(
     if (not reasons) and (not has_digest):
         return "NO_REPLY"
 
+    pending_count = len(new_todo) + len(todo_file_pending)
+    focus_items = pick_priority_pending_items(new_todo, todo_file_pending, limit=3) if has_digest else []
+
     if has_digest and reasons:
         title = "每日工作报告需关注"
         status = "需处理"
-        next_step = "请先处理异常，再确认日报中的待办和完成项是否需要进一步跟进。"
+        next_step = "请先恢复异常链路，再按优先待办顺序确认今天是否需要人工介入。"
     elif reasons:
         title = "每日工作报告异常"
         status = "需处理"
-        next_step = "请先检查钉钉配置、网络连通性和策略留痕。"
+        next_step = "请先恢复日报触达，再复核今天是否需要补发通知。"
     else:
         title = "每日工作报告"
-        status = "已汇报"
-        next_step = "请按日报继续推进待办，并确认 todo 清单中的任务是否达到入任务中心条件。"
+        status = "需跟进" if pending_count else "已汇报"
+        if todo_file_pending:
+            next_step = "请按优先待办顺序推进，并确认 todo 清单中的事项是否需要入任务中心。"
+        elif new_todo:
+            next_step = "请按优先待办顺序推进，并确认高风险事项是否需要人工接管。"
+        else:
+            next_step = "请复核完成项质量，必要时补充留痕或收尾。"
 
     summary_parts: list[str] = []
+    subjective_summary = build_subjective_summary(
+        reasons=reasons,
+        new_todo=new_todo,
+        todo_file_pending=todo_file_pending,
+        new_done=new_done,
+    )
+    if subjective_summary:
+        summary_parts.append(subjective_summary)
+    if reasons:
+        summary_parts.append(f"异常 {len(reasons)} 项")
     if new_todo:
         summary_parts.append(f"任务中心待办 {len(new_todo)} 项")
     if todo_file_pending:
         summary_parts.append(f"todo清单待办 {len(todo_file_pending)} 项")
     if new_done:
         summary_parts.append(f"任务中心完成 {len(new_done)} 项")
-    if reasons:
-        summary_parts.append(f"异常 {len(reasons)} 项")
 
     extra_lines: list[str] = []
+    extra_lines.append(
+        "人工判断："
+        + build_operator_judgement(
+            reasons=reasons,
+            new_todo=new_todo,
+            todo_file_pending=todo_file_pending,
+            new_done=new_done,
+        )
+    )
     if planner_summary:
         report_count = int(planner_summary.get("report_count", 0) or 0)
         task_count = int(planner_summary.get("task_count", 0) or 0)
@@ -528,25 +988,16 @@ def build_chat_output(
         extra_lines.append(f"24小时留痕：报告 {report_count} 条，任务 {task_count} 条，失败 {failed_task_count} 条")
 
     detail_lines: list[str] = []
-    for idx, item in enumerate(new_todo[:5], start=1):
-        task_label = str(item.get("task_id", "")).strip() or "-"
-        reason = str(item.get("reason", "")).strip() or "未填写原因"
-        detail_lines.append(f"任务中心待办{idx}：[{task_label}] {reason}")
-    for idx, item in enumerate(todo_file_pending[:5], start=1):
-        task_label = str(item.get("task_id", "")).strip() or "-"
-        reason = str(item.get("reason", "")).strip() or "未填写待办"
-        source_file = str(item.get("source_file", "")).strip() or "todo.md"
-        section = str(item.get("section", "")).strip()
-        if section:
-            detail_lines.append(f"todo清单待办{idx}：[{task_label}] {reason}（来源={source_file} / {section}）")
-        else:
-            detail_lines.append(f"todo清单待办{idx}：[{task_label}] {reason}（来源={source_file}）")
+    primary_detail = build_primary_judgement_detail(reasons)
+    if primary_detail:
+        detail_lines.append(primary_detail)
+    append_focus_task_details(detail_lines, focus_items=focus_items, has_exceptions=bool(reasons))
     for idx, item in enumerate(new_done[:5], start=1):
         task_label = str(item.get("task_id", "")).strip() or "-"
         reason = str(item.get("reason", "")).strip() or "已完成"
-        detail_lines.append(f"任务中心完成{idx}：[{task_label}] {reason}")
+        detail_lines.append(f"已完成{idx}：[{task_label}] {reason}")
     for idx, reason in enumerate(reasons[:8], start=1):
-        detail_lines.append(f"异常{idx}：{humanize_chat_error(reason)}")
+        detail_lines.append(f"异常明细{idx}：{humanize_chat_error(reason)}")
 
     return render_chat_notice(
         title,
@@ -621,6 +1072,11 @@ def main() -> int:
     new_todo = [x for x in todo_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_todo_ids]
     new_done = [x for x in done_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_done_ids]
     todo_file_pending = load_todo_file_pending_items(todo_files, todo_candidates)
+    latest_reports = load_latest_agent_reports(
+        db_path,
+        [str(item.get("task_id", "")).strip() for item in new_todo if str(item.get("task_id", "")).strip()],
+    )
+    new_todo = attach_latest_agent_reports(new_todo, latest_reports)
 
     normal_log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
     sender_identity = normalize_sender_identity(args.sender_identity)

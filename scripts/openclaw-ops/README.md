@@ -60,9 +60,13 @@
   - 每日从任务中心提取 TODO/DONE，并合并仓库根目录 `todo.md/TODO.md` 中尚未入任务中心的待办。
   - 仅发送新增记录，不重复发送历史 TODO/DONE。
   - 支持钉钉 webhook 通知；同时输出统一中文群聊摘要（无新增记录且无异常时输出 `NO_REPLY`）。
+  - 群聊里的优先任务默认按“任务 / 要求 / 状态 / 值得做”四段展示，要求优先取任务中心的 `requirement + acceptance`，避免只剩任务 ID 或机械字段罗列。
+  - 对 `failed / escalated` 的任务，会额外展示精简后的失败信息与执行概况：失败原因、失败次数、最近耗时、模型、token、cost；不会展示原始堆栈、完整 `failed_items`、文件路径或原始 JSON。
 - `daily_todo_digest.py`
   - 每日 TODO/DONE 摘要（仅聊天输出，不做外部 webhook 推送）。
   - 用于替代历史 `workspace/scripts/daily_todo_digest.py` 的不稳定路径依赖。
+  - 现在会优先展示新增待办里的焦点任务，按“任务 / 要求 / 状态 / 值得做”输出；若任务已失败，会补充失败原因、失败次数、最近耗时、模型、token、cost。
+  - 异常仍只展示人能判断的摘要，不暴露文件路径、原始 JSON 或底层堆栈。
 - `self_evolution_todo.py`
   - 周度全量复盘历史任务/流程指标。
   - 只产出“建议与任务包”，禁止自动修改工作流与技能。
@@ -587,6 +591,9 @@ python3 scripts/openclaw-ops/local_git_backup_runner.py \
 - `integration/openclaw-bridge/hooks-install.md`
 - `integration/openclaw-bridge/governance-bridge.md`
 - `integration/openclaw-bridge/plugin-policy.md`
+- `docs/2026-03-14-doc-map-agent-workflow.md`
+- `docs/2026-03-14-agent-skill-hook-绑定现状与优化清单.md`
+- `docs/plans/2026-03-14-agent-skill-hook-implementation-plan.md`
 
 ## Cron Quiet Defaults (2026-03-06)
 
@@ -646,12 +653,15 @@ openclaw gateway run
 - Scheduled-runner install prompts now explicitly require passthrough of the finished human-facing output:
   - preserve original Chinese text and `UTC+8` timestamps exactly
   - never add process filler such as `Let me run it again`, `I understand`, or similar wrapper commentary
-- `task_executor_runner.py` chat output now adds three human-facing summary lines before the task list:
-  - `结论`: this round is closed or not, and how many tasks are still unresolved
+- `task_executor_runner.py` / `workflow_views.py` chat output now keeps one compact headline and then展开为:
+  - `结果`: selected / executed / skipped / unresolved counts
   - `原因解析`: grouped root-cause counts such as `任务仅部分完成 2 个`
-  - `修复进展`: executed/closed/partial/failed counts in one line
-- For selected/skipped executor tasks, human-facing output now prefers task requirement summaries instead of raw `todo-...` IDs, so operators can directly see which tasks were selected and why they were skipped.
+  - `修复进展`: executed / partial / failed counts in one line
+  - `任务N / 要求N / 状态N / 值得做N`: focus tasks no longer expose raw `todo-...` IDs
+  - `失败信息N / 执行概况N`: only for failed or partially-failed tasks, showing failure reason, failure count, duration, model, token, cost
+- `todo_patrol.py` verbose human output now also uses the same structured task summary, so newly dispatched tasks are shown as “任务 / 要求 / 状态 / 值得做” instead of raw machine fields.
 - For failed workflow alerts, human-facing output now prefers the task purpose plus the failure reason (for example `Git 同步推送：网络错误`) instead of exposing only internal cron job names.
+- Human-facing task names now prefer contextual Chinese labels with cadence when known, for example `任务执行器（10分钟）` and `运维增量巡检（15分钟）`, while raw internal IDs remain only in storage facts.
 - `ops_cron_runner.py` incremental/full alerts now add:
   - `结论`: how many workflow jobs are still failing, and how many are stale/unrecovered
   - `原因解析`: grouped failure causes such as timeout, network error, auth error, missing detail

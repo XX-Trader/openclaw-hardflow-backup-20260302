@@ -65,13 +65,103 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
             ],
             report_file=Path("/tmp/daily_work_report.json"),
         )
-        self.assertEqual(output.splitlines()[0], "每日工作报告异常")
+        self.assertIn("每日工作报告异常", output.splitlines()[0])
         self.assertIn("钉钉发送失败", output)
         self.assertIn("Webhook 未配置", output)
         self.assertIn("留痕编号", output)
         self.assertNotIn("/tmp/daily_work_report.json", output)
         self.assertNotIn(".json", output)
         self.assertNotIn("# 每日工作报告", output)
+
+    def test_daily_work_report_uses_human_judgement_when_exception_and_backlog_exist(self):
+        module = load_module(
+            "daily_work_report",
+            "scripts/openclaw-ops/daily_work_report.py",
+        )
+        output = module.build_chat_output(
+            sender_identity="ops-agent/daily-work-report",
+            task_id="cron:ops-daily-work-report",
+            run_time="2026-03-15T00:15:35+08:00",
+            new_todo=[
+                {
+                    "task_id": "todo-high-risk",
+                    "reason": "补齐日报收敛策略",
+                    "requirement": "统一日报中的任务摘要结构，只保留任务、要求、状态和值得做四个字段。",
+                    "acceptance": "人工看到日报后，可以直接判断先做什么，不需要再读任务中心原始记录。",
+                    "priority": "high",
+                    "risk_level": "high",
+                    "assignee": "ops-agent",
+                    "status": "pending",
+                }
+            ],
+            new_done=[],
+            todo_file_pending=[],
+            planner_summary={
+                "report_count": 8,
+                "task_count": 8,
+                "failed_task_count": 1,
+            },
+            exception_reasons=[
+                "webhook_missing:DINGTALK_WEBHOOK_URL;checked_env_files=/tmp/runtime.env",
+            ],
+            report_file=Path("/tmp/daily_work_report.json"),
+        )
+        self.assertIn("人工判断：异常优先，先恢复钉钉触达，再看待办推进。", output)
+        self.assertIn("当前判断：钉钉 Webhook 未配置，今天最先要补的是告警出口。", output)
+        self.assertIn("任务1：补齐日报收敛策略", output)
+        self.assertIn("要求1：统一日报中的任务摘要结构", output)
+        self.assertIn("状态1：任务中心待处理", output)
+        self.assertIn("值得做1：", output)
+        self.assertNotIn("checked_env_files", output)
+        self.assertLess(output.index("当前判断：钉钉 Webhook 未配置"), output.index("任务1：补齐日报收敛策略"))
+
+    def test_daily_work_report_shows_failure_reason_and_execution_metrics_for_failed_task(self):
+        module = load_module(
+            "daily_work_report",
+            "scripts/openclaw-ops/daily_work_report.py",
+        )
+        output = module.build_chat_output(
+            sender_identity="ops-agent/daily-work-report",
+            task_id="cron:ops-daily-work-report",
+            run_time="2026-03-15T00:15:35+08:00",
+            new_todo=[
+                {
+                    "task_id": "todo-failed-task",
+                    "reason": "修复日报发送失败问题",
+                    "requirement": "恢复钉钉日报发送，并确保失败任务展示完整执行信息。",
+                    "acceptance": "人工能直接看到失败原因、失败次数、耗时和执行模型。",
+                    "priority": "high",
+                    "risk_level": "high",
+                    "assignee": "ops-agent",
+                    "status": "failed",
+                    "failure_count": 2,
+                    "retry_count": 1,
+                    "latest_report": {
+                        "failed_items": ["dingtalk webhook request timeout"],
+                        "duration_ms": 14500,
+                        "model_id": "openai-codex/gpt-5",
+                        "input_tokens": 1200,
+                        "output_tokens": 2000,
+                        "total_tokens": 3200,
+                        "cost_estimate": 0.01234,
+                    },
+                }
+            ],
+            new_done=[],
+            todo_file_pending=[],
+            planner_summary={},
+            exception_reasons=[],
+            report_file=Path("/tmp/daily_work_report.json"),
+        )
+        self.assertIn("状态1：任务中心执行失败", output)
+        self.assertIn(
+            "失败信息1：原因=dingtalk webhook request timeout；失败次数=2次；最近耗时=14.5秒；已重试=1次",
+            output,
+        )
+        self.assertIn(
+            "执行概况1：模型=openai-codex · gpt-5；tokens=总=3200（输入=1200，输出=2000）；成本≈$0.012340",
+            output,
+        )
 
     def test_daily_work_report_main_uses_digest_notify_without_name_error(self):
         module = load_module(

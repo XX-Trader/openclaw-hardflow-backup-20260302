@@ -23,7 +23,7 @@ def load_module(name: str, rel_path: str):
 
 
 class WorkflowViewsTests(unittest.TestCase):
-    def test_task_executor_human_view_shows_conclusion_reason_and_progress(self):
+    def test_task_executor_human_view_shows_structured_task_details_and_progress(self):
         module = load_module(
             "workflow_views",
             "scripts/openclaw-ops/workflow_views.py",
@@ -42,8 +42,16 @@ class WorkflowViewsTests(unittest.TestCase):
                     "task_id": "todo-a",
                     "assignee": "optimization-agent",
                     "status": "failed",
-                    "report_status": "partial",
-                    "reason": "partial",
+                    "report_status": "failed",
+                    "reason": "call_agent_exception:timeout",
+                    "task_requirement": "补齐任务执行器的人类摘要，失败任务要带失败原因和执行概况。",
+                    "failure_count": 2,
+                    "duration_ms": 14500,
+                    "input_tokens": 1200,
+                    "output_tokens": 2000,
+                    "cost_estimate": 0.01234,
+                    "failed_items": ["dingtalk webhook request timeout"],
+                    "model": "openai-codex/gpt-5",
                 },
                 {
                     "task_id": "todo-b",
@@ -51,6 +59,7 @@ class WorkflowViewsTests(unittest.TestCase):
                     "status": "failed",
                     "report_status": "partial",
                     "reason": "partial",
+                    "task_requirement": "让等待人工确认的任务也显示任务内容，而不是只显示 task_id。",
                 },
                 {
                     "task_id": "todo-c",
@@ -58,6 +67,7 @@ class WorkflowViewsTests(unittest.TestCase):
                     "status": "failed",
                     "report_status": "failed",
                     "reason": "failed",
+                    "task_requirement": "把未闭环任务统一成人看的卡片格式。",
                 },
             ],
         }
@@ -70,9 +80,14 @@ class WorkflowViewsTests(unittest.TestCase):
         self.assertEqual(human["title"], "任务执行器（10分钟）")
         self.assertIn("选中 3 个任务，未闭环 3 个。", text)
         self.assertIn("选中 3 个，已执行 3 个，跳过 0 个，未闭环 3 个。", text)
-        self.assertIn("任务仅部分完成", text)
+        self.assertIn("任务1：补齐任务执行器的人类摘要", text)
+        self.assertIn("要求1：补齐任务执行器的人类摘要", text)
+        self.assertIn("状态1：任务执行失败", text)
+        self.assertIn("失败信息1：原因=dingtalk webhook request timeout；失败次数=2次；最近耗时=14.5秒", text)
+        self.assertIn("执行概况1：模型=openai-codex/gpt-5；tokens=总=3200（输入=1200，输出=2000）；成本≈$0.012340", text)
+        self.assertIn("值得做1：", text)
         self.assertIn("任务执行失败", text)
-        self.assertIn("optimization-agent：未命名任务", text)
+        self.assertNotIn("optimization-agent：未命名任务", text)
 
     def test_task_executor_error_notify_hides_success_run_from_human_view(self):
         module = load_module(
@@ -141,6 +156,9 @@ class WorkflowViewsTests(unittest.TestCase):
         self.assertIn("Preflight 告警 1 个", text)
         self.assertIn("强拦截 1 个高风险任务", text)
         self.assertIn("建议改派：optimization-agent", text)
+        self.assertIn("任务1：governance_evolution_optimize 任务", text)
+        self.assertIn("状态1：任务被门禁拦截", text)
+        self.assertIn("值得做1：", text)
 
     def test_ops_scan_human_view_summarizes_failure_reason_and_repair_progress(self):
         module = load_module(

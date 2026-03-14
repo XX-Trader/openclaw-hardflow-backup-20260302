@@ -1129,6 +1129,8 @@ def main() -> int:
                 "task_type": task_type,
                 "task_reason": compact_text(task.get("reason", ""), 96),
                 "task_requirement": compact_text(task.get("requirement", ""), 120),
+                "task_acceptance": compact_text(task.get("acceptance", ""), 120),
+                "task_result_output": compact_text(task.get("result_output", ""), 120),
                 "workflow_alert_tokens": workflow_alert_tokens,
                 "preflight": preflight,
             }
@@ -1365,9 +1367,15 @@ def main() -> int:
                     "report_status": str(contract.get("status", "partial")),
                     "solved": bool(contract.get("solved", False)),
                     "quality_score": float(contract.get("quality_score", 0.0) or 0.0),
+                    "resolution_summary": str(contract.get("resolution_summary", "")),
+                    "failed_items": list(contract.get("failed_items", [])),
+                    "failure_count": max(0, int(contract.get("failure_count", 0) or 0)),
                     "duration_ms": duration_ms,
+                    "model": task_model_name,
                     "input_tokens": in_tokens,
                     "output_tokens": out_tokens,
+                    "total_tokens": max(0, int(in_tokens)) + max(0, int(out_tokens)),
+                    "cost_estimate": max(0.0, float(contract.get("cost_estimate", 0.0) or 0.0)),
                 }
             )
             summary["tasks_executed"] += 1

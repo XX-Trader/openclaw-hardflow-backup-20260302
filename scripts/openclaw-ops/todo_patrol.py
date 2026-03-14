@@ -220,6 +220,88 @@ def humanize_dispatch_error(raw: str) -> tuple[str, str]:
     return "任务巡检执行失败", text
 
 
+def compact_task_text(value: Any, max_len: int = 88) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def build_dispatch_subject(task_row: dict[str, Any], context_payload: dict[str, Any]) -> str:
+    human_summary = compact_task_text(context_payload.get("human_summary", ""), 80)
+    if human_summary:
+        return human_summary
+    requirement = compact_task_text(task_row.get("requirement", ""), 80)
+    if requirement:
+        return requirement
+    reason = compact_task_text(task_row.get("reason", ""), 72)
+    if reason:
+        return reason
+    task_id = to_text(task_row.get("task_id"))
+    return task_id or "未命名任务"
+
+
+def build_dispatch_requirement(task_row: dict[str, Any]) -> str:
+    requirement = compact_task_text(task_row.get("requirement", ""), 88)
+    acceptance = compact_task_text(task_row.get("acceptance", ""), 64)
+    if requirement and acceptance:
+        return f"{requirement} 验收：{acceptance}"
+    if requirement:
+        return requirement
+    if acceptance:
+        return f"验收：{acceptance}"
+    result_output = compact_task_text(task_row.get("result_output", ""), 72)
+    if result_output:
+        return f"期望输出：{result_output}"
+    return "当前只完成派发，尚未补充更具体的执行要求。"
+
+
+def build_dispatch_status(task_row: dict[str, Any]) -> str:
+    assignee = to_text(task_row.get("assignee")) or "unassigned"
+    priority = to_text(task_row.get("priority")) or "-"
+    risk_level = to_text(task_row.get("risk_level")) or "-"
+    context_completeness = to_text(task_row.get("context_completeness")) or "0"
+    if bool(task_row.get("needs_clarification")):
+        status_label = "已派发待补充信息"
+    else:
+        status_label = f"已派发给 {assignee}"
+    return (
+        f"{status_label}（优先级={priority}，风险={risk_level}，"
+        f"上下文完整度={context_completeness}%）"
+    )
+
+
+def explain_dispatch_value(task_row: dict[str, Any]) -> str:
+    priority = to_text(task_row.get("priority")).lower()
+    risk_level = to_text(task_row.get("risk_level")).lower()
+    if bool(task_row.get("needs_clarification")):
+        return "这项还缺上下文，先补清楚能避免派发后重复返工。"
+    if priority == "high" or risk_level == "high":
+        return "这项优先级或风险偏高，越早接手越能避免积压。"
+    return "这项已经进入任务中心，尽快跟进能把待办真正推进起来。"
+
+
+def build_dispatch_judgement(dispatched: list[dict[str, Any]], dispatch_errors: list[str]) -> str:
+    if dispatch_errors and dispatched:
+        return "巡检有异常，先看异常，再确认已派发任务是否需要人工兜底。"
+    if dispatch_errors:
+        return "本轮巡检异常优先，先恢复巡检链路。"
+    if dispatched:
+        high_priority_count = 0
+        for row in dispatched:
+            task_row = row.get("task", {}) if isinstance(row, dict) else {}
+            if not isinstance(task_row, dict):
+                continue
+            if to_text(task_row.get("priority")).lower() == "high" or to_text(task_row.get("risk_level")).lower() == "high":
+                high_priority_count += 1
+        if high_priority_count > 0:
+            return f"本轮已派发 {high_priority_count} 项高优先级任务，建议先盯前排事项。"
+        return "本轮派发正常，重点确认新任务是否被及时接手。"
+    return ""
+
+
 def has_value(value: Any) -> bool:
     if isinstance(value, list):
         return any(has_value(v) for v in value)
@@ -758,18 +840,15 @@ def format_dispatch_message(
             context_payload = payload.get("context_payload", {}) if isinstance(payload, dict) else {}
             if not isinstance(context_payload, dict):
                 context_payload = {}
-            human_summary = to_text(context_payload.get("human_summary"))
-            detail_lines.append(
-                f"派发任务{idx}：{task_row.get('task_id')} -> {task_row.get('assignee') or 'unassigned'}，"
-                f"优先级 {task_row.get('priority')}，风险 {task_row.get('risk_level')}，"
-                f"上下文完整度 {task_row.get('context_completeness')}%"
-            )
-            if human_summary:
-                detail_lines.append(f"任务说明{idx}：{human_summary}")
+            detail_lines.append(f"任务{idx}：{build_dispatch_subject(task_row, context_payload)}")
+            detail_lines.append(f"要求{idx}：{build_dispatch_requirement(task_row)}")
+            detail_lines.append(f"状态{idx}：{build_dispatch_status(task_row)}")
+            detail_lines.append(f"值得做{idx}：{explain_dispatch_value(task_row)}")
             if bool(task_row.get("needs_clarification")):
                 clar_reason = to_text(task_row.get("clarification_reason")) or "上下文仍需补充"
                 detail_lines.append(f"澄清要求{idx}：{clar_reason}")
 
+    judgement = build_dispatch_judgement(dispatched, dispatch_errors)
     if dispatch_errors:
         for idx, err in enumerate(dispatch_errors[:10], start=1):
             title, detail = humanize_dispatch_error(err)
@@ -784,6 +863,8 @@ def format_dispatch_message(
         f"运行异常：{len(dispatch_errors)} 项",
         f"运维事件过滤：{'开启' if skip_ops_incidents else '关闭'}",
     ]
+    if judgement:
+        extra_lines.insert(0, f"人工判断：{judgement}")
     summary = planner_summary if isinstance(planner_summary, dict) else {}
     if summary:
         extra_lines.append(

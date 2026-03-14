@@ -252,6 +252,38 @@ def compact_task_text(value: Any, max_len: int = 72) -> str:
     return text[: max_len - 3].rstrip() + "..."
 
 
+def format_duration_ms_human(value: Any) -> str:
+    duration_ms = max(0, int(value or 0))
+    if duration_ms <= 0:
+        return "未记录"
+    if duration_ms < 1000:
+        return f"{duration_ms}毫秒"
+    duration_sec = duration_ms / 1000.0
+    if duration_sec < 60:
+        if abs(duration_sec - round(duration_sec)) < 0.05:
+            return f"{int(round(duration_sec))}秒"
+        return f"{duration_sec:.1f}秒"
+    minutes = int(duration_sec // 60)
+    remain_sec = duration_sec - (minutes * 60)
+    if abs(remain_sec - round(remain_sec)) < 0.05:
+        remain_text = f"{int(round(remain_sec))}秒"
+    else:
+        remain_text = f"{remain_sec:.1f}秒"
+    if remain_sec <= 0.05:
+        return f"{minutes}分"
+    return f"{minutes}分{remain_text}"
+
+
+def format_cost_estimate(value: Any) -> str:
+    try:
+        cost_value = float(value or 0.0)
+    except Exception:
+        cost_value = 0.0
+    if cost_value <= 0:
+        return "未记录"
+    return f"${cost_value:.6f}"
+
+
 def humanize_task_stage(stage: str) -> str:
     normalized = str(stage or "").strip().lower()
     if normalized == "plan":
@@ -308,6 +340,129 @@ def describe_selected_task(item: dict[str, Any]) -> str:
     if stage_label:
         owner = f"{owner} / {stage_label}"
     return f"{owner}：{subject}（{status_label}）"
+
+
+def build_executor_task_requirement(item: dict[str, Any]) -> str:
+    requirement = compact_task_text(item.get("task_requirement", ""), 96)
+    task_reason = compact_task_text(item.get("task_reason", ""), 88)
+    if requirement and task_reason and requirement != task_reason:
+        return f"{requirement} 背景：{task_reason}"
+    if requirement:
+        return requirement
+    if task_reason:
+        return task_reason
+    task_type = compact_task_text(item.get("task_type", ""), 64)
+    if task_type:
+        return f"补齐 {task_type} 的执行上下文，再决定下一步动作。"
+    return "当前只记录了执行结果，缺少明确任务要求。"
+
+
+def build_executor_task_status(item: dict[str, Any]) -> str:
+    assignee = str(item.get("assignee", "")).strip() or "未分配"
+    stage_label = humanize_task_stage(str(item.get("stage", "")).strip())
+    raw_reason = str(item.get("reason", "")).strip().lower()
+    category = classify_result(item)
+    if raw_reason == "waiting_human_confirm":
+        status_label = "等待人工确认"
+    elif raw_reason == "needs_clarification":
+        status_label = "待补充上下文"
+    elif raw_reason == "preflight_strict_blocked":
+        status_label = "任务被门禁拦截"
+    elif category == "passed":
+        status_label = "已完成"
+    elif category == "partial":
+        status_label = "部分完成"
+    elif category == "failed":
+        status_label = "任务执行失败"
+    else:
+        status_label = "状态待确认"
+    detail_parts = [f"负责人={assignee}"]
+    if stage_label:
+        detail_parts.append(f"阶段={stage_label}")
+    return f"{status_label}（{'，'.join(detail_parts)}）"
+
+
+def build_executor_failure_reason_text(item: dict[str, Any]) -> str:
+    failed_items = item.get("failed_items", [])
+    if isinstance(failed_items, list):
+        normalized = [compact_task_text(part, 96) for part in failed_items if compact_task_text(part, 96)]
+        if normalized:
+            return normalized[0]
+    resolution_summary = compact_task_text(item.get("resolution_summary", ""), 96)
+    if resolution_summary:
+        return resolution_summary
+    issue, detail = humanize_executor_reason(item)
+    if detail and detail != issue:
+        return compact_task_text(f"{issue}：{detail}", 96)
+    return compact_task_text(detail or issue, 96)
+
+
+def build_executor_failure_line(index: int, item: dict[str, Any]) -> str:
+    category = classify_result(item)
+    if category not in {"partial", "failed"}:
+        return ""
+    failure_count = max(0, int(item.get("failure_count", 0) or 0))
+    if failure_count <= 0:
+        failure_count = 1
+    duration_text = format_duration_ms_human(item.get("duration_ms", 0))
+    return (
+        f"失败信息{index}：原因={build_executor_failure_reason_text(item) or '未记录'}；"
+        f"失败次数={failure_count}次；最近耗时={duration_text}"
+    )
+
+
+def build_executor_execution_line(index: int, item: dict[str, Any]) -> str:
+    model_name = compact_task_text(item.get("model", ""), 48) or "未记录"
+    input_tokens = max(0, int(item.get("input_tokens", 0) or 0))
+    output_tokens = max(0, int(item.get("output_tokens", 0) or 0))
+    total_tokens = max(0, int(item.get("total_tokens", 0) or 0))
+    if total_tokens <= 0 and (input_tokens or output_tokens):
+        total_tokens = input_tokens + output_tokens
+    cost_text = format_cost_estimate(item.get("cost_estimate", 0))
+    if model_name == "未记录" and total_tokens <= 0 and cost_text == "未记录":
+        return ""
+    token_text = f"总={total_tokens}（输入={input_tokens}，输出={output_tokens}）" if total_tokens > 0 else "未记录"
+    return f"执行概况{index}：模型={model_name}；tokens={token_text}；成本≈{cost_text}"
+
+
+def explain_executor_task_value(item: dict[str, Any]) -> str:
+    raw_reason = str(item.get("reason", "")).strip().lower()
+    category = classify_result(item)
+    if raw_reason == "waiting_human_confirm":
+        return "这项正在等人工拍板，不先确认会一直停在队列里。"
+    if raw_reason == "needs_clarification":
+        return "这项信息还不够，先补上下文才能避免重复返工。"
+    if raw_reason == "preflight_strict_blocked":
+        return "这项被能力门禁拦住了，先改派才能恢复执行。"
+    if category == "partial":
+        return "这项只完成了一部分，继续追进能更快收口。"
+    if category == "failed":
+        return "这项已经失败，不优先处理会继续阻塞后续动作。"
+    return "这项是本轮的焦点任务，先看它最能判断当前执行质量。"
+
+
+def select_focus_task_items(results: list[dict[str, Any]], limit: int = 3) -> list[dict[str, Any]]:
+    ranked: list[tuple[int, int, dict[str, Any]]] = []
+    for idx, item in enumerate(results):
+        if not isinstance(item, dict):
+            continue
+        raw_reason = str(item.get("reason", "")).strip().lower()
+        category = classify_result(item)
+        if raw_reason == "preflight_strict_blocked":
+            bucket = 0
+        elif category == "failed":
+            bucket = 1
+        elif category == "partial":
+            bucket = 2
+        elif raw_reason == "waiting_human_confirm":
+            bucket = 3
+        elif raw_reason == "needs_clarification":
+            bucket = 4
+        else:
+            bucket = 5
+        ranked.append((bucket, idx, item))
+    ranked.sort(key=lambda row: (row[0], row[1]))
+    return [item for _bucket, _idx, item in ranked[: max(1, int(limit))]]
 
 
 def resolve_workflow_display_meta(name: Any) -> WorkflowDisplayMeta | None:
@@ -421,6 +576,16 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
     else:
         summary_text = "当前没有待处理任务。"
 
+    reason_parts: list[str] = []
+    if waiting_confirm_items:
+        reason_parts.append(f"等待人工确认 {waiting_confirm_count} 个")
+    if clarification_items:
+        reason_parts.append(f"待补充上下文 {clarification_count} 个")
+    if partial_items:
+        reason_parts.append(f"任务仅部分完成 {len(partial_items)} 个")
+    if failed_items:
+        reason_parts.append(f"任务执行失败 {len(failed_items)} 个")
+
     lines = [
         f"- 触发任务：{trigger_task_label}",
         f"- 运行编号：{str(summary.get('run_id', '')).strip() or '-'}",
@@ -430,6 +595,12 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
             f"跳过 {skipped} 个，未闭环 {unresolved} 个。"
         ),
     ]
+    if reason_parts:
+        lines.append(f"- 原因解析：{'；'.join(reason_parts)}。")
+    lines.append(
+        f"- 修复进展：已执行 {executed}/{selected or max(executed, 1)}，"
+        f"部分推进 {len(partial_items)}，失败 {len(failed_items)}。"
+    )
     preflight_warning_tasks = max(0, int(summary.get("preflight_warning_tasks", 0) or 0))
     preflight_blocked_tasks = max(0, int(summary.get("preflight_blocked_tasks", 0) or 0))
     if preflight_warning_tasks > 0:
@@ -439,14 +610,21 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
         else:
             line += "。"
         lines.append(line)
-    if results:
-        lines.append("- 本轮任务：")
-        for idx, item in enumerate(results[:5], start=1):
-            if not isinstance(item, dict):
-                continue
-            lines.append(f"  {idx}. {describe_selected_task(item)}")
-        if len(results) > 5:
-            lines.append(f"  - 其余 {len(results) - 5} 个任务请按留痕编号查看。")
+    focus_items = select_focus_task_items(results, limit=3)
+    if focus_items:
+        for idx, item in enumerate(focus_items, start=1):
+            lines.append(f"- 任务{idx}：{describe_task_subject(item)}")
+            lines.append(f"- 要求{idx}：{build_executor_task_requirement(item)}")
+            lines.append(f"- 状态{idx}：{build_executor_task_status(item)}")
+            failure_line = build_executor_failure_line(idx, item)
+            if failure_line:
+                lines.append(f"- {failure_line}")
+            execution_line = build_executor_execution_line(idx, item)
+            if execution_line:
+                lines.append(f"- {execution_line}")
+            lines.append(f"- 值得做{idx}：{explain_executor_task_value(item)}")
+        if len(results) > len(focus_items):
+            lines.append(f"- 其余 {len(results) - len(focus_items)} 个任务请按留痕编号查看。")
     if passed_items:
         lines.append(f"- 已闭环：{len(passed_items)} 个")
     if waiting_confirm_items:
@@ -454,11 +632,6 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
     if clarification_items:
         lines.append(f"- 待补充上下文：{clarification_count} 个")
     unresolved_items = [*partial_items, *failed_items]
-    if unresolved_items:
-        lines.append("- 未闭环任务：")
-        for item in unresolved_items[:8]:
-            issue, detail = humanize_executor_reason(item)
-            lines.append(f"  - {describe_selected_task(item)}：{issue}；{detail}")
 
     human_view = {
         "visible": visible,

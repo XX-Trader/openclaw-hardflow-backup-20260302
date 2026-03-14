@@ -333,9 +333,10 @@ class CronQuietModeTests(unittest.TestCase):
             ],
         }
         output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
-        self.assertIn("任务执行异常", output)
-        self.assertIn("todo-1", output)
-        self.assertIn("report.json", output)
+        self.assertIn("任务执行器（10分钟）", output.splitlines()[0])
+        self.assertIn("原因解析：任务执行失败 2 个。", output)
+        self.assertNotIn("todo-1", output)
+        self.assertNotIn("report.json", output)
 
     def test_task_executor_retries_rate_limit_failures(self):
         module = load_module(
@@ -505,8 +506,8 @@ class CronQuietModeTests(unittest.TestCase):
             ],
         }
         output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
-        self.assertIn("任务执行异常", output)
-        self.assertIn("模型被策略拦截", output)
+        self.assertIn("任务执行器（10分钟）", output.splitlines()[0])
+        self.assertIn("执行前检查失败：模型 volcengine/kimi-k2.5 被策略禁止", output)
         self.assertIn("volcengine/kimi-k2.5", output)
         self.assertIn("执行结果回写失败", output)
         self.assertNotIn("# task-executor", output)
@@ -549,15 +550,13 @@ class CronQuietModeTests(unittest.TestCase):
 
         output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
 
-        self.assertIn("- 结论:", output)
-        self.assertIn("3 个任务均未闭环", output)
-        self.assertIn("- 原因解析:", output)
-        self.assertIn("任务仅部分完成 2 个", output)
-        self.assertIn("任务执行失败 1 个", output)
-        self.assertIn("- 修复进展:", output)
-        self.assertIn("已执行 3/3", output)
-        self.assertIn("部分推进 2", output)
-        self.assertIn("失败 1", output)
+        self.assertIn("任务执行器（10分钟）", output.splitlines()[0])
+        self.assertIn("选中 3 个任务，未闭环 3 个。", output)
+        self.assertIn("- 原因解析：任务仅部分完成 2 个；任务执行失败 1 个。", output)
+        self.assertIn("- 修复进展：已执行 3/3，部分推进 2，失败 1。", output)
+        self.assertIn("任务1：", output)
+        self.assertIn("状态1：", output)
+        self.assertIn("值得做1：", output)
 
     def test_task_executor_duplicate_workflow_repair_alert_returns_no_reply(self):
         module = load_module(
@@ -852,7 +851,7 @@ class CronQuietModeTests(unittest.TestCase):
             planner_summary=None,
             output_mode="summary",
         )
-        self.assertEqual(output.splitlines()[0], "任务巡检异常")
+        self.assertIn("任务巡检异常", output.splitlines()[0])
         self.assertIn("规划器摘要读取失败", output)
         self.assertIn("database locked", output)
         self.assertIn("留痕", output)
@@ -916,10 +915,14 @@ class CronQuietModeTests(unittest.TestCase):
             planner_summary={"task_count": 1, "resolved_task_count": 0, "failed_task_count": 0},
             output_mode="verbose",
         )
-        self.assertEqual(output.splitlines()[0], "任务巡检摘要")
+        self.assertIn("任务巡检摘要", output.splitlines()[0])
         self.assertIn("任务编号：cron:todo-patrol", output)
         self.assertIn("留痕", output)
-        self.assertIn("todo-1", output)
+        self.assertIn("任务1：统一剩余入口输出样式", output)
+        self.assertIn("要求1：统一群聊输出", output)
+        self.assertIn("状态1：已派发给 backend-dev", output)
+        self.assertIn("值得做1：", output)
+        self.assertNotIn("todo-1", output)
         self.assertNotIn("sender_identity:", output)
         self.assertNotIn("todo_file:", output)
         self.assertNotIn("task_center_db:", output)

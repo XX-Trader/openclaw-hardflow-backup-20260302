@@ -229,7 +229,22 @@ def load_tasks(db_path: Path, limit: int) -> list[dict[str, Any]]:
         now_utc_iso = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
         rows = conn.execute(
             """
-            SELECT task_id, task_type, reason, priority, risk_level, assignee, status, scheduled_at, created_at, updated_at
+            SELECT
+              task_id,
+              task_type,
+              reason,
+              priority,
+              risk_level,
+              assignee,
+              status,
+              requirement,
+              result_output,
+              acceptance,
+              retry_count,
+              failure_count,
+              scheduled_at,
+              created_at,
+              updated_at
             FROM tasks
             ORDER BY
               CASE
@@ -261,15 +276,351 @@ def is_runtime_binding_task(item: dict[str, Any]) -> bool:
     return str(item.get("reason", "")).strip().startswith("[CRON_RUNTIME] bind ")
 
 
-def summarize_items(items: list[dict[str, Any]], limit: int) -> list[str]:
-    lines: list[str] = []
-    for row in items[: max(1, int(limit))]:
-        lines.append(
-            "- "
-            + f"[{row.get('task_id')}] "
-            + f"{str(row.get('reason') or '')[:70]} "
-            + f"(priority={row.get('priority')}, risk={row.get('risk_level')}, assignee={row.get('assignee')})"
+def split_compact_text_list(value: Any) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    raw = str(value or "").strip()
+    if not raw:
+        return []
+    if raw.startswith("[") and raw.endswith("]"):
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+    normalized = raw.replace("\r", "\n")
+    line_parts = [part.strip() for part in normalized.split("\n") if part.strip()]
+    if len(line_parts) > 1:
+        return line_parts
+    if "," in raw:
+        comma_parts = [part.strip() for part in raw.split(",") if part.strip()]
+        if len(comma_parts) > 1:
+            return comma_parts
+    return [raw]
+
+
+def load_latest_agent_reports(db_path: Path, task_ids: list[str]) -> dict[str, dict[str, Any]]:
+    normalized_ids = [str(task_id).strip() for task_id in task_ids if str(task_id).strip()]
+    if (not normalized_ids) or (not db_path.exists()):
+        return {}
+    conn: sqlite3.Connection | None = None
+    try:
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        table_exists = conn.execute(
+            "SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = 'agent_task_reports'"
+        ).fetchone()
+        if not table_exists:
+            return {}
+        placeholders = ",".join("?" for _ in normalized_ids)
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM agent_task_reports
+            WHERE task_id IN ({placeholders})
+            ORDER BY task_id ASC, ts DESC, id DESC
+            """,
+            normalized_ids,
+        ).fetchall()
+        latest_reports: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            item = dict(row)
+            task_id = str(item.get("task_id", "")).strip()
+            if (not task_id) or task_id in latest_reports:
+                continue
+            item["failed_items"] = split_compact_text_list(item.get("failed_items", ""))
+            item["resolved_issues"] = split_compact_text_list(item.get("resolved_issues", ""))
+            latest_reports[task_id] = item
+        return latest_reports
+    except Exception:
+        return {}
+    finally:
+        if conn is not None:
+            conn.close()
+
+
+def attach_latest_agent_reports(items: list[dict[str, Any]], latest_reports: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    if not items or not latest_reports:
+        return items
+    enriched: list[dict[str, Any]] = []
+    for item in items:
+        cloned = dict(item)
+        task_id = str(cloned.get("task_id", "")).strip()
+        if task_id and task_id in latest_reports:
+            cloned["latest_report"] = dict(latest_reports[task_id])
+        enriched.append(cloned)
+    return enriched
+
+
+def compact_task_text(value: Any, max_len: int = 88) -> str:
+    text = " ".join(str(value or "").split())
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 3].rstrip() + "..."
+
+
+def priority_rank(value: Any) -> int:
+    normalized = str(value or "").strip().lower()
+    if normalized == "high":
+        return 0
+    if normalized == "medium":
+        return 1
+    if normalized == "low":
+        return 2
+    return 3
+
+
+def risk_rank(value: Any) -> int:
+    normalized = str(value or "").strip().lower()
+    if normalized == "high":
+        return 0
+    if normalized == "medium":
+        return 1
+    if normalized == "low":
+        return 2
+    return 3
+
+
+def status_rank(value: Any) -> int:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"failed", "escalated"}:
+        return 0
+    if normalized == "running":
+        return 1
+    if normalized == "pending":
+        return 2
+    if normalized == "passed":
+        return 3
+    return 4
+
+
+def pick_focus_todo_items(items: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    ranked: list[tuple[int, int, int, int, dict[str, Any]]] = []
+    for idx, item in enumerate(items):
+        ranked.append(
+            (
+                status_rank(item.get("status", "")),
+                priority_rank(item.get("priority", "")),
+                risk_rank(item.get("risk_level", "")),
+                idx,
+                item,
+            )
         )
+    ranked.sort(key=lambda row: (row[0], row[1], row[2], row[3]))
+    return [item for _status, _priority, _risk, _idx, item in ranked[: max(1, int(limit))]]
+
+
+def format_duration_ms_human(value: Any) -> str:
+    duration_ms = max(0, int(value or 0))
+    if duration_ms <= 0:
+        return "未记录"
+    if duration_ms < 1000:
+        return f"{duration_ms}毫秒"
+    duration_sec = duration_ms / 1000.0
+    if duration_sec < 60:
+        if abs(duration_sec - round(duration_sec)) < 0.05:
+            return f"{int(round(duration_sec))}秒"
+        return f"{duration_sec:.1f}秒"
+    minutes = int(duration_sec // 60)
+    remain_sec = duration_sec - (minutes * 60)
+    if abs(remain_sec - round(remain_sec)) < 0.05:
+        remain_text = f"{int(round(remain_sec))}秒"
+    else:
+        remain_text = f"{remain_sec:.1f}秒"
+    if remain_sec <= 0.05:
+        return f"{minutes}分"
+    return f"{minutes}分{remain_text}"
+
+
+def format_cost_estimate(value: Any) -> str:
+    try:
+        cost_value = float(value or 0.0)
+    except Exception:
+        cost_value = 0.0
+    if cost_value <= 0:
+        return "未记录"
+    return f"${cost_value:.6f}"
+
+
+def build_failure_reason_text(item: dict[str, Any]) -> str:
+    latest_report = item.get("latest_report", {})
+    latest_report = latest_report if isinstance(latest_report, dict) else {}
+    failed_items = split_compact_text_list(latest_report.get("failed_items", []))
+    if failed_items:
+        return compact_task_text(failed_items[0], 96)
+    resolution_summary = compact_task_text(latest_report.get("resolution_summary", ""), 96)
+    if resolution_summary:
+        return resolution_summary
+    raw_status = str(item.get("status", "")).strip().lower()
+    if raw_status == "escalated":
+        return "自动执行未闭环，当前需要人工介入。"
+    if raw_status == "failed":
+        return "执行失败，详细失败原因未留痕。"
+    return ""
+
+
+def build_failure_metrics_line(index: int, item: dict[str, Any]) -> str:
+    raw_status = str(item.get("status", "")).strip().lower()
+    if raw_status not in {"failed", "escalated"}:
+        return ""
+    latest_report = item.get("latest_report", {})
+    latest_report = latest_report if isinstance(latest_report, dict) else {}
+    failure_count = max(
+        0,
+        int(item.get("failure_count", 0) or 0),
+        int(latest_report.get("failure_count", 0) or 0),
+    )
+    retry_count = max(0, int(item.get("retry_count", 0) or 0))
+    duration_text = format_duration_ms_human(latest_report.get("duration_ms", 0))
+    parts = [
+        f"原因={build_failure_reason_text(item) or '未记录'}",
+        f"失败次数={max(1, failure_count)}次",
+        f"最近耗时={duration_text}",
+    ]
+    if retry_count > 0:
+        parts.append(f"已重试={retry_count}次")
+    return f"失败信息{index}：" + "；".join(parts)
+
+
+def build_execution_metrics_line(index: int, item: dict[str, Any]) -> str:
+    raw_status = str(item.get("status", "")).strip().lower()
+    if raw_status not in {"failed", "escalated"}:
+        return ""
+    latest_report = item.get("latest_report", {})
+    latest_report = latest_report if isinstance(latest_report, dict) else {}
+    model_id = compact_task_text(str(latest_report.get("model_id", "")).replace("/", " · "), 48) or "未记录"
+    input_tokens = max(0, int(latest_report.get("input_tokens", 0) or 0))
+    output_tokens = max(0, int(latest_report.get("output_tokens", 0) or 0))
+    total_tokens = max(0, int(latest_report.get("total_tokens", 0) or 0))
+    if total_tokens <= 0 and (input_tokens or output_tokens):
+        total_tokens = input_tokens + output_tokens
+    cost_text = format_cost_estimate(latest_report.get("cost_estimate", 0))
+    if model_id == "未记录" and total_tokens <= 0 and cost_text == "未记录":
+        return ""
+    token_text = f"总={total_tokens}（输入={input_tokens}，输出={output_tokens}）" if total_tokens > 0 else "未记录"
+    return f"执行概况{index}：模型={model_id}；tokens={token_text}；成本≈{cost_text}"
+
+
+def build_focus_task_subject(item: dict[str, Any]) -> str:
+    reason = compact_task_text(item.get("reason", ""), 72)
+    requirement = compact_task_text(item.get("requirement", ""), 72)
+    if reason and ("task_id=" not in reason) and ("assignee=" not in reason) and ("|" not in reason):
+        return reason
+    if requirement:
+        return requirement
+    if reason:
+        return reason
+    task_label = str(item.get("task_id", "")).strip()
+    return task_label or "未命名任务"
+
+
+def build_focus_task_requirement(item: dict[str, Any]) -> str:
+    requirement = compact_task_text(item.get("requirement", ""), 92)
+    acceptance = compact_task_text(item.get("acceptance", ""), 64)
+    if requirement and acceptance:
+        return f"{requirement} 验收：{acceptance}"
+    if requirement:
+        return requirement
+    if acceptance:
+        return f"验收：{acceptance}"
+    reason = compact_task_text(item.get("reason", ""), 92)
+    return reason or "未补充明确要求"
+
+
+def humanize_task_status(item: dict[str, Any]) -> str:
+    priority = str(item.get("priority", "")).strip() or "-"
+    risk_level = str(item.get("risk_level", "")).strip() or "-"
+    assignee = str(item.get("assignee", "")).strip() or "未分配"
+    raw_status = str(item.get("status", "")).strip().lower()
+    if raw_status == "pending":
+        status_label = "任务中心待处理"
+    elif raw_status == "running":
+        status_label = "任务中心进行中"
+    elif raw_status == "failed":
+        status_label = "任务中心执行失败"
+    elif raw_status == "escalated":
+        status_label = "任务中心待人工介入"
+    elif raw_status == "passed":
+        status_label = "任务中心已完成"
+    else:
+        status_label = "任务中心状态待确认"
+    return f"{status_label}（优先级={priority}，风险={risk_level}，负责人={assignee}）"
+
+
+def explain_task_value(index: int, item: dict[str, Any], has_exceptions: bool) -> str:
+    raw_status = str(item.get("status", "")).strip().lower()
+    priority = str(item.get("priority", "")).strip().lower()
+    risk_level = str(item.get("risk_level", "")).strip().lower()
+    if raw_status in {"failed", "escalated"}:
+        return "这项已经失败或升级，不先处理会继续阻塞后续推进。"
+    if priority == "high" or risk_level == "high":
+        return "这项属于高优先级或高风险事项，拖延会继续积压。"
+    if raw_status == "running":
+        return "这项已经在执行中，及时跟进能避免任务卡住。"
+    if has_exceptions and index == 1:
+        return "异常收口后，这项最适合作为今天的第一顺位推进。"
+    return "这是今天新增待办里最值得先确认的一项。"
+
+
+def humanize_chat_error(reason: str) -> str:
+    raw = str(reason or "").strip()
+    if not raw:
+        return "未知异常"
+    if raw.startswith("webhook_missing:"):
+        detail = raw.split(":", 1)[1].strip() or raw
+        env_name = detail.split(";", 1)[0].strip() or detail
+        return f"钉钉 Webhook 未配置：{env_name}"
+    if raw.startswith("dingtalk_post_failed:"):
+        detail = raw.split(":", 1)[1].strip() or raw
+        return f"钉钉发送失败：{detail}"
+    if raw.startswith("policy_enforcer_failed:"):
+        detail = raw.split(":", 1)[1].strip() or raw
+        return f"策略记录失败：{detail}"
+    return raw
+
+
+def build_digest_judgement(new_todo: list[dict[str, Any]], new_done: list[dict[str, Any]], reasons: list[str]) -> str:
+    if reasons and new_todo:
+        return "异常优先，先收口运行问题，再确认新增待办是否需要人工接管。"
+    if reasons:
+        return "先处理异常，再决定今天是否需要补发通知。"
+    if new_todo:
+        high_priority_count = sum(
+            1
+            for item in new_todo
+            if str(item.get("priority", "")).strip().lower() == "high"
+            or str(item.get("risk_level", "")).strip().lower() == "high"
+        )
+        if high_priority_count > 0:
+            return f"今天新增待办里有 {high_priority_count} 项高优先级事项，建议先看前排任务。"
+        return "今天新增待办不算少，先确认优先级再安排推进顺序。"
+    if new_done:
+        return "今天以完成项复核为主，确认是否还有收尾动作。"
+    return ""
+
+
+def append_focus_task_details(detail_lines: list[str], items: list[dict[str, Any]], has_exceptions: bool) -> None:
+    for idx, item in enumerate(items, start=1):
+        detail_lines.append(f"任务{idx}：{build_focus_task_subject(item)}")
+        detail_lines.append(f"要求{idx}：{build_focus_task_requirement(item)}")
+        detail_lines.append(f"状态{idx}：{humanize_task_status(item)}")
+        failure_line = build_failure_metrics_line(idx, item)
+        if failure_line:
+            detail_lines.append(failure_line)
+        execution_line = build_execution_metrics_line(idx, item)
+        if execution_line:
+            detail_lines.append(execution_line)
+        detail_lines.append(f"值得做{idx}：{explain_task_value(idx, item, has_exceptions)}")
+
+
+def summarize_completed_items(items: list[dict[str, Any]], limit: int) -> list[str]:
+    lines: list[str] = []
+    for idx, item in enumerate(items[: max(1, int(limit))], start=1):
+        subject = build_focus_task_subject(item)
+        lines.append(f"完成{idx}：{subject}（任务中心已完成，可复核交付质量）")
     return lines
 
 
@@ -285,24 +636,31 @@ def build_chat_output(
     exception_reasons: list[str],
     max_notify_items: int,
 ) -> str:
+    reasons = [str(reason).strip() for reason in exception_reasons if str(reason).strip()]
     has_updates = bool(new_todo or new_done)
-    has_exceptions = bool(exception_reasons)
+    has_exceptions = bool(reasons)
     if (not has_updates) and (not has_exceptions):
         return "NO_REPLY"
 
-    title = "每日任务摘要" if has_updates else "每日任务摘要异常"
-    status = "有更新" if has_updates and (not has_exceptions) else "需关注"
+    focus_items = pick_focus_todo_items(new_todo, min(int(max_notify_items), 3)) if new_todo else []
+    title = "每日任务摘要需关注" if has_updates and has_exceptions else ("每日任务摘要" if has_updates else "每日任务摘要异常")
+    status = "需处理" if has_exceptions else ("需跟进" if new_todo else "已汇报")
     summary_parts: list[str] = []
-    if has_updates:
+    judgement = build_digest_judgement(new_todo, new_done, reasons)
+    if judgement:
+        summary_parts.append(judgement)
+    if new_todo:
         summary_parts.append(f"新增待办 {len(new_todo)} 项")
+    if new_done:
         summary_parts.append(f"新增完成 {len(new_done)} 项")
     if has_exceptions:
-        summary_parts.append(f"发现 {len(exception_reasons)} 个运行异常")
+        summary_parts.append(f"发现 {len(reasons)} 个运行异常")
 
     extra_lines: list[str] = []
+    if judgement:
+        extra_lines.append(f"人工判断：{judgement}")
     if has_updates:
-        extra_lines.append(f"新增待办：{len(new_todo)} 项")
-        extra_lines.append(f"新增完成：{len(new_done)} 项")
+        extra_lines.append(f"待办变化：新增待办 {len(new_todo)} 项，新增完成 {len(new_done)} 项。")
     if isinstance(planner_summary, dict) and planner_summary:
         extra_lines.append(
             "近24小时处理："
@@ -312,11 +670,13 @@ def build_chat_output(
         )
 
     detail_lines: list[str] = []
-    for idx, text in enumerate(summarize_items(new_todo, int(max_notify_items)), start=1):
-        detail_lines.append(f"待办{idx}：{strip_list_marker(text)}")
-    for idx, text in enumerate(summarize_items(new_done, int(max_notify_items)), start=1):
-        detail_lines.append(f"完成{idx}：{strip_list_marker(text)}")
+    if focus_items:
+        append_focus_task_details(detail_lines, focus_items, has_exceptions)
+    for text in summarize_completed_items(new_done, min(int(max_notify_items), 2)):
+        detail_lines.append(text)
     if has_exceptions:
+        for idx, reason in enumerate(reasons[:3], start=1):
+            detail_lines.append(f"异常{idx}：{humanize_chat_error(reason)}")
         detail_lines.append("运行详情已写入内部留痕，不再在群聊中展示底层文件路径。")
 
     return render_chat_notice(
@@ -330,9 +690,9 @@ def build_chat_output(
         details=detail_lines,
         extra_lines=extra_lines,
         next_step=(
-            "如需排查，请按留痕编号查看内部报告。"
+            "请先处理异常，再确认新增待办和完成项是否需要进一步跟进。"
             if has_exceptions
-            else "如需跟进，请按任务编号进入任务中心处理。"
+            else "请按任务编号进入任务中心确认新增待办，并复核今天新增完成项。"
         ),
     )
 
@@ -381,6 +741,12 @@ def main() -> int:
 
     new_todo = [x for x in todo_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_todo_ids]
     new_done = [x for x in done_candidates if str(x.get("task_id", "")) and str(x.get("task_id", "")) not in sent_done_ids]
+    latest_reports = load_latest_agent_reports(
+        db_path,
+        [str(item.get("task_id", "")).strip() for item in [*new_todo, *new_done] if str(item.get("task_id", "")).strip()],
+    )
+    new_todo = attach_latest_agent_reports(new_todo, latest_reports)
+    new_done = attach_latest_agent_reports(new_done, latest_reports)
 
     sender_identity = normalize_sender_identity(args.sender_identity)
     normal_log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
