@@ -138,6 +138,65 @@ def split_list(value: Any) -> list[str]:
     return uniq
 
 
+def load_agent_capability_index(manifest_file: Path) -> dict[str, dict[str, Any]]:
+    if not manifest_file.exists():
+        return {}
+    try:
+        payload = json.loads(manifest_file.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {}
+    agents = payload.get("agents", []) if isinstance(payload, dict) else []
+    if not isinstance(agents, list):
+        return {}
+    index: dict[str, dict[str, Any]] = {}
+    for item in agents:
+        if not isinstance(item, dict):
+            continue
+        agent_id = str(item.get("agent_id", "")).strip()
+        if not agent_id:
+            continue
+        index[agent_id] = item
+    return index
+
+
+def build_task_preflight(task: dict[str, Any], capability_index: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    assignee = str(task.get("assignee", "")).strip() or "backend-dev"
+    required_skills = split_list(task.get("required_skills"))
+    required_capabilities = split_list(task.get("required_capabilities"))
+    allowed_agents = split_list(task.get("allowed_agents"))
+    agent_profile = capability_index.get(assignee, {})
+    declared_skills = split_list(agent_profile.get("declared_skills", []))
+    capability_tokens = set(declared_skills)
+    capability_mode = str(agent_profile.get("capability_mode", "")).strip()
+    if capability_mode:
+        capability_tokens.add(capability_mode)
+
+    warnings: list[str] = []
+    if not agent_profile:
+        warnings.append("assignee_not_registered")
+    if allowed_agents and assignee not in allowed_agents:
+        warnings.append("assignee_not_allowed")
+
+    declared_skill_set = set(declared_skills)
+    missing_skills = [item for item in required_skills if item not in declared_skill_set]
+    missing_capabilities = [item for item in required_capabilities if item not in capability_tokens]
+    if missing_skills:
+        warnings.append("required_skills_unmet")
+    if missing_capabilities:
+        warnings.append("required_capabilities_unmet")
+
+    return {
+        "ok": not warnings,
+        "assignee": assignee,
+        "warnings": warnings,
+        "allowed_agents": allowed_agents,
+        "required_skills": required_skills,
+        "required_capabilities": required_capabilities,
+        "missing_skills": missing_skills,
+        "missing_capabilities": missing_capabilities,
+    }
+
+
 def load_policy(policy_file: Path) -> dict[str, Any]:
     try:
         payload = json.loads(policy_file.read_text(encoding="utf-8-sig"))
@@ -612,7 +671,7 @@ def web_context(sources_file: Path, keyword: str, max_chars: int) -> list[dict[s
 def prompt_for_task(task: dict[str, Any], local_hits: list[str], web_hits: list[dict[str, str]]) -> str:
     local_text = "\n".join(f"- {x}" for x in local_hits) or "- (none)"
     web_text = "\n".join(f"- [{x['id']}] {x['url']} | {x['snippet']}" for x in web_hits) or "- (none)"
-    return f"""你是执行代理，请完成任务并只输出 JSON 对象（不要解释）。\n\n任务:\n- task_id: {task.get('task_id')}\n- reason: {task.get('reason')}\n- requirement: {task.get('requirement')}\n- result_output: {task.get('result_output')}\n- acceptance: {task.get('acceptance')}\n- observable_outputs: {task.get('observable_outputs')}\n- acceptance_thresholds: {task.get('acceptance_thresholds')}\n\n本地检索:\n{local_text}\n\n网络检索:\n{web_text}\n\n输出模板:\n{{\"status\":\"passed|failed|partial|escalated\",\"solved\":true,\"resolution_summary\":\"\",\"resolution_steps\":[],\"resolved_issues\":[],\"failed_items\":[],\"failure_count\":0,\"quality_score\":0,\"quality_grade\":\"a|b|c|d\",\"need_clarification\":false,\"clarification_reason\":\"\",\"context_fields_missing\":[],\"cost_estimate\":0}}"""
+    return f"""你是执行代理，请完成任务并只输出 JSON 对象（不要解释）。\n\n任务:\n- task_id: {task.get('task_id')}\n- reason: {task.get('reason')}\n- requirement: {task.get('requirement')}\n- result_output: {task.get('result_output')}\n- acceptance: {task.get('acceptance')}\n- observable_outputs: {task.get('observable_outputs')}\n- acceptance_thresholds: {task.get('acceptance_thresholds')}\n- required_capabilities: {task.get('required_capabilities')}\n- required_skills: {task.get('required_skills')}\n- allowed_agents: {task.get('allowed_agents')}\n\n本地检索:\n{local_text}\n\n网络检索:\n{web_text}\n\n输出模板:\n{{\"status\":\"passed|failed|partial|escalated\",\"solved\":true,\"resolution_summary\":\"\",\"resolution_steps\":[],\"resolved_issues\":[],\"failed_items\":[],\"failure_count\":0,\"quality_score\":0,\"quality_grade\":\"a|b|c|d\",\"need_clarification\":false,\"clarification_reason\":\"\",\"context_fields_missing\":[],\"cost_estimate\":0}}"""
 
 
 def call_agent(
@@ -859,6 +918,7 @@ def main() -> int:
     parser.add_argument("--timeout-sec", type=int, default=1200)
     parser.add_argument("--local-agent", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--web-sources-file", default=str(repo_root / "scripts/openclaw-ops/web/project_docs_sources.json"))
+    parser.add_argument("--agent-capability-manifest", default=str(repo_root / "agents/agent_capability_manifest.json"))
     parser.add_argument("--web-max-chars", type=int, default=12000)
     parser.add_argument("--report-dir", default=str(repo_root / ".workflow/executor-runs"))
     parser.add_argument("--dry-run", action="store_true")
@@ -902,16 +962,20 @@ def main() -> int:
         "executor_model": (requested_model if has_fixed_model else "auto(per-assignee)"),
         "executor_model_source": ("cli" if has_fixed_model else "policy-agent-overrides"),
         "executor_thinking": "auto(by-model)",
+        "preflight_manifest": str(Path(args.agent_capability_manifest).expanduser()),
+        "preflight_warning_tasks": 0,
         "results": [],
     }
 
     try:
+        capability_index = load_agent_capability_index(Path(args.agent_capability_manifest).expanduser())
         tasks = select_tasks(enforcer, str(args.only_task_id), max(1, int(args.max_tasks)))
         summary["tasks_selected"] = len(tasks)
 
         for task in tasks:
             task_id = str(task.get("task_id", "")).strip()
             assignee = str(task.get("assignee", "")).strip() or "backend-dev"
+            preflight = build_task_preflight(task, capability_index)
             stage = default_stage(assignee)
             task_type = str(task.get("task_type", "")).strip()
             workflow_alert_tokens = extract_workflow_failure_tokens_from_task(
@@ -939,7 +1003,21 @@ def main() -> int:
                 "task_reason": compact_text(task.get("reason", ""), 96),
                 "task_requirement": compact_text(task.get("requirement", ""), 120),
                 "workflow_alert_tokens": workflow_alert_tokens,
+                "preflight": preflight,
             }
+
+            if preflight["warnings"]:
+                summary["preflight_warning_tasks"] = int(summary.get("preflight_warning_tasks", 0) or 0) + 1
+                try:
+                    enforcer.db.add_event(
+                        task_id=task_id,
+                        actor=str(args.actor),
+                        event_type="task_preflight_warning",
+                        stage="dispatch",
+                        details=preflight,
+                    )
+                except Exception:
+                    pass
 
             if bool(task.get("needs_clarification")):
                 result["reason"] = "needs_clarification"
