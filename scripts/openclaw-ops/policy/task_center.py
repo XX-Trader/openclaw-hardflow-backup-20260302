@@ -376,6 +376,9 @@ class TaskCenter:
                 acceptance TEXT NOT NULL,
                 observable_outputs TEXT NOT NULL DEFAULT '',
                 acceptance_thresholds TEXT NOT NULL DEFAULT '',
+                required_capabilities TEXT NOT NULL DEFAULT '',
+                required_skills TEXT NOT NULL DEFAULT '',
+                allowed_agents TEXT NOT NULL DEFAULT '',
                 score_raw REAL,
                 score_normalized REAL,
                 score_payload TEXT NOT NULL DEFAULT '{}',
@@ -545,6 +548,9 @@ class TaskCenter:
             "change_id": "TEXT NOT NULL DEFAULT ''",
             "observable_outputs": "TEXT NOT NULL DEFAULT ''",
             "acceptance_thresholds": "TEXT NOT NULL DEFAULT ''",
+            "required_capabilities": "TEXT NOT NULL DEFAULT ''",
+            "required_skills": "TEXT NOT NULL DEFAULT ''",
+            "allowed_agents": "TEXT NOT NULL DEFAULT ''",
             "score_payload": "TEXT NOT NULL DEFAULT '{}'",
             "token_usage_summary": "TEXT NOT NULL DEFAULT '{}'",
             "cost_estimate_total": "REAL NOT NULL DEFAULT 0",
@@ -632,6 +638,9 @@ class TaskCenter:
             "acceptance": str(task.get("acceptance", "")).strip(),
             "observable_outputs": str(task.get("observable_outputs", "")).strip(),
             "acceptance_thresholds": str(task.get("acceptance_thresholds", "")).strip(),
+            "required_capabilities": normalize_text_list(task.get("required_capabilities")),
+            "required_skills": normalize_text_list(task.get("required_skills")),
+            "allowed_agents": normalize_text_list(task.get("allowed_agents")),
             "score_raw": task.get("score_raw"),
             "score_normalized": task.get("score_normalized"),
             "score_payload": ensure_json(task.get("score_payload") or {}),
@@ -701,6 +710,7 @@ class TaskCenter:
                     owner, change_id,
                     requirement, result_output, acceptance,
                     observable_outputs, acceptance_thresholds,
+                    required_capabilities, required_skills, allowed_agents,
                     score_raw, score_normalized, score_payload,
                     token_usage_summary, cost_estimate_total, action,
                     scheduled_at, started_at, completed_at, created_at, updated_at
@@ -714,6 +724,7 @@ class TaskCenter:
                     :owner, :change_id,
                     :requirement, :result_output, :acceptance,
                     :observable_outputs, :acceptance_thresholds,
+                    :required_capabilities, :required_skills, :allowed_agents,
                     :score_raw, :score_normalized, :score_payload,
                     :token_usage_summary, :cost_estimate_total, :action,
                     :scheduled_at, :started_at, :completed_at, :created_at, :updated_at
@@ -778,6 +789,9 @@ class TaskCenter:
             "acceptance",
             "observable_outputs",
             "acceptance_thresholds",
+            "required_capabilities",
+            "required_skills",
+            "allowed_agents",
             "score_raw",
             "score_normalized",
             "score_payload",
@@ -850,6 +864,12 @@ class TaskCenter:
             updates["context_fields_recommended_missing"] = normalize_context_missing_fields(
                 updates["context_fields_recommended_missing"]
             )
+        if "required_capabilities" in updates:
+            updates["required_capabilities"] = normalize_text_list(updates["required_capabilities"])
+        if "required_skills" in updates:
+            updates["required_skills"] = normalize_text_list(updates["required_skills"])
+        if "allowed_agents" in updates:
+            updates["allowed_agents"] = normalize_text_list(updates["allowed_agents"])
         if "context_payload" in updates:
             payload = updates["context_payload"]
             if isinstance(payload, str):
@@ -922,6 +942,9 @@ class TaskCenter:
         data["context_fields_missing"] = [x for x in missing_fields.split(",") if x]
         recommended_missing_fields = str(data.get("context_fields_recommended_missing") or "").strip()
         data["context_fields_recommended_missing"] = [x for x in recommended_missing_fields.split(",") if x]
+        data["required_capabilities"] = split_text_list(data.get("required_capabilities"))
+        data["required_skills"] = split_text_list(data.get("required_skills"))
+        data["allowed_agents"] = split_text_list(data.get("allowed_agents"))
         data["score_payload"] = parse_json(str(data.get("score_payload") or ""))
         data["token_usage_summary"] = parse_json(str(data.get("token_usage_summary") or ""))
         data["context_completeness"] = round(float(data.get("context_completeness") or 0.0), 2)
