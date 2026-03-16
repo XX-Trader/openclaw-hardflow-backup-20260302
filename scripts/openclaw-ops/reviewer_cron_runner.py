@@ -56,6 +56,12 @@ REVIEW_SKIP_PREFIXES = (
     "openclaw-memory/",
 )
 REVIEW_SKIP_NAME_SET = {"memory.md", "experience_recall.md"}
+CONTROLLED_PR_BRANCH_PREFIXES = (
+    "auto/evolution-",
+    "auto/governance-",
+    "auto/optimization-",
+    "auto/reviewer-",
+)
 TECHDEBT_TASK_TYPE = "reviewer_technical_debt"
 TECHDEBT_OPEN_STATUSES = {"pending", "running", "failed", "escalated"}
 SEVERITY_RANK = {"medium": 1, "high": 2}
@@ -845,6 +851,14 @@ def repo_matches_selector(repo: Path, selector: str) -> bool:
     path_text = repo_key(repo).lower()
     return path_text.endswith(needle) or repo.name.lower() == needle or f"/{needle}/" in path_text
 
+
+def is_controlled_pr(pr: dict[str, Any]) -> bool:
+    head = str(pr.get("head", "")).strip().lower()
+    if not head:
+        return False
+    return any(head.startswith(prefix) for prefix in CONTROLLED_PR_BRANCH_PREFIXES)
+
+
 def merge_approved_prs(repo: Path, prs: list[dict[str, Any]], approvals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     if not approvals:
@@ -859,10 +873,16 @@ def merge_approved_prs(repo: Path, prs: list[dict[str, Any]], approvals: list[di
         if number <= 0 or not repo_matches_selector(repo, str(item.get("repo", ""))):
             continue
         pr = by_number.get(number)
-        if pr and pr.get("draft"):
+        if not pr:
+            actions.append({"kind": "pr", "number": number, "ok": False, "reason": "pr_not_listed"})
+            continue
+        if not is_controlled_pr(pr):
+            actions.append({"kind": "pr", "number": number, "ok": False, "reason": "not_controlled_pr"})
+            continue
+        if pr.get("draft"):
             actions.append({"kind": "pr", "number": number, "ok": False, "reason": "draft"})
             continue
-        if pr and str(pr.get("mergeable", "")).upper() == "CONFLICTING":
+        if str(pr.get("mergeable", "")).upper() == "CONFLICTING":
             actions.append({"kind": "pr", "number": number, "ok": False, "reason": "merge_conflict"})
             continue
         rc, out, err = run_cmd(["gh", "pr", "merge", str(number), "--merge", "--delete-branch"], cwd=repo, timeout=180)
@@ -1502,14 +1522,25 @@ def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_m
         key = repo_key(repo)
         rec = repo_state.get(key, {}) if isinstance(repo_state.get(key), dict) else {}
         prev_head = str(rec.get("last_hourly_head", "")).strip()
-        snap = collect_git_snapshot(repo, git_fetch=bool(args.git_fetch), previous_head=prev_head)
+        if bool(args.pr_gate_only):
+            rc_head, head_out, _err_head = run_git(repo, ["rev-parse", "HEAD"], timeout=20)
+            snap = {
+                "repo": key,
+                "head": head_out.strip() if rc_head == 0 else "",
+                "head_changed": False,
+                "dirty_count": 0,
+                "branch_sync": [],
+                "pr_gate_only": True,
+            }
+        else:
+            snap = collect_git_snapshot(repo, git_fetch=bool(args.git_fetch), previous_head=prev_head)
         repo_summaries.append(snap)
         if snap.get("head_changed"):
             total_changed_repos += 1
         total_dirty += int(snap.get("dirty_count", 0) or 0)
 
         branch_sync = snap.get("branch_sync", [])
-        if isinstance(branch_sync, list):
+        if (not bool(args.pr_gate_only)) and isinstance(branch_sync, list):
             for item in branch_sync:
                 behind = int(item.get("behind", 0) or 0)
                 if behind > 0:
@@ -1539,7 +1570,7 @@ def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_m
 
     risk_reasons: list[str] = []
     change_reasons: list[str] = []
-    if total_behind_branches > 0:
+    if (not bool(args.pr_gate_only)) and total_behind_branches > 0:
         risk_reasons.append(f"branches_behind={total_behind_branches}")
     merge_failed = sum(1 for x in merge_actions if not x.get("ok", False))
     if merge_failed > 0:
@@ -1547,9 +1578,9 @@ def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_m
     if issue_stats["new_high"] > 0 or issue_stats["reopened_high"] > 0:
         risk_reasons.append(f"high_issue_delta={issue_stats['new_high'] + issue_stats['reopened_high']}")
 
-    if total_changed_repos > 0:
+    if (not bool(args.pr_gate_only)) and total_changed_repos > 0:
         change_reasons.append(f"repos_head_changed={total_changed_repos}")
-    if total_dirty > 0:
+    if (not bool(args.pr_gate_only)) and total_dirty > 0:
         change_reasons.append(f"dirty_repos={total_dirty}")
     if pr_open_total > 0 and args.check_pr:
         change_reasons.append(f"open_prs={pr_open_total}")
@@ -1579,8 +1610,16 @@ def run_hourly_git(args: argparse.Namespace, state: dict[str, Any], normal_log_m
             risk_reasons=risk_reasons,
             change_reasons=change_reasons,
             detail_lines=[
-                f"- 仓库统计: 总数={len(repos)}，远端变更={total_changed_repos}，未提交={total_dirty}",
-                f"- 分支落后数: {total_behind_branches}",
+                (
+                    f"- 仓库统计: 总数={len(repos)}，远端变更={total_changed_repos}，未提交={total_dirty}"
+                    if not bool(args.pr_gate_only)
+                    else f"- PR Gate 仓库统计: 总数={len(repos)}"
+                ),
+                (
+                    f"- 分支落后数: {total_behind_branches}"
+                    if not bool(args.pr_gate_only)
+                    else "- 分支落后数: PR gate 模式下不扫描"
+                ),
                 f"- 打开中的 PR: {pr_open_total}",
                 (
                     "- 问题汇总: "
@@ -2100,6 +2139,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--check-pr", action="store_true")
     parser.add_argument("--allow-merge", action="store_true")
     parser.add_argument("--push-after-merge", action="store_true")
+    parser.add_argument("--pr-gate-only", action="store_true")
     parser.add_argument("--merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"), help="json file with approved_prs/approved_branches")
     parser.add_argument("--project-context-gate", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--project-context-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))

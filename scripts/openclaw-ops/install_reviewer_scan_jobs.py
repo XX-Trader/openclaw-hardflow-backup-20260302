@@ -201,6 +201,7 @@ def build_jobs(
     hourly_allow_merge: bool,
     hourly_push_after_merge: bool,
     hourly_merge_approval_file: str,
+    hourly_pr_gate_only: bool = False,
     project_context_gate: bool,
     project_context_db: str,
     project_context_assignee: str,
@@ -221,6 +222,8 @@ def build_jobs(
         cmd_hourly += " --git-fetch"
     if hourly_check_pr:
         cmd_hourly += " --check-pr"
+    if hourly_pr_gate_only:
+        cmd_hourly += " --pr-gate-only"
     if hourly_allow_merge:
         cmd_hourly += " --allow-merge"
         if str(hourly_merge_approval_file).strip():
@@ -240,7 +243,11 @@ def build_jobs(
             "id": HOURLY_JOB_ID,
             "agentId": "reviewer",
             "name": "reviewer_git_update_hourly",
-            "description": "Hourly git incremental scan (branch sync, PR check, optional approved merge)",
+            "description": (
+                "Hourly PR review gate (open PR review, approval-gated merge)"
+                if bool(hourly_pr_gate_only)
+                else "Hourly git incremental scan (branch sync, PR check, optional approved merge)"
+            ),
             "enabled": bool(enable_hourly),
             "createdAtMs": ts,
             "updatedAtMs": ts,
@@ -396,6 +403,7 @@ def main() -> None:
     parser.add_argument("--hourly-git-fetch", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--hourly-check-pr", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--hourly-allow-merge", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--hourly-pr-gate-only", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--hourly-push-after-merge", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--hourly-merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"))
     parser.add_argument("--project-context-gate", action=argparse.BooleanOptionalAction, default=True)
@@ -446,6 +454,7 @@ def main() -> None:
         hourly_allow_merge=bool(args.hourly_allow_merge),
         hourly_push_after_merge=bool(args.hourly_push_after_merge),
         hourly_merge_approval_file=normalize_shell_path(args.hourly_merge_approval_file),
+        hourly_pr_gate_only=bool(args.hourly_pr_gate_only),
         project_context_gate=bool(args.project_context_gate),
         project_context_db=normalize_shell_path(args.project_context_db),
         project_context_assignee=str(args.project_context_assignee).strip() or "project-agent",
@@ -492,6 +501,7 @@ def main() -> None:
         "hourly_check_pr": bool(args.hourly_check_pr),
         "hourly_allow_merge": bool(args.hourly_allow_merge),
         "hourly_merge_approval_file": normalize_shell_path(args.hourly_merge_approval_file),
+        "hourly_pr_gate_only": bool(args.hourly_pr_gate_only),
         "hourly_push_after_merge": bool(args.hourly_push_after_merge),
         "project_context_gate": bool(args.project_context_gate),
         "project_context_db": normalize_shell_path(args.project_context_db),
@@ -527,6 +537,7 @@ def main() -> None:
     print(f"hourly_check_pr={bool(args.hourly_check_pr)}")
     print(f"hourly_allow_merge={bool(args.hourly_allow_merge)}")
     print(f"hourly_merge_approval_file={normalize_shell_path(args.hourly_merge_approval_file)}")
+    print(f"hourly_pr_gate_only={bool(args.hourly_pr_gate_only)}")
     print(f"hourly_push_after_merge={bool(args.hourly_push_after_merge)}")
     print(f"project_context_gate={bool(args.project_context_gate)}")
     print(f"project_context_db={normalize_shell_path(args.project_context_db)}")

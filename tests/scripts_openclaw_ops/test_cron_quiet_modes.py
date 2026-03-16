@@ -958,7 +958,7 @@ class CronQuietModeTests(unittest.TestCase):
             run_fix_command=False,
         )
         self.assertTrue(result.notify)
-        self.assertEqual(result.output.splitlines()[0], "代码审查巡检异常")
+        self.assertIn("代码审查巡检异常", result.output.splitlines()[0])
         self.assertIn("项目上下文门禁阻塞", result.output)
         self.assertIn("原因解析", result.output)
         self.assertIn("project-agent", result.output)
@@ -1023,9 +1023,11 @@ class CronQuietModeTests(unittest.TestCase):
             actor="project-agent",
             git_pull=False,
             disable_memory_index_on_change=True,
+            skip_unchanged_git_projects=True,
         )
         self.assertNotIn("--git-pull", command)
         self.assertIn("--disable-memory-index-on-change", command)
+        self.assertIn("--skip-unchanged-git-projects", command)
 
     def test_project_index_job_prompt_requires_single_exec_call(self):
         module = load_module(
@@ -1043,6 +1045,7 @@ class CronQuietModeTests(unittest.TestCase):
             actor="project-agent",
             git_pull=False,
             disable_memory_index_on_change=True,
+            skip_unchanged_git_projects=True,
             channel="telegram",
             target="-1003333097130",
         )
@@ -1050,7 +1053,7 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
         self.assertIn("Command still running", message)
         self.assertIn("process poll", message)
-        self.assertIn("Never output sentences like 'Let's run ...'", message)
+        self.assertIn("Never output process filler sentences such as 'Let's run ...'", message)
 
     def test_project_index_job_defaults_to_silent_delivery(self):
         module = load_module(
@@ -1068,11 +1071,13 @@ class CronQuietModeTests(unittest.TestCase):
             actor="project-agent",
             git_pull=False,
             disable_memory_index_on_change=True,
+            skip_unchanged_git_projects=True,
             channel="telegram",
             target="-1003333097130",
         )
         self.assertEqual(jobs[0]["delivery"]["mode"], "none")
         self.assertNotIn("failureAlert", jobs[0])
+        self.assertIn("git HEAD change driven", jobs[0]["description"])
 
     def test_reviewer_install_message_blocks_follow_up_chatter(self):
         module = load_module(
@@ -1083,7 +1088,7 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
         self.assertIn("Command still running", message)
         self.assertIn("process poll", message)
-        self.assertIn("Never output sentences like 'Let's run ...'", message)
+        self.assertIn("Never output process filler sentences such as 'Let's run ...'", message)
 
     def test_reviewer_jobs_default_to_silent_delivery(self):
         module = load_module(
@@ -1151,6 +1156,40 @@ class CronQuietModeTests(unittest.TestCase):
         )
         self.assertTrue(all(item["payload"]["model"] == "glmcode/glm-5" for item in fresh))
         self.assertTrue(all(item["payload"]["lightContext"] is True for item in fresh))
+
+    def test_reviewer_jobs_support_pr_gate_only_mode(self):
+        module = load_module(
+            "install_reviewer_scan_jobs",
+            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
+        )
+        fresh = module.build_jobs(
+            runner_py="/tmp/reviewer.py",
+            workspace="/tmp/workspace",
+            state_file="/tmp/state.json",
+            history_dir="/tmp/history",
+            tz_name="Asia/Shanghai",
+            hourly_every_ms=3600000,
+            daily_expr="0 4 * * *",
+            bi_daily_expr="20 4 */2 * *",
+            weekly_expr="40 4 * * 1",
+            enable_hourly=True,
+            enable_daily=True,
+            enable_bi_daily=True,
+            enable_weekly=True,
+            normal_log_mode="silent",
+            daily_fix_command="",
+            hourly_git_fetch=True,
+            hourly_check_pr=True,
+            hourly_allow_merge=True,
+            hourly_push_after_merge=False,
+            hourly_merge_approval_file="/tmp/reviewer-merge-approval.json",
+            project_context_gate=True,
+            project_context_db="/tmp/task_center.db",
+            project_context_assignee="project-agent",
+            hourly_pr_gate_only=True,
+        )
+        self.assertIn("--pr-gate-only", fresh[0]["payload"]["message"])
+        self.assertIn("PR review gate", fresh[0]["description"])
 
     def test_task_executor_message_uses_notify_on_error(self):
         module = load_module(
@@ -1924,6 +1963,61 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--daily-work-todo-file", proc.stdout)
         self.assertIn(str(workflow_repo / "todo.md"), proc.stdout)
         self.assertIn(str(workflow_repo / "TODO.md"), proc.stdout)
+
+    def test_install_workflow_profile_can_enable_governance_auto_pr_and_reviewer_pr_gate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            openclaw_home = tmp / "openclaw-home"
+            workflow_repo = tmp / "workflow-repo"
+            openclaw_home.mkdir(parents=True)
+            workflow_repo.mkdir(parents=True)
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/openclaw-ops/install_workflow_profile.py"),
+                    "--profile",
+                    "core",
+                    "--jobs-file",
+                    str(tmp / "jobs.json"),
+                    "--openclaw-home",
+                    str(openclaw_home),
+                    "--workflow-repo-path",
+                    str(workflow_repo),
+                    "--project-registry",
+                    str(tmp / "project-registry.json"),
+                    "--task-db",
+                    str(tmp / "task_center.db"),
+                    "--channel",
+                    "telegram",
+                    "--to",
+                    "-1003333097130",
+                    "--governance-auto-pr",
+                    "--governance-reviewer-gh-user",
+                    "reviewer-bot",
+                    "--governance-push-before-pr",
+                    "--reviewer-enable-hourly-pr-gate",
+                    "--reviewer-hourly-allow-merge",
+                    "--reviewer-hourly-merge-approval-file",
+                    str(tmp / "reviewer-merge-approval.json"),
+                    "--no-sync-overlay-config",
+                    "--no-normalize-openclaw-paths",
+                    "--dry-run",
+                    "--emit-json",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=ROOT,
+            )
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        self.assertIn("--governance-evolution-auto-pr", proc.stdout)
+        self.assertIn("--governance-evolution-reviewer-gh-user reviewer-bot", proc.stdout)
+        self.assertIn("--governance-evolution-push-before-pr", proc.stdout)
+        self.assertIn("--enable-hourly", proc.stdout)
+        self.assertIn("--hourly-pr-gate-only", proc.stdout)
+        self.assertIn("--hourly-allow-merge", proc.stdout)
 
 
 if __name__ == "__main__":

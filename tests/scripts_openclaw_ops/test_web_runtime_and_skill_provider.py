@@ -28,6 +28,18 @@ def load_module(name: str, rel_path: str):
 class WebRuntimeAndSkillProviderTests(unittest.TestCase):
     def init_git_repo(self, path: Path, remote: str = "") -> None:
         subprocess.run(["git", "init", "-b", "main", str(path)], check=True, capture_output=True, text=True)
+        subprocess.run(
+            ["git", "-C", str(path), "config", "user.email", "test@example.com"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(path), "config", "user.name", "Test User"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         if remote:
             subprocess.run(
                 ["git", "-C", str(path), "remote", "add", "origin", remote],
@@ -115,6 +127,70 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
         self.assertIn("dabaiquant", vendors)
         self.assertTrue(any("polybaymax api sdk" in query.lower() for query in all_queries))
         self.assertTrue(any("dabaiquant api sdk" in query.lower() for query in all_queries))
+
+    def test_project_index_maintainer_skips_unchanged_git_projects_after_state_recorded(self):
+        module = load_module(
+            "project_index_maintainer",
+            "scripts/openclaw-ops/policy/project_index_maintainer.py",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            self.init_git_repo(tmp)
+            src_file = tmp / "src" / "main.py"
+            src_file.parent.mkdir(parents=True, exist_ok=True)
+            src_file.write_text("print('ok')\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(tmp), "add", "."], check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-C", str(tmp), "commit", "-m", "init"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            item = {"id": "demo-project", "name": "demo-project", "path": str(tmp)}
+            first = module.maintain_project(
+                item=item,
+                git_pull_flag=False,
+                timeout=10,
+                max_files=50,
+                enable_doc_knowledge=False,
+                doc_check_updates=False,
+                doc_timeout=5,
+                doc_fetch_content=False,
+                doc_fetch_max_chars=2048,
+                memory_index_on_change=False,
+                skip_unchanged_git_projects=True,
+            )
+            self.assertTrue(first.ok)
+            self.assertFalse(first.skipped)
+
+            head = subprocess.run(
+                ["git", "-C", str(tmp), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            state_path = tmp / ".workflow" / "project-index-local" / "project-index-state.json"
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["git"]["head"], head)
+
+            second = module.maintain_project(
+                item=item,
+                git_pull_flag=False,
+                timeout=10,
+                max_files=50,
+                enable_doc_knowledge=False,
+                doc_check_updates=False,
+                doc_timeout=5,
+                doc_fetch_content=False,
+                doc_fetch_max_chars=2048,
+                memory_index_on_change=False,
+                skip_unchanged_git_projects=True,
+            )
+            self.assertTrue(second.ok)
+            self.assertTrue(second.skipped)
+            self.assertFalse(second.changed)
+            self.assertEqual(second.skip_reason, f"git_head_unchanged:{head}")
 
 
     def test_web_intel_load_sources_merges_project_registry_and_vendor_docs(self):

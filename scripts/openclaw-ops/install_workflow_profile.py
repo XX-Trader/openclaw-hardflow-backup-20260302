@@ -153,6 +153,7 @@ def build_install_project_index_cmd(
         "--actor",
         "project-agent",
         "--no-git-pull",
+        "--skip-unchanged-git-projects",
     ]
     cmd.extend(delivery_args(channel, target))
     cmd.append("--emit-json")
@@ -607,6 +608,9 @@ def build_cron_setup_cmd(
     self_evolution_low_score_guarantee_threshold: float,
     conversation_every_ms: int,
     governance_every_ms: int,
+    governance_auto_pr: bool,
+    governance_reviewer_gh_user: str,
+    governance_push_before_pr: bool,
     git_sync_every_ms: int,
     auto_update_install_every_ms: int,
     github_web_every_ms: int,
@@ -741,7 +745,6 @@ def build_cron_setup_cmd(
         "--governance-evolution-project-context-assignee",
         "project-agent",
         "--governance-evolution-create-review-task",
-        "--no-governance-evolution-auto-pr",
         "--install-git-sync-job",
         "--git-sync-py",
         str(Path(ops_home) / "git_sync_push_runner.py"),
@@ -805,6 +808,14 @@ def build_cron_setup_cmd(
         "--auto-update-install-require-remote-url",
         "https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git",
     ]
+    if bool(governance_auto_pr):
+        cmd.append("--governance-evolution-auto-pr")
+        if str(governance_reviewer_gh_user).strip():
+            cmd.extend(["--governance-evolution-reviewer-gh-user", str(governance_reviewer_gh_user).strip()])
+        if bool(governance_push_before_pr):
+            cmd.append("--governance-evolution-push-before-pr")
+    else:
+        cmd.append("--no-governance-evolution-auto-pr")
     if include_github_web:
         cmd.extend(
             [
@@ -884,7 +895,7 @@ def main() -> None:
     parser.add_argument("--task-executor-max-tasks", type=int, default=3)
     parser.add_argument("--task-executor-model", default="auto")
     parser.add_argument("--task-executor-local-agent", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--project-index-every-ms", type=int, default=1800000)
+    parser.add_argument("--project-index-every-ms", type=int, default=14400000)
     parser.add_argument("--local-backup-every-ms", type=int, default=3600000)
     parser.add_argument(
         "--local-backup-notify-on",
@@ -902,6 +913,9 @@ def main() -> None:
     parser.add_argument("--self-evolution-low-score-guarantee-threshold", type=float, default=70.0)
     parser.add_argument("--conversation-every-ms", type=int, default=21600000)
     parser.add_argument("--governance-every-ms", type=int, default=21600000)
+    parser.add_argument("--governance-auto-pr", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--governance-reviewer-gh-user", default="")
+    parser.add_argument("--governance-push-before-pr", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--git-sync-every-ms", type=int, default=21600000)
     parser.add_argument("--auto-update-install-every-ms", type=int, default=3600000)
     parser.add_argument("--github-web-every-ms", type=int, default=43200000)
@@ -913,6 +927,10 @@ def main() -> None:
     parser.add_argument("--install-web-intel-jobs", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--reviewer-daily-expr", default="0 4 * * *")
     parser.add_argument("--reviewer-weekly-expr", default="40 4 * * 1")
+    parser.add_argument("--reviewer-enable-hourly-pr-gate", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--reviewer-hourly-allow-merge", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--reviewer-hourly-push-after-merge", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--reviewer-hourly-merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"))
     parser.add_argument("--normalize-openclaw-paths", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--recover-stale-cron-running-state", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--stale-running-minutes", type=int, default=30)
@@ -1012,6 +1030,9 @@ def main() -> None:
         self_evolution_low_score_guarantee_threshold=float(args.self_evolution_low_score_guarantee_threshold),
         conversation_every_ms=int(args.conversation_every_ms),
         governance_every_ms=int(args.governance_every_ms),
+        governance_auto_pr=bool(args.governance_auto_pr),
+        governance_reviewer_gh_user=str(args.governance_reviewer_gh_user).strip(),
+        governance_push_before_pr=bool(args.governance_push_before_pr),
         git_sync_every_ms=int(args.git_sync_every_ms),
         auto_update_install_every_ms=int(args.auto_update_install_every_ms),
         github_web_every_ms=int(args.github_web_every_ms),
@@ -1052,11 +1073,13 @@ def main() -> None:
         str(Path(ops_home) / "reviewer-scan-runs"),
         "--reviewer-profile",
         "techdebt",
+        "--hourly-every-ms",
+        "3600000",
         "--daily-expr",
         str(args.reviewer_daily_expr),
         "--weekly-expr",
         str(args.reviewer_weekly_expr),
-        "--no-enable-hourly",
+        ("--enable-hourly" if bool(args.reviewer_enable_hourly_pr_gate) else "--no-enable-hourly"),
         "--enable-daily",
         "--no-enable-bi-daily",
         "--enable-weekly",
@@ -1065,6 +1088,24 @@ def main() -> None:
         "--daily-fix-command",
         f"{args.python_bin} {Path(ops_home) / 'policy' / 'policy_enforcer.py'} next-todo --limit 5",
     ]
+    if bool(args.reviewer_enable_hourly_pr_gate):
+        install_reviewer_cmd.extend(
+            [
+                "--hourly-check-pr",
+                "--hourly-pr-gate-only",
+            ]
+        )
+        if bool(args.reviewer_hourly_allow_merge):
+            install_reviewer_cmd.append("--hourly-allow-merge")
+            if str(args.reviewer_hourly_merge_approval_file).strip():
+                install_reviewer_cmd.extend(
+                    [
+                        "--hourly-merge-approval-file",
+                        str(args.reviewer_hourly_merge_approval_file).strip(),
+                    ]
+                )
+            if bool(args.reviewer_hourly_push_after_merge):
+                install_reviewer_cmd.append("--hourly-push-after-merge")
     install_reviewer_cmd.extend(delivery_args(args.channel, args.to))
     install_reviewer_cmd.append("--emit-json")
 

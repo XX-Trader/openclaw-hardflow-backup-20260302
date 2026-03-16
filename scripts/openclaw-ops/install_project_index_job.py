@@ -80,6 +80,7 @@ def build_runner_command(
     actor: str,
     git_pull: bool,
     disable_memory_index_on_change: bool,
+    skip_unchanged_git_projects: bool,
 ) -> str:
     command = (
         f"python3 {maintainer_py} --registry {registry} "
@@ -90,6 +91,8 @@ def build_runner_command(
         command += " --git-pull"
     if bool(disable_memory_index_on_change):
         command += " --disable-memory-index-on-change"
+    if bool(skip_unchanged_git_projects):
+        command += " --skip-unchanged-git-projects"
     return command
 
 
@@ -112,6 +115,7 @@ def upsert_job(
     actor: str,
     git_pull: bool,
     disable_memory_index_on_change: bool,
+    skip_unchanged_git_projects: bool,
     channel: str,
     target: str,
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -132,7 +136,7 @@ def upsert_job(
         "id": job_id,
         "agentId": "project-agent",
         "name": "project_index_maintainer_30m",
-        "description": "Project index + dynamic docs knowledge maintainer (every 30m)",
+        "description": "Project index + dynamic docs knowledge maintainer (git HEAD change driven, every 4h fallback)",
         "enabled": True,
         "createdAtMs": created_at,
         "updatedAtMs": ts,
@@ -154,6 +158,7 @@ def upsert_job(
                     actor,
                     git_pull,
                     disable_memory_index_on_change,
+                    skip_unchanged_git_projects,
                 )
             ),
             "timeoutSeconds": 1800,
@@ -181,7 +186,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Install project-index-maintainer cron job")
     parser.add_argument("--jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
     parser.add_argument("--job-id", default="5797cd5b-5539-4e95-8d58-dc65a4633ec5")
-    parser.add_argument("--every-ms", type=int, default=1800000)
+    parser.add_argument("--every-ms", type=int, default=14400000)
     parser.add_argument("--maintainer-py", default=str(home / ".openclaw/ops/policy/project_index_maintainer.py"))
     parser.add_argument("--registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
     parser.add_argument("--task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
@@ -189,6 +194,7 @@ def main() -> None:
     parser.add_argument("--actor", default="project-agent")
     parser.add_argument("--git-pull", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--disable-memory-index-on-change", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--skip-unchanged-git-projects", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--skip-path-check", action="store_true")
     parser.add_argument("--channel", default="")
     parser.add_argument("--to", default="")
@@ -239,6 +245,7 @@ def main() -> None:
         actor=actor,
         git_pull=bool(args.git_pull),
         disable_memory_index_on_change=bool(args.disable_memory_index_on_change),
+        skip_unchanged_git_projects=bool(args.skip_unchanged_git_projects),
         channel=channel,
         target=target,
     )

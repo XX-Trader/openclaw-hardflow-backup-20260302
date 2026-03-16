@@ -33,7 +33,7 @@ WORKFLOW_DISPLAY_META: dict[str, WorkflowDisplayMeta] = {
     "web_intel_collect_hourly": WorkflowDisplayMeta("Web 情报采集", "1小时"),
     "web_intel_review_optimization_4h": WorkflowDisplayMeta("Web 情报优化复核", "4小时"),
     "web_intel_review_project_docs_6h": WorkflowDisplayMeta("项目文档情报复核", "6小时"),
-    "project_index_maintainer_30m": WorkflowDisplayMeta("项目索引维护", "30分钟"),
+    "project_index_maintainer_30m": WorkflowDisplayMeta("项目索引维护", "按 Git 更新 / 4小时兜底"),
     "reviewer_incremental_daily_4am": WorkflowDisplayMeta("每日增量审查", "每日 04:00"),
     "reviewer_git_update_hourly": WorkflowDisplayMeta("每小时代码审查", "每小时"),
     "reviewer_recurring_bi_daily": WorkflowDisplayMeta("双日复发问题审查"),

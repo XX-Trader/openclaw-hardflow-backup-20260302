@@ -106,6 +106,22 @@
 - `sync_policy_enforcer_to_servers.sh`
 - `sync_policy_enforcer_to_servers.ps1`
 
+## Telegram / OpenViking 运行手册
+
+- [docs/2026-03-16-pm-website-telegram-openviking-runbook.md](../../docs/2026-03-16-pm-website-telegram-openviking-runbook.md)
+  - 记录了 `pm-website` 上 Telegram 私聊、`coordinator`、`memory-openviking`、错误群目标清理、坏会话清理、workspace 污染修复、HardFlow guard 补齐、以及“记忆优先但轻量召回”的已验证实施顺序。
+  - 其他服务器要复用本次方案时，先按这份 runbook 做基线，再按其中的故障分支做额外补救，不要直接照搬临时排障动作。
+
+## pm-website Cron 基线
+
+- [docs/2026-03-17-pm-website-cron-baseline.md](../../docs/2026-03-17-pm-website-cron-baseline.md)
+  - 记录了 `pm-website` 上推荐保留/关闭的 cron 策略、`project_index_maintainer_30m` 的 git HEAD 留痕与 4 小时兜底策略、以及 reviewer 只保留周审查的实施口径。
+
+## PR 审查 / 自动合并改造方案
+
+- [docs/plans/2026-03-17-pr-review-merge-gate-implementation-plan.md](../../docs/plans/2026-03-17-pr-review-merge-gate-implementation-plan.md)
+  - 记录了如何把 `governance evolution -> create/update PR -> reviewer 审查 -> approval gate 自动合并` 这条链落到代码和运行态，包括职责边界、代码改造点、灰度步骤、验收与回滚要求。
+
 ## 远程安全更新
 
 - `remote_safe_update.py`
@@ -620,6 +636,7 @@ openclaw hooks list --json
 openclaw hooks check --json
 openclaw plugins list
 openclaw config get channels.telegram
+# `channels.telegram.allowFrom` 控制 Telegram 私聊允许发起对话的用户 ID 白名单。
 ```
 
 如果要验证官方 cron surface，请先运行：

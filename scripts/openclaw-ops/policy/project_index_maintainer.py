@@ -79,6 +79,7 @@ DEFAULT_SCRIPT_GLOBS = [
 
 DEFAULT_INDEX_DIR = ".workflow/project-index-local"
 LEGACY_INDEX_DIR = ".workflow/project-index"
+PROJECT_INDEX_STATE_FILENAME = "project-index-state.json"
 SAFE_PULL_UNTRACKED_PREFIXES = (
     f"{LEGACY_INDEX_DIR}/",
     f"{DEFAULT_INDEX_DIR}/",
@@ -859,7 +860,10 @@ class ProjectResult:
     path: str
     ok: bool
     changed: bool
+    skipped: bool
+    skip_reason: str
     git_repo: bool
+    git_head: str
     git_pull_attempted: bool
     git_pull_ok: bool
     errors: list[str]
@@ -872,7 +876,10 @@ class ProjectResult:
             "path": self.path,
             "ok": self.ok,
             "changed": self.changed,
+            "skipped": self.skipped,
+            "skip_reason": self.skip_reason,
             "git_repo": self.git_repo,
+            "git_head": self.git_head,
             "git_pull_attempted": self.git_pull_attempted,
             "git_pull_ok": self.git_pull_ok,
             "errors": self.errors,
@@ -895,6 +902,84 @@ def write_if_changed(path: Path, content: str) -> bool:
     return True
 
 
+def load_project_index_state(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def build_project_index_state(
+    *,
+    project_id: str,
+    root: Path,
+    index_dir: str,
+    git_info: dict[str, Any],
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "project_id": str(project_id or "").strip() or "project",
+        "project_root": str(root),
+        "index_dir": str(index_dir or "").strip() or DEFAULT_INDEX_DIR,
+        "indexed_at": now_iso(),
+        "reason": str(reason or "").strip() or "initial_build",
+        "git": {
+            "git_repo": bool(git_info.get("git_repo")),
+            "branch": str(git_info.get("branch", "")).strip(),
+            "remote": str(git_info.get("remote", "")).strip(),
+            "head": str(git_info.get("head", "")).strip(),
+        },
+    }
+
+
+def required_index_outputs(index_root: Path, enable_doc_knowledge: bool) -> list[Path]:
+    outputs = [
+        index_root / "PROJECT_INDEX.md",
+        index_root / "project-index.json",
+        index_root / PROJECT_INDEX_STATE_FILENAME,
+    ]
+    if enable_doc_knowledge:
+        outputs.extend(
+            [
+                index_root / "doc-knowledge.json",
+                index_root / "doc-search-index.json",
+                index_root / "DOC_KNOWLEDGE.md",
+            ]
+        )
+    return outputs
+
+
+def detect_skip_reason_for_git_unchanged(
+    *,
+    git_info: dict[str, Any],
+    prev_state: dict[str, Any],
+    index_root: Path,
+    enable_doc_knowledge: bool,
+    skip_unchanged_git_projects: bool,
+    has_errors: bool,
+) -> str:
+    if not skip_unchanged_git_projects or has_errors:
+        return ""
+    if not bool(git_info.get("git_repo")):
+        return ""
+    current_head = str(git_info.get("head", "")).strip()
+    if not current_head:
+        return ""
+    git_state = prev_state.get("git")
+    if not isinstance(git_state, dict):
+        return ""
+    previous_head = str(git_state.get("head", "")).strip()
+    if not previous_head or previous_head != current_head:
+        return ""
+    for path in required_index_outputs(index_root, enable_doc_knowledge):
+        if not path.exists():
+            return ""
+    return f"git_head_unchanged:{current_head}"
+
+
 def build_index_markdown(
     name: str,
     root: Path,
@@ -910,6 +995,7 @@ def build_index_markdown(
     lines.append(f"- root: {root}")
     lines.append(f"- git_repo: {git_info.get('git_repo', False)}")
     lines.append(f"- git_branch: {git_info.get('branch', '-')}")
+    lines.append(f"- git_head: {git_info.get('head', '-')}")
     lines.append(f"- git_remote: {git_info.get('remote', '-')}")
     lines.append(f"- dirty_files: {git_info.get('dirty_count', 0)}")
     lines.append("")
@@ -954,6 +1040,7 @@ def collect_git_info(root: Path, timeout: int, do_pull: bool, remote: str, branc
     info = {
         "git_repo": False,
         "branch": "",
+        "head": "",
         "remote": "",
         "dirty_count": 0,
         "pull_attempted": False,
@@ -967,6 +1054,9 @@ def collect_git_info(root: Path, timeout: int, do_pull: bool, remote: str, branc
     rc, out, _ = run_cmd(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root, timeout=timeout)
     if rc == 0:
         info["branch"] = out
+    rc, out, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=root, timeout=timeout)
+    if rc == 0:
+        info["head"] = out
     rc, out, _ = run_cmd(["git", "remote", "get-url", remote], cwd=root, timeout=timeout)
     if rc == 0:
         info["remote"] = out
@@ -980,6 +1070,9 @@ def collect_git_info(root: Path, timeout: int, do_pull: bool, remote: str, branc
         rc, _, err = run_cmd(["git", "pull", "--ff-only", remote, target_branch], cwd=root, timeout=timeout)
         if rc == 0:
             info["pull_ok"] = True
+            rc_head, out_head, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=root, timeout=timeout)
+            if rc_head == 0:
+                info["head"] = out_head
         else:
             conflict_paths = extract_untracked_overwrite_paths(err)
             safe_conflicts = [p for p in conflict_paths if is_safe_pull_untracked_path(p)]
@@ -997,6 +1090,10 @@ def collect_git_info(root: Path, timeout: int, do_pull: bool, remote: str, branc
                 if moved:
                     rc2, _, err2 = run_cmd(["git", "pull", "--ff-only", remote, target_branch], cwd=root, timeout=timeout)
                     info["pull_ok"] = rc2 == 0
+                    if rc2 == 0:
+                        rc_head, out_head, _ = run_cmd(["git", "rev-parse", "HEAD"], cwd=root, timeout=timeout)
+                        if rc_head == 0:
+                            info["head"] = out_head
                     if rc2 != 0:
                         errors.append(f"git pull failed after auto-cleanup: {err2 or rc2}")
                 else:
@@ -1094,6 +1191,7 @@ def maintain_project(
     doc_fetch_content: bool,
     doc_fetch_max_chars: int,
     memory_index_on_change: bool,
+    skip_unchanged_git_projects: bool,
 ) -> ProjectResult:
     name = str(item.get("name", "")).strip() or Path(str(item["path"])).name
     project_id = normalize_project_id(str(item.get("id", "")).strip() or name)
@@ -1103,7 +1201,21 @@ def maintain_project(
     changed = False
 
     if not root.exists() or not root.is_dir():
-        return ProjectResult(project_id, name, str(root), False, False, False, False, False, ["project path invalid"], [])
+        return ProjectResult(
+            project_id,
+            name,
+            str(root),
+            False,
+            False,
+            False,
+            "",
+            False,
+            "",
+            False,
+            False,
+            ["project path invalid"],
+            [],
+        )
 
     configured_index_dir = str(item.get("index_dir", DEFAULT_INDEX_DIR)).strip() or DEFAULT_INDEX_DIR
     index_dir = configured_index_dir
@@ -1112,12 +1224,39 @@ def maintain_project(
         index_dir = DEFAULT_INDEX_DIR
         outputs.append(f"index_dir_auto_switch:{configured_index_dir}->{index_dir}")
     index_root = root / index_dir
+    state_path = index_root / PROJECT_INDEX_STATE_FILENAME
 
     git_pull = bool(item.get("auto_pull", True)) and git_pull_flag
     remote = str(item.get("git_remote", "origin")).strip() or "origin"
     branch = str(item.get("git_branch", "")).strip()
     git_info, git_errors = collect_git_info(root, timeout=timeout, do_pull=git_pull, remote=remote, branch=branch)
     errors.extend(git_errors)
+    previous_state = load_project_index_state(state_path)
+    skip_reason = detect_skip_reason_for_git_unchanged(
+        git_info=git_info,
+        prev_state=previous_state,
+        index_root=index_root,
+        enable_doc_knowledge=enable_doc_knowledge,
+        skip_unchanged_git_projects=skip_unchanged_git_projects,
+        has_errors=bool(errors),
+    )
+    if skip_reason:
+        outputs.extend(str(path) for path in required_index_outputs(index_root, enable_doc_knowledge) if path.exists())
+        return ProjectResult(
+            project_id=project_id,
+            name=name,
+            path=str(root),
+            ok=True,
+            changed=False,
+            skipped=True,
+            skip_reason=skip_reason,
+            git_repo=bool(git_info["git_repo"]),
+            git_head=str(git_info.get("head", "")).strip(),
+            git_pull_attempted=bool(git_info["pull_attempted"]),
+            git_pull_ok=bool(git_info["pull_ok"]),
+            errors=[],
+            outputs=outputs,
+        )
 
     module_globs = item.get("module_globs") or DEFAULT_MODULE_GLOBS
     api_globs = item.get("api_globs") or DEFAULT_API_GLOBS
@@ -1186,6 +1325,16 @@ def maintain_project(
             if rc != 0:
                 outputs.append(f"memory_index_failed:{err or rc}")
 
+    state_payload = build_project_index_state(
+        project_id=project_id,
+        root=root,
+        index_dir=index_dir,
+        git_info=git_info,
+        reason=("git_head_changed" if bool(git_info.get("git_repo")) else "non_git_refresh"),
+    )
+    changed = write_if_changed(state_path, json.dumps(state_payload, ensure_ascii=False, indent=2) + "\n") or changed
+    outputs.append(str(state_path))
+
     ok = len(errors) == 0
     return ProjectResult(
         project_id=project_id,
@@ -1193,7 +1342,10 @@ def maintain_project(
         path=str(root),
         ok=ok,
         changed=changed,
+        skipped=False,
+        skip_reason="",
         git_repo=bool(git_info["git_repo"]),
+        git_head=str(git_info.get("head", "")).strip(),
         git_pull_attempted=bool(git_info["pull_attempted"]),
         git_pull_ok=bool(git_info["pull_ok"]),
         errors=errors,
@@ -1324,6 +1476,12 @@ def main() -> int:
         action="store_true",
         help="skip openclaw memory index refresh when index/doc files changed",
     )
+    parser.add_argument(
+        "--skip-unchanged-git-projects",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="skip rebuilding index/doc outputs when git HEAD matches last indexed state",
+    )
     parser.add_argument("--output", default="", help="write report json path")
     parser.add_argument("--emit-json", action="store_true", help="print full report json to stdout")
     parser.add_argument("--task-db", default="", help="optional task center sqlite path")
@@ -1370,6 +1528,7 @@ def main() -> int:
                 doc_fetch_content=not bool(args.disable_doc_fetch_content),
                 doc_fetch_max_chars=max(2048, int(args.doc_fetch_max_chars)),
                 memory_index_on_change=not bool(args.disable_memory_index_on_change),
+                skip_unchanged_git_projects=bool(args.skip_unchanged_git_projects),
             )
         )
 
@@ -1379,6 +1538,7 @@ def main() -> int:
         "registry": str(registry),
         "project_count": len(results),
         "changed_count": len([x for x in results if x.changed]),
+        "skipped_count": len([x for x in results if x.skipped]),
         "projects": [x.to_dict() for x in results],
         "bridge": {
             "trigger_surfaces": ["cron", "hooks", "webhook"],
@@ -1432,7 +1592,8 @@ def main() -> int:
                 "--message",
                 (
                     "project index maintain completed: "
-                    + f"projects={report.get('project_count', 0)} changed={report.get('changed_count', 0)}"
+                    + f"projects={report.get('project_count', 0)} changed={report.get('changed_count', 0)} "
+                    + f"skipped={report.get('skipped_count', 0)}"
                 ),
                 "--duration-ms",
                 str(run_duration_ms),
@@ -1442,6 +1603,7 @@ def main() -> int:
                         "registry": str(registry),
                         "project_count": report.get("project_count", 0),
                         "changed_count": report.get("changed_count", 0),
+                        "skipped_count": report.get("skipped_count", 0),
                     },
                     ensure_ascii=False,
                 ),
@@ -1478,6 +1640,7 @@ def main() -> int:
                     {
                         "project_count": report.get("project_count", 0),
                         "changed_count": report.get("changed_count", 0),
+                        "skipped_count": report.get("skipped_count", 0),
                         "ok": bool(report.get("ok", False)),
                     },
                     ensure_ascii=False,

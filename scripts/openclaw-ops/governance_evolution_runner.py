@@ -1013,6 +1013,42 @@ def parse_existing_pr(raw: str) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def attach_auto_pr_context(task_packaging: dict[str, Any], auto_pr_result: dict[str, Any]) -> dict[str, Any]:
+    packaging = dict(task_packaging or {})
+    created_items = packaging.get("created")
+    created_list = list(created_items) if isinstance(created_items, list) else []
+    auto_pr_payload = {
+        "attempted": bool(auto_pr_result.get("attempted", False)),
+        "ok": bool(auto_pr_result.get("ok", False)),
+        "reason": str(auto_pr_result.get("reason", "")).strip(),
+        "branch": str(auto_pr_result.get("branch", "")).strip(),
+        "pr_url": str(auto_pr_result.get("pr_url", "")).strip(),
+        "pr_number": int(auto_pr_result.get("pr_number", 0) or 0),
+    }
+    packaging["auto_pr"] = auto_pr_payload
+
+    review_targets: list[dict[str, Any]] = []
+    if auto_pr_payload["ok"] and auto_pr_payload["pr_number"] > 0 and auto_pr_payload["pr_url"]:
+        for item in created_list:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("type", "")).strip() != "governance_evolution_review":
+                continue
+            task_id = str(item.get("task_id", "")).strip()
+            if not task_id:
+                continue
+            review_targets.append(
+                {
+                    "task_id": task_id,
+                    "pr_url": auto_pr_payload["pr_url"],
+                    "pr_number": auto_pr_payload["pr_number"],
+                    "branch": auto_pr_payload["branch"],
+                }
+            )
+    packaging["review_targets"] = review_targets
+    return packaging
+
+
 def attempt_auto_pr(
     *,
     repo: Path,
@@ -1314,6 +1350,7 @@ def main() -> int:
                 )
                 if bool(auto_pr_result.get("ok", False)):
                     notify = True
+                task_packaging = attach_auto_pr_context(task_packaging, auto_pr_result)
             elif bool(args.auto_pr) and context_blocked:
                 auto_pr_result = {
                     "attempted": True,
@@ -1323,6 +1360,7 @@ def main() -> int:
                     "pr_number": 0,
                     "branch": "",
                 }
+                task_packaging = attach_auto_pr_context(task_packaging, auto_pr_result)
         else:
             scan_meta = {"mode": args.mode, "head": "", "diff_base": "", "skip_reason": "min_interval"}
     except Exception as exc:

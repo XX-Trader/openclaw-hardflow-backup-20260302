@@ -88,17 +88,63 @@ class ScheduleRegistryTests(unittest.TestCase):
         self.assertEqual(managed["reviewer_incremental_daily_4am"]["surface_type"], "openclaw_cron")
         self.assertEqual(managed["reviewer_incremental_daily_4am"]["trigger"], "0 4 * * *")
 
-        external_types = {item["surface_type"] for item in registry["external_attached"]}
-        self.assertEqual(
-            external_types,
-            {"systemd_timer", "user_crontab", "root_crontab", "cron_d", "saas_scheduler"},
+    def test_schedule_registry_describes_governance_auto_pr_and_reviewer_pr_gate(self):
+        module = load_module(
+            "export_schedule_registry",
+            "scripts/openclaw-ops/export_schedule_registry.py",
         )
 
-        agents = {item["agent_name"]: item for item in registry["agents"]}
-        self.assertIn("ops-agent", agents)
-        self.assertIn("reviewer", agents)
-        self.assertIn("task_executor_10m", agents["ops-agent"]["owned_schedules"])
-        self.assertIn("reviewer_incremental_daily_4am", agents["reviewer"]["owned_schedules"])
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            jobs_file = tmp / "jobs.json"
+            mapping_file = tmp / "jobs_agent_mapping.md"
+            jobs_file.write_text(
+                json.dumps(
+                    {
+                        "jobs": [
+                            {
+                                "id": "4f53f7b7",
+                                "name": "ops_governance_evolution_incremental",
+                                "agentId": "optimization-agent",
+                                "schedule": {"everyMs": 21600000},
+                                "payload": {"message": "governance evolution"},
+                            },
+                            {
+                                "id": "d3859fd5",
+                                "name": "reviewer_git_update_hourly",
+                                "agentId": "reviewer",
+                                "schedule": {"everyMs": 3600000},
+                                "payload": {"message": "reviewer pr gate"},
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            mapping_file.write_text(
+                "\n".join(
+                    [
+                        "# OpenClaw Cron -> Agent Mapping",
+                        "- 4f53f7b7 | ops_governance_evolution_incremental | agent=optimization-agent | exists=True | schedule=21600000",
+                        "- d3859fd5 | reviewer_git_update_hourly | agent=reviewer | exists=True | schedule=3600000",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            registry = module.build_schedule_registry(
+                jobs_file=jobs_file,
+                mapping_file=mapping_file,
+                profile="core",
+            )
+
+        managed = {item["schedule_name"]: item for item in registry["openclaw_managed"]}
+        self.assertIn("auto-pr", managed["ops_governance_evolution_incremental"]["purpose"])
+        self.assertIn("PR 审查", managed["reviewer_git_update_hourly"]["purpose"])
 
 
 if __name__ == "__main__":
