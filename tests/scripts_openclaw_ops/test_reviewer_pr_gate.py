@@ -1,5 +1,7 @@
 import importlib.util
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -81,6 +83,70 @@ class ReviewerPrGateTests(unittest.TestCase):
         self.assertTrue(actions[0]["ok"])
         self.assertEqual(actions[0]["number"], 19)
         run_cmd_mock.assert_called_once()
+
+    def test_merge_approved_prs_supports_head_prefix_approval_rules(self):
+        module = load_module(
+            "reviewer_cron_runner",
+            "scripts/openclaw-ops/reviewer_cron_runner.py",
+        )
+        repo = Path("/tmp/demo-repo")
+        prs = [
+            {
+                "number": 23,
+                "title": "chore: governance evolution 2026-03-17",
+                "draft": False,
+                "mergeable": "MERGEABLE",
+                "head": "auto/evolution-20260317-abcd12",
+                "base": "main",
+                "updated_at": "2026-03-17T00:00:00Z",
+                "url": "https://example.test/pr/23",
+            }
+        ]
+        approvals = [{"repo": "", "head_prefix": "auto/evolution-", "base": "main"}]
+
+        with mock.patch.object(module, "has_command", return_value=True):
+            with mock.patch.object(module, "run_cmd", return_value=(0, "merged", "")) as run_cmd_mock:
+                actions = module.merge_approved_prs(repo, prs, approvals)
+
+        self.assertEqual(actions[0]["number"], 23)
+        self.assertTrue(actions[0]["ok"])
+        run_cmd_mock.assert_called_once()
+
+    def test_load_merge_approvals_accepts_pr_head_prefix_rules(self):
+        module = load_module(
+            "reviewer_cron_runner",
+            "scripts/openclaw-ops/reviewer_cron_runner.py",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            approval_file = Path(tmpdir) / "reviewer-merge-approval.json"
+            approval_file.write_text(
+                json.dumps(
+                    {
+                        "approved_prs": [
+                            {
+                                "repo": "openclaw-hardflow-backup-20260302",
+                                "head_prefix": "auto/evolution-",
+                                "base": "main",
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            approvals = module.load_merge_approvals(approval_file)
+
+        self.assertEqual(
+            approvals["approved_prs"],
+            [
+                {
+                    "repo": "openclaw-hardflow-backup-20260302",
+                    "head_prefix": "auto/evolution-",
+                    "base": "main",
+                }
+            ],
+        )
 
     def test_build_jobs_exposes_pr_gate_only_hourly_mode(self):
         module = load_module(

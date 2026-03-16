@@ -214,7 +214,13 @@
 
 ```json
 {
-  "approved_prs": [],
+  "approved_prs": [
+    {
+      "repo": "openclaw-hardflow-backup-20260302",
+      "head_prefix": "auto/evolution-",
+      "base": "main"
+    }
+  ],
   "approved_branches": []
 }
 ```

@@ -813,9 +813,20 @@ def load_merge_approvals(path: Path) -> dict[str, Any]:
             elif isinstance(item, str) and item.strip().isdigit():
                 approved_prs.append({"repo": "", "number": int(item.strip())})
             elif isinstance(item, dict):
+                repo_selector = str(item.get("repo", item.get("repository", ""))).strip()
                 number = item.get("number", item.get("pr", 0))
-                if str(number).strip().isdigit():
-                    approved_prs.append({"repo": str(item.get("repo", item.get("repository", ""))).strip(), "number": int(str(number).strip())})
+                if str(number).strip().isdigit() and int(str(number).strip()) > 0:
+                    approved_prs.append({"repo": repo_selector, "number": int(str(number).strip())})
+                    continue
+                head_prefix = str(item.get("head_prefix", item.get("headPrefix", ""))).strip()
+                if head_prefix:
+                    approved_prs.append(
+                        {
+                            "repo": repo_selector,
+                            "head_prefix": head_prefix,
+                            "base": str(item.get("base", item.get("base_branch", ""))).strip(),
+                        }
+                    )
 
     for key in ("approved_branches", "branches"):
         raw = payload.get(key)
@@ -859,6 +870,42 @@ def is_controlled_pr(pr: dict[str, Any]) -> bool:
     return any(head.startswith(prefix) for prefix in CONTROLLED_PR_BRANCH_PREFIXES)
 
 
+def pr_matches_merge_approval(repo: Path, pr: dict[str, Any], approval: dict[str, Any]) -> bool:
+    if not repo_matches_selector(repo, str(approval.get("repo", ""))):
+        return False
+    number = int(approval.get("number", 0) or 0)
+    if number > 0:
+        return int(pr.get("number", 0) or 0) == number
+    head_prefix = str(approval.get("head_prefix", "")).strip().lower()
+    if not head_prefix:
+        return False
+    head = str(pr.get("head", "")).strip().lower()
+    if not head.startswith(head_prefix):
+        return False
+    base = str(approval.get("base", "")).strip().lower()
+    if base and str(pr.get("base", "")).strip().lower() != base:
+        return False
+    return True
+
+
+def merge_one_approved_pr(repo: Path, pr: dict[str, Any]) -> dict[str, Any]:
+    number = int(pr.get("number", 0) or 0)
+    if not is_controlled_pr(pr):
+        return {"kind": "pr", "number": number, "ok": False, "reason": "not_controlled_pr"}
+    if pr.get("draft"):
+        return {"kind": "pr", "number": number, "ok": False, "reason": "draft"}
+    if str(pr.get("mergeable", "")).upper() == "CONFLICTING":
+        return {"kind": "pr", "number": number, "ok": False, "reason": "merge_conflict"}
+    rc, out, err = run_cmd(["gh", "pr", "merge", str(number), "--merge", "--delete-branch"], cwd=repo, timeout=180)
+    return {
+        "kind": "pr",
+        "number": number,
+        "ok": rc == 0,
+        "reason": "" if rc == 0 else (err or f"exit_{rc}"),
+        "stdout": out[:300],
+    }
+
+
 def merge_approved_prs(repo: Path, prs: list[dict[str, Any]], approvals: list[dict[str, Any]]) -> list[dict[str, Any]]:
     actions: list[dict[str, Any]] = []
     if not approvals:
@@ -868,25 +915,30 @@ def merge_approved_prs(repo: Path, prs: list[dict[str, Any]], approvals: list[di
         return actions
 
     by_number = {int(item.get("number", 0)): item for item in prs if int(item.get("number", 0)) > 0}
-    for item in approvals:
-        number = int(item.get("number", 0) or 0)
-        if number <= 0 or not repo_matches_selector(repo, str(item.get("repo", ""))):
+    merged_numbers: set[int] = set()
+    for approval in approvals:
+        number = int(approval.get("number", 0) or 0)
+        if number > 0:
+            if not repo_matches_selector(repo, str(approval.get("repo", ""))):
+                continue
+            pr = by_number.get(number)
+            if not pr:
+                actions.append({"kind": "pr", "number": number, "ok": False, "reason": "pr_not_listed"})
+                continue
+            if number in merged_numbers:
+                continue
+            actions.append(merge_one_approved_pr(repo, pr))
+            merged_numbers.add(number)
             continue
-        pr = by_number.get(number)
-        if not pr:
-            actions.append({"kind": "pr", "number": number, "ok": False, "reason": "pr_not_listed"})
-            continue
-        if not is_controlled_pr(pr):
-            actions.append({"kind": "pr", "number": number, "ok": False, "reason": "not_controlled_pr"})
-            continue
-        if pr.get("draft"):
-            actions.append({"kind": "pr", "number": number, "ok": False, "reason": "draft"})
-            continue
-        if str(pr.get("mergeable", "")).upper() == "CONFLICTING":
-            actions.append({"kind": "pr", "number": number, "ok": False, "reason": "merge_conflict"})
-            continue
-        rc, out, err = run_cmd(["gh", "pr", "merge", str(number), "--merge", "--delete-branch"], cwd=repo, timeout=180)
-        actions.append({"kind": "pr", "number": number, "ok": rc == 0, "reason": "" if rc == 0 else (err or f"exit_{rc}"), "stdout": out[:300]})
+
+        for pr in prs:
+            pr_number = int(pr.get("number", 0) or 0)
+            if pr_number <= 0 or pr_number in merged_numbers:
+                continue
+            if not pr_matches_merge_approval(repo, pr, approval):
+                continue
+            actions.append(merge_one_approved_pr(repo, pr))
+            merged_numbers.add(pr_number)
     return actions
 
 
