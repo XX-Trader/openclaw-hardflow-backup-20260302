@@ -1,0 +1,19 @@
+{
+  "approved_prs": [
+    {
+      "repo": "pbm-website",
+      "head_prefix": "auto/evolution-pbm-",
+      "base": "main"
+    },
+    {
+      "repo": "quant-engine",
+      "head_prefix": "auto/evolution-quant-",
+      "base": "main"
+    },
+    {
+      "repo": "admin-console",
+      "head_prefix": "auto/evolution-admin-",
+      "base": "master"
+    }
+  ]
+}

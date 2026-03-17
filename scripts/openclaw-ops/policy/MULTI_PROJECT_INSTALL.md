@@ -2,6 +2,18 @@
 
 目标：一套策略运行时统一服务多个项目，任务/评分/token/cost 统一记录，每个项目保留独立 `.workflow` 数据。
 
+如果你的目标不只是“统一安装多项目运行时”，还包括：
+
+- 一台服务器同时托管多个业务仓库
+- 保留统一运维任务
+- 但把 `governance auto-pr / reviewer PR gate / git sync` 按项目拆开
+
+请同时参考：
+
+- [docs/2026-03-17-multi-project-server-template.md](../../../docs/2026-03-17-multi-project-server-template.md)
+- [project-registry.example.json](./project-registry.example.json)
+- [reviewer-merge-approval.multi-project.example.json](../reviewer-merge-approval.multi-project.example.json)
+
 ## 1. 前置检查
 
 需要满足：

@@ -8,6 +8,7 @@ import json
 import os
 import shutil
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,7 @@ REVIEWER_PROFILE_BASELINE: dict[str, dict[str, int | bool]] = {
 DEFAULT_FAILURE_ALERT_AFTER = 1
 DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 DEFAULT_REVIEWER_CRON_MODEL = "glmcode/glm-5"
+REVIEWER_JOB_KEYS = ("hourly", "daily", "bi_daily", "weekly")
 
 
 def now_ms() -> int:
@@ -144,6 +146,44 @@ def normalize_shell_path(value: str) -> str:
     return expanded.replace("\\", "/")
 
 
+def parse_selected_jobs(value: str) -> set[str]:
+    raw = str(value or "").strip()
+    if not raw:
+        return set(REVIEWER_JOB_KEYS)
+    selected: set[str] = set()
+    for item in raw.split(","):
+        key = str(item or "").strip().lower()
+        if not key:
+            continue
+        if key not in REVIEWER_JOB_KEYS:
+            raise SystemExit(
+                f"unsupported reviewer job key: {key}; expected one of {', '.join(REVIEWER_JOB_KEYS)}"
+            )
+        selected.add(key)
+    return selected or set(REVIEWER_JOB_KEYS)
+
+
+def scoped_job_id(base_id: str, scope: str) -> str:
+    scope_text = str(scope or "").strip()
+    if not scope_text:
+        return str(base_id)
+    return str(uuid.uuid5(uuid.UUID(str(base_id)), scope_text))
+
+
+def scoped_job_name(base_name: str, scope: str) -> str:
+    scope_text = str(scope or "").strip()
+    if not scope_text:
+        return str(base_name)
+    return f"{str(base_name).strip()}:{scope_text}"
+
+
+def scoped_job_description(base_description: str, scope: str) -> str:
+    scope_text = str(scope or "").strip()
+    if not scope_text:
+        return str(base_description)
+    return f"{str(base_description).strip()} [scope={scope_text}]"
+
+
 def apply_reviewer_profile(args: argparse.Namespace) -> dict[str, Any]:
     profile = str(getattr(args, "reviewer_profile", "legacy") or "legacy").strip().lower()
     if profile not in REVIEWER_PROFILES:
@@ -205,6 +245,8 @@ def build_jobs(
     project_context_gate: bool,
     project_context_db: str,
     project_context_assignee: str,
+    selected_jobs: set[str],
+    job_scope: str,
 ) -> list[dict[str, Any]]:
     ts = now_ms()
     cmd_base = (
@@ -238,96 +280,120 @@ def build_jobs(
     cmd_bi_daily = f"{cmd_base} --mode bi_daily_recurring --task-id cron:reviewer-bi-daily-recurring"
     cmd_weekly = f"{cmd_base} --mode weekly_structure --task-id cron:reviewer-weekly-structure"
 
-    return [
-        {
-            "id": HOURLY_JOB_ID,
-            "agentId": "reviewer",
-            "name": "reviewer_git_update_hourly",
-            "description": (
-                "Hourly PR review gate (open PR review, approval-gated merge)"
-                if bool(hourly_pr_gate_only)
-                else "Hourly git incremental scan (branch sync, PR check, optional approved merge)"
-            ),
-            "enabled": bool(enable_hourly),
-            "createdAtMs": ts,
-            "updatedAtMs": ts,
-            "schedule": {"kind": "every", "everyMs": max(600000, int(hourly_every_ms)), "anchorMs": ts},
-            "sessionTarget": "isolated",
-            "wakeMode": "now",
-            "payload": {
-                "kind": "agentTurn",
-                "message": build_message(cmd_hourly),
-                "model": DEFAULT_REVIEWER_CRON_MODEL,
-                "lightContext": True,
-                "timeoutSeconds": 1200,
-            },
-            "delivery": {"mode": "none"},
-            "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
-        },
-        {
-            "id": DAILY_JOB_ID,
-            "agentId": "reviewer",
-            "name": "reviewer_incremental_daily_4am",
-            "description": "Daily 04:00 incremental review with optional fix command",
-            "enabled": bool(enable_daily),
-            "createdAtMs": ts,
-            "updatedAtMs": ts,
-            "schedule": {"kind": "cron", "expr": str(daily_expr), "tz": tz_name},
-            "sessionTarget": "isolated",
-            "wakeMode": "now",
-            "payload": {
-                "kind": "agentTurn",
-                "message": build_message(cmd_daily),
-                "model": DEFAULT_REVIEWER_CRON_MODEL,
-                "lightContext": True,
-                "timeoutSeconds": 1800,
-            },
-            "delivery": {"mode": "none"},
-            "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
-        },
-        {
-            "id": BI_DAILY_JOB_ID,
-            "agentId": "reviewer",
-            "name": "reviewer_recurring_bi_daily",
-            "description": "Every 2 days recurring issue scan with dedupe",
-            "enabled": bool(enable_bi_daily),
-            "createdAtMs": ts,
-            "updatedAtMs": ts,
-            "schedule": {"kind": "cron", "expr": str(bi_daily_expr), "tz": tz_name},
-            "sessionTarget": "isolated",
-            "wakeMode": "now",
-            "payload": {
-                "kind": "agentTurn",
-                "message": build_message(cmd_bi_daily),
-                "model": DEFAULT_REVIEWER_CRON_MODEL,
-                "lightContext": True,
-                "timeoutSeconds": 1800,
-            },
-            "delivery": {"mode": "none"},
-            "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
-        },
-        {
-            "id": WEEKLY_JOB_ID,
-            "agentId": "reviewer",
-            "name": "reviewer_weekly_structure_review",
-            "description": "Weekly structure review: coupling, duplication, config dispersion, boundary clarity",
-            "enabled": bool(enable_weekly),
-            "createdAtMs": ts,
-            "updatedAtMs": ts,
-            "schedule": {"kind": "cron", "expr": str(weekly_expr), "tz": tz_name},
-            "sessionTarget": "isolated",
-            "wakeMode": "now",
-            "payload": {
-                "kind": "agentTurn",
-                "message": build_message(cmd_weekly),
-                "model": DEFAULT_REVIEWER_CRON_MODEL,
-                "lightContext": True,
-                "timeoutSeconds": 1800,
-            },
-            "delivery": {"mode": "none"},
-            "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
-        },
-    ]
+    jobs: list[dict[str, Any]] = []
+    if "hourly" in selected_jobs:
+        jobs.append(
+            {
+                "id": scoped_job_id(HOURLY_JOB_ID, job_scope),
+                "agentId": "reviewer",
+                "name": scoped_job_name("reviewer_git_update_hourly", job_scope),
+                "description": scoped_job_description(
+                    (
+                        "Hourly PR review gate (open PR review, approval-gated merge)"
+                        if bool(hourly_pr_gate_only)
+                        else "Hourly git incremental scan (branch sync, PR check, optional approved merge)"
+                    ),
+                    job_scope,
+                ),
+                "enabled": bool(enable_hourly),
+                "createdAtMs": ts,
+                "updatedAtMs": ts,
+                "schedule": {"kind": "every", "everyMs": max(600000, int(hourly_every_ms)), "anchorMs": ts},
+                "sessionTarget": "isolated",
+                "wakeMode": "now",
+                "payload": {
+                    "kind": "agentTurn",
+                    "message": build_message(cmd_hourly),
+                    "model": DEFAULT_REVIEWER_CRON_MODEL,
+                    "lightContext": True,
+                    "timeoutSeconds": 1200,
+                },
+                "delivery": {"mode": "none"},
+                "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
+            }
+        )
+    if "daily" in selected_jobs:
+        jobs.append(
+            {
+                "id": scoped_job_id(DAILY_JOB_ID, job_scope),
+                "agentId": "reviewer",
+                "name": scoped_job_name("reviewer_incremental_daily_4am", job_scope),
+                "description": scoped_job_description(
+                    "Daily 04:00 incremental review with optional fix command",
+                    job_scope,
+                ),
+                "enabled": bool(enable_daily),
+                "createdAtMs": ts,
+                "updatedAtMs": ts,
+                "schedule": {"kind": "cron", "expr": str(daily_expr), "tz": tz_name},
+                "sessionTarget": "isolated",
+                "wakeMode": "now",
+                "payload": {
+                    "kind": "agentTurn",
+                    "message": build_message(cmd_daily),
+                    "model": DEFAULT_REVIEWER_CRON_MODEL,
+                    "lightContext": True,
+                    "timeoutSeconds": 1800,
+                },
+                "delivery": {"mode": "none"},
+                "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
+            }
+        )
+    if "bi_daily" in selected_jobs:
+        jobs.append(
+            {
+                "id": scoped_job_id(BI_DAILY_JOB_ID, job_scope),
+                "agentId": "reviewer",
+                "name": scoped_job_name("reviewer_recurring_bi_daily", job_scope),
+                "description": scoped_job_description(
+                    "Every 2 days recurring issue scan with dedupe",
+                    job_scope,
+                ),
+                "enabled": bool(enable_bi_daily),
+                "createdAtMs": ts,
+                "updatedAtMs": ts,
+                "schedule": {"kind": "cron", "expr": str(bi_daily_expr), "tz": tz_name},
+                "sessionTarget": "isolated",
+                "wakeMode": "now",
+                "payload": {
+                    "kind": "agentTurn",
+                    "message": build_message(cmd_bi_daily),
+                    "model": DEFAULT_REVIEWER_CRON_MODEL,
+                    "lightContext": True,
+                    "timeoutSeconds": 1800,
+                },
+                "delivery": {"mode": "none"},
+                "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
+            }
+        )
+    if "weekly" in selected_jobs:
+        jobs.append(
+            {
+                "id": scoped_job_id(WEEKLY_JOB_ID, job_scope),
+                "agentId": "reviewer",
+                "name": scoped_job_name("reviewer_weekly_structure_review", job_scope),
+                "description": scoped_job_description(
+                    "Weekly structure review: coupling, duplication, config dispersion, boundary clarity",
+                    job_scope,
+                ),
+                "enabled": bool(enable_weekly),
+                "createdAtMs": ts,
+                "updatedAtMs": ts,
+                "schedule": {"kind": "cron", "expr": str(weekly_expr), "tz": tz_name},
+                "sessionTarget": "isolated",
+                "wakeMode": "now",
+                "payload": {
+                    "kind": "agentTurn",
+                    "message": build_message(cmd_weekly),
+                    "model": DEFAULT_REVIEWER_CRON_MODEL,
+                    "lightContext": True,
+                    "timeoutSeconds": 1800,
+                },
+                "delivery": {"mode": "none"},
+                "failureAlert": {"after": DEFAULT_FAILURE_ALERT_AFTER, "cooldownMs": DEFAULT_FAILURE_ALERT_COOLDOWN_MS},
+            }
+        )
+    return jobs
 
 
 def upsert_jobs(
@@ -406,6 +472,8 @@ def main() -> None:
     parser.add_argument("--hourly-pr-gate-only", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--hourly-push-after-merge", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--hourly-merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"))
+    parser.add_argument("--selected-jobs", default="hourly,daily,bi_daily,weekly")
+    parser.add_argument("--job-scope", default="")
     parser.add_argument("--project-context-gate", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--project-context-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
     parser.add_argument("--project-context-assignee", default="project-agent")
@@ -432,6 +500,7 @@ def main() -> None:
 
     if args.hourly_allow_merge and not str(args.hourly_merge_approval_file).strip():
         raise SystemExit("--hourly-allow-merge requires --hourly-merge-approval-file")
+    selected_jobs = parse_selected_jobs(args.selected_jobs)
 
     fresh_jobs = build_jobs(
         runner_py=normalize_shell_path(args.runner_py),
@@ -458,6 +527,8 @@ def main() -> None:
         project_context_gate=bool(args.project_context_gate),
         project_context_db=normalize_shell_path(args.project_context_db),
         project_context_assignee=str(args.project_context_assignee).strip() or "project-agent",
+        selected_jobs=selected_jobs,
+        job_scope=str(args.job_scope).strip(),
     )
 
     backup_file = ""
@@ -477,7 +548,7 @@ def main() -> None:
         dir_mode=0o750,
     )
 
-    job_ids = [HOURLY_JOB_ID, DAILY_JOB_ID, BI_DAILY_JOB_ID, WEEKLY_JOB_ID]
+    job_ids = [str(item.get("id", "")).strip() for item in fresh_jobs if str(item.get("id", "")).strip()]
     result = {
         "ok": True,
         "backup": backup_file,
@@ -503,6 +574,8 @@ def main() -> None:
         "hourly_merge_approval_file": normalize_shell_path(args.hourly_merge_approval_file),
         "hourly_pr_gate_only": bool(args.hourly_pr_gate_only),
         "hourly_push_after_merge": bool(args.hourly_push_after_merge),
+        "selected_jobs": sorted(selected_jobs),
+        "job_scope": str(args.job_scope).strip(),
         "project_context_gate": bool(args.project_context_gate),
         "project_context_db": normalize_shell_path(args.project_context_db),
         "project_context_assignee": str(args.project_context_assignee).strip() or "project-agent",
@@ -539,6 +612,8 @@ def main() -> None:
     print(f"hourly_merge_approval_file={normalize_shell_path(args.hourly_merge_approval_file)}")
     print(f"hourly_pr_gate_only={bool(args.hourly_pr_gate_only)}")
     print(f"hourly_push_after_merge={bool(args.hourly_push_after_merge)}")
+    print("selected_jobs=" + ",".join(sorted(selected_jobs)))
+    print(f"job_scope={str(args.job_scope).strip()}")
     print(f"project_context_gate={bool(args.project_context_gate)}")
     print(f"project_context_db={normalize_shell_path(args.project_context_db)}")
     print(f"project_context_assignee={str(args.project_context_assignee).strip() or 'project-agent'}")

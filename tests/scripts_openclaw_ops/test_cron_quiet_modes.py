@@ -2021,6 +2021,115 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--workspace", proc.stdout)
         self.assertIn(str(workflow_repo), proc.stdout)
 
+    def test_install_workflow_profile_can_emit_multi_project_repo_jobs_from_registry(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            openclaw_home = tmp / "openclaw-home"
+            workflow_repo = tmp / "workflow-repo"
+            extra_repo = tmp / "pbm-website"
+            extra_repo_2 = tmp / "admin-console"
+            openclaw_home.mkdir(parents=True)
+            workflow_repo.mkdir(parents=True)
+            extra_repo.mkdir(parents=True)
+            extra_repo_2.mkdir(parents=True)
+            registry_file = tmp / "project-registry.json"
+            registry_file.write_text(
+                json.dumps(
+                    {
+                        "discovery": {"enabled": False},
+                        "projects": [
+                            {
+                                "id": "workflow-repo",
+                                "name": "workflow-repo",
+                                "path": str(workflow_repo),
+                                "git_branch": "main",
+                            },
+                            {
+                                "id": "pbm-website",
+                                "name": "PBM Website",
+                                "path": str(extra_repo),
+                                "git_branch": "main",
+                                "git_sync": {
+                                    "enabled": True,
+                                    "commit_prefix": "chore(pbm-website): sync automation updates"
+                                },
+                                "auto_update_install_cmd": "bash scripts/deploy/install.sh"
+                            },
+                            {
+                                "id": "admin-console",
+                                "name": "Admin Console",
+                                "path": str(extra_repo_2),
+                                "git_branch": "master",
+                                "git_sync": {
+                                    "enabled": False
+                                }
+                            },
+                        ],
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/openclaw-ops/install_workflow_profile.py"),
+                    "--profile",
+                    "core",
+                    "--jobs-file",
+                    str(tmp / "jobs.json"),
+                    "--openclaw-home",
+                    str(openclaw_home),
+                    "--workflow-repo-path",
+                    str(workflow_repo),
+                    "--workflow-repo-id",
+                    "workflow-repo",
+                    "--project-registry",
+                    str(registry_file),
+                    "--task-db",
+                    str(tmp / "task_center.db"),
+                    "--channel",
+                    "telegram",
+                    "--to",
+                    "-1003333097130",
+                    "--governance-auto-pr",
+                    "--governance-reviewer-gh-user",
+                    "reviewer-bot",
+                    "--reviewer-hourly-allow-merge",
+                    "--reviewer-hourly-merge-approval-file",
+                    str(tmp / "reviewer-merge-approval.json"),
+                    "--install-multi-project-governance-jobs",
+                    "--install-multi-project-reviewer-pr-gates",
+                    "--install-multi-project-git-sync-jobs",
+                    "--install-multi-project-auto-update-install-jobs",
+                    "--multi-project-auto-update-install-cmd-template",
+                    "bash deploy/{repo_id}.sh",
+                    "--no-sync-overlay-config",
+                    "--no-normalize-openclaw-paths",
+                    "--dry-run",
+                    "--emit-json",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=ROOT,
+            )
+
+        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+        self.assertIn("install_governance_evolution_job.py", proc.stdout)
+        self.assertIn("--job-scope pbm-website", proc.stdout)
+        self.assertIn("--repo-id pbm-website", proc.stdout)
+        self.assertIn(str(extra_repo), proc.stdout)
+        self.assertIn("--selected-jobs hourly", proc.stdout)
+        self.assertIn("--workspace", proc.stdout)
+        self.assertIn("install_git_sync_job.py", proc.stdout)
+        self.assertIn("install_auto_update_install_job.py", proc.stdout)
+        self.assertIn("--commit-prefix 'chore(pbm-website): sync automation updates'", proc.stdout)
+        self.assertIn("bash scripts/deploy/install.sh", proc.stdout)
+        self.assertIn("bash deploy/admin-console.sh", proc.stdout)
+        self.assertNotIn(f"install_git_sync_job ({extra_repo_2.name})", proc.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

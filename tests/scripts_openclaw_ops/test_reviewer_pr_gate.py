@@ -179,11 +179,55 @@ class ReviewerPrGateTests(unittest.TestCase):
             project_context_db="/tmp/task_center.db",
             project_context_assignee="project-agent",
             hourly_pr_gate_only=True,
+            selected_jobs={"hourly", "daily", "weekly"},
+            job_scope="",
         )
 
         hourly_job = jobs[0]
         self.assertIn("PR review gate", hourly_job["description"])
         self.assertIn("--pr-gate-only", hourly_job["payload"]["message"])
+
+    def test_build_jobs_can_scope_hourly_gate_to_single_repo(self):
+        module = load_module(
+            "install_reviewer_scan_jobs",
+            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
+        )
+
+        jobs = module.build_jobs(
+            runner_py="/tmp/reviewer.py",
+            workspace="/srv/repos/pbm-website",
+            state_file="/tmp/pbm/state.json",
+            history_dir="/tmp/pbm/history",
+            tz_name="Asia/Shanghai",
+            hourly_every_ms=3600000,
+            daily_expr="0 4 * * *",
+            bi_daily_expr="20 4 */2 * *",
+            weekly_expr="40 4 * * 1",
+            enable_hourly=True,
+            enable_daily=False,
+            enable_bi_daily=False,
+            enable_weekly=False,
+            normal_log_mode="silent",
+            daily_fix_command="",
+            hourly_git_fetch=True,
+            hourly_check_pr=True,
+            hourly_allow_merge=True,
+            hourly_push_after_merge=False,
+            hourly_merge_approval_file="/tmp/reviewer-merge-approval.json",
+            project_context_gate=True,
+            project_context_db="/tmp/task_center.db",
+            project_context_assignee="project-agent",
+            hourly_pr_gate_only=True,
+            selected_jobs={"hourly"},
+            job_scope="pbm-website",
+        )
+
+        self.assertEqual(len(jobs), 1)
+        self.assertEqual(jobs[0]["name"], "reviewer_git_update_hourly:pbm-website")
+        self.assertNotEqual(jobs[0]["id"], module.HOURLY_JOB_ID)
+        self.assertIn("[scope=pbm-website]", jobs[0]["description"])
+        self.assertIn("--workspace /srv/repos/pbm-website", jobs[0]["payload"]["message"])
+        self.assertIn("--pr-gate-only", jobs[0]["payload"]["message"])
 
 
 if __name__ == "__main__":

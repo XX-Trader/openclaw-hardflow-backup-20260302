@@ -92,7 +92,12 @@
       "index_dir": ".workflow/project-index-local",
       "auto_pull": true,
       "git_remote": "origin",
-      "git_branch": "master"
+      "git_branch": "master",
+      "git_sync": {
+        "enabled": true,
+        "commit_prefix": "chore(project-b): sync automation updates"
+      },
+      "auto_update_install_cmd": "bash scripts/deploy/install.sh"
     }
   ]
 }

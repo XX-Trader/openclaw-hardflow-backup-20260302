@@ -11,6 +11,7 @@ import shutil
 import shlex
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -75,6 +76,71 @@ def delivery_args(channel: str, target: str) -> list[str]:
     if target.strip():
         out.extend(["--to", target.strip()])
     return out
+
+
+def repo_path_key(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        return str(Path(raw).expanduser().resolve()).replace("\\", "/").rstrip("/").lower()
+    except Exception:
+        return str(Path(raw).expanduser()).replace("\\", "/").rstrip("/").lower()
+
+
+def scoped_uuid(base_uuid: str, scope: str) -> str:
+    return str(uuid.uuid5(uuid.UUID(str(base_uuid)), str(scope or "").strip()))
+
+
+def load_multi_project_targets(
+    *,
+    project_registry_path: str,
+    workflow_repo_path: str,
+    workflow_repo_id: str,
+) -> list[dict[str, str]]:
+    registry_file = Path(project_registry_path).expanduser()
+    if not registry_file.exists():
+        return []
+    from project_registry_discovery import load_project_registry
+
+    workflow_path_key = repo_path_key(workflow_repo_path)
+    workflow_id = str(workflow_repo_id or "").strip().lower()
+    selected: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for item in load_project_registry(registry_file):
+        raw_path = str(item.get("path", "")).strip()
+        if not raw_path:
+            continue
+        item_path_key = repo_path_key(raw_path)
+        if not item_path_key or item_path_key in seen_paths:
+            continue
+        seen_paths.add(item_path_key)
+        repo_id = str(item.get("id", "")).strip() or Path(raw_path).name
+        if item_path_key == workflow_path_key or repo_id.strip().lower() == workflow_id:
+            continue
+        if str(item.get("project_role", "business")).strip().lower() != "business":
+            continue
+        discovery = item.get("discovery") if isinstance(item.get("discovery"), dict) else {}
+        git_sync = item.get("git_sync") if isinstance(item.get("git_sync"), dict) else {}
+        selected.append(
+            {
+                "repo_id": repo_id,
+                "repo_name": str(item.get("name", "")).strip() or repo_id,
+                "repo_path": normalize_path(raw_path),
+                "git_branch": str(item.get("git_branch", "")).strip() or "main",
+                "git_remote": str(item.get("git_remote", "")).strip() or "origin",
+                "remote_url": str(discovery.get("remote_url", "")).strip(),
+                "git_sync_enabled": "false" if str(git_sync.get("enabled", "")).strip().lower() == "false" else "true",
+                "git_sync_commit_prefix": str(git_sync.get("commit_prefix", "")).strip(),
+                "auto_update_install_cmd": str(
+                    item.get(
+                        "auto_update_install_cmd",
+                        item.get("auto_update_install_command", ""),
+                    )
+                ).strip(),
+            }
+        )
+    return selected
 
 
 def build_install_task_executor_cmd(
@@ -156,6 +222,275 @@ def build_install_project_index_cmd(
         "--skip-unchanged-git-projects",
     ]
     cmd.extend(delivery_args(channel, target))
+    cmd.append("--emit-json")
+    return cmd
+
+
+def build_install_multi_project_governance_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    ops_home: str,
+    openclaw_home: str,
+    project_registry: str,
+    task_db: str,
+    repo_id: str,
+    repo_name: str,
+    repo_path: str,
+    repo_branch: str,
+    every_ms: int,
+    auto_pr: bool,
+    reviewer_gh_user: str,
+    push_before_pr: bool,
+) -> list[str]:
+    scope = str(repo_id).strip()
+    cmd = [
+        python_bin,
+        str(here / "install_governance_evolution_job.py"),
+        "--jobs-file",
+        jobs_file,
+        "--job-scope",
+        scope,
+        "--job-name",
+        "ops_governance_evolution_incremental",
+        "--every-ms",
+        str(max(600000, int(every_ms))),
+        "--runner-py",
+        str(Path(ops_home) / "governance_evolution_runner.py"),
+        "--db",
+        task_db,
+        "--state-file",
+        str(Path(ops_home) / "governance-evolution" / scope / "state.json"),
+        "--report-dir",
+        str(Path(ops_home) / "governance-evolution" / scope / "reports"),
+        "--repo-path",
+        repo_path,
+        "--openclaw-config",
+        str(Path(openclaw_home) / "openclaw.json"),
+        "--project-registry",
+        project_registry,
+        "--repo-id",
+        scope,
+        "--repo-name",
+        str(repo_name).strip() or scope,
+        "--auto-git-update",
+        "--git-update-strategy",
+        "fetch",
+        "--git-fetch-timeout",
+        "120",
+        "--normal-log-mode",
+        "silent",
+        "--max-files",
+        "120",
+        "--min-interval-minutes",
+        "180",
+        "--task-clarity",
+        "ambiguous",
+        "--project-context-gate",
+        "--project-context-assignee",
+        "project-agent",
+        "--create-review-task",
+    ]
+    if bool(auto_pr):
+        cmd.extend(["--auto-pr", "--pr-base", str(repo_branch).strip() or "main"])
+        if str(reviewer_gh_user).strip():
+            cmd.extend(["--reviewer-gh-user", str(reviewer_gh_user).strip()])
+        if bool(push_before_pr):
+            cmd.append("--push-before-pr")
+    else:
+        cmd.append("--no-auto-pr")
+    cmd.append("--emit-json")
+    return cmd
+
+
+def build_install_multi_project_reviewer_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    ops_home: str,
+    task_db: str,
+    repo_id: str,
+    repo_path: str,
+    merge_approval_file: str,
+    allow_merge: bool,
+    push_after_merge: bool,
+    channel: str,
+    target: str,
+) -> list[str]:
+    scope = str(repo_id).strip()
+    cmd = [
+        python_bin,
+        str(here / "install_reviewer_scan_jobs.py"),
+        "--jobs-file",
+        jobs_file,
+        "--runner-py",
+        str(Path(ops_home) / "reviewer_cron_runner.py"),
+        "--workspace",
+        repo_path,
+        "--state-file",
+        str(Path(ops_home) / "reviewer-scan" / scope / "state.json"),
+        "--history-dir",
+        str(Path(ops_home) / "reviewer-scan-runs" / scope),
+        "--reviewer-profile",
+        "techdebt",
+        "--selected-jobs",
+        "hourly",
+        "--job-scope",
+        scope,
+        "--hourly-every-ms",
+        "3600000",
+        "--enable-hourly",
+        "--no-enable-daily",
+        "--no-enable-bi-daily",
+        "--no-enable-weekly",
+        "--normal-log-mode",
+        "silent",
+        "--hourly-check-pr",
+        "--hourly-pr-gate-only",
+        "--project-context-gate",
+        "--project-context-db",
+        task_db,
+        "--project-context-assignee",
+        "project-agent",
+    ]
+    if bool(allow_merge):
+        cmd.append("--hourly-allow-merge")
+        if str(merge_approval_file).strip():
+            cmd.extend(["--hourly-merge-approval-file", str(merge_approval_file).strip()])
+        if bool(push_after_merge):
+            cmd.append("--hourly-push-after-merge")
+    cmd.extend(delivery_args(channel, target))
+    cmd.append("--emit-json")
+    return cmd
+
+
+def build_install_multi_project_git_sync_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    ops_home: str,
+    repo_id: str,
+    repo_path: str,
+    repo_branch: str,
+    git_remote: str,
+    remote_url: str,
+    commit_prefix: str,
+) -> list[str]:
+    scope = str(repo_id).strip()
+    cmd = [
+        python_bin,
+        str(here / "install_git_sync_job.py"),
+        "--jobs-file",
+        jobs_file,
+        "--job-scope",
+        scope,
+        "--job-name",
+        "ops_git_sync_push",
+        "--every-ms",
+        "21600000",
+        "--runner-py",
+        str(Path(ops_home) / "git_sync_push_runner.py"),
+        "--repo-path",
+        repo_path,
+        "--repo-id",
+        scope,
+        "--remote",
+        str(git_remote).strip() or "origin",
+        "--branch",
+        str(repo_branch).strip() or "main",
+        "--normal-log-mode",
+        "silent",
+        "--notify-on",
+        "error",
+        "--max-files",
+        "80",
+        "--commit-prefix",
+        str(commit_prefix).strip() or f"chore({scope}): sync automation updates",
+        "--auto-pull",
+        "--push",
+        "--exclude-prefix",
+        ".workflow/experience/",
+        "--exclude-prefix",
+        ".workflow/sessions/",
+        "--exclude-prefix",
+        "openclaw-memory/",
+        "--exclude-prefix",
+        "memory/",
+        "--exclude-prefix",
+        "MEMORY.md",
+    ]
+    if str(remote_url).strip():
+        cmd.extend(["--require-remote-url", str(remote_url).strip()])
+    cmd.append("--emit-json")
+    return cmd
+
+
+def format_install_cmd_template(template: str, item: dict[str, str]) -> str:
+    text = str(template or "").strip()
+    if not text:
+        return ""
+    return text.format(
+        repo_id=str(item.get("repo_id", "")).strip(),
+        repo_name=str(item.get("repo_name", "")).strip(),
+        repo_path=str(item.get("repo_path", "")).strip(),
+        repo_branch=str(item.get("git_branch", "")).strip() or "main",
+    )
+
+
+def build_install_multi_project_auto_update_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    jobs_file: str,
+    ops_home: str,
+    repo_id: str,
+    repo_path: str,
+    repo_branch: str,
+    git_remote: str,
+    remote_url: str,
+    install_cmd: str,
+) -> list[str]:
+    scope = str(repo_id).strip()
+    cmd = [
+        python_bin,
+        str(here / "install_auto_update_install_job.py"),
+        "--jobs-file",
+        jobs_file,
+        "--job-scope",
+        scope,
+        "--job-name",
+        "ops_auto_update_install_hourly",
+        "--every-ms",
+        "3600000",
+        "--runner-py",
+        str(Path(ops_home) / "auto_update_install_runner.py"),
+        "--repo-path",
+        repo_path,
+        "--repo-id",
+        scope,
+        "--remote",
+        str(git_remote).strip() or "origin",
+        "--branch",
+        str(repo_branch).strip() or "main",
+        "--normal-log-mode",
+        "silent",
+        "--notify-on",
+        "error",
+        "--install-cmd",
+        str(install_cmd).strip(),
+        "--no-install-on-no-change",
+        "--git-timeout",
+        "240",
+        "--install-timeout",
+        "2400",
+        "--report-dir",
+        str(Path(ops_home) / "update-install-runs" / scope),
+    ]
+    if str(remote_url).strip():
+        cmd.extend(["--require-remote-url", str(remote_url).strip()])
     cmd.append("--emit-json")
     return cmd
 
@@ -931,6 +1266,11 @@ def main() -> None:
     parser.add_argument("--reviewer-hourly-allow-merge", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--reviewer-hourly-push-after-merge", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--reviewer-hourly-merge-approval-file", default=str(home / ".openclaw/ops/reviewer-merge-approval.json"))
+    parser.add_argument("--install-multi-project-governance-jobs", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--install-multi-project-reviewer-pr-gates", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--install-multi-project-git-sync-jobs", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--install-multi-project-auto-update-install-jobs", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--multi-project-auto-update-install-cmd-template", default="")
     parser.add_argument("--normalize-openclaw-paths", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--recover-stale-cron-running-state", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--stale-running-minutes", type=int, default=30)
@@ -968,6 +1308,11 @@ def main() -> None:
         (Path(openclaw_home) / "ops" / "workflow" / "schedule-registry.json").resolve()
     )
     jobs_agent_mapping_file = str((here.parent.parent / "cron" / "jobs_agent_mapping.md").resolve())
+    multi_project_targets = load_multi_project_targets(
+        project_registry_path=project_registry,
+        workflow_repo_path=workflow_repo_path,
+        workflow_repo_id=workflow_repo_id,
+    )
 
     install_todo_cmd = [
         args.python_bin,
@@ -1109,6 +1454,98 @@ def main() -> None:
     install_reviewer_cmd.extend(delivery_args(args.channel, args.to))
     install_reviewer_cmd.append("--emit-json")
 
+    multi_project_governance_cmds = [
+        (
+            f"install_governance_evolution_job ({item['repo_id']})",
+            build_install_multi_project_governance_cmd(
+                python_bin=args.python_bin,
+                here=here,
+                jobs_file=jobs_file,
+                ops_home=ops_home,
+                openclaw_home=openclaw_home,
+                project_registry=project_registry,
+                task_db=task_db,
+                repo_id=item["repo_id"],
+                repo_name=item["repo_name"],
+                repo_path=item["repo_path"],
+                repo_branch=item["git_branch"],
+                every_ms=int(args.governance_every_ms),
+                auto_pr=bool(args.governance_auto_pr),
+                reviewer_gh_user=str(args.governance_reviewer_gh_user).strip(),
+                push_before_pr=bool(args.governance_push_before_pr),
+            ),
+        )
+        for item in multi_project_targets
+    ]
+
+    multi_project_reviewer_cmds = [
+        (
+            f"install_reviewer_pr_gate ({item['repo_id']})",
+            build_install_multi_project_reviewer_cmd(
+                python_bin=args.python_bin,
+                here=here,
+                jobs_file=jobs_file,
+                ops_home=ops_home,
+                task_db=task_db,
+                repo_id=item["repo_id"],
+                repo_path=item["repo_path"],
+                merge_approval_file=str(args.reviewer_hourly_merge_approval_file).strip(),
+                allow_merge=bool(args.reviewer_hourly_allow_merge),
+                push_after_merge=bool(args.reviewer_hourly_push_after_merge),
+                channel=str(args.channel),
+                target=str(args.to),
+            ),
+        )
+        for item in multi_project_targets
+    ]
+
+    multi_project_git_sync_cmds = [
+        (
+            f"install_git_sync_job ({item['repo_id']})",
+            build_install_multi_project_git_sync_cmd(
+                python_bin=args.python_bin,
+                here=here,
+                jobs_file=jobs_file,
+                ops_home=ops_home,
+                repo_id=item["repo_id"],
+                repo_path=item["repo_path"],
+                repo_branch=item["git_branch"],
+                git_remote=item["git_remote"],
+                remote_url=item["remote_url"],
+                commit_prefix=item["git_sync_commit_prefix"],
+            ),
+        )
+        for item in multi_project_targets
+        if str(item.get("git_sync_enabled", "true")).strip().lower() != "false"
+    ]
+
+    auto_update_template = str(args.multi_project_auto_update_install_cmd_template).strip()
+    multi_project_auto_update_cmds = [
+        (
+            f"install_auto_update_install_job ({item['repo_id']})",
+            build_install_multi_project_auto_update_cmd(
+                python_bin=args.python_bin,
+                here=here,
+                jobs_file=jobs_file,
+                ops_home=ops_home,
+                repo_id=item["repo_id"],
+                repo_path=item["repo_path"],
+                repo_branch=item["git_branch"],
+                git_remote=item["git_remote"],
+                remote_url=item["remote_url"],
+                install_cmd=(
+                    str(item.get("auto_update_install_cmd", "")).strip()
+                    or format_install_cmd_template(auto_update_template, item)
+                ),
+            ),
+        )
+        for item in multi_project_targets
+        if (
+            str(item.get("auto_update_install_cmd", "")).strip()
+            or format_install_cmd_template(auto_update_template, item)
+        )
+    ]
+
     install_web_intel_cmd = build_install_web_intel_cmd(
         python_bin=args.python_bin,
         here=here,
@@ -1203,6 +1640,14 @@ def main() -> None:
         ("install_local_openclaw_backup_job (task#3-local)", install_local_backup_cmd),
         ("install_reviewer_scan_jobs (task#8)", install_reviewer_cmd),
     ])
+    if bool(args.install_multi_project_governance_jobs):
+        steps.extend(multi_project_governance_cmds)
+    if bool(args.install_multi_project_reviewer_pr_gates):
+        steps.extend(multi_project_reviewer_cmds)
+    if bool(args.install_multi_project_git_sync_jobs):
+        steps.extend(multi_project_git_sync_cmds)
+    if bool(args.install_multi_project_auto_update_install_jobs):
+        steps.extend(multi_project_auto_update_cmds)
 
     install_web_intel = bool(args.install_web_intel_jobs) or (profile == "all")
     if install_web_intel:
@@ -1237,6 +1682,12 @@ def main() -> None:
     print(f"workflow_registry_file={workflow_registry_file}")
     print(f"jobs_agent_mapping_file={jobs_agent_mapping_file}")
     print(f"gateway_service_prefer={args.gateway_service_prefer}")
+    print("multi_project_targets=" + json.dumps(multi_project_targets, ensure_ascii=False))
+    print(f"install_multi_project_governance_jobs={bool(args.install_multi_project_governance_jobs)}")
+    print(f"install_multi_project_reviewer_pr_gates={bool(args.install_multi_project_reviewer_pr_gates)}")
+    print(f"install_multi_project_git_sync_jobs={bool(args.install_multi_project_git_sync_jobs)}")
+    print(f"install_multi_project_auto_update_install_jobs={bool(args.install_multi_project_auto_update_install_jobs)}")
+    print(f"multi_project_auto_update_install_cmd_template={str(args.multi_project_auto_update_install_cmd_template).strip()}")
 
     results: list[dict[str, Any]] = []
     failed = False

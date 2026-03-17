@@ -122,6 +122,22 @@
 - [docs/plans/2026-03-17-pr-review-merge-gate-implementation-plan.md](../../docs/plans/2026-03-17-pr-review-merge-gate-implementation-plan.md)
   - 记录了如何把 `governance evolution -> create/update PR -> reviewer 审查 -> approval gate 自动合并` 这条链落到代码和运行态，包括职责边界、代码改造点、灰度步骤、验收与回滚要求。
 
+## 多项目服务器模板
+
+- [docs/2026-03-17-multi-project-server-template.md](../../docs/2026-03-17-multi-project-server-template.md)
+  - 记录了“一台服务器承载多个项目”时的推荐任务分层：哪些整机共享，哪些必须按项目拆分，以及当前安装器对多仓 `governance auto-pr / reviewer PR gate` 的真实支持边界。
+- `install_workflow_profile.py` 现已支持：
+  - `--install-multi-project-governance-jobs`
+  - `--install-multi-project-reviewer-pr-gates`
+  - `--install-multi-project-git-sync-jobs`
+  - `--install-multi-project-auto-update-install-jobs`
+  - `--multi-project-auto-update-install-cmd-template`
+  - 会基于 `project-registry.json` 为额外 `business` 项目派生 per-repo governance / reviewer PR gate / git sync / auto update install job。
+- [project-registry.example.json](./policy/project-registry.example.json)
+  - 多项目 registry 样例，包含 `discovery`、`projects`、`doc_sources`、`runtime_monitoring`，以及可选的 `git_sync` / `auto_update_install_cmd` 字段。
+- [reviewer-merge-approval.multi-project.example.json](./reviewer-merge-approval.multi-project.example.json)
+  - 多项目 reviewer merge approval 样例，推荐按 `repo + head_prefix + base` 做审批规则，而不是按 PR 编号硬编码。
+
 ## 远程安全更新
 
 - `remote_safe_update.py`
