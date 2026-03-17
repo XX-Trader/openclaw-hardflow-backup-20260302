@@ -205,6 +205,9 @@
 
 如果你要启用这轮新增的多项目安装器能力，还可以额外配置：
 
+- `governance.watch_prefixes`
+- `governance.exclude_prefixes`
+- `governance.auto_pr_enabled`
 - `git_sync.enabled`
 - `git_sync.commit_prefix`
 - `auto_update_install_cmd`
@@ -378,11 +381,18 @@
 - `install_workflow_profile.py`
   - `--install-multi-project-governance-jobs`
   - `--install-multi-project-reviewer-pr-gates`
+  - `--install-multi-project-git-sync-jobs`
+  - `--install-multi-project-auto-update-install-jobs`
 - `install_reviewer_scan_jobs.py`
   - `--selected-jobs`
   - `--job-scope`
 - `install_governance_evolution_job.py`
   - 单仓 governance job 安装器，可被 `install_workflow_profile.py` 按 registry 批量调用
+  - 支持 `--watch-prefix` / `--exclude-prefix`
+- `install_git_sync_job.py`
+  - 单仓 git sync job 安装器，可被 `install_workflow_profile.py` 按 registry 批量调用
+- `install_auto_update_install_job.py`
+  - 单仓 auto update install job 安装器，可被 `install_workflow_profile.py` 按 registry 批量调用
 
 建议使用方式：
 
@@ -418,6 +428,10 @@ python3 scripts/openclaw-ops/install_workflow_profile.py \
 
 规则如下：
 
+- `governance`
+  - 每个项目都可以单独声明 `watch_prefixes / exclude_prefixes / auto_pr_enabled`
+  - `watch_prefixes` 用来限定“哪些变更才算这个项目的治理作用范围”
+  - `auto_pr_enabled=false` 时，即使整机默认打开 `--governance-auto-pr`，该项目也会被强制降为“只产出治理结果，不自动建 PR”
 - `git sync`
   - 默认会为所有 `business` 项目派生
   - 如果某个项目声明 `git_sync.enabled = false`，则跳过

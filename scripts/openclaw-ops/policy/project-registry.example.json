@@ -93,6 +93,21 @@
       "auto_pull": true,
       "git_remote": "origin",
       "git_branch": "master",
+      "governance": {
+        "watch_prefixes": [
+          "README.md",
+          "VISION.md",
+          "package.json",
+          "src/",
+          "test/"
+        ],
+        "exclude_prefixes": [
+          "dist/",
+          "build/",
+          "coverage/"
+        ],
+        "auto_pr_enabled": false
+      },
       "git_sync": {
         "enabled": true,
         "commit_prefix": "chore(project-b): sync automation updates"

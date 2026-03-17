@@ -62,6 +62,23 @@ def normalize_shell_path(value: str) -> str:
     return os.path.expanduser(raw).replace("\\", "/")
 
 
+def normalize_string_list(values: list[str] | tuple[str, ...] | None) -> list[str]:
+    if not values:
+        return []
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for item in values:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(text)
+    return normalized
+
+
 def scoped_job_id(base_id: str, scope: str) -> str:
     scope_text = str(scope or "").strip()
     if not scope_text:
@@ -103,6 +120,8 @@ def build_runner_command(
     project_context_gate: bool,
     project_context_assignee: str,
     create_review_task: bool,
+    watch_prefixes: list[str],
+    exclude_prefixes: list[str],
     auto_pr: bool,
     pr_base: str,
     reviewer_gh_user: str,
@@ -134,6 +153,10 @@ def build_runner_command(
         cmd += f" --project-context-assignee \"{str(project_context_assignee).strip()}\""
     if create_review_task:
         cmd += " --create-review-task"
+    for prefix in normalize_string_list(watch_prefixes):
+        cmd += f" --watch-prefix \"{prefix}\""
+    for prefix in normalize_string_list(exclude_prefixes):
+        cmd += f" --exclude-prefix \"{prefix}\""
     if auto_pr:
         cmd += f" --auto-pr --pr-base \"{str(pr_base).strip() or 'main'}\""
         if str(reviewer_gh_user).strip():
@@ -189,6 +212,8 @@ def main() -> None:
     parser.add_argument("--project-context-gate", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--project-context-assignee", default="project-agent")
     parser.add_argument("--create-review-task", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--watch-prefix", action="append", default=[])
+    parser.add_argument("--exclude-prefix", action="append", default=[])
     parser.add_argument("--auto-pr", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--pr-base", default="main")
     parser.add_argument("--reviewer-gh-user", default="")
@@ -241,6 +266,8 @@ def main() -> None:
                     project_context_gate=bool(args.project_context_gate),
                     project_context_assignee=str(args.project_context_assignee),
                     create_review_task=bool(args.create_review_task),
+                    watch_prefixes=normalize_string_list(args.watch_prefix),
+                    exclude_prefixes=normalize_string_list(args.exclude_prefix),
                     auto_pr=bool(args.auto_pr),
                     pr_base=str(args.pr_base),
                     reviewer_gh_user=str(args.reviewer_gh_user),

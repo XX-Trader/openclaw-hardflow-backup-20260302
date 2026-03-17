@@ -24,7 +24,20 @@
   - `project_index_maintainer_30m` 已切到正式 registry
   - `schedule-registry.json` 已重新导出
   - `openclaw-hardflow-backup-20260302-deploy` 因与 workflow repo 共享 remote，未纳入正式 PR gate
+- 完成 `lobster` 的一次手动闭环演练：
+  - governance 已触发
+  - reviewer gate 已触发
+  - governance 实际停在 `changes_scoped_count = 0` 后的 `invalid_branch_for_pr`
+  - reviewer 成功读取 16 个 open PR，但没有命中 approval 规则，因此未 merge
+- 完成 `lobster` governance scoped 规则修复：
+  - 修正 `changes_scoped_count = 0` 时仍尝试 auto-pr 的逻辑
+  - `install_governance_evolution_job.py` 支持 `--watch-prefix / --exclude-prefix`
+  - `install_workflow_profile.py` 支持从 `project-registry` 读取 per-repo `governance.watch_prefixes / exclude_prefixes / auto_pr_enabled`
+  - `pm-website` 上 `lobster` 正式 registry 已写入治理范围配置
+  - 远端重跑后 `changes_scoped_count = 14`
+  - `auto_pr.attempted = false`
+  - `invalid_branch_for_pr` 已消失
 - 完成 `task_executor_10m` 通知收口：
   - 首报后转增量
   - 无变化静默
-  - 人类摘要压缩为“问题 / 给谁 / 进展 / 卡点 / 缺口”
+  - 人类摘要压缩为“事项 / 负责人 / 进展 / 问题 / 待补”

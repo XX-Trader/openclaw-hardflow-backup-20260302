@@ -134,13 +134,119 @@
 - 因此当前**没有**把它作为正式 per-repo PR gate 目标
 - 这样可以避免对同一批 PR 产生重复审查 / 自动合并竞争
 
-### 7. 当前已通过的测试
+### 7. `lobster` governance / reviewer 闭环演练
+
+已经完成一次手动闭环演练，结论如下：
+
+- governance 已手动触发
+- reviewer gate 已手动触发
+- 闭环**没有真正走到建 PR / 自动合并**
+
+真实结果：
+
+- governance report:
+  - `changes_all_count = 14`
+  - `changes_scoped_count = 0`
+  - `auto_pr.attempted = true`
+  - `auto_pr.ok = false`
+  - `auto_pr.reason = invalid_branch_for_pr`
+  - `branch = main`
+- reviewer report:
+  - `open_prs = 16`
+  - `merge_actions = []`
+
+已确认的原因：
+
+1. `lobster` 当前这轮增量扫描没有命中 workflow 关注范围  
+   也就是 repo 有变更，但不在 governance 当前 `watch_prefixes` 内，所以没有产出优化任务，也没有创建受控自动分支。
+
+2. governance 在 `changes_scoped_count = 0` 时，仍然进入了 `auto_pr.attempted = true`  
+   但因为分支还是 `main`，最终报 `invalid_branch_for_pr`。
+
+3. reviewer 并不是坏了  
+   它成功拉到了 `lobster` 的 open PR 列表，但没有任何一条命中：
+   - `repo = lobster`
+   - `head_prefix = auto/evolution-`
+   - `base = main`
+   所以没有执行 merge。
+
+4. GitHub 权限仍是潜在阻塞  
+   `pm-website` 上登录的 `XX-Trader` 对 `openclaw/lobster` 当前只有 `READ` 权限。  
+   这次还没走到 push/建 PR 那一步就先停了，但即便前面修好，后续仍会卡在写权限。
+
+补充事实：
+
+- `lobster` 本地工作树当时有未跟踪文件：
+  - `.workflow/`
+  - `package-lock.json`
+
+因此，当前最需要修的不是 reviewer，而是 governance 的前半段：
+
+- 先明确 `lobster` 应该监控哪些路径
+- 再避免 `changes_scoped_count = 0` 时仍去尝试 auto-pr
+- 最后再解决 `openclaw/lobster` 的 push/PR 权限
+
+### 8. `lobster` governance scoped 规则修复
+
+已经完成本地修复、测试和 `pm-website` 远端验证：
+
+- `governance_evolution_runner.py`
+  - 修正 `changes_scoped_count = 0` 时仍错误标记 `auto_pr.attempted = true`
+  - 现在会正确返回：
+    - `attempted = false`
+    - `reason = no_scoped_changes`
+- `install_governance_evolution_job.py`
+  - 新增 `--watch-prefix`
+  - 新增 `--exclude-prefix`
+- `install_workflow_profile.py`
+  - 新增从 `project-registry.json` 读取 per-repo：
+    - `governance.watch_prefixes`
+    - `governance.exclude_prefixes`
+    - `governance.auto_pr_enabled`
+
+`pm-website` 上已经正式补进 `lobster.governance` 配置：
+
+- `watch_prefixes`
+  - `README.md`
+  - `VISION.md`
+  - `package.json`
+  - `package-lock.json`
+  - `src/`
+  - `test/`
+- `exclude_prefixes`
+  - `.workflow/`
+  - `dist/`
+  - `build/`
+  - `coverage/`
+- `auto_pr_enabled = false`
+
+远端验证结果：
+
+- `install_workflow_profile.py --dry-run` 已成功从正式 registry 派生出带这些前缀参数的 `lobster` governance job
+- `jobs.json` 中 `ops_governance_evolution_incremental:lobster` 的 message 已带上：
+  - `--watch-prefix ...`
+  - `--exclude-prefix ...`
+- 手动重跑后最新 report：
+  - `changes_all_count = 14`
+  - `changes_scoped_count = 14`
+  - `auto_pr.attempted = false`
+  - `auto_pr.reason = not_run`
+
+说明：
+
+- `lobster` 的 governance 作用范围已经命中
+- 误报 `invalid_branch_for_pr` 的问题已经消失
+- 当前剩余阻塞已收敛为 GitHub 写权限，而不是 governance/reviewer 代码逻辑
+
+### 9. 当前已通过的测试
 
 已通过的定向测试包括：
 
 - `tests/scripts_openclaw_ops/test_reviewer_pr_gate.py`
 - `tests/scripts_openclaw_ops/test_cron_quiet_modes.py`
   - 与多项目安装器相关的定向用例
+- `tests/scripts_openclaw_ops/test_governance_evolution_runner.py`
+  - `resolve_auto_pr_result` 的 `no_scoped_changes` 保护
 - 新增安装器脚本的 `py_compile`
 - JSON 示例文件格式校验
 
@@ -162,7 +268,16 @@
 
 现在功能已经具备，但还未完成真实服务器落地。
 
-### 3. 补齐其它服务器的正式多项目 `project-registry`
+### 3. 解决 `lobster` 的 GitHub 写权限
+
+`lobster` 的 governance 作用范围和 scoped 逻辑已经修好。  
+现在剩下的真正阻塞是：
+
+- `XX-Trader` 对 `openclaw/lobster` 只有 `READ` 权限
+
+在正式把 `lobster` 当作可自动 PR/自动 merge 的业务仓前，必须先补这一步。
+
+### 4. 补齐其它服务器的正式多项目 `project-registry`
 
 当前现状：
 
@@ -173,7 +288,7 @@
 
 因此，下一步如果要把多项目 job 推广出去，需要先把其它服务器上的真实业务仓库登记进正式 registry。
 
-### 4. 如果要继续提升自动化，可做第三阶段
+### 5. 如果要继续提升自动化，可做第三阶段
 
 候选项：
 
