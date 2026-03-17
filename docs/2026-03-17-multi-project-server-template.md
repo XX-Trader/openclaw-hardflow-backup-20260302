@@ -346,6 +346,49 @@
 - 会出现 `no git remotes found`
 - reviewer 看不到真实仓库
 
+## 外部仓只读模式
+
+如果某个项目仓库不是你的，或者当前运行账号对该仓库只有 `READ` 权限，那么不要把它按“可改仓业务仓”来配置。
+
+推荐直接收口成“外部只读仓”：
+
+- 保留：
+  - `project_index_maintainer`
+  - `ops_governance_evolution_incremental`
+  - 报告输出
+  - task-center 任务生成
+- 关闭：
+  - `reviewer PR gate`
+  - `auto-pr`
+  - `git sync`
+  - `auto update install`
+
+推荐 registry 配置：
+
+- `governance.auto_pr_enabled = false`
+- `git_sync.enabled = false`
+- 不配置 `auto_update_install_cmd`
+
+推荐 governance 范围：
+
+- `watch_prefixes`
+  - `README.md`
+  - `VISION.md`
+  - `package.json`
+  - `src/`
+  - `test/`
+- `exclude_prefixes`
+  - `.workflow/`
+  - `dist/`
+  - `build/`
+  - `coverage/`
+
+额外建议：
+
+- `.workflow/` 必须排除，它是本地运行痕迹，不是业务源码
+- `package-lock.json` 不建议默认放进 `watch_prefixes`
+  - 只有在你明确要跟踪依赖升级时，才让它跟随 `package.json` 一起进入治理任务
+
 ## 验收清单
 
 多项目模式落地后，至少检查：

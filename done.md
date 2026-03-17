@@ -37,6 +37,13 @@
   - 远端重跑后 `changes_scoped_count = 14`
   - `auto_pr.attempted = false`
   - `invalid_branch_for_pr` 已消失
+- 完成 `lobster` 外部只读仓收口：
+  - 确认 `XX-Trader` 对 `openclaw/lobster` 只有 `READ`
+  - `lobster.governance.watch_prefixes` 移除 `package-lock.json`
+  - 保留 `.workflow/` 在 `exclude_prefixes`
+  - `lobster.governance.auto_pr_enabled = false`
+  - 关闭 `reviewer_git_update_hourly:lobster`
+  - 重新导出 `schedule-registry.json`
 - 完成 `task_executor_10m` 通知收口：
   - 首报后转增量
   - 无变化静默

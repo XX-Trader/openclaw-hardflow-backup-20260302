@@ -238,7 +238,33 @@
 - 误报 `invalid_branch_for_pr` 的问题已经消失
 - 当前剩余阻塞已收敛为 GitHub 写权限，而不是 governance/reviewer 代码逻辑
 
-### 9. 当前已通过的测试
+### 9. `lobster` 已切换为外部只读仓模式
+
+由于 `pm-website` 上当前 GitHub 账号 `XX-Trader` 对 `openclaw/lobster` 只有 `READ` 权限，这个仓库不再继续按“自动 PR / 自动 merge”模式运行。
+
+已完成的收口动作：
+
+- `lobster.governance.watch_prefixes` 移除了 `package-lock.json`
+- 保留 `.workflow/` 在 `exclude_prefixes`
+- `lobster.governance.auto_pr_enabled = false`
+- `reviewer_git_update_hourly:lobster` 已在 `jobs.json` 中关闭
+- `schedule-registry.json` 已重新导出
+
+当前口径：
+
+- `lobster` 保留：
+  - 索引
+  - 增量治理分析
+  - 报告和任务输出
+- `lobster` 关闭：
+  - reviewer PR gate
+  - auto-pr
+  - git sync
+  - auto update install
+
+也就是说，`lobster` 现在是“外部只读观察仓 / 治理建议仓”，不是“可自动改仓业务仓”。
+
+### 10. 当前已通过的测试
 
 已通过的定向测试包括：
 
