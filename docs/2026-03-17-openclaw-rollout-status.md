@@ -111,7 +111,30 @@
   - `steps_total = 22`
   - `ok = true`
 
-### 6. 当前已通过的测试
+### 6. `pm-website` 首个正式多项目节点
+
+已经完成正式落地：
+
+- 正式 `project-registry.json` 已写入 `pm-website`
+- 当前正式登记项目：
+  - `openclaw-hardflow-backup-20260302`（workflow）
+  - `openclaw-local-install`（internal）
+  - `lobster`（business）
+- `discovery.enabled = false`
+- `lobster` 已正式启用：
+  - `ops_governance_evolution_incremental:lobster`
+  - `reviewer_git_update_hourly:lobster`
+- `project_index_maintainer_30m` 已切到正式 registry
+- `schedule-registry.json` 已重新导出
+
+重要边界：
+
+- `openclaw-hardflow-backup-20260302-deploy` 虽然也是一份 git checkout
+- 但它和 workflow repo 指向同一个 GitHub remote
+- 因此当前**没有**把它作为正式 per-repo PR gate 目标
+- 这样可以避免对同一批 PR 产生重复审查 / 自动合并竞争
+
+### 7. 当前已通过的测试
 
 已通过的定向测试包括：
 
@@ -139,17 +162,16 @@
 
 现在功能已经具备，但还未完成真实服务器落地。
 
-### 3. 补齐正式多项目 `project-registry`
+### 3. 补齐其它服务器的正式多项目 `project-registry`
 
 当前现状：
 
-- 5 台已安装 OpenClaw 的服务器里，没有一台正式 `project-registry.json` 已登记“2 个以上业务项目”
-- `pm-website` 的正式 registry 仍为空
-- 其它 4 台正式 registry 目前只有：
+- `pm-website` 已完成首个正式多项目节点落地
+- 其它 4 台正式 registry 目前仍只有：
   - workflow repo
   - `openclaw-local-install`
 
-因此，下一步如果要正式启用多项目 job，需要先把真实业务仓库登记进正式 registry。
+因此，下一步如果要把多项目 job 推广出去，需要先把其它服务器上的真实业务仓库登记进正式 registry。
 
 ### 4. 如果要继续提升自动化，可做第三阶段
 
@@ -163,7 +185,7 @@
 
 ### 第一步：补齐正式多项目 `project-registry`
 
-先把真实业务仓库登记进正式 registry，再决定是否正式安装 per-repo job。
+先在目标服务器把真实业务仓库登记进正式 registry，再决定是否正式安装 per-repo job。
 
 ### 第二步：只启用 per-repo governance / reviewer PR gate
 
