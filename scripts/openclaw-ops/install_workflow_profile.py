@@ -97,7 +97,7 @@ def load_multi_project_targets(
     project_registry_path: str,
     workflow_repo_path: str,
     workflow_repo_id: str,
-) -> list[dict[str, str]]:
+) -> list[dict[str, Any]]:
     registry_file = Path(project_registry_path).expanduser()
     if not registry_file.exists():
         return []
@@ -122,6 +122,7 @@ def load_multi_project_targets(
             continue
         discovery = item.get("discovery") if isinstance(item.get("discovery"), dict) else {}
         git_sync = item.get("git_sync") if isinstance(item.get("git_sync"), dict) else {}
+        governance = item.get("governance") if isinstance(item.get("governance"), dict) else {}
         selected.append(
             {
                 "repo_id": repo_id,
@@ -132,6 +133,15 @@ def load_multi_project_targets(
                 "remote_url": str(discovery.get("remote_url", "")).strip(),
                 "git_sync_enabled": "false" if str(git_sync.get("enabled", "")).strip().lower() == "false" else "true",
                 "git_sync_commit_prefix": str(git_sync.get("commit_prefix", "")).strip(),
+                "governance_watch_prefixes": normalize_string_list(
+                    governance.get("watch_prefixes", governance.get("watch_prefix"))
+                ),
+                "governance_exclude_prefixes": normalize_string_list(
+                    governance.get("exclude_prefixes", governance.get("exclude_prefix"))
+                ),
+                "governance_auto_pr_enabled": str(
+                    governance.get("auto_pr_enabled", governance.get("auto_pr", ""))
+                ).strip(),
                 "auto_update_install_cmd": str(
                     item.get(
                         "auto_update_install_cmd",
@@ -240,6 +250,8 @@ def build_install_multi_project_governance_cmd(
     repo_path: str,
     repo_branch: str,
     every_ms: int,
+    watch_prefixes: list[str],
+    exclude_prefixes: list[str],
     auto_pr: bool,
     reviewer_gh_user: str,
     push_before_pr: bool,
@@ -292,6 +304,10 @@ def build_install_multi_project_governance_cmd(
         "project-agent",
         "--create-review-task",
     ]
+    for prefix in normalize_string_list(watch_prefixes):
+        cmd.extend(["--watch-prefix", prefix])
+    for prefix in normalize_string_list(exclude_prefixes):
+        cmd.extend(["--exclude-prefix", prefix])
     if bool(auto_pr):
         cmd.extend(["--auto-pr", "--pr-base", str(repo_branch).strip() or "main"])
         if str(reviewer_gh_user).strip():
@@ -438,6 +454,15 @@ def format_install_cmd_template(template: str, item: dict[str, str]) -> str:
         repo_path=str(item.get("repo_path", "")).strip(),
         repo_branch=str(item.get("git_branch", "")).strip() or "main",
     )
+
+
+def resolve_optional_bool(value: Any, default: bool) -> bool:
+    text = str(value or "").strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)
 
 
 def build_install_multi_project_auto_update_cmd(
@@ -1470,7 +1495,12 @@ def main() -> None:
                 repo_path=item["repo_path"],
                 repo_branch=item["git_branch"],
                 every_ms=int(args.governance_every_ms),
-                auto_pr=bool(args.governance_auto_pr),
+                watch_prefixes=list(item.get("governance_watch_prefixes", [])),
+                exclude_prefixes=list(item.get("governance_exclude_prefixes", [])),
+                auto_pr=resolve_optional_bool(
+                    item.get("governance_auto_pr_enabled", ""),
+                    bool(args.governance_auto_pr),
+                ),
                 reviewer_gh_user=str(args.governance_reviewer_gh_user).strip(),
                 push_before_pr=bool(args.governance_push_before_pr),
             ),

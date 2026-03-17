@@ -23,6 +23,69 @@ def load_module(name: str, rel_path: str):
 
 
 class GovernanceEvolutionRunnerTests(unittest.TestCase):
+    def test_resolve_auto_pr_result_skips_when_no_scoped_changes(self):
+        module = load_module(
+            "governance_evolution_runner",
+            "scripts/openclaw-ops/governance_evolution_runner.py",
+        )
+
+        called = {"value": False}
+
+        def attempt() -> dict[str, object]:
+            called["value"] = True
+            return {
+                "attempted": True,
+                "ok": True,
+                "reason": "ok",
+                "branch": "auto/evolution-20260317-abc123",
+                "pr_url": "https://github.com/example/repo/pull/42",
+                "pr_number": 42,
+            }
+
+        result = module.resolve_auto_pr_result(
+            auto_pr_enabled=True,
+            context_blocked=False,
+            changes_scoped_count=0,
+            attempt_auto_pr_fn=attempt,
+        )
+
+        self.assertFalse(called["value"])
+        self.assertEqual(
+            result,
+            {
+                "attempted": False,
+                "ok": False,
+                "reason": "no_scoped_changes",
+                "pr_url": "",
+                "pr_number": 0,
+                "branch": "",
+            },
+        )
+
+    def test_resolve_auto_pr_result_delegates_when_changes_exist(self):
+        module = load_module(
+            "governance_evolution_runner",
+            "scripts/openclaw-ops/governance_evolution_runner.py",
+        )
+
+        expected = {
+            "attempted": True,
+            "ok": True,
+            "reason": "ok",
+            "branch": "auto/evolution-20260317-abc123",
+            "pr_url": "https://github.com/example/repo/pull/42",
+            "pr_number": 42,
+        }
+
+        result = module.resolve_auto_pr_result(
+            auto_pr_enabled=True,
+            context_blocked=False,
+            changes_scoped_count=3,
+            attempt_auto_pr_fn=lambda: expected,
+        )
+
+        self.assertEqual(result, expected)
+
     def test_attach_auto_pr_context_links_review_follow_up_targets(self):
         module = load_module(
             "governance_evolution_runner",

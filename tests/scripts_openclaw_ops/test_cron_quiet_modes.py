@@ -551,12 +551,12 @@ class CronQuietModeTests(unittest.TestCase):
         output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
 
         self.assertIn("任务执行器（10分钟）", output.splitlines()[0])
-        self.assertIn("选中 3 个任务，未闭环 3 个。", output)
-        self.assertIn("- 原因解析：任务仅部分完成 2 个；任务执行失败 1 个。", output)
-        self.assertIn("- 修复进展：已执行 3/3，部分推进 2，失败 1。", output)
-        self.assertIn("任务1：", output)
-        self.assertIn("状态1：", output)
-        self.assertIn("值得做1：", output)
+        self.assertIn("首次发现 3 个未闭环任务。", output)
+        self.assertIn("本轮变化：新增 3 个，变化 0 个，已闭环 0 个，仍未闭环 3 个。", output)
+        self.assertIn("事项1：未命名任务", output)
+        self.assertIn("进展1：执行失败", output)
+        self.assertIn("问题1：任务执行失败", output)
+        self.assertIn("待补2：partial", output)
 
     def test_task_executor_duplicate_workflow_repair_alert_returns_no_reply(self):
         module = load_module(
@@ -622,6 +622,146 @@ class CronQuietModeTests(unittest.TestCase):
             summary["alert_dedupe"]["reason"],
         )
         self.assertEqual(output, "NO_REPLY")
+
+    def test_task_executor_incremental_notify_suppresses_unchanged_open_items(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        summary = {
+            "trigger_task": "cron:task-executor",
+            "run_id": "exec-20260317_054211-697478b5",
+            "started_at": "2026-03-17T05:42:11+00:00",
+            "tasks_selected": 2,
+            "tasks_executed": 0,
+            "tasks_skipped": 2,
+            "results": [
+                {
+                    "task_id": "todo-risk-1",
+                    "assignee": "project-agent",
+                    "stage": "plan",
+                    "status": "failed",
+                    "reason": "preflight_strict_blocked",
+                    "task_requirement": "补齐项目索引治理方案，并确认是否纳入本周计划。",
+                    "preflight_reassign": {
+                        "recommended_agents": ["project-agent"],
+                    },
+                },
+                {
+                    "task_id": "todo-risk-2",
+                    "assignee": "optimization-agent",
+                    "stage": "implement",
+                    "status": "failed",
+                    "reason": "needs_clarification",
+                    "task_requirement": "梳理任务执行器的人类摘要模板，避免重复刷屏。",
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "alert-dedupe-state.json"
+            first = module.apply_task_executor_incremental_notify(
+                summary,
+                state_path,
+                now_text="2026-03-17T05:42:11+00:00",
+            )
+            second = module.apply_task_executor_incremental_notify(
+                dict(summary),
+                state_path,
+                now_text="2026-03-17T05:53:09+00:00",
+            )
+
+        self.assertFalse(first["suppressed"])
+        self.assertEqual(first["mode"], "initial")
+        self.assertEqual(first["new_count"], 2)
+        self.assertEqual(first["changed_count"], 0)
+        self.assertTrue(second["suppressed"])
+        self.assertEqual(second["mode"], "no_change")
+        self.assertEqual(second["open_count"], 2)
+
+    def test_task_executor_incremental_notify_reports_only_changed_items(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        first_summary = {
+            "trigger_task": "cron:task-executor",
+            "run_id": "exec-20260317_054211-697478b5",
+            "started_at": "2026-03-17T05:42:11+00:00",
+            "tasks_selected": 2,
+            "tasks_executed": 0,
+            "tasks_skipped": 2,
+            "results": [
+                {
+                    "task_id": "todo-risk-1",
+                    "assignee": "project-agent",
+                    "stage": "plan",
+                    "status": "failed",
+                    "reason": "preflight_strict_blocked",
+                    "task_requirement": "补齐项目索引治理方案，并确认是否纳入本周计划。",
+                    "preflight_reassign": {
+                        "recommended_agents": ["project-agent"],
+                    },
+                },
+                {
+                    "task_id": "todo-risk-2",
+                    "assignee": "optimization-agent",
+                    "stage": "implement",
+                    "status": "failed",
+                    "reason": "needs_clarification",
+                    "task_requirement": "梳理任务执行器的人类摘要模板，避免重复刷屏。",
+                },
+            ],
+        }
+        second_summary = {
+            "trigger_task": "cron:task-executor",
+            "run_id": "exec-20260317_060324-08861d20",
+            "started_at": "2026-03-17T06:03:24+00:00",
+            "tasks_selected": 2,
+            "tasks_executed": 1,
+            "tasks_skipped": 1,
+            "results": [
+                {
+                    "task_id": "todo-risk-1",
+                    "assignee": "project-agent",
+                    "stage": "plan",
+                    "status": "failed",
+                    "reason": "waiting_human_confirm",
+                    "task_requirement": "补齐项目索引治理方案，并确认是否纳入本周计划。",
+                },
+                {
+                    "task_id": "todo-risk-2",
+                    "assignee": "optimization-agent",
+                    "stage": "implement",
+                    "status": "passed",
+                    "report_status": "passed",
+                    "reason": "solved",
+                    "task_requirement": "梳理任务执行器的人类摘要模板，避免重复刷屏。",
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            state_path = Path(tmpdir) / "alert-dedupe-state.json"
+            module.apply_task_executor_incremental_notify(
+                first_summary,
+                state_path,
+                now_text="2026-03-17T05:42:11+00:00",
+            )
+            change = module.apply_task_executor_incremental_notify(
+                second_summary,
+                state_path,
+                now_text="2026-03-17T06:03:24+00:00",
+            )
+
+        self.assertFalse(change["suppressed"])
+        self.assertEqual(change["mode"], "delta")
+        self.assertEqual(change["new_count"], 0)
+        self.assertEqual(change["changed_count"], 1)
+        self.assertEqual(change["resolved_count"], 1)
+        self.assertEqual(change["focus_task_ids"], ["todo-risk-1"])
 
     def test_web_collect_error_only_mode_stays_quiet_on_changes(self):
         module = load_module(
@@ -2021,6 +2161,46 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--workspace", proc.stdout)
         self.assertIn(str(workflow_repo), proc.stdout)
 
+    def test_install_governance_evolution_job_supports_watch_prefixes_and_excludes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            jobs_file = tmp / "jobs.json"
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts/openclaw-ops/install_governance_evolution_job.py"),
+                    "--jobs-file",
+                    str(jobs_file),
+                    "--repo-path",
+                    "/srv/lobster",
+                    "--repo-id",
+                    "lobster",
+                    "--repo-name",
+                    "lobster",
+                    "--watch-prefix",
+                    "README.md",
+                    "--watch-prefix",
+                    "src/",
+                    "--exclude-prefix",
+                    "dist/",
+                    "--no-auto-pr",
+                    "--emit-json",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=ROOT,
+            )
+
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+            payload = json.loads(jobs_file.read_text(encoding="utf-8"))
+            message = payload["jobs"][0]["payload"]["message"]
+
+        self.assertIn('--watch-prefix "README.md"', message)
+        self.assertIn('--watch-prefix "src/"', message)
+        self.assertIn('--exclude-prefix "dist/"', message)
+        self.assertNotIn(" --auto-pr ", f" {message} ")
+
     def test_install_workflow_profile_can_emit_multi_project_repo_jobs_from_registry(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -2049,6 +2229,11 @@ class CronQuietModeTests(unittest.TestCase):
                                 "name": "PBM Website",
                                 "path": str(extra_repo),
                                 "git_branch": "main",
+                                "governance": {
+                                    "watch_prefixes": ["README.md", "src/"],
+                                    "exclude_prefixes": ["dist/"],
+                                    "auto_pr_enabled": False
+                                },
                                 "git_sync": {
                                     "enabled": True,
                                     "commit_prefix": "chore(pbm-website): sync automation updates"
@@ -2121,6 +2306,10 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--job-scope pbm-website", proc.stdout)
         self.assertIn("--repo-id pbm-website", proc.stdout)
         self.assertIn(str(extra_repo), proc.stdout)
+        self.assertIn("--watch-prefix README.md", proc.stdout)
+        self.assertIn("--watch-prefix src/", proc.stdout)
+        self.assertIn("--exclude-prefix dist/", proc.stdout)
+        self.assertIn("--no-auto-pr", proc.stdout)
         self.assertIn("--selected-jobs hourly", proc.stdout)
         self.assertIn("--workspace", proc.stdout)
         self.assertIn("install_git_sync_job.py", proc.stdout)

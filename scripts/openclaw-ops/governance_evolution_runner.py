@@ -20,7 +20,7 @@ import sys
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parent
 POLICY_DIR = ROOT / "policy"
@@ -1049,6 +1049,29 @@ def attach_auto_pr_context(task_packaging: dict[str, Any], auto_pr_result: dict[
     return packaging
 
 
+def resolve_auto_pr_result(
+    *,
+    auto_pr_enabled: bool,
+    context_blocked: bool,
+    changes_scoped_count: int,
+    attempt_auto_pr_fn: Callable[[], dict[str, Any]],
+) -> dict[str, Any]:
+    if not auto_pr_enabled:
+        return {"attempted": False, "ok": False, "reason": "not_run", "pr_url": "", "pr_number": 0, "branch": ""}
+    if int(changes_scoped_count) <= 0:
+        return {"attempted": False, "ok": False, "reason": "no_scoped_changes", "pr_url": "", "pr_number": 0, "branch": ""}
+    if context_blocked:
+        return {
+            "attempted": True,
+            "ok": False,
+            "reason": "blocked_by_project_context_gate",
+            "pr_url": "",
+            "pr_number": 0,
+            "branch": "",
+        }
+    return attempt_auto_pr_fn()
+
+
 def attempt_auto_pr(
     *,
     repo: Path,
@@ -1340,26 +1363,21 @@ def main() -> int:
                     notify = True
             context_gate = task_packaging.get("context_gate", {}) if isinstance(task_packaging, dict) else {}
             context_blocked = bool(context_gate.get("blocked", False)) if isinstance(context_gate, dict) else False
-            if bool(args.auto_pr) and (not context_blocked):
-                auto_pr_result = attempt_auto_pr(
-                    repo=repo,
-                    pr_base=str(args.pr_base).strip() or "main",
-                    pr_title_prefix=str(args.pr_title_prefix).strip() or "chore: governance evolution",
-                    reviewer_gh_user=str(args.reviewer_gh_user).strip(),
-                    push_before_pr=bool(args.push_before_pr),
+            if bool(args.auto_pr):
+                auto_pr_result = resolve_auto_pr_result(
+                    auto_pr_enabled=bool(args.auto_pr),
+                    context_blocked=context_blocked,
+                    changes_scoped_count=len(changes_scoped),
+                    attempt_auto_pr_fn=lambda: attempt_auto_pr(
+                        repo=repo,
+                        pr_base=str(args.pr_base).strip() or "main",
+                        pr_title_prefix=str(args.pr_title_prefix).strip() or "chore: governance evolution",
+                        reviewer_gh_user=str(args.reviewer_gh_user).strip(),
+                        push_before_pr=bool(args.push_before_pr),
+                    ),
                 )
                 if bool(auto_pr_result.get("ok", False)):
                     notify = True
-                task_packaging = attach_auto_pr_context(task_packaging, auto_pr_result)
-            elif bool(args.auto_pr) and context_blocked:
-                auto_pr_result = {
-                    "attempted": True,
-                    "ok": False,
-                    "reason": "blocked_by_project_context_gate",
-                    "pr_url": "",
-                    "pr_number": 0,
-                    "branch": "",
-                }
                 task_packaging = attach_auto_pr_context(task_packaging, auto_pr_result)
         else:
             scan_meta = {"mode": args.mode, "head": "", "diff_base": "", "skip_reason": "min_interval"}
