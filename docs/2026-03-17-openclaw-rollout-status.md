@@ -79,7 +79,7 @@
 
 ### 5. 多项目服务器第二阶段
 
-已经完成本地实现与测试：
+已经完成实现、推送与远端 dry-run：
 
 - `install_reviewer_scan_jobs.py`
   - 支持 `--selected-jobs`
@@ -95,6 +95,22 @@
     - per-repo git sync job
     - per-repo auto update install job
 
+补充结果：
+
+- 多项目第二阶段提交已推送到 GitHub 主线
+  - commit: `b627851`
+  - message: `feat: support multi-project repo job installation`
+- `pm-website` 已完成一次真实远端 dry-run
+  - 使用临时 sample registry
+  - `discovery.enabled = false`
+  - 不改正式 `project-registry.json`
+  - 不落盘 `jobs.json`
+  - 派生并验证通过：
+    - `lobster`
+    - `openclaw-hardflow-backup-20260302-deploy`
+  - `steps_total = 22`
+  - `ok = true`
+
 ### 6. 当前已通过的测试
 
 已通过的定向测试包括：
@@ -107,31 +123,7 @@
 
 ## 二、待完成
 
-### 1. 提交并推送当前多项目安装器改动
-
-当前状态：
-
-- 代码已经完成
-- 测试已经通过
-- 但这轮多项目第二阶段改动尚未执行 `git commit / push`
-
-### 2. 选一台“真实多项目服务器”做 dry-run 安装验证
-
-建议目标：
-
-- 一台已经安装 OpenClaw、且存在两个以上真实业务仓库的服务器
-
-验证内容：
-
-- `install_workflow_profile.py --dry-run`
-- `project-registry` 是否正确识别业务仓库
-- 是否按预期派生：
-  - governance
-  - reviewer PR gate
-  - git sync
-  - auto update install
-
-### 3. 决定多项目 `auto update install` 的生产策略
+### 1. 决定多项目 `auto update install` 的生产策略
 
 当前代码支持两种来源：
 
@@ -143,11 +135,23 @@
 - 哪些项目允许自动安装
 - 哪些项目只允许自动建 PR / 自动 sync，不允许自动部署
 
-### 4. 决定是否把多项目 `git sync / auto update install` 推广到其它服务器
+### 2. 决定是否把多项目 `git sync / auto update install` 推广到其它服务器
 
 现在功能已经具备，但还未完成真实服务器落地。
 
-### 5. 如果要继续提升自动化，可做第三阶段
+### 3. 补齐正式多项目 `project-registry`
+
+当前现状：
+
+- 5 台已安装 OpenClaw 的服务器里，没有一台正式 `project-registry.json` 已登记“2 个以上业务项目”
+- `pm-website` 的正式 registry 仍为空
+- 其它 4 台正式 registry 目前只有：
+  - workflow repo
+  - `openclaw-local-install`
+
+因此，下一步如果要正式启用多项目 job，需要先把真实业务仓库登记进正式 registry。
+
+### 4. 如果要继续提升自动化，可做第三阶段
 
 候选项：
 
@@ -157,29 +161,11 @@
 
 ## 三、建议执行顺序
 
-### 第一步：提交本地改动
+### 第一步：补齐正式多项目 `project-registry`
 
-先提交：
+先把真实业务仓库登记进正式 registry，再决定是否正式安装 per-repo job。
 
-- 多项目安装器改动
-- 测试改动
-- 文档和样例改动
-
-### 第二步：推到 GitHub 主线
-
-推送后，保证：
-
-- 本地仓库
-- GitHub 主线
-- 后续服务器安装器入口
-
-三者保持一致。
-
-### 第三步：选一台多项目服务器做 dry-run
-
-只验证 job 生成，不先真正启用所有 job。
-
-### 第四步：只启用 per-repo governance / reviewer PR gate
+### 第二步：只启用 per-repo governance / reviewer PR gate
 
 这一步风险较低，先看：
 
@@ -188,7 +174,7 @@
 - approval file
 - 自动 merge
 
-### 第五步：最后才决定是否启用 per-repo git sync / auto update
+### 第三步：最后才决定是否启用 per-repo git sync / auto update
 
 这两类属于“直接改仓 / 直接安装”的高副作用动作，应放在最后。
 
@@ -212,4 +198,3 @@
 - [2026-03-17-pm-website-cron-baseline.md](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/2026-03-17-pm-website-cron-baseline.md)
 - [2026-03-17-multi-project-server-template.md](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/2026-03-17-multi-project-server-template.md)
 - [2026-03-17-pr-review-merge-gate-implementation-plan.md](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/plans/2026-03-17-pr-review-merge-gate-implementation-plan.md)
-
