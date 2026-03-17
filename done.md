@@ -12,3 +12,9 @@
   - per-repo git sync job
   - per-repo auto update install job
 - 完成相关定向测试与样例 JSON 校验。
+- 完成多项目第二阶段提交并推送到 GitHub 主线：
+  - `b627851 feat: support multi-project repo job installation`
+- 完成 `pm-website` 远端多项目 dry-run：
+  - 使用临时 sample registry
+  - 关闭 `discovery.enabled`
+  - 成功派生并验证 `lobster` 与 `openclaw-hardflow-backup-20260302-deploy` 的 governance / reviewer / git sync / auto update job
