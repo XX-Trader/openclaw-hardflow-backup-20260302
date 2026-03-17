@@ -280,7 +280,7 @@ python3 scripts/openclaw-ops/system_schedule_snapshot.py --normal-log-mode silen
 python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
   --jobs-file ~/.openclaw/cron/jobs.json \
   --runner-py ~/.openclaw/ops/reviewer_cron_runner.py \
-  --workspace ~/.openclaw/workspace \
+  --workspace ~/openclaw-hardflow-backup-20260302 \
   --state-file ~/.openclaw/ops/reviewer-scan-state.json \
   --history-dir ~/.openclaw/ops/reviewer-scan-runs \
   --normal-log-mode silent \
@@ -300,7 +300,7 @@ python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
 python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
   --jobs-file ~/.openclaw/cron/jobs.json \
   --runner-py ~/.openclaw/ops/reviewer_cron_runner.py \
-  --workspace ~/.openclaw/workspace \
+  --workspace ~/openclaw-hardflow-backup-20260302 \
   --state-file ~/.openclaw/ops/reviewer-scan-state.json \
   --history-dir ~/.openclaw/ops/reviewer-scan-runs \
   --normal-log-mode silent \
@@ -318,6 +318,10 @@ python3 scripts/openclaw-ops/install_reviewer_scan_jobs.py \
   --hourly-allow-merge \
   --hourly-merge-approval-file ~/.openclaw/ops/reviewer-merge-approval.json
 ```
+
+注意：
+- reviewer 的 `--workspace` 必须指向真实 git 仓库根目录，不能指向 `~/.openclaw/workspace`
+- 否则 PR gate 会报 `no git remotes found`，看不到 open PR，也不会执行 merge gate
 
 `reviewer_cron_runner.py` modes:
 - `hourly_git`: branch sync + PR check + optional approved merge

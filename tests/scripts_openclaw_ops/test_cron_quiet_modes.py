@@ -2018,6 +2018,8 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("--enable-hourly", proc.stdout)
         self.assertIn("--hourly-pr-gate-only", proc.stdout)
         self.assertIn("--hourly-allow-merge", proc.stdout)
+        self.assertIn("--workspace", proc.stdout)
+        self.assertIn(str(workflow_repo), proc.stdout)
 
 
 if __name__ == "__main__":

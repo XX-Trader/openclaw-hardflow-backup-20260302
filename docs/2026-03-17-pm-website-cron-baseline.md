@@ -53,6 +53,7 @@
   - 改成 `PR gate only`
   - 只检查 open PR
   - 只对命中 approval file 的受控 PR 执行 merge gate
+  - `workspace` 必须指向真实 git 仓库根目录，不能指向 `~/.openclaw/workspace`
   - approval file 优先使用 `head_prefix + base` 规则，不建议手工逐条写 PR 编号
 - 仍保持关闭：
   - `reviewer_incremental_daily_4am`

@@ -1066,7 +1066,7 @@ def main() -> None:
         "--runner-py",
         str(Path(ops_home) / "reviewer_cron_runner.py"),
         "--workspace",
-        str(Path(openclaw_home) / "workspace"),
+        workflow_repo_path,
         "--state-file",
         str(Path(ops_home) / "reviewer-scan-state.json"),
         "--history-dir",
