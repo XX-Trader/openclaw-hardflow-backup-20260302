@@ -48,6 +48,9 @@ LEGACY_DEFAULT_MODEL = "volcengine/kimi-k2.5"
 DEFAULT_THINKING_LEVEL = "high"
 NOTIFY_ON_MODES = {"error", "activity", "always"}
 ERROR_TASK_STATUSES = {"failed", "partial", "escalated"}
+SUCCESS_TASK_STATUSES = {"passed", "resolved", "solved", "ok", "success"}
+TASK_EXECUTOR_NOTIFY_STATE_KEY = "task_executor_notify"
+TASK_EXECUTOR_NOTIFY_KEEP_DAYS = 14
 RETRYABLE_AGENT_ERROR_PATTERNS = (
     "api rate limit reached",
     "too many requests",
@@ -596,6 +599,298 @@ def result_is_error(item: dict[str, Any]) -> bool:
     if task_status_after in ERROR_TASK_STATUSES:
         return True
     return False
+
+
+def humanize_task_stage_label(stage: Any) -> str:
+    normalized = str(stage or "").strip().lower()
+    if normalized == "plan":
+        return "规划"
+    if normalized in {"implement", "implementation"}:
+        return "实现"
+    if normalized in {"test-loop", "test"}:
+        return "验证"
+    if normalized == "review":
+        return "审查"
+    if normalized == "document":
+        return "文档"
+    if normalized == "deploy":
+        return "部署"
+    return ""
+
+
+def is_task_result_open(item: dict[str, Any]) -> bool:
+    """Return whether the task result still needs human follow-up."""
+    normalized_status = str(
+        item.get("task_status_after", "") or item.get("report_status", "") or item.get("status", "")
+    ).strip().lower()
+    reason = str(item.get("reason", "")).strip().lower()
+    if normalized_status in SUCCESS_TASK_STATUSES:
+        return False
+    if reason in {"waiting_human_confirm", "needs_clarification", "preflight_strict_blocked"}:
+        return True
+    if normalized_status in ERROR_TASK_STATUSES:
+        return True
+    if normalized_status in {"waiting_human_confirm", "needs_clarification"}:
+        return True
+    return result_is_error(item)
+
+
+def build_task_notify_key(item: dict[str, Any]) -> str:
+    task_id = str(item.get("task_id", "")).strip()
+    if task_id:
+        return task_id
+    for field in ("task_requirement", "task_reason", "task_type"):
+        value = compact_text(item.get(field, ""), 120)
+        if value:
+            digest = hashlib.sha1(value.encode("utf-8")).hexdigest()[:12]
+            return f"anonymous-{digest}"
+    return ""
+
+
+def build_task_notify_subject(item: dict[str, Any]) -> str:
+    requirement = compact_text(item.get("task_requirement", ""), 96)
+    if requirement:
+        return requirement
+    task_reason = compact_text(item.get("task_reason", ""), 96)
+    if task_reason:
+        return task_reason
+    task_type = compact_text(item.get("task_type", ""), 64)
+    if task_type:
+        return f"{task_type} 任务"
+    return "未命名任务"
+
+
+def build_task_notify_progress(item: dict[str, Any]) -> str:
+    reason = str(item.get("reason", "")).strip().lower()
+    normalized_status = str(
+        item.get("task_status_after", "") or item.get("report_status", "") or item.get("status", "")
+    ).strip().lower()
+    if reason == "preflight_strict_blocked":
+        return "未执行"
+    if reason == "waiting_human_confirm":
+        return "等待人工确认"
+    if reason == "needs_clarification":
+        return "待补充上下文"
+    if normalized_status in SUCCESS_TASK_STATUSES:
+        return "已闭环"
+    if normalized_status == "partial" or reason == "partial":
+        return "部分完成"
+    if normalized_status == "escalated" or reason == "escalated":
+        return "已升级处理"
+    if normalized_status in {"failed", "error", "timeout"} or reason:
+        return "执行失败"
+    return "状态待确认"
+
+
+def build_task_notify_blocker(item: dict[str, Any]) -> str:
+    reason = str(item.get("reason", "")).strip().lower()
+    normalized_status = str(
+        item.get("task_status_after", "") or item.get("report_status", "") or item.get("status", "")
+    ).strip().lower()
+    if reason == "preflight_strict_blocked":
+        return "派单能力不匹配"
+    if reason == "waiting_human_confirm":
+        return "等待人工确认"
+    if reason == "needs_clarification":
+        return "上下文不足"
+    if normalized_status in SUCCESS_TASK_STATUSES:
+        return "无"
+    issue, _detail = humanize_executor_reason(str(item.get("reason", "")), normalized_status)
+    return compact_text(issue, 48) or "任务执行失败"
+
+
+def build_task_notify_gap(item: dict[str, Any]) -> str:
+    reason = str(item.get("reason", "")).strip().lower()
+    normalized_status = str(
+        item.get("task_status_after", "") or item.get("report_status", "") or item.get("status", "")
+    ).strip().lower()
+    if reason == "preflight_strict_blocked":
+        reassign = item.get("preflight_reassign", {})
+        if not isinstance(reassign, dict):
+            reassign = {}
+        recommended_agents = [str(x).strip() for x in reassign.get("recommended_agents", []) if str(x).strip()]
+        if recommended_agents:
+            return f"改派给 {','.join(recommended_agents)}"
+        return "改派给满足能力约束的执行人"
+    if reason == "waiting_human_confirm":
+        return "人工确认后才能继续执行"
+    if reason == "needs_clarification":
+        return "补充任务背景或上下文后再执行"
+    if normalized_status in SUCCESS_TASK_STATUSES:
+        return "无"
+    _issue, detail = humanize_executor_reason(str(item.get("reason", "")), normalized_status)
+    detail_text = compact_text(detail, 96)
+    if detail_text:
+        return detail_text
+    if normalized_status == "partial" or reason == "partial":
+        return "继续补齐剩余项后再收口"
+    return "补齐失败原因后再执行"
+
+
+def build_task_executor_notify_snapshot(item: dict[str, Any]) -> dict[str, Any]:
+    key = build_task_notify_key(item)
+    if not key:
+        return {}
+    stage = str(item.get("stage", "")).strip().lower()
+    snapshot = {
+        "task_id": str(item.get("task_id", "")).strip() or key,
+        "key": key,
+        "subject": build_task_notify_subject(item),
+        "assignee": str(item.get("assignee", "")).strip() or "未分配",
+        "stage": stage,
+        "stage_label": humanize_task_stage_label(stage),
+        "progress": build_task_notify_progress(item),
+        "blocker": build_task_notify_blocker(item),
+        "gap": build_task_notify_gap(item),
+        "is_open": is_task_result_open(item),
+    }
+    raw = json.dumps(
+        {
+            "subject": snapshot["subject"],
+            "assignee": snapshot["assignee"],
+            "stage": snapshot["stage"],
+            "progress": snapshot["progress"],
+            "blocker": snapshot["blocker"],
+            "gap": snapshot["gap"],
+            "is_open": snapshot["is_open"],
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    snapshot["signature"] = hashlib.sha1(raw.encode("utf-8")).hexdigest()
+    return snapshot
+
+
+def _task_executor_notify_section(state: dict[str, Any]) -> dict[str, Any]:
+    section = state.get(TASK_EXECUTOR_NOTIFY_STATE_KEY, {})
+    if not isinstance(section, dict):
+        section = {}
+    entries = section.get("entries", {})
+    if not isinstance(entries, dict):
+        entries = {}
+    section["entries"] = entries
+    return section
+
+
+def _dedupe_task_ids(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        normalized = str(value or "").strip()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        out.append(normalized)
+    return out
+
+
+def apply_task_executor_incremental_notify(
+    summary: dict[str, Any],
+    state_path: Path,
+    *,
+    now_text: str = "",
+) -> dict[str, Any]:
+    """Build incremental task-notify diff so unchanged executor runs stay quiet."""
+    notify = {
+        "suppressed": False,
+        "mode": "initial",
+        "new_count": 0,
+        "changed_count": 0,
+        "resolved_count": 0,
+        "open_count": 0,
+        "focus_task_ids": [],
+        "resolved_items": [],
+    }
+    results = summary.get("results", [])
+    if not isinstance(results, list):
+        summary["task_change_notify"] = notify
+        return notify
+
+    state = load_dedupe_state(state_path)
+    section = _task_executor_notify_section(state)
+    entries = section.get("entries", {})
+    current_at = datetime.fromisoformat((now_text or now_iso()).replace("Z", "+00:00")).astimezone(UTC)
+    keep_after = current_at.timestamp() - (TASK_EXECUTOR_NOTIFY_KEEP_DAYS * 86400)
+    for key, item in list(entries.items()):
+        if not isinstance(item, dict):
+            entries.pop(key, None)
+            continue
+        updated_at = item.get("updated_at", "")
+        try:
+            updated_ts = datetime.fromisoformat(str(updated_at).replace("Z", "+00:00")).astimezone(UTC).timestamp()
+        except Exception:
+            updated_ts = 0.0
+        if updated_ts >= keep_after:
+            continue
+        entries.pop(key, None)
+
+    had_entries = bool(entries)
+    focus_task_ids: list[str] = []
+    resolved_items: list[dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        snapshot = build_task_executor_notify_snapshot(item)
+        if not snapshot:
+            continue
+        key = str(snapshot.get("key", "")).strip()
+        if not key or key in seen_keys:
+            continue
+        seen_keys.add(key)
+        previous = entries.get(key, {}) if isinstance(entries.get(key, {}), dict) else {}
+        previous_open = bool(previous.get("is_open", False))
+        previous_signature = str(previous.get("signature", "")).strip()
+        current_open = bool(snapshot.get("is_open", False))
+        if current_open:
+            notify["open_count"] += 1
+            if not previous or not previous_open:
+                notify["new_count"] += 1
+                focus_task_ids.append(str(snapshot.get("task_id", "")).strip() or key)
+            elif previous_signature != str(snapshot.get("signature", "")).strip():
+                notify["changed_count"] += 1
+                focus_task_ids.append(str(snapshot.get("task_id", "")).strip() or key)
+        elif previous_open:
+            notify["resolved_count"] += 1
+            resolved_items.append(
+                {
+                    "task_id": str(snapshot.get("task_id", "")).strip() or key,
+                    "subject": str(snapshot.get("subject", "")).strip(),
+                    "assignee": str(snapshot.get("assignee", "")).strip(),
+                    "stage": str(snapshot.get("stage", "")).strip(),
+                }
+            )
+
+        entries[key] = {
+            "task_id": str(snapshot.get("task_id", "")).strip() or key,
+            "subject": str(snapshot.get("subject", "")).strip(),
+            "assignee": str(snapshot.get("assignee", "")).strip(),
+            "stage": str(snapshot.get("stage", "")).strip(),
+            "progress": str(snapshot.get("progress", "")).strip(),
+            "blocker": str(snapshot.get("blocker", "")).strip(),
+            "gap": str(snapshot.get("gap", "")).strip(),
+            "is_open": current_open,
+            "signature": str(snapshot.get("signature", "")).strip(),
+            "updated_at": current_at.replace(microsecond=0).isoformat(),
+        }
+
+    notify["focus_task_ids"] = _dedupe_task_ids(focus_task_ids)
+    notify["resolved_items"] = resolved_items[:3]
+    if notify["new_count"] <= 0 and notify["changed_count"] <= 0 and notify["resolved_count"] <= 0:
+        notify["suppressed"] = True
+        notify["mode"] = "no_change"
+    elif not had_entries:
+        notify["mode"] = "initial"
+    else:
+        notify["mode"] = "delta"
+
+    section["schema_version"] = "2026-03-17"
+    section["updated_at"] = current_at.replace(microsecond=0).isoformat()
+    section["entries"] = entries
+    state[TASK_EXECUTOR_NOTIFY_STATE_KEY] = section
+    save_dedupe_state(state_path, state)
+    summary["task_change_notify"] = notify
+    return notify
 
 
 def build_chat_output(summary: dict[str, Any], report_path: Path, notify_on: str) -> str:
@@ -1388,6 +1683,11 @@ def main() -> int:
         summary,
         Path(args.shared_alert_state_file).expanduser(),
         cooldown_minutes=max(1, int(args.shared_alert_cooldown_minutes)),
+        now_text=str(summary.get("started_at", "")),
+    )
+    summary["task_change_notify"] = apply_task_executor_incremental_notify(
+        summary,
+        Path(args.shared_alert_state_file).expanduser(),
         now_text=str(summary.get("started_at", "")),
     )
     report_path = report_dir / f"{run_id}.json"
