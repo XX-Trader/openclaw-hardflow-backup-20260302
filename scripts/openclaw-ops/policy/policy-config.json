@@ -3,12 +3,14 @@
   "primary_model": "kimicode/doubao-seed-2.0-pro",
   "fallback_models": [
     "openai-codex/gpt-5.3-codex",
+    "openai-codex/gpt-5.3-codex-spark",
     "glmcode/glm-5",
     "glmcode/glm-4.7"
   ],
   "allowed_models": [
     "openai-codex/gpt-5.4",
     "openai-codex/gpt-5.3-codex",
+    "openai-codex/gpt-5.3-codex-spark",
     "glmcode/glm-5",
     "glmcode/glm-4.7",
     "kimicode/doubao-seed-2.0-pro",
@@ -33,6 +35,7 @@
   "model_thinking_overrides": {
     "openai-codex/gpt-5.4": "xhigh",
     "openai-codex/gpt-5.3-codex": "xhigh",
+    "openai-codex/gpt-5.3-codex-spark": "xhigh",
     "glmcode/glm-5": "high",
     "glmcode/glm-4.7": "high",
     "kimicode/doubao-seed-2.0-pro": "high",

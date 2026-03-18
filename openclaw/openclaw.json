@@ -1,4 +1,4 @@
-{
+﻿{
   "meta": {
     "lastTouchedVersion": "2026.3.2",
     "lastTouchedAt": "2026-03-06T13:33:00Z"
@@ -54,6 +54,10 @@
           {
             "id": "Doubao-Seed-2.0-Code",
             "name": "Doubao-Seed-2.0-Code"
+          },
+          {
+            "id": "Doubao-Seed-2.0-pro",
+            "name": "Doubao-Seed-2.0-pro"
           }
         ]
       },
@@ -66,8 +70,16 @@
             "name": "GPT-5.4"
           },
           {
+            "id": "gpt-5.4-mini",
+            "name": "GPT-5.4 Mini"
+          },
+          {
             "id": "gpt-5.3-codex",
             "name": "GPT-5.3 Codex"
+          },
+          {
+            "id": "gpt-5.3-codex-spark",
+            "name": "GPT-5.3 Spark"
           }
         ]
       }
@@ -76,10 +88,12 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "kimicode/doubao-seed-2.0-pro",
+        "primary": "openai-codex/gpt-5.4-mini",
         "fallbacks": [
-          "openai-codex/gpt-5.3-codex",
+          "openai-codex/gpt-5.4",
+          "kimicode/Doubao-Seed-2.0-pro",
           "glmcode/glm-5",
+          "openai-codex/gpt-5.3-codex-spark",
           "glmcode/glm-4.7"
         ]
       },
@@ -114,10 +128,28 @@
             "thinking": "xhigh"
           }
         },
+        "openai-codex/gpt-5.4-mini": {
+          "alias": "codex-mini",
+          "params": {
+            "thinking": "high"
+          }
+        },
         "openai-codex/gpt-5.3-codex": {
           "alias": "codex53",
           "params": {
             "thinking": "xhigh"
+          }
+        },
+        "openai-codex/gpt-5.3-codex-spark": {
+          "alias": "codex53-spark",
+          "params": {
+            "thinking": "xhigh"
+          }
+        },
+        "kimicode/Doubao-Seed-2.0-pro": {
+          "alias": "doubao-2.0-pro",
+          "params": {
+            "thinking": "high"
           }
         }
       },
@@ -137,9 +169,9 @@
       {
         "id": "main",
         "default": true,
-        "name": "大总管",
+        "name": "澶ф€荤",
         "workspace": "/home/ubuntu/.openclaw/workspace",
-        "model": "kimicode/doubao-seed-2.0-pro",
+        "model": "openai-codex/gpt-5.4",
         "subagents": {
           "allowAgents": [
             "agent-factory",
@@ -162,7 +194,7 @@
         "id": "coordinator",
         "name": "coordinator",
         "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
-        "model": "kimicode/doubao-seed-2.0-pro",
+        "model": "openai-codex/gpt-5.4-mini",
         "subagents": {
           "allowAgents": [
             "agent-factory",
@@ -185,31 +217,31 @@
         "id": "doc-writer",
         "name": "doc-writer",
         "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
-        "model": "glmcode/glm-4.7"
+        "model": "openai-codex/gpt-5.4-mini"
       },
       {
         "id": "frontend-dev",
         "name": "frontend-dev",
         "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
-        "model": "openai-codex/gpt-5.3-codex"
+        "model": "openai-codex/gpt-5.4"
       },
       {
         "id": "backend-dev",
         "name": "backend-dev",
         "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
-        "model": "openai-codex/gpt-5.3-codex"
+        "model": "openai-codex/gpt-5.4"
       },
       {
         "id": "reviewer",
-        "name": "代码审核",
+        "name": "浠ｇ爜瀹℃牳",
         "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
-        "model": "kimicode/doubao-seed-2.0-pro"
+        "model": "openai-codex/gpt-5.4"
       },
       {
         "id": "tester",
-        "name": "测试验收",
+        "name": "娴嬭瘯楠屾敹",
         "workspace": "/home/ubuntu/.openclaw/workspace-tester",
-        "model": "glmcode/glm-4.7"
+        "model": "openai-codex/gpt-5.4-mini"
       },
       {
         "id": "deployer",
@@ -221,7 +253,7 @@
         "id": "agent-factory",
         "name": "agent-factory",
         "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
-        "model": "openai-codex/gpt-5.3-codex",
+        "model": "openai-codex/gpt-5.4",
         "subagents": {
           "allowAgents": [
             "optimization-agent",
@@ -248,7 +280,7 @@
         "name": "optimization-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-        "model": "openai-codex/gpt-5.3-codex",
+        "model": "openai-codex/gpt-5.4",
         "subagents": {
           "allowAgents": [
             "project-agent",
@@ -261,7 +293,7 @@
         "name": "project-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
-        "model": "openai-codex/gpt-5.3-codex",
+        "model": "openai-codex/gpt-5.4",
         "subagents": {
           "allowAgents": [
             "web-agent"
