@@ -44,6 +44,11 @@
   - `lobster.governance.auto_pr_enabled = false`
   - 关闭 `reviewer_git_update_hourly:lobster`
   - 重新导出 `schedule-registry.json`
+- 完成 5 台服务器最新版本部署：
+  - `pm-website / 大白pm / nofx / coingod / tokyo-claw` 全部同步到 `7ed232f`
+  - 全部执行 `install_workflow_profile.py --profile core`
+  - 全部确认 `openclaw-gateway.service = active`
+  - 本轮只做部署与存活校验，不做功能测试
 - 完成 `task_executor_10m` 通知收口：
   - 首报后转增量
   - 无变化静默

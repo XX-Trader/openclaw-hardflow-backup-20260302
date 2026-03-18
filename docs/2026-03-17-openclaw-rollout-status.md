@@ -276,6 +276,61 @@
 - 新增安装器脚本的 `py_compile`
 - JSON 示例文件格式校验
 
+### 11. 2026-03-17 最新多机部署状态
+
+已经按“先部署、后配环境、再看日志”的节奏，把当前最新版本部署到 5 台已安装 OpenClaw 的服务器。
+
+本次部署动作：
+
+- 使用 `remote_safe_update.py`
+  - `pm-website` 直接 fast-forward
+  - `大白pm / nofx / coingod / tokyo-claw` 对本地 `openclaw/openclaw.json` 走 `stash-nonvolatile -> pull -> stash pop`
+- 统一把 repo 快进到：
+  - `7ed232f`
+- 统一执行：
+  - `install_workflow_profile.py --profile core --workflow-repo-path <repo> --emit-json`
+- 统一完成：
+  - runtime overlay 同步
+  - runtime plugin override 同步
+  - core cron 安装/更新
+  - `openclaw-gateway.service` 重启
+
+当前确认结果：
+
+- `pm-website`
+  - repo HEAD = `7ed232f`
+  - `openclaw-gateway.service = active`
+- `大白pm`
+  - repo HEAD = `7ed232f`
+  - `openclaw-gateway.service = active`
+- `nofx`
+  - repo HEAD = `7ed232f`
+  - `openclaw-gateway.service = active`
+- `coingod`
+  - repo HEAD = `7ed232f`
+  - `openclaw-gateway.service = active`
+- `tokyo-claw`
+  - repo HEAD = `7ed232f`
+  - `openclaw-gateway.service = active`
+
+这轮部署的边界：
+
+- 只做了代码同步、运行态同步和服务存活校验
+- 没有继续做功能测试
+- 下一步改为先补环境配置，再根据日志做验证
+
+本轮部署还暴露出一个需要后续环境配置收口的点：
+
+- `pm-website` 以外的 4 台机器，在本次 `core` 安装器执行日志里，cron delivery 仍然落到了旧 Telegram 目标 `-1003333097130`
+- 这说明它们的运行态通知目标/相关环境还没按最新口径收干净
+- 后续看日志前，应该先把这些机器的目标 chat、Webhook、相关 env 统一到预期值
+
+补充说明：
+
+- 这次没有重装 `pm-website` 的多项目派生 job
+- 目的是避免把 `lobster` 当前的“外部只读仓模式”误装回 reviewer PR gate
+- 因此 `pm-website` 的多项目逻辑保持原样，只刷新了 core 运行态代码和核心任务
+
 ## 二、待完成
 
 ### 1. 决定多项目 `auto update install` 的生产策略

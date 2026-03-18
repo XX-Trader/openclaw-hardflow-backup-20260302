@@ -805,7 +805,7 @@ gh run view <run-id> --log > error-log.txt
 
 ```bash
 # 使用自定义 SSH 配置
-/d/学习资料/ssh_keys/my-ssh.sh pm-website
+/d/ssh_keys/my-ssh.sh pm-website
 
 # 或直接使用 ssh 命令
 ssh ubuntu@YOUR_SERVER_IP

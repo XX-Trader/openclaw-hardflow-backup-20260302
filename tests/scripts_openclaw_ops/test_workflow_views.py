@@ -78,15 +78,13 @@ class WorkflowViewsTests(unittest.TestCase):
 
         self.assertEqual(event["kind"], "task_executor")
         self.assertEqual(human["title"], "任务执行器（10分钟）")
-        self.assertIn("选中 3 个任务，未闭环 3 个。", text)
-        self.assertIn("选中 3 个，已执行 3 个，跳过 0 个，未闭环 3 个。", text)
-        self.assertIn("任务1：补齐任务执行器的人类摘要", text)
-        self.assertIn("要求1：补齐任务执行器的人类摘要", text)
-        self.assertIn("状态1：任务执行失败", text)
-        self.assertIn("失败信息1：原因=dingtalk webhook request timeout；失败次数=2次；最近耗时=14.5秒", text)
-        self.assertIn("执行概况1：模型=openai-codex/gpt-5；tokens=总=3200（输入=1200，输出=2000）；成本≈$0.012340", text)
-        self.assertIn("值得做1：", text)
-        self.assertIn("任务执行失败", text)
+        self.assertIn("首次发现 3 个未闭环任务。", text)
+        self.assertIn("本轮变化：新增 3 个，变化 0 个，已闭环 0 个，仍未闭环 3 个。", text)
+        self.assertIn("事项1：补齐任务执行器的人类摘要", text)
+        self.assertIn("负责人1：optimization-agent", text)
+        self.assertIn("进展1：执行失败", text)
+        self.assertIn("问题1：调用执行代理失败", text)
+        self.assertIn("待补1：超时", text)
         self.assertNotIn("optimization-agent：未命名任务", text)
 
     def test_task_executor_error_notify_hides_success_run_from_human_view(self):
@@ -153,12 +151,138 @@ class WorkflowViewsTests(unittest.TestCase):
         event = module.build_task_executor_event(summary, Path("/tmp/report.json"), notify_on="error")
         text = module.render_human_view(event["views"]["human"])
 
-        self.assertIn("Preflight 告警 1 个", text)
-        self.assertIn("强拦截 1 个高风险任务", text)
-        self.assertIn("建议改派：optimization-agent", text)
-        self.assertIn("任务1：governance_evolution_optimize 任务", text)
-        self.assertIn("状态1：任务被门禁拦截", text)
-        self.assertIn("值得做1：", text)
+        self.assertIn("首次发现 1 个未闭环任务。", text)
+        self.assertIn("事项1：governance_evolution_optimize 任务", text)
+        self.assertIn("负责人1：backend-dev", text)
+        self.assertIn("进展1：未执行", text)
+        self.assertIn("问题1：派单能力不匹配", text)
+        self.assertIn("待补1：改派给 optimization-agent", text)
+
+    def test_task_executor_human_view_uses_compact_problem_cards(self):
+        module = load_module(
+            "workflow_views",
+            "scripts/openclaw-ops/workflow_views.py",
+        )
+
+        summary = {
+            "trigger_task": "cron:task-executor",
+            "started_at": "2026-03-17T05:42:11+00:00",
+            "finished_at": "2026-03-17T05:42:11+00:00",
+            "run_id": "exec-20260317_054211-697478b5",
+            "executor_model": "auto(per-assignee)",
+            "tasks_selected": 2,
+            "tasks_executed": 0,
+            "tasks_skipped": 2,
+            "results": [
+                {
+                    "task_id": "todo-risk-1",
+                    "assignee": "project-agent",
+                    "stage": "plan",
+                    "status": "failed",
+                    "reason": "preflight_strict_blocked",
+                    "task_requirement": "补齐项目索引治理方案，并确认是否纳入本周计划。",
+                    "preflight_reassign": {
+                        "recommended_agents": ["project-agent"],
+                    },
+                },
+                {
+                    "task_id": "todo-risk-2",
+                    "assignee": "optimization-agent",
+                    "stage": "implement",
+                    "status": "failed",
+                    "reason": "needs_clarification",
+                    "task_requirement": "梳理任务执行器的人类摘要模板，避免重复刷屏。",
+                },
+            ],
+            "task_change_notify": {
+                "suppressed": False,
+                "mode": "initial",
+                "new_count": 2,
+                "changed_count": 0,
+                "resolved_count": 0,
+                "open_count": 2,
+                "focus_task_ids": ["todo-risk-1", "todo-risk-2"],
+                "resolved_items": [],
+            },
+        }
+
+        event = module.build_task_executor_event(summary, Path("/tmp/report.json"), notify_on="error")
+        text = module.render_human_view(event["views"]["human"])
+
+        self.assertIn("首次发现 2 个未闭环任务。", text)
+        self.assertIn("本轮变化：新增 2 个，变化 0 个，已闭环 0 个，仍未闭环 2 个。", text)
+        self.assertIn("事项1：补齐项目索引治理方案，并确认是否纳入本周计划。", text)
+        self.assertIn("负责人1：project-agent（规划）", text)
+        self.assertIn("进展1：未执行", text)
+        self.assertIn("问题1：派单能力不匹配", text)
+        self.assertIn("待补1：改派给 project-agent", text)
+        self.assertNotIn("执行概况1", text)
+        self.assertNotIn("值得做1", text)
+
+    def test_task_executor_human_view_delta_only_shows_changed_items(self):
+        module = load_module(
+            "workflow_views",
+            "scripts/openclaw-ops/workflow_views.py",
+        )
+
+        summary = {
+            "trigger_task": "cron:task-executor",
+            "started_at": "2026-03-17T06:03:24+00:00",
+            "finished_at": "2026-03-17T06:03:24+00:00",
+            "run_id": "exec-20260317_060324-08861d20",
+            "executor_model": "auto(per-assignee)",
+            "tasks_selected": 2,
+            "tasks_executed": 1,
+            "tasks_skipped": 1,
+            "results": [
+                {
+                    "task_id": "todo-risk-1",
+                    "assignee": "project-agent",
+                    "stage": "plan",
+                    "status": "failed",
+                    "reason": "waiting_human_confirm",
+                    "task_requirement": "补齐项目索引治理方案，并确认是否纳入本周计划。",
+                },
+                {
+                    "task_id": "todo-risk-2",
+                    "assignee": "optimization-agent",
+                    "stage": "implement",
+                    "status": "passed",
+                    "report_status": "passed",
+                    "reason": "solved",
+                    "task_requirement": "梳理任务执行器的人类摘要模板，避免重复刷屏。",
+                },
+            ],
+            "task_change_notify": {
+                "suppressed": False,
+                "mode": "delta",
+                "new_count": 0,
+                "changed_count": 1,
+                "resolved_count": 1,
+                "open_count": 1,
+                "focus_task_ids": ["todo-risk-1"],
+                "resolved_items": [
+                    {
+                        "task_id": "todo-risk-2",
+                        "subject": "梳理任务执行器的人类摘要模板，避免重复刷屏。",
+                        "assignee": "optimization-agent",
+                        "stage": "implement",
+                    }
+                ],
+            },
+        }
+
+        event = module.build_task_executor_event(summary, Path("/tmp/report.json"), notify_on="error")
+        text = module.render_human_view(event["views"]["human"])
+
+        self.assertIn("1 个任务有变化，1 个任务已闭环。", text)
+        self.assertIn("本轮变化：新增 0 个，变化 1 个，已闭环 1 个，仍未闭环 1 个。", text)
+        self.assertIn("事项1：补齐项目索引治理方案，并确认是否纳入本周计划。", text)
+        self.assertIn("进展1：等待人工确认", text)
+        self.assertIn("问题1：等待人工确认", text)
+        self.assertIn("待补1：人工确认后才能继续执行", text)
+        self.assertIn("已闭环1：梳理任务执行器的人类摘要模板，避免重复刷屏。 -> optimization-agent（实现）", text)
+        self.assertNotIn("任务2：", text)
 
     def test_ops_scan_human_view_summarizes_failure_reason_and_repair_progress(self):
         module = load_module(

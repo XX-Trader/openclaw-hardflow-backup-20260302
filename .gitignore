@@ -23,3 +23,6 @@ scripts/openclaw-ops/policy/runtime/
 *.swp
 *.swo
 /tmp
+/.codex_tmp_openclaw_upgrade
+/af39077
+/foo

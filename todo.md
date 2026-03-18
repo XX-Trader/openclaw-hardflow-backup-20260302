@@ -2,6 +2,11 @@
 
 ## P0
 
+- 为 5 台服务器补齐这轮部署后的环境配置，重点检查：
+  - Telegram cron delivery 目标
+  - webhook / secret / runtime.env
+  - `pm-website` 以外 4 台是否仍落到 `-1003333097130`
+- 环境配置完成后，按日志做一轮服务器侧验证，不先做功能级人工回归。
 - 为其它服务器补齐正式 `project-registry.json`，至少再选 1 台存在真实业务仓库的节点作为第二个多项目正式节点。
 
 ## P1

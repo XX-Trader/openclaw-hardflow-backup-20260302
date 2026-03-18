@@ -280,7 +280,7 @@ No commit in this task; push only.
 ### Task 8: Deploy To OpenClaw Servers
 
 **Files:**
-- Modify if needed: `D:/学习资料/ssh_keys/tmp-*-sync-and-install.sh`
+- Modify if needed: `D:/ssh_keys/tmp-*-sync-and-install.sh`
 - Reuse: `scripts/openclaw-ops/sync_openclaw_ops_files.py`
 - Reuse: `scripts/openclaw-ops/install_workflow_profile.py`
 
@@ -327,10 +327,10 @@ No commit in this task; deployment only.
 ### Task 9: Verify Every Server After Install
 
 **Files:**
-- Reuse: `D:/学习资料/ssh_keys/tmp-verify-dabai.sh`
-- Reuse: `D:/学习资料/ssh_keys/tmp-verify-coingod-post.sh`
-- Reuse: `D:/学习资料/ssh_keys/tmp-verify-nofx-post.sh`
-- Reuse: `D:/学习资料/ssh_keys/tmp-verify-tokyo-post.sh`
+- Reuse: `D:/ssh_keys/tmp-verify-dabai.sh`
+- Reuse: `D:/ssh_keys/tmp-verify-coingod-post.sh`
+- Reuse: `D:/ssh_keys/tmp-verify-nofx-post.sh`
+- Reuse: `D:/ssh_keys/tmp-verify-tokyo-post.sh`
 - Add/modify missing verification helper for `pm-website`
 
 **Step 1: Write the failing test**
@@ -359,7 +359,7 @@ Expected: all target servers PASS
 **Step 5: Commit**
 
 ```bash
-git add D:/学习资料/ssh_keys/tmp-verify-*.sh
+git add D:/ssh_keys/tmp-verify-*.sh
 git commit -m "chore: add rollout verification helpers"
 ```
 

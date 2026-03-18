@@ -41,12 +41,12 @@ class CronQuietModeTests(unittest.TestCase):
         profile = module.ensure_profile(profiles["tiers"][tier], tier)
 
         self.assertEqual(tier, "high_doubao")
-        self.assertEqual(profile["primary_model"], "kimicode/Doubao-Seed-2.0-Code")
+        self.assertEqual(profile["primary_model"], "kimicode/doubao-seed-2.0-pro")
         self.assertEqual(profile["agent_model_overrides"]["optimization-agent"], "openai-codex/gpt-5.3-codex")
         self.assertEqual(profile["agent_model_overrides"]["backend-dev"], "openai-codex/gpt-5.3-codex")
         self.assertEqual(profile["agent_model_overrides"]["ops-agent"], "glmcode/glm-4.7")
         self.assertEqual(profile["agent_model_overrides"]["web-agent"], "glmcode/glm-4.7")
-        self.assertEqual(profile["model_thinking_overrides"]["kimicode/Doubao-Seed-2.0-Code"], "high")
+        self.assertEqual(profile["model_thinking_overrides"]["kimicode/doubao-seed-2.0-pro"], "high")
         self.assertEqual(profile["model_thinking_overrides"]["openai-codex/gpt-5.3-codex"], "xhigh")
 
     def test_ops_cron_runner_creates_follow_up_task_for_failed_workflow(self):
