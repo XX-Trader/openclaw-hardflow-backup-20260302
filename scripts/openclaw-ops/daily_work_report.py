@@ -1083,6 +1083,7 @@ def main() -> int:
     normal_log_mode = normalize_log_mode(args.normal_log_mode, default="silent")
     sender_identity = normalize_sender_identity(args.sender_identity)
     run_errors: list[str] = []
+    planner_summary_snapshot: dict[str, Any] = {}
 
     should_send_digest = bool(new_todo or new_done or todo_file_pending)
     digest_notify = bool(should_send_digest)
