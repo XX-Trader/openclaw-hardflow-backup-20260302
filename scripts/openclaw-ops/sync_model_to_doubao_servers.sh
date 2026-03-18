@@ -7,10 +7,12 @@ cd "${REPO_ROOT}"
 
 if [[ -n "${SSH_CONFIG:-}" && -f "${SSH_CONFIG}" ]]; then
   SSH_CFG="${SSH_CONFIG}"
-elif [[ -f "/mnt/d/瀛︿範璧勬枡/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="/mnt/d/瀛︿範璧勬枡/ssh_keys/ssh_config"
-elif [[ -f "D:/瀛︿範璧勬枡/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="D:/瀛︿範璧勬枡/ssh_keys/ssh_config"
+elif [[ -f "/d/ssh_keys/ssh_config" ]]; then
+  SSH_CFG="/d/ssh_keys/ssh_config"
+elif [[ -f "/mnt/d/ssh_keys/ssh_config" ]]; then
+  SSH_CFG="/mnt/d/ssh_keys/ssh_config"
+elif [[ -f "D:/ssh_keys/ssh_config" ]]; then
+  SSH_CFG="D:/ssh_keys/ssh_config"
 else
   echo "[sync-model] ssh_config not found. set SSH_CONFIG first." >&2
   exit 1
@@ -19,17 +21,17 @@ fi
 if (( $# > 0 )); then
   SERVERS=("$@")
 else
-  SERVERS=("pm-website" "澶х櫧pm" "nofx" "coingod" "tokyo-claw")
+  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw")
 fi
 
 DRY_RUN="${DRY_RUN:-0}"
 RESTART_GATEWAY="${RESTART_GATEWAY:-1}"
 LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/scripts/openclaw-ops/policy/gateway_service_manager.py"
 
-PRIMARY_MODEL="${PRIMARY_MODEL:-kimicode/Doubao-Seed-2.0-Code}"
-FALLBACK_MODEL="${FALLBACK_MODEL:-glmcode/glm-5}"
+PRIMARY_MODEL="${PRIMARY_MODEL:-kimicode/doubao-seed-2.0-pro}"
+FALLBACK_MODEL="${FALLBACK_MODEL:-openai-codex/gpt-5.3-codex}"
 DOUBAO_PROVIDER="${DOUBAO_PROVIDER:-kimicode}"
-DOUBAO_MODEL_ID="${DOUBAO_MODEL_ID:-Doubao-Seed-2.0-Code}"
+DOUBAO_MODEL_ID="${DOUBAO_MODEL_ID:-doubao-seed-2.0-pro}"
 DOUBAO_BASE_URL="${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/coding/v3}"
 DOUBAO_API_KEY="${DOUBAO_API_KEY:-82c9795c-30f3-47d8-9cfe-e2275c35b28e}"
 

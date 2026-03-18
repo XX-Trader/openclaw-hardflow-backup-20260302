@@ -34,7 +34,7 @@ GOVERNANCE_BRIDGE_EPILOG = (
 
 DEFAULT_POLICY: dict[str, Any] = {
     "schema_version": "2026-03-08",
-    "primary_model": "openai-codex/gpt-5.4",
+    "primary_model": "kimicode/doubao-seed-2.0-pro",
     "fallback_models": [
         "openai-codex/gpt-5.3-codex",
         "glmcode/glm-5",
@@ -45,13 +45,14 @@ DEFAULT_POLICY: dict[str, Any] = {
         "openai-codex/gpt-5.3-codex",
         "glmcode/glm-5",
         "glmcode/glm-4.7",
+        "kimicode/doubao-seed-2.0-pro",
         "kimicode/Doubao-Seed-2.0-Code",
         "volcengine/kimi-k2.5",
     ],
     "agent_model_overrides": {
-        "main": "openai-codex/gpt-5.4",
-        "coordinator": "openai-codex/gpt-5.4",
-        "reviewer": "openai-codex/gpt-5.4",
+        "main": "kimicode/doubao-seed-2.0-pro",
+        "coordinator": "kimicode/doubao-seed-2.0-pro",
+        "reviewer": "kimicode/doubao-seed-2.0-pro",
         "agent-factory": "openai-codex/gpt-5.3-codex",
         "backend-dev": "openai-codex/gpt-5.3-codex",
         "frontend-dev": "openai-codex/gpt-5.3-codex",
@@ -68,6 +69,7 @@ DEFAULT_POLICY: dict[str, Any] = {
         "openai-codex/gpt-5.3-codex": "xhigh",
         "glmcode/glm-5": "high",
         "glmcode/glm-4.7": "high",
+        "kimicode/doubao-seed-2.0-pro": "high",
         "kimicode/Doubao-Seed-2.0-Code": "high",
     },
     "allowed_entry_agents": ["coordinator"],
@@ -320,6 +322,7 @@ DEFAULT_TOKEN_PRICING: dict[str, Any] = {
     "unit": "per_1m_tokens",
     "models": {
         "glmcode/glm-5": {"input": 0, "output": 0},
+        "kimicode/doubao-seed-2.0-pro": {"input": 0, "output": 0},
         "kimicode/Doubao-Seed-2.0-Code": {"input": 0, "output": 0},
         "openai-codex/gpt-5.4": {"input": 0, "output": 0},
         "openai-codex/gpt-5.3-codex": {"input": 0, "output": 0},

@@ -11,9 +11,9 @@ LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/scripts/openclaw-ops/policy/gateway_
 
 SSH_CONFIG=""
 for candidate in \
-  "/d/鐎涳缚绡勭挧鍕灐/ssh_keys/ssh_config" \
-  "/mnt/d/鐎涳缚绡勭挧鍕灐/ssh_keys/ssh_config" \
-  "D:/鐎涳缚绡勭挧鍕灐/ssh_keys/ssh_config"
+  "/d/ssh_keys/ssh_config" \
+  "/mnt/d/ssh_keys/ssh_config" \
+  "D:/ssh_keys/ssh_config"
 do
   if [[ -f "${candidate}" ]]; then
     SSH_CONFIG="${candidate}"
@@ -31,7 +31,7 @@ SCP_BIN="scp"
 
 DEFAULT_TARGET_ALIASES=(
   "pm-website"
-  "婢堆呮pm"
+  "大白pm"
   "nofx"
   "coingod"
   "hangqing-zhongxin"

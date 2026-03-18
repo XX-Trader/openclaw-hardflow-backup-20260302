@@ -3,6 +3,10 @@
   "currency": "CNY",
   "unit": "per_1m_tokens",
   "models": {
+    "kimicode/doubao-seed-2.0-pro": {
+      "input": 0,
+      "output": 0
+    },
     "kimicode/Doubao-Seed-2.0-Code": {
       "input": 0,
       "output": 0

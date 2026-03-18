@@ -23,6 +23,7 @@
         "openai-codex/gpt-5.3-codex": "xhigh",
         "glmcode/glm-5": "high",
         "glmcode/glm-4.7": "high",
+        "kimicode/doubao-seed-2.0-pro": "high",
         "kimicode/Doubao-Seed-2.0-Code": "high"
       },
       "thinking_default": "high"
@@ -61,6 +62,7 @@
         "openai-codex/gpt-5.3-codex": "xhigh",
         "glmcode/glm-5": "high",
         "glmcode/glm-4.7": "high",
+        "kimicode/doubao-seed-2.0-pro": "high",
         "kimicode/Doubao-Seed-2.0-Code": "high"
       },
       "thinking_default": "high"
@@ -76,16 +78,16 @@
         "豆包版",
         "豆包对话版"
       ],
-      "primary_model": "kimicode/Doubao-Seed-2.0-Code",
+      "primary_model": "kimicode/doubao-seed-2.0-pro",
       "fallback_models": [
         "openai-codex/gpt-5.3-codex",
         "glmcode/glm-5",
         "glmcode/glm-4.7"
       ],
       "agent_model_overrides": {
-        "main": "kimicode/Doubao-Seed-2.0-Code",
-        "coordinator": "kimicode/Doubao-Seed-2.0-Code",
-        "reviewer": "kimicode/Doubao-Seed-2.0-Code",
+        "main": "kimicode/doubao-seed-2.0-pro",
+        "coordinator": "kimicode/doubao-seed-2.0-pro",
+        "reviewer": "kimicode/doubao-seed-2.0-pro",
         "agent-factory": "openai-codex/gpt-5.3-codex",
         "backend-dev": "openai-codex/gpt-5.3-codex",
         "frontend-dev": "openai-codex/gpt-5.3-codex",
@@ -102,6 +104,7 @@
         "openai-codex/gpt-5.3-codex": "xhigh",
         "glmcode/glm-5": "high",
         "glmcode/glm-4.7": "high",
+        "kimicode/doubao-seed-2.0-pro": "high",
         "kimicode/Doubao-Seed-2.0-Code": "high"
       },
       "thinking_default": "high"
@@ -124,6 +127,7 @@
         "openai-codex/gpt-5.3-codex": "xhigh",
         "glmcode/glm-5": "high",
         "glmcode/glm-4.7": "high",
+        "kimicode/doubao-seed-2.0-pro": "high",
         "kimicode/Doubao-Seed-2.0-Code": "high"
       },
       "thinking_default": "high"
@@ -144,6 +148,7 @@
         "openai-codex/gpt-5.3-codex": "xhigh",
         "glmcode/glm-5": "high",
         "glmcode/glm-4.7": "high",
+        "kimicode/doubao-seed-2.0-pro": "high",
         "kimicode/Doubao-Seed-2.0-Code": "high"
       },
       "thinking_default": "high"

@@ -10,7 +10,6 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $sshConfig = $env:SSH_CONFIG
 if (-not $sshConfig) {
     foreach ($candidate in @(
-        "D:/学习资料/ssh_keys/ssh_config",
         "D:/ssh_keys/ssh_config"
     )) {
         if ($candidate -and (Test-Path $candidate)) {
@@ -20,12 +19,9 @@ if (-not $sshConfig) {
     }
 }
 if (-not $sshConfig) {
-    $autoFound = Get-ChildItem -Path "D:\" -Directory -ErrorAction SilentlyContinue |
-        ForEach-Object { Join-Path $_.FullName "ssh_keys\ssh_config" } |
-        Where-Object { Test-Path $_ } |
-        Select-Object -First 1
-    if ($autoFound) {
-        $sshConfig = $autoFound
+    $directConfig = "D:\\ssh_keys\\ssh_config"
+    if (Test-Path $directConfig) {
+        $sshConfig = $directConfig
     }
 }
 $sshExe = "C:/Windows/System32/OpenSSH/ssh.exe"

@@ -7,7 +7,7 @@ cd "${REPO_ROOT}"
 
 SSH_CONFIG="${SSH_CONFIG:-}"
 if [[ -z "${SSH_CONFIG}" ]]; then
-  for candidate in "/d/学习资料/ssh_keys/ssh_config" "/mnt/d/学习资料/ssh_keys/ssh_config" "D:/学习资料/ssh_keys/ssh_config"; do
+  for candidate in "/d/ssh_keys/ssh_config" "/mnt/d/ssh_keys/ssh_config" "D:/ssh_keys/ssh_config"; do
     if [[ -f "${candidate}" ]]; then
       SSH_CONFIG="${candidate}"
       break

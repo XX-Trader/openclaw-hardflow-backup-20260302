@@ -441,6 +441,157 @@ def explain_executor_task_value(item: dict[str, Any]) -> str:
     return "这项是本轮的焦点任务，先看它最能判断当前执行质量。"
 
 
+def format_task_owner_stage(assignee: Any, stage: Any) -> str:
+    owner = str(assignee or "").strip() or "未分配"
+    stage_label = humanize_task_stage(str(stage or "").strip())
+    if stage_label:
+        return f"{owner}（{stage_label}）"
+    return owner
+
+
+def build_executor_card_progress(item: dict[str, Any]) -> str:
+    raw_reason = str(item.get("reason", "")).strip().lower()
+    category = classify_result(item)
+    if raw_reason == "preflight_strict_blocked":
+        return "未执行"
+    if raw_reason == "waiting_human_confirm":
+        return "等待人工确认"
+    if raw_reason == "needs_clarification":
+        return "待补充上下文"
+    if category == "passed":
+        return "已闭环"
+    if category == "partial":
+        return "部分完成"
+    if category == "failed":
+        return "执行失败"
+    return "状态待确认"
+
+
+def build_executor_card_blocker(item: dict[str, Any]) -> str:
+    raw_reason = str(item.get("reason", "")).strip().lower()
+    category = classify_result(item)
+    if raw_reason == "preflight_strict_blocked":
+        return "派单能力不匹配"
+    if raw_reason == "waiting_human_confirm":
+        return "等待人工确认"
+    if raw_reason == "needs_clarification":
+        return "上下文不足"
+    if category == "passed":
+        return "无"
+    issue, _detail = humanize_executor_reason(item)
+    return compact_task_text(issue, 48) or "任务执行失败"
+
+
+def build_executor_card_gap(item: dict[str, Any]) -> str:
+    raw_reason = str(item.get("reason", "")).strip().lower()
+    category = classify_result(item)
+    if raw_reason == "preflight_strict_blocked":
+        reassign = item.get("preflight_reassign", {})
+        if not isinstance(reassign, dict):
+            reassign = {}
+        agents = [str(x).strip() for x in reassign.get("recommended_agents", []) if str(x).strip()]
+        if agents:
+            return f"改派给 {','.join(agents)}"
+        return "改派给满足能力约束的执行人"
+    if raw_reason == "waiting_human_confirm":
+        return "人工确认后才能继续执行"
+    if raw_reason == "needs_clarification":
+        return "补充任务背景或上下文后再执行"
+    if category == "passed":
+        return "无"
+    _issue, detail = humanize_executor_reason(item)
+    detail_text = compact_task_text(detail, 96)
+    if detail_text:
+        return detail_text
+    if category == "partial":
+        return "继续补齐剩余项后再收口"
+    return "补齐失败原因后再执行"
+
+
+def build_executor_problem_card_lines(index: int, item: dict[str, Any]) -> list[str]:
+    return [
+        f"- 事项{index}：{describe_task_subject(item)}",
+        f"- 负责人{index}：{format_task_owner_stage(item.get('assignee', ''), item.get('stage', ''))}",
+        f"- 进展{index}：{build_executor_card_progress(item)}",
+        f"- 问题{index}：{build_executor_card_blocker(item)}",
+        f"- 待补{index}：{build_executor_card_gap(item)}",
+    ]
+
+
+def build_resolved_item_snapshot(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "task_id": str(item.get("task_id", "")).strip(),
+        "subject": describe_task_subject(item),
+        "assignee": str(item.get("assignee", "")).strip(),
+        "stage": str(item.get("stage", "")).strip(),
+    }
+
+
+def normalize_task_change_notify(
+    summary: dict[str, Any],
+    open_items: list[dict[str, Any]],
+    passed_items: list[dict[str, Any]],
+) -> dict[str, Any]:
+    raw = summary.get("task_change_notify", {})
+    if not isinstance(raw, dict):
+        raw = {}
+    has_explicit_change_notify = bool(raw)
+    resolved_items = raw.get("resolved_items", [])
+    if not isinstance(resolved_items, list):
+        resolved_items = []
+    if has_explicit_change_notify and not resolved_items and passed_items:
+        resolved_items = [build_resolved_item_snapshot(item) for item in passed_items[:3]]
+    focus_task_ids = raw.get("focus_task_ids", [])
+    if not isinstance(focus_task_ids, list):
+        focus_task_ids = []
+    if not focus_task_ids:
+        focus_task_ids = [
+            str(item.get("task_id", "")).strip()
+            for item in select_focus_task_items(open_items, limit=3)
+            if str(item.get("task_id", "")).strip()
+        ]
+    open_count = max(0, int(raw.get("open_count", len(open_items)) or 0))
+    new_count = max(0, int(raw.get("new_count", open_count) or 0))
+    changed_count = max(0, int(raw.get("changed_count", 0) or 0))
+    resolved_count = max(0, int(raw.get("resolved_count", len(resolved_items) if has_explicit_change_notify else 0) or 0))
+    mode = str(raw.get("mode", "")).strip().lower()
+    if not mode:
+        if open_count > 0:
+            mode = "initial"
+        elif resolved_count > 0:
+            mode = "delta"
+        else:
+            mode = "no_change"
+    return {
+        "suppressed": bool(raw.get("suppressed", False)),
+        "mode": mode,
+        "new_count": new_count,
+        "changed_count": changed_count,
+        "resolved_count": resolved_count,
+        "open_count": open_count,
+        "focus_task_ids": [str(x).strip() for x in focus_task_ids if str(x).strip()],
+        "resolved_items": [item for item in resolved_items if isinstance(item, dict)][:3],
+    }
+
+
+def select_task_change_focus_items(
+    results: list[dict[str, Any]],
+    open_items: list[dict[str, Any]],
+    change_notify: dict[str, Any],
+) -> list[dict[str, Any]]:
+    task_ids = [str(x).strip() for x in change_notify.get("focus_task_ids", []) if str(x).strip()]
+    if task_ids:
+        indexed = {
+            str(item.get("task_id", "")).strip(): item
+            for item in open_items
+            if isinstance(item, dict) and str(item.get("task_id", "")).strip()
+        }
+        ordered = [indexed[task_id] for task_id in task_ids if task_id in indexed]
+        if ordered:
+            return ordered[:3]
+    return select_focus_task_items(open_items or results, limit=3)
+
+
 def select_focus_task_items(results: list[dict[str, Any]], limit: int = 3) -> list[dict[str, Any]]:
     ranked: list[tuple[int, int, dict[str, Any]]] = []
     for idx, item in enumerate(results):
@@ -533,7 +684,6 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
     selected = max(0, int(summary.get("tasks_selected", 0) or 0))
     executed = max(0, int(summary.get("tasks_executed", 0) or 0))
     skipped = max(0, int(summary.get("tasks_skipped", 0) or 0))
-    unresolved = len(partial_items) + len(failed_items)
     waiting_confirm_items = [
         item
         for item in ignored_items
@@ -551,96 +701,88 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
         or str(item.get("task_status_after", "")).strip().lower() == "needs_clarification"
     ]
     visible = True
-    if isinstance(dedupe, dict) and bool(dedupe.get("suppressed", False)):
-        visible = False
-    elif mode == "error" and unresolved <= 0:
-        visible = False
-    elif mode == "activity" and unresolved <= 0 and executed <= 0:
-        visible = False
 
     waiting_confirm_count = max(len(waiting_confirm_items), skipped if waiting_confirm_items else 0)
     clarification_count = max(len(clarification_items), skipped if clarification_items else 0)
+    open_items: list[dict[str, Any]] = []
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        raw_reason = str(item.get("reason", "")).strip().lower()
+        category = classify_result(item)
+        if raw_reason in {"waiting_human_confirm", "needs_clarification"} or category in {"partial", "failed"}:
+            open_items.append(item)
 
-    if unresolved > 0:
-        summary_text = f"选中 {selected} 个任务，未闭环 {unresolved} 个。"
+    change_notify = normalize_task_change_notify(summary, open_items, passed_items)
+    open_count = max(change_notify.get("open_count", 0), len(open_items))
+    resolved_count = int(change_notify.get("resolved_count", 0) or 0)
+
+    human_view = {
+        "visible": visible,
+        "title": trigger_task_label,
+        "summary": "",
+        "run_time": str(summary.get("finished_at", "")).strip() or str(summary.get("started_at", "")).strip(),
+        "lines": [],
+        "trace_id": report_path.stem,
+    }
+    if isinstance(dedupe, dict) and bool(dedupe.get("suppressed", False)):
+        visible = False
+    elif change_notify.get("suppressed", False):
+        visible = False
+    elif mode == "error" and open_count <= 0 and resolved_count <= 0:
+        visible = False
+    elif mode == "activity" and open_count <= 0 and executed <= 0 and resolved_count <= 0:
+        visible = False
+
+    summary_text = ""
+    change_mode = str(change_notify.get("mode", "")).strip().lower()
+    new_count = max(0, int(change_notify.get("new_count", 0) or 0))
+    changed_count = max(0, int(change_notify.get("changed_count", 0) or 0))
+    if change_mode == "initial" and open_count > 0:
+        summary_text = f"首次发现 {open_count} 个未闭环任务。"
+    elif change_mode == "delta":
+        parts: list[str] = []
+        if new_count > 0:
+            parts.append(f"新增 {new_count} 个问题")
+        if changed_count > 0:
+            parts.append(f"{changed_count} 个任务有变化")
+        if resolved_count > 0:
+            parts.append(f"{resolved_count} 个任务已闭环")
+        summary_text = "，".join(parts) + "。" if parts else "任务状态有更新。"
+    elif open_count > 0:
+        summary_text = f"仍有 {open_count} 个未闭环任务。"
+    elif resolved_count > 0:
+        summary_text = f"{resolved_count} 个任务已闭环。"
+    elif waiting_confirm_items and skipped > 0:
+        summary_text = f"{waiting_confirm_count} 个任务等待人工确认。"
+    elif clarification_items and skipped > 0:
+        summary_text = f"{clarification_count} 个任务待补充上下文。"
     elif executed > 0:
         summary_text = f"已执行 {executed} 个任务，全部闭环。"
-    elif waiting_confirm_items and skipped > 0:
-        summary_text = f"{waiting_confirm_count} 个任务等待人工确认，本轮未执行。"
-    elif clarification_items and skipped > 0:
-        summary_text = f"{clarification_count} 个任务因上下文不足而跳过。"
-    elif skipped > 0:
-        summary_text = f"{skipped} 个任务已跳过，本轮未执行。"
     elif selected > 0:
         summary_text = f"选中 {selected} 个任务，本轮无需执行。"
     else:
         summary_text = "当前没有待处理任务。"
 
-    reason_parts: list[str] = []
-    if waiting_confirm_items:
-        reason_parts.append(f"等待人工确认 {waiting_confirm_count} 个")
-    if clarification_items:
-        reason_parts.append(f"待补充上下文 {clarification_count} 个")
-    if partial_items:
-        reason_parts.append(f"任务仅部分完成 {len(partial_items)} 个")
-    if failed_items:
-        reason_parts.append(f"任务执行失败 {len(failed_items)} 个")
-
     lines = [
-        f"- 触发任务：{trigger_task_label}",
-        f"- 运行编号：{str(summary.get('run_id', '')).strip() or '-'}",
-        f"- 执行模型：{str(summary.get('executor_model', '')).strip() or '-'}",
         (
-            f"- 结果：选中 {selected} 个，已执行 {executed} 个，"
-            f"跳过 {skipped} 个，未闭环 {unresolved} 个。"
-        ),
+            f"- 本轮变化：新增 {new_count} 个，变化 {changed_count} 个，"
+            f"已闭环 {resolved_count} 个，仍未闭环 {open_count} 个。"
+        )
     ]
-    if reason_parts:
-        lines.append(f"- 原因解析：{'；'.join(reason_parts)}。")
-    lines.append(
-        f"- 修复进展：已执行 {executed}/{selected or max(executed, 1)}，"
-        f"部分推进 {len(partial_items)}，失败 {len(failed_items)}。"
-    )
-    preflight_warning_tasks = max(0, int(summary.get("preflight_warning_tasks", 0) or 0))
-    preflight_blocked_tasks = max(0, int(summary.get("preflight_blocked_tasks", 0) or 0))
-    if preflight_warning_tasks > 0:
-        line = f"- Preflight 告警 {preflight_warning_tasks} 个"
-        if preflight_blocked_tasks > 0:
-            line += f"，强拦截 {preflight_blocked_tasks} 个高风险任务。"
-        else:
-            line += "。"
-        lines.append(line)
-    focus_items = select_focus_task_items(results, limit=3)
-    if focus_items:
-        for idx, item in enumerate(focus_items, start=1):
-            lines.append(f"- 任务{idx}：{describe_task_subject(item)}")
-            lines.append(f"- 要求{idx}：{build_executor_task_requirement(item)}")
-            lines.append(f"- 状态{idx}：{build_executor_task_status(item)}")
-            failure_line = build_executor_failure_line(idx, item)
-            if failure_line:
-                lines.append(f"- {failure_line}")
-            execution_line = build_executor_execution_line(idx, item)
-            if execution_line:
-                lines.append(f"- {execution_line}")
-            lines.append(f"- 值得做{idx}：{explain_executor_task_value(item)}")
-        if len(results) > len(focus_items):
-            lines.append(f"- 其余 {len(results) - len(focus_items)} 个任务请按留痕编号查看。")
-    if passed_items:
-        lines.append(f"- 已闭环：{len(passed_items)} 个")
-    if waiting_confirm_items:
-        lines.append(f"- 待人工确认：{waiting_confirm_count} 个")
-    if clarification_items:
-        lines.append(f"- 待补充上下文：{clarification_count} 个")
-    unresolved_items = [*partial_items, *failed_items]
+    focus_items = select_task_change_focus_items(results, open_items, change_notify)
+    for idx, item in enumerate(focus_items, start=1):
+        lines.extend(build_executor_problem_card_lines(idx, item))
+    for idx, item in enumerate(change_notify.get("resolved_items", []), start=1):
+        if not isinstance(item, dict):
+            continue
+        owner = format_task_owner_stage(item.get("assignee", ""), item.get("stage", ""))
+        subject = compact_task_text(item.get("subject", ""), 96) or "未命名任务"
+        lines.append(f"- 已闭环{idx}：{subject} -> {owner}")
 
-    human_view = {
-        "visible": visible,
-        "title": trigger_task_label,
-        "summary": summary_text,
-        "run_time": str(summary.get("finished_at", "")).strip() or str(summary.get("started_at", "")).strip(),
-        "lines": lines,
-        "trace_id": report_path.stem,
-    }
+    human_view["visible"] = visible
+    human_view["summary"] = summary_text
+    human_view["lines"] = lines
     facts = {
         "trigger_task": str(summary.get("trigger_task", "")).strip(),
         "run_id": str(summary.get("run_id", "")).strip(),
@@ -653,7 +795,8 @@ def build_task_executor_event(summary: dict[str, Any], report_path: Path, notify
         "partial_count": len(partial_items),
         "failed_count": len(failed_items),
         "report_file": str(report_path),
-        "results": unresolved_items,
+        "results": open_items,
+        "task_change_notify": change_notify,
     }
     return _make_event("task_executor", facts, human_view)
 

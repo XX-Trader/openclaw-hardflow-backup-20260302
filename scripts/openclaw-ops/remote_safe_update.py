@@ -32,10 +32,9 @@ CONFLICT_STRATEGIES = ("runtime-reset", "stash-nonvolatile", "snapshot-branch")
 def detect_default_ssh_config() -> str:
     candidates = [
         os.environ.get("SSH_CONFIG", ""),
-        "D:/学习资料/ssh_keys/ssh_config",
         "D:/ssh_keys/ssh_config",
-        "/mnt/d/学习资料/ssh_keys/ssh_config",
-        "/d/学习资料/ssh_keys/ssh_config",
+        "/d/ssh_keys/ssh_config",
+        "/mnt/d/ssh_keys/ssh_config",
     ]
     for candidate in candidates:
         if candidate and Path(candidate).exists():

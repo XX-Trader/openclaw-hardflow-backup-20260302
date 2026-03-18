@@ -6,10 +6,12 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 if [[ -n "${SSH_CONFIG:-}" && -f "${SSH_CONFIG}" ]]; then
   SSH_CFG="${SSH_CONFIG}"
-elif [[ -f "/mnt/d/学习资料/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="/mnt/d/学习资料/ssh_keys/ssh_config"
-elif [[ -f "D:/学习资料/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="D:/学习资料/ssh_keys/ssh_config"
+elif [[ -f "/d/ssh_keys/ssh_config" ]]; then
+  SSH_CFG="/d/ssh_keys/ssh_config"
+elif [[ -f "/mnt/d/ssh_keys/ssh_config" ]]; then
+  SSH_CFG="/mnt/d/ssh_keys/ssh_config"
+elif [[ -f "D:/ssh_keys/ssh_config" ]]; then
+  SSH_CFG="D:/ssh_keys/ssh_config"
 else
   echo "[sync-policy] ssh_config not found. set SSH_CONFIG first." >&2
   exit 1

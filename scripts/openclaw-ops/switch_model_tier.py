@@ -27,7 +27,8 @@ PROFILE_SNAPSHOT_ROOT = REPO_ROOT / ".tmp" / "model-switch-profiles"
 MODEL_ALIAS_MAP: dict[str, str] = {
     "openai-codex/gpt-5.4": "codex",
     "openai-codex/gpt-5.3-codex": "codex53",
-    "kimicode/Doubao-Seed-2.0-Code": "doubao",
+    "kimicode/doubao-seed-2.0-pro": "doubao",
+    "kimicode/Doubao-Seed-2.0-Code": "doubao-code",
     "glmcode/glm-5": "glm",
     "glmcode/glm-4.7": "glm47",
 }

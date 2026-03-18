@@ -6,8 +6,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 detect_ssh_config() {
   local candidates=(
     "${SSH_CONFIG:-}"
-    "/mnt/d/学习资料/ssh_keys/ssh_config"
-    "D:/学习资料/ssh_keys/ssh_config"
+    "/d/ssh_keys/ssh_config"
+    "/mnt/d/ssh_keys/ssh_config"
+    "D:/ssh_keys/ssh_config"
   )
   local item
   for item in "${candidates[@]}"; do

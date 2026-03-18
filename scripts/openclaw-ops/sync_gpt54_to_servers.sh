@@ -28,12 +28,20 @@ fi
 
 if [[ -n "${SSH_CONFIG:-}" ]]; then
   SSH_CFG="${SSH_CONFIG}"
-elif [[ -f "/mnt/d/学习资料/ssh_keys/ssh_config" ]]; then
+elif [[ -f "/d/ssh_keys/ssh_config" ]]; then
   if [[ "${USE_WINDOWS_OPENSSH}" == "1" ]]; then
-    SSH_CFG="D:/学习资料/ssh_keys/ssh_config"
+    SSH_CFG="D:/ssh_keys/ssh_config"
   else
-    SSH_CFG="/mnt/d/学习资料/ssh_keys/ssh_config"
+    SSH_CFG="/d/ssh_keys/ssh_config"
   fi
+elif [[ -f "/mnt/d/ssh_keys/ssh_config" ]]; then
+  if [[ "${USE_WINDOWS_OPENSSH}" == "1" ]]; then
+    SSH_CFG="D:/ssh_keys/ssh_config"
+  else
+    SSH_CFG="/mnt/d/ssh_keys/ssh_config"
+  fi
+elif [[ -f "D:/ssh_keys/ssh_config" ]]; then
+  SSH_CFG="D:/ssh_keys/ssh_config"
 else
   echo "[sync-gpt54] ssh_config not found. set SSH_CONFIG first." >&2
   exit 1

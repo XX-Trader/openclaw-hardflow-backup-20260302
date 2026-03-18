@@ -532,7 +532,7 @@ def aggregate_rounds(rounds: list[dict[str, Any]]) -> dict[str, Any]:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Repeat multi-server cron message inspection and remediation")
-    parser.add_argument("--ssh-config", default="D:/学习资料/ssh_keys/ssh_config")
+    parser.add_argument("--ssh-config", default="D:/ssh_keys/ssh_config")
     parser.add_argument("--servers", nargs="*", default=list(DEFAULT_SERVERS))
     parser.add_argument("--total-rounds", type=int, default=DEFAULT_TOTAL_ROUNDS)
     parser.add_argument("--interval-seconds", type=int, default=DEFAULT_INTERVAL_SECONDS)
