@@ -985,7 +985,9 @@ def build_chat_output(
         report_count = int(planner_summary.get("report_count", 0) or 0)
         task_count = int(planner_summary.get("task_count", 0) or 0)
         failed_task_count = int(planner_summary.get("failed_task_count", 0) or 0)
-        extra_lines.append(f"24小时留痕：报告 {report_count} 条，任务 {task_count} 条，失败 {failed_task_count} 条")
+        total_tokens = int(planner_summary.get("total_tokens", 0))
+        token_m = round(total_tokens / 1e6, 2)
+        extra_lines.append(f"24小时留痕：报告 {report_count} 条，任务 {task_count} 条，失败 {failed_task_count} 条，Token消耗 {token_m}M")
 
     detail_lines: list[str] = []
     primary_detail = build_primary_judgement_detail(reasons)
@@ -1116,6 +1118,10 @@ def main() -> int:
         lines.append(f"- 任务中心待办：{len(new_todo)}")
         lines.append(f"- todo清单待办：{len(todo_file_pending)}")
         lines.append(f"- 任务中心完成：{len(new_done)}")
+        # 增加Token消耗统计（单位：M，1M=100万token）
+        total_tokens = int(planner_summary_snapshot.get("total_tokens", 0))
+        token_m = round(total_tokens / 1e6, 2)
+        lines.append(f"- 今日Token消耗：{token_m}M")
         lines.append("")
         lines.append("## 任务中心待办")
         lines.extend(summarize_items(new_todo, int(args.max_notify_items)) or ["- 无"])
