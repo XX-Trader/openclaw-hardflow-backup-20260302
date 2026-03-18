@@ -554,9 +554,9 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("首次发现 3 个未闭环任务。", output)
         self.assertIn("本轮变化：新增 3 个，变化 0 个，已闭环 0 个，仍未闭环 3 个。", output)
         self.assertIn("事项1：未命名任务", output)
-        self.assertIn("进展1：执行失败", output)
-        self.assertIn("问题1：任务执行失败", output)
-        self.assertIn("待补2：partial", output)
+        self.assertIn("执行结论1：执行失败", output)
+        self.assertIn("失败原因1：任务执行失败", output)
+        self.assertIn("需要协助2：partial", output)
 
     def test_task_executor_duplicate_workflow_repair_alert_returns_no_reply(self):
         module = load_module(

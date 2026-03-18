@@ -284,6 +284,20 @@ def format_cost_estimate(value: Any) -> str:
     return f"${cost_value:.6f}"
 
 
+def format_tokens_million(value: Any) -> str:
+    tokens = max(0, int(value or 0))
+    return f"{tokens / 1_000_000:.4f}M"
+
+
+def humanize_executor_model(value: Any) -> str:
+    text = compact_task_text(value, 64) or "未记录"
+    if "/" in text and " " not in text:
+        parts = [part for part in text.split("/", 1) if part]
+        if len(parts) == 2:
+            return f"{parts[0]} · {parts[1]}"
+    return text
+
+
 def humanize_task_stage(stage: str) -> str:
     normalized = str(stage or "").strip().lower()
     if normalized == "plan":
@@ -412,17 +426,26 @@ def build_executor_failure_line(index: int, item: dict[str, Any]) -> str:
 
 
 def build_executor_execution_line(index: int, item: dict[str, Any]) -> str:
-    model_name = compact_task_text(item.get("model", ""), 48) or "未记录"
+    model_name = humanize_executor_model(item.get("model"))
     input_tokens = max(0, int(item.get("input_tokens", 0) or 0))
     output_tokens = max(0, int(item.get("output_tokens", 0) or 0))
+    retry_count = max(0, int(item.get("retry_count", 0) or 0))
     total_tokens = max(0, int(item.get("total_tokens", 0) or 0))
     if total_tokens <= 0 and (input_tokens or output_tokens):
         total_tokens = input_tokens + output_tokens
     cost_text = format_cost_estimate(item.get("cost_estimate", 0))
     if model_name == "未记录" and total_tokens <= 0 and cost_text == "未记录":
         return ""
-    token_text = f"总={total_tokens}（输入={input_tokens}，输出={output_tokens}）" if total_tokens > 0 else "未记录"
-    return f"执行概况{index}：模型={model_name}；tokens={token_text}；成本≈{cost_text}"
+    token_text = (
+        f"总={format_tokens_million(total_tokens)}（输入={format_tokens_million(input_tokens)}，输出={format_tokens_million(output_tokens)}）"
+        if total_tokens > 0 or input_tokens > 0 or output_tokens > 0
+        else "未记录"
+    )
+    duration_text = format_duration_ms_human(item.get("duration_ms", 0))
+    parts = [f"模型={model_name}", f"tokens={token_text}", f"耗时={duration_text}"]
+    if retry_count > 0:
+        parts.append(f"已重试={retry_count}次")
+    return f"执行概况{index}：{'；'.join(parts)}；成本≈{cost_text}"
 
 
 def explain_executor_task_value(item: dict[str, Any]) -> str:
@@ -509,13 +532,19 @@ def build_executor_card_gap(item: dict[str, Any]) -> str:
 
 
 def build_executor_problem_card_lines(index: int, item: dict[str, Any]) -> list[str]:
-    return [
+    agent_line = format_task_owner_stage(item.get("assignee", ""), item.get("stage", ""))
+    gap_text = build_executor_card_gap(item)
+    lines = [
         f"- 事项{index}：{describe_task_subject(item)}",
-        f"- 负责人{index}：{format_task_owner_stage(item.get('assignee', ''), item.get('stage', ''))}",
-        f"- 进展{index}：{build_executor_card_progress(item)}",
-        f"- 问题{index}：{build_executor_card_blocker(item)}",
-        f"- 待补{index}：{build_executor_card_gap(item)}",
+        f"- 执行人{index}：{agent_line}",
+        f"- 执行结论{index}：{build_executor_card_progress(item)}",
+        f"- 失败原因{index}：{build_executor_card_blocker(item)}",
+        f"- 需要协助{index}：{gap_text}",
     ]
+    execution_line = build_executor_execution_line(index, item)
+    if execution_line:
+        lines.append(execution_line)
+    return lines
 
 
 def build_resolved_item_snapshot(item: dict[str, Any]) -> dict[str, Any]:

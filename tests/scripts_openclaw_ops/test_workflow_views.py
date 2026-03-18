@@ -81,10 +81,11 @@ class WorkflowViewsTests(unittest.TestCase):
         self.assertIn("首次发现 3 个未闭环任务。", text)
         self.assertIn("本轮变化：新增 3 个，变化 0 个，已闭环 0 个，仍未闭环 3 个。", text)
         self.assertIn("事项1：补齐任务执行器的人类摘要", text)
-        self.assertIn("负责人1：optimization-agent", text)
-        self.assertIn("进展1：执行失败", text)
-        self.assertIn("问题1：调用执行代理失败", text)
-        self.assertIn("待补1：超时", text)
+        self.assertIn("执行人1：optimization-agent", text)
+        self.assertIn("执行结论1：执行失败", text)
+        self.assertIn("失败原因1：调用执行代理失败", text)
+        self.assertIn("需要协助1：超时", text)
+        self.assertIn("执行概况1：模型=openai-codex · gpt-5；tokens=总=0.0032M（输入=0.0012M，输出=0.0020M）；耗时=14.5秒；成本≈$0.012340", text)
         self.assertNotIn("optimization-agent：未命名任务", text)
 
     def test_task_executor_error_notify_hides_success_run_from_human_view(self):
@@ -153,10 +154,10 @@ class WorkflowViewsTests(unittest.TestCase):
 
         self.assertIn("首次发现 1 个未闭环任务。", text)
         self.assertIn("事项1：governance_evolution_optimize 任务", text)
-        self.assertIn("负责人1：backend-dev", text)
-        self.assertIn("进展1：未执行", text)
-        self.assertIn("问题1：派单能力不匹配", text)
-        self.assertIn("待补1：改派给 optimization-agent", text)
+        self.assertIn("执行人1：backend-dev", text)
+        self.assertIn("执行结论1：未执行", text)
+        self.assertIn("失败原因1：派单能力不匹配", text)
+        self.assertIn("需要协助1：改派给 optimization-agent", text)
 
     def test_task_executor_human_view_uses_compact_problem_cards(self):
         module = load_module(
@@ -212,10 +213,10 @@ class WorkflowViewsTests(unittest.TestCase):
         self.assertIn("首次发现 2 个未闭环任务。", text)
         self.assertIn("本轮变化：新增 2 个，变化 0 个，已闭环 0 个，仍未闭环 2 个。", text)
         self.assertIn("事项1：补齐项目索引治理方案，并确认是否纳入本周计划。", text)
-        self.assertIn("负责人1：project-agent（规划）", text)
-        self.assertIn("进展1：未执行", text)
-        self.assertIn("问题1：派单能力不匹配", text)
-        self.assertIn("待补1：改派给 project-agent", text)
+        self.assertIn("执行人1：project-agent（规划）", text)
+        self.assertIn("执行结论1：未执行", text)
+        self.assertIn("失败原因1：派单能力不匹配", text)
+        self.assertIn("需要协助1：改派给 project-agent", text)
         self.assertNotIn("执行概况1", text)
         self.assertNotIn("值得做1", text)
 
@@ -278,9 +279,9 @@ class WorkflowViewsTests(unittest.TestCase):
         self.assertIn("1 个任务有变化，1 个任务已闭环。", text)
         self.assertIn("本轮变化：新增 0 个，变化 1 个，已闭环 1 个，仍未闭环 1 个。", text)
         self.assertIn("事项1：补齐项目索引治理方案，并确认是否纳入本周计划。", text)
-        self.assertIn("进展1：等待人工确认", text)
-        self.assertIn("问题1：等待人工确认", text)
-        self.assertIn("待补1：人工确认后才能继续执行", text)
+        self.assertIn("执行结论1：等待人工确认", text)
+        self.assertIn("失败原因1：等待人工确认", text)
+        self.assertIn("需要协助1：人工确认后才能继续执行", text)
         self.assertIn("已闭环1：梳理任务执行器的人类摘要模板，避免重复刷屏。 -> optimization-agent（实现）", text)
         self.assertNotIn("任务2：", text)
 
