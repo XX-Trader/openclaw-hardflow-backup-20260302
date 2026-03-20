@@ -36,11 +36,14 @@ if policy_dir in sys.path:
     sys.path.remove(policy_dir)
 sys.path.insert(0, policy_dir)
 
+from utf8_runtime import configure_process_utf8_stdio
 from task_center import TaskCenter  # type: ignore
 from task_capability_binding import build_task_constraint_fields  # type: ignore
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
 from web_sources_runtime import load_project_repo_targets  # type: ignore
 from chat_output import build_trace_id, render_chat_notice
+
+configure_process_utf8_stdio()
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}

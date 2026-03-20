@@ -14,6 +14,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from utf8_runtime import configure_process_utf8_stdio
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic
 from task_capability_binding import infer_task_capability_constraints
 from task_center import (
@@ -24,6 +29,8 @@ from task_center import (
     format_daily_summary_markdown,
     load_pricing,
 )
+
+configure_process_utf8_stdio()
 
 UTC = timezone.utc
 GOVERNANCE_BRIDGE_EPILOG = (

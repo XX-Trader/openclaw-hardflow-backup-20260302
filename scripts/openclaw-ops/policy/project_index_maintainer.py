@@ -27,6 +27,7 @@ if root_dir in sys.path:
     sys.path.remove(root_dir)
 sys.path.insert(0, root_dir)
 
+from utf8_runtime import configure_process_utf8_stdio
 from vendor_source_catalog import (
     build_host_repo_sources,
     build_vendor_doc_sources,
@@ -35,6 +36,8 @@ from vendor_source_catalog import (
 )
 from project_registry_discovery import load_project_registry as load_project_registry_runtime
 from io_write_gateway import atomic_write_text, write_json_atomic
+
+configure_process_utf8_stdio()
 
 try:
     from task_center import TaskCenter

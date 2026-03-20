@@ -4,6 +4,7 @@
 
 所有自动消息输出与运行记录统一包含 `sender_identity` 字段，便于排查是谁发送、链路是否正常。
 对外聊天文案统一使用中文卡片，不直接展示文件路径，改为展示“留痕编号”。
+所有 cron 直接执行的 Python 入口都会强制把 `stdout/stderr` 统一为 UTF-8，并把 `PYTHONIOENCODING/PYTHONUTF8` 传给子进程，避免 Windows 上中文摘要在 Telegram/日志里出现乱码。
 
 - `policy/task_center.py`
   - 对外读取任务、stage run、module log、module communication、agent task report、planner summary、daily summary 等接口时，默认返回展示安全视图，只展示中文留痕编号。
