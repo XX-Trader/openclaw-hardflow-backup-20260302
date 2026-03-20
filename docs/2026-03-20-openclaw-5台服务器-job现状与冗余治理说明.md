@@ -7,7 +7,7 @@
 本次治理结论：
 
 1. `project_index_maintainer_30m` 的真实运行频率已经是 `4h`，只是名字和 `task-id` 仍然沿用旧标识。
-2. 仓库基线已统一改为 `project_index_maintainer_4h`，下次统一同步安装后，远端运行态会收敛到新名字。
+2. 仓库基线已统一改为 `project_index_maintainer_4h`，并已完成 5 台服务器统一同步安装，远端运行态已经收敛到新名字。
 3. 已从服务器上清理 3 个明确冗余 job：
    - `大白pm` 的重复 `task_executor_10m`
    - `tokyo-claw` 的重复 `web_intel_collect_hourly`
@@ -33,7 +33,7 @@
 11. `ops_git_sync_push`
 12. `ops_auto_update_install_hourly`
 13. `ops_local_openclaw_git_backup`
-14. `project_index_maintainer_30m`
+14. `project_index_maintainer_4h`
 15. `reviewer_incremental_daily_4am`
 16. `reviewer_weekly_structure_review`
 17. `web_intel_collect_hourly`
@@ -42,8 +42,8 @@
 
 说明：
 
-1. 远端运行态此刻仍显示 `project_index_maintainer_30m`，但它的真实 schedule 已经是 `everyMs=14400000`。
-2. 仓库代码与文档已经改为新的 canonical name：`project_index_maintainer_4h`。
+1. 远端运行态现在已经显示 `project_index_maintainer_4h`。
+2. 仓库代码、文档和运行态已经统一到新的 canonical name：`project_index_maintainer_4h`。
 
 ### 2.2 单机差异
 
@@ -87,20 +87,20 @@
 1. job name: `project_index_maintainer_4h`
 2. task-id: `cron:project-index-maintainer-4h`
 
-### 3.3 为什么这次没有直接硬改远端 live 名称
+### 3.3 本轮实际落地结果
 
-本次没有直接把 5 台服务器当前 live job 名称改成 `4h`，原因是远端 `ops_cron_runner`、`workflow_views`、安装脚本当前运行态还是旧版本。
+本轮已经按正式路径完成了远端切换：
 
-如果只改 `jobs.json` 名字，不同步远端脚本，会出现：
+1. 本地仓库先把 canonical name 和 task-id 收口到 `4h`
+2. 代码已推送到 `origin/main`
+3. 5 台目标服务器已完成 `git pull --ff-only`
+4. 5 台目标服务器已重新执行 `install_workflow_profile.py --profile core`
 
-1. 监控忽略名单和展示别名半新半旧
-2. 当前运行态与本地仓库状态短期分裂
+最终结果是：
 
-因此这次采用的策略是：
-
-1. 先把仓库基线收敛到 `4h`
-2. 先清理明确冗余 job
-3. 下次统一同步 workflow 并重装后，再让远端运行态一次性切到 `project_index_maintainer_4h`
+1. 5 台服务器的 live job 名称都已经切到 `project_index_maintainer_4h`
+2. payload 内的 task-id 也已经切到 `cron:project-index-maintainer-4h`
+3. 真实 schedule 仍然保持 `everyMs=14400000`
 
 ## 4. 两个日报 Job 的定义
 
@@ -145,14 +145,14 @@
 
 需要特别注意的是，在本次代码收口之前，这两条日报在 5 台服务器上的 delivery 都还是 `announce`，而且 `to` 是 Telegram 正整数 ID，不是群组 ID。
 
-这意味着它们之前更接近“发给某个具体 Telegram 用户”，而不是“发到群里”或“系统静默留痕”。
-
 本次策略已经统一调整为：
 
 1. `ops_daily_summary -> delivery=none`
 2. `ops_daily_work_report_dingtalk -> delivery=none`
 
-也就是说，日报结果统一改成静默留痕，不再额外发给特定个人。
+也就是说，日报结果已经统一改成静默留痕，不再额外发给特定个人。
+
+当前运行态会继续保留 `channel/to` 元数据，但由于 `mode=none`，它们不会实际向该个人发送日报。
 
 ## 5. 本次已清理的冗余 Job
 
@@ -341,8 +341,8 @@ ops_local_openclaw_git_backup
 
 建议按下面顺序继续收口：
 
-1. 下次统一同步安装 workflow 时，把远端运行态的 `project_index_maintainer_30m` 一次性切成 `project_index_maintainer_4h`
-2. 如果后面仍希望把日报发到群里，再单独补一层“每台服务器 -> 群目标”的显式映射
+1. 如果后面仍希望把日报发到群里，再单独补一层“每台服务器 -> 群目标”的显式映射
+2. 如果想把其他 `announce` 类运维任务也从个人改到群里，再统一收口 `channel/to` 策略
 
 ## 10. 更新时间
 
