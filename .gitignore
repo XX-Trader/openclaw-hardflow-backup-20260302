@@ -7,13 +7,8 @@ log/browserwing.log
 config.toml
 
 # Machine-specific runtime files
-.workflow/policy.env
-.workflow/openclaw-upstream-binding.json
-.workflow/project-index/
-.workflow/project-index-local/
-.workflow/executor-runs/
-.workflow/task-center/
-.workflow/tmp-*/
+.workflow/*
+!.workflow/openclaw-upstream-binding.example.json
 .tmp/
 scripts/openclaw-ops/policy/runtime/
 
