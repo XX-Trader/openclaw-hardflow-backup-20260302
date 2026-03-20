@@ -124,7 +124,7 @@
 - `lobster` 已正式启用：
   - `ops_governance_evolution_incremental:lobster`
   - `reviewer_git_update_hourly:lobster`
-- `project_index_maintainer_30m` 已切到正式 registry
+- `project_index_maintainer_4h` 已切到正式 registry
 - `schedule-registry.json` 已重新导出
 
 重要边界：

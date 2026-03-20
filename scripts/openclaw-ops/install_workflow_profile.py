@@ -228,7 +228,7 @@ def build_install_project_index_cmd(
         "--task-db",
         task_db,
         "--task-id",
-        "cron:project-index-maintainer-30m",
+        "cron:project-index-maintainer-4h",
         "--actor",
         "project-agent",
         "--no-git-pull",

@@ -172,8 +172,8 @@
     },
     {
       "job_id": "5797cd5b-5539-4e95-8d58-dc65a4633ec5",
-      "job_name": "project_index_maintainer_30m",
-      "schedule": "*/30 * * * *",
+      "job_name": "project_index_maintainer_4h",
+      "schedule": "14400000",
       "agent_id": "project-agent",
       "declared_exists": true,
       "agent_exists": true,

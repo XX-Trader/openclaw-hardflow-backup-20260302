@@ -23,7 +23,7 @@
 
 ### 建议开
 
-- `project_index_maintainer_30m`
+- `project_index_maintainer_4h`
   - 保留原 job 名称与 job id，避免破坏现有观测与历史映射
   - 调整为“按 git HEAD 变更触发索引，4 小时兜底执行一次”
   - 额外写入 `project-index-state.json`，记录上次已索引的 git HEAD
@@ -63,7 +63,7 @@
 
 ### 1. 项目索引不要固定 30 分钟硬跑
 
-原来的 `project_index_maintainer_30m` 固定轮询过于频繁，而且在 git HEAD 没变化时重建索引没有收益，只会增加：
+原来的 `project_index_maintainer_4h` 命名沿用了旧时代的 30m 叫法，但真实策略已经是 Git 变化触发加 4 小时兜底；在 git HEAD 没变化时重建索引没有收益，只会增加：
 
 - 文件扫描成本
 - 文档抓取成本
@@ -155,7 +155,7 @@
 
 ### pm-website 运行态
 
-- `project_index_maintainer_30m`
+- `project_index_maintainer_4h`
   - 改为 `everyMs=14400000`
 - `reviewer_incremental_daily_4am`
   - `enabled=false`
@@ -174,7 +174,7 @@
 
 ## 验收点
 
-- `project_index_maintainer_30m` 运行后会生成 `project-index-state.json`
+- `project_index_maintainer_4h` 运行后会生成 `project-index-state.json`
 - 同一 git HEAD 下重复执行时，任务应返回 skip，而不是重复重建
 - `pm-website` 的 reviewer 只剩周审查启用
 - `openclaw cron status --json` 中不再显示 reviewer 日审查为 active

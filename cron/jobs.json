@@ -126,21 +126,21 @@
     {
       "id": "5797cd5b-5539-4e95-8d58-dc65a4633ec5",
       "agentId": "project-agent",
-      "name": "project_index_maintainer_30m",
-      "description": "Project index maintainer with git pull (every 30m)",
+      "name": "project_index_maintainer_4h",
+      "description": "Project index maintainer (git HEAD change driven, every 4h fallback)",
       "enabled": true,
       "createdAtMs": 1772438672175,
       "updatedAtMs": 1772642376140,
       "schedule": {
-        "kind": "cron",
-        "expr": "*/30 * * * *",
-        "tz": "Asia/Shanghai"
+        "kind": "every",
+        "everyMs": 14400000,
+        "anchorMs": 1772438672175
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/policy/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --task-db $HOME/.openclaw/ops/task-center/task_center.db --task-id cron:project-index-maintainer-30m --actor project-agent --git-pull --doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change\nReply only command output; if output is empty, reply NO_REPLY.",
+        "message": "You are scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/policy/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --task-db $HOME/.openclaw/ops/task-center/task_center.db --task-id cron:project-index-maintainer-4h --actor project-agent --doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change\nReply only command output; if output is empty, reply NO_REPLY.",
         "timeoutSeconds": 1800
       },
       "delivery": {
@@ -149,7 +149,7 @@
         "to": "-1003333097130"
       },
       "state": {
-        "nextRunAtMs": 1772442000000,
+        "nextRunAtMs": 1772656776140,
         "lastRunAtMs": 1772440200562,
         "lastRunStatus": "ok",
         "lastStatus": "ok",

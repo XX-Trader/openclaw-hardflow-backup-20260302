@@ -28,7 +28,7 @@ python3 scripts/openclaw-ops/install_workflow_profile.py \
 |---|---|---|---|---|---|
 | 1 | 运维 agent 定期把到期 TODO 发给规划者执行 | core/all | `todo_patrol_15m` | `install_todo_patrol_job.py` | 每 15 分钟 |
 | 2 | 运维 agent 监控日志问题并去重报警；失败工作流自动派生给优化 agent 的修复任务 | core/all | `ops_incremental_monitor` + `ops_full_calibration` + `ops_daily_summary` | `cron_setup.py`（由 profile 安装器调用） | 15 分钟 + 6 小时 + 每日 |
-| 3 | 项目 agent 同步项目 git 与索引（含本地 `~/.openclaw` 备份链路） | core/all | `project_index_maintainer_30m` + `ops_git_sync_push` + `ops_local_openclaw_git_backup` | `install_project_index_job.py` + `cron_setup.py` + `install_local_openclaw_backup_job.py` | Git 更新触发 / 4 小时兜底 + 6 小时 + 1 小时 |
+| 3 | 项目 agent 同步项目 git 与索引（含本地 `~/.openclaw` 备份链路） | core/all | `project_index_maintainer_4h` + `ops_git_sync_push` + `ops_local_openclaw_git_backup` | `install_project_index_job.py` + `cron_setup.py` + `install_local_openclaw_backup_job.py` | Git 更新触发 / 4 小时兜底 + 6 小时 + 1 小时 |
 | 4 | 优化 agent 基于本地 openclaw/git 更新优化工作流项目，并可选创建/更新 PR | core/all | `ops_governance_evolution_incremental` | `cron_setup.py` | 6 小时 |
 | 5 | 优化 agent 做周度自我复盘并生成 TODO 任务包 | core/all | `ops_self_evolution_weekly_todo` | `cron_setup.py` | 每周 |
 | 6 | 优化 agent 从互联网搜进化技能并反哺工作流项目 | all | `ops_github_web_evolution_incremental` | `cron_setup.py`（仅 `--profile all`，按需启用） | 12 小时 |
@@ -36,7 +36,7 @@ python3 scripts/openclaw-ops/install_workflow_profile.py \
 补充说明：
 
 - `ops_conversation_evolution_incremental` 已不再由默认安装链路自动安装。
-- `project_index_maintainer_30m` 默认会附带 `--disable-memory-index-on-change` 与 `--skip-unchanged-git-projects`，避免在第三方记忆模式下主动刷新官方 memory index，也避免在 git HEAD 未变化时重复重建索引。
+- `project_index_maintainer_4h` 默认会附带 `--disable-memory-index-on-change` 与 `--skip-unchanged-git-projects`，避免在第三方记忆模式下主动刷新官方 memory index，也避免在 git HEAD 未变化时重复重建索引。
 - `ops_governance_evolution_incremental` 已支持可选 `auto-pr`，适合和 reviewer 的 PR gate 组合使用。
 - `reviewer_git_update_hourly` 不再推荐作为运行节点上的“全仓高频扫描器”；若启用，更推荐使用 `--pr-gate-only` 收口为 open PR 审查与自动合并 gate。
 | 7 | 每日工作总结（todo/done）并发送钉钉 | core/all | `ops_daily_work_report_dingtalk` | `cron_setup.py` | 每日 00:15 |

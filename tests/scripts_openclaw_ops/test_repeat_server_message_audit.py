@@ -44,7 +44,7 @@ class RepeatServerMessageAuditTests(unittest.TestCase):
             {"ts_sort": 40, "delivered": False, "summary": "", "job_name": "ops_incremental_monitor"},
             {"ts_sort": 39, "delivered": True, "summary": "Let's run the scheduled command.", "job_name": "todo_patrol_15m"},
             {"ts_sort": 38, "delivered": True, "summary": "# local-git-backup", "job_name": "ops_local_openclaw_git_backup"},
-            {"ts_sort": 37, "delivered": False, "summary": "", "job_name": "project_index_maintainer_30m"},
+            {"ts_sort": 37, "delivered": False, "summary": "", "job_name": "project_index_maintainer_4h"},
         ]
         summary = module.summarize_entries(entries, recent_limit=50, latest_limit=20)
         self.assertEqual(summary["recent_delivered_checked"], 2)

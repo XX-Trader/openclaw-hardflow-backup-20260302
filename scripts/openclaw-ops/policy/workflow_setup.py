@@ -2408,7 +2408,7 @@ def main() -> int:
             }
             if cron_ok and verify_job_paths_enabled:
                 verify_names = [
-                    "project_index_maintainer_30m",
+                    "project_index_maintainer_4h",
                     "ops_incremental_monitor",
                     "ops_full_calibration",
                     "ops_daily_summary",

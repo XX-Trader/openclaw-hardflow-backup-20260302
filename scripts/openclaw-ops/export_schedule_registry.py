@@ -49,7 +49,7 @@ KNOWN_SCHEDULE_METADATA: dict[str, dict[str, Any]] = {
         "failure_signals": ["partial", "failed", "cron timeout", "gateway error"],
         "maintenance_entry": "install_task_executor_job.py / policy/task_executor_runner.py",
     },
-    "project_index_maintainer_30m": {
+    "project_index_maintainer_4h": {
         "owner_agent": "project-agent",
         "executor_agent": "project-agent",
         "capability": "maintain_project_index",

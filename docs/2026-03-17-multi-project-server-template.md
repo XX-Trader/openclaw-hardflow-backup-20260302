@@ -140,7 +140,7 @@
 
 这类任务可共享，但其输入必须是完整 `project-registry`：
 
-- `project_index_maintainer_30m`
+- `project_index_maintainer_4h`
 
 推荐配置：
 
@@ -393,7 +393,7 @@
 
 多项目模式落地后，至少检查：
 
-- `project_index_maintainer_30m` 能看到所有登记项目
+- `project_index_maintainer_4h` 能看到所有登记项目
 - 同一项目 Git HEAD 不变时索引会 skip
 - 每个 governance job 都只命中自己的 `repo-id`
 - 每个 reviewer gate job 的 `workspace` 都是对应 repo 根目录

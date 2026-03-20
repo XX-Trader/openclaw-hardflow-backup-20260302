@@ -135,7 +135,7 @@ def upsert_job(
     payload = {
         "id": job_id,
         "agentId": "project-agent",
-        "name": "project_index_maintainer_30m",
+        "name": "project_index_maintainer_4h",
         "description": "Project index + dynamic docs knowledge maintainer (git HEAD change driven, every 4h fallback)",
         "enabled": True,
         "createdAtMs": created_at,
@@ -190,7 +190,7 @@ def main() -> None:
     parser.add_argument("--maintainer-py", default=str(home / ".openclaw/ops/policy/project_index_maintainer.py"))
     parser.add_argument("--registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
     parser.add_argument("--task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
-    parser.add_argument("--task-id", default="cron:project-index-maintainer-30m")
+    parser.add_argument("--task-id", default="cron:project-index-maintainer-4h")
     parser.add_argument("--actor", default="project-agent")
     parser.add_argument("--git-pull", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--disable-memory-index-on-change", action=argparse.BooleanOptionalAction, default=True)
@@ -218,7 +218,7 @@ def main() -> None:
     maintainer_path = Path(args.maintainer_py).expanduser()
     registry_path = Path(args.registry).expanduser()
     task_db_path = Path(args.task_db).expanduser()
-    task_id = str(args.task_id or "").strip() or "cron:project-index-maintainer-30m"
+    task_id = str(args.task_id or "").strip() or "cron:project-index-maintainer-4h"
     actor = str(args.actor or "").strip() or "project-agent"
     if not bool(args.skip_path_check):
         if not maintainer_path.exists() or not maintainer_path.is_file():

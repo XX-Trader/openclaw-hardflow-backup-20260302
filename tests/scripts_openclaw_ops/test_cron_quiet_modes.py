@@ -1159,7 +1159,7 @@ class CronQuietModeTests(unittest.TestCase):
             maintainer_py="/home/ubuntu/.openclaw/ops/policy/project_index_maintainer.py",
             registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
             task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            task_id="cron:project-index-maintainer-30m",
+            task_id="cron:project-index-maintainer-4h",
             actor="project-agent",
             git_pull=False,
             disable_memory_index_on_change=True,
@@ -1181,7 +1181,7 @@ class CronQuietModeTests(unittest.TestCase):
             maintainer_py="/home/ubuntu/.openclaw/ops/policy/project_index_maintainer.py",
             registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
             task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            task_id="cron:project-index-maintainer-30m",
+            task_id="cron:project-index-maintainer-4h",
             actor="project-agent",
             git_pull=False,
             disable_memory_index_on_change=True,
@@ -1207,7 +1207,7 @@ class CronQuietModeTests(unittest.TestCase):
             maintainer_py="/home/ubuntu/.openclaw/ops/policy/project_index_maintainer.py",
             registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
             task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            task_id="cron:project-index-maintainer-30m",
+            task_id="cron:project-index-maintainer-4h",
             actor="project-agent",
             git_pull=False,
             disable_memory_index_on_change=True,
@@ -1361,13 +1361,13 @@ class CronQuietModeTests(unittest.TestCase):
         jobs = [
             {
                 "id": "job-project-index",
-                "name": "project_index_maintainer_30m",
+                "name": "project_index_maintainer_4h",
                 "enabled": True,
                 "payload": {"kind": "agentTurn", "message": "old"},
             }
         ]
         result = module.harden_known_jobs(jobs, Path("/home/ubuntu/.openclaw"))
-        self.assertEqual(result["status"]["project_index_maintainer_30m"], "hardened")
+        self.assertEqual(result["status"]["project_index_maintainer_4h"], "hardened")
         self.assertNotIn("--git-pull", jobs[0]["payload"]["message"])
 
     def test_cron_setup_prompt_requires_single_exec_call(self):
@@ -1846,7 +1846,7 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertEqual(jobs[0]["payload"]["model"], "glmcode/glm-4.7")
         self.assertTrue(jobs[0]["payload"]["lightContext"])
 
-    def test_daily_work_report_job_announces_and_carries_todo_files(self):
+    def test_daily_work_report_job_defaults_to_silent_delivery_and_carries_todo_files(self):
         module = load_module(
             "cron_setup",
             "scripts/openclaw-ops/cron_setup.py",
@@ -1867,12 +1867,36 @@ class CronQuietModeTests(unittest.TestCase):
                 "/home/ubuntu/openclaw-hardflow-backup-20260302/TODO.md",
             ],
         )
-        self.assertEqual(job["delivery"]["mode"], "announce")
+        self.assertEqual(job["delivery"]["mode"], "none")
+        self.assertNotIn("failureAlert", job)
         message = job["payload"]["message"]
         self.assertIn("--todo-file /home/ubuntu/openclaw-hardflow-backup-20260302/todo.md", message)
         self.assertIn("--todo-file /home/ubuntu/openclaw-hardflow-backup-20260302/TODO.md", message)
         self.assertEqual(job["payload"]["model"], "glmcode/glm-4.7")
         self.assertTrue(job["payload"]["lightContext"])
+
+    def test_ops_daily_summary_job_defaults_to_silent_delivery(self):
+        module = load_module(
+            "cron_setup",
+            "scripts/openclaw-ops/cron_setup.py",
+        )
+        jobs = module.build_core_jobs(
+            runner_py="/home/ubuntu/.openclaw/ops/ops_cron_runner.py",
+            config_file="/home/ubuntu/.openclaw/ops/cron-monitor-config.json",
+            state_file="/home/ubuntu/.openclaw/ops/cron-monitor-state.json",
+            history_dir="/home/ubuntu/.openclaw/ops/cron-runs",
+            every_ms=900000,
+            full_expr="23 */6 * * *",
+            daily_expr="5 0 * * *",
+            tz_name="Asia/Shanghai",
+            daily_major_only=True,
+            incremental_log_mode="silent",
+            full_log_mode="silent",
+            daily_log_mode="silent",
+        )
+        daily_job = next(item for item in jobs if item["name"] == "ops_daily_summary")
+        self.assertEqual(daily_job["delivery"]["mode"], "none")
+        self.assertNotIn("failureAlert", daily_job)
 
     def test_web_intel_jobs_default_to_silent_delivery(self):
         module = load_module(

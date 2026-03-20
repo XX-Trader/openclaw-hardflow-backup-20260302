@@ -9,7 +9,7 @@
 以下维护型任务安装后仍保持 `delivery.mode=none`，但不再额外写入 `failureAlert`：
 
 - `todo_patrol_15m`
-- `project_index_maintainer_30m`
+- `project_index_maintainer_4h`
 - `ops_conversation_evolution_incremental`
 - `ops_governance_evolution_incremental`
 - `ops_github_web_evolution_incremental`

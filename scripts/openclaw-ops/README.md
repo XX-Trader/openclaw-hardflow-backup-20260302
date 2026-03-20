@@ -116,7 +116,7 @@
 ## pm-website Cron 基线
 
 - [docs/2026-03-17-pm-website-cron-baseline.md](../../docs/2026-03-17-pm-website-cron-baseline.md)
-  - 记录了 `pm-website` 上推荐保留/关闭的 cron 策略、`project_index_maintainer_30m` 的 git HEAD 留痕与 4 小时兜底策略、以及 reviewer 只保留周审查的实施口径。
+  - 记录了 `pm-website` 上推荐保留/关闭的 cron 策略、`project_index_maintainer_4h` 的 git HEAD 留痕与 4 小时兜底策略、以及 reviewer 只保留周审查的实施口径。
 
 ## PR 审查 / 自动合并改造方案
 

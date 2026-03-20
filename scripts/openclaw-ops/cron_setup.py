@@ -35,6 +35,7 @@ DEFAULT_FAILURE_ALERT_COOLDOWN_MS = 30 * 60 * 1000
 DEFAULT_MAINTENANCE_CRON_MODEL = "glmcode/glm-4.7"
 DEFAULT_WORKFLOW_MONITOR_IGNORED_JOB_NAMES = {
     "todo_patrol_15m",
+    "project_index_maintainer_4h",
     "project_index_maintainer_30m",
     "ops_conversation_evolution_incremental",
     "ops_governance_evolution_incremental",
@@ -654,13 +655,13 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
             ),
             "timeout": 1200,
         },
-        "project_index_maintainer_30m": {
+        "project_index_maintainer_4h": {
             "description": "Project index maintainer (stable python runner, compact failure output)",
             "command": (
                 f"python3 {ops_dir / 'policy' / 'project_index_maintainer.py'} "
                 f"--registry {ops_dir / 'task-center' / 'project-registry.json'} "
                 f"--task-db {ops_dir / 'task-center' / 'task_center.db'} "
-                "--task-id cron:project-index-maintainer-30m --actor project-agent "
+                "--task-id cron:project-index-maintainer-4h --actor project-agent "
                 "--doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change"
             ),
             "timeout": 1800,
@@ -677,6 +678,9 @@ def harden_known_jobs(jobs: list[dict[str, Any]], openclaw_home: Path) -> dict[s
     if isinstance(log_watcher_spec, dict):
         for alias in sorted(log_watcher_name_aliases):
             known[alias] = log_watcher_spec
+    project_index_spec = known.get("project_index_maintainer_4h")
+    if isinstance(project_index_spec, dict):
+        known["project_index_maintainer_30m"] = project_index_spec
 
     status: dict[str, str] = {}
     refs: list[str] = []
@@ -795,6 +799,7 @@ def build_core_jobs(
             "sessionTarget": "isolated",
             "wakeMode": "now",
             "payload": {"kind": "agentTurn", "message": build_message(cmd_daily), "timeoutSeconds": 1800},
+            "delivery": build_delivery(mode="none"),
         },
     ]
 
@@ -903,8 +908,7 @@ def build_daily_work_job(
             "lightContext": True,
             "timeoutSeconds": 1200,
         },
-        "delivery": build_delivery(mode="announce"),
-        "failureAlert": build_failure_alert(),
+        "delivery": build_delivery(mode="none"),
     }
 
 
