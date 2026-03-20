@@ -11,6 +11,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from utf8_runtime import configure_process_utf8_stdio
+
+configure_process_utf8_stdio()
+
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
 NOTIFY_ON_MODES = {"error", "all"}

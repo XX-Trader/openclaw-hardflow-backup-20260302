@@ -29,11 +29,14 @@ POLICY_DIR = ROOT / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
+from utf8_runtime import configure_process_utf8_stdio
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore
 from chat_output import build_trace_id, render_chat_notice
 from scrapling_runtime import fetch_with_scrapling_browser  # type: ignore
 from task_capability_binding import extend_create_task_args_with_constraints
 from web_sources_runtime import load_runtime_sources  # type: ignore
+
+configure_process_utf8_stdio()
 
 UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}

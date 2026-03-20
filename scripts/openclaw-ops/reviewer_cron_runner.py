@@ -35,6 +35,7 @@ ROOT = Path(__file__).resolve().parent
 POLICY_DIR = ROOT / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
+from utf8_runtime import configure_process_utf8_stdio
 from task_capability_binding import build_task_constraint_fields  # type: ignore
 try:
     from task_center import TaskCenter  # type: ignore
@@ -44,6 +45,8 @@ except Exception:  # pragma: no cover
     FileWriteError = RuntimeError  # type: ignore
     write_json_atomic = None  # type: ignore
 from chat_output import render_chat_notice, short_location_label
+
+configure_process_utf8_stdio()
 
 CONTEXT_GATE_BLOCK_MODES = {"daily_incremental", "bi_daily_recurring", "weekly_structure"}
 SKIP_DIR_NAMES = {

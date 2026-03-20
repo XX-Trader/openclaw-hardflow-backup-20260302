@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from utf8_runtime import configure_process_utf8_stdio
 from chat_output import format_beijing_time
 from workflow_views import build_task_executor_event, render_human_view
 from policy_enforcer import PolicyEnforcer, RuntimePaths, cmd_init, runtime_defaults  # type: ignore
@@ -36,6 +37,8 @@ from alert_dedupe import (
     save_dedupe_state,
     workflow_tokens_from_job_ids,
 )
+
+configure_process_utf8_stdio()
 
 UTC = timezone.utc
 GOVERNANCE_BRIDGE_EPILOG = (

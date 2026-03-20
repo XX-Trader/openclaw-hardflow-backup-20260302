@@ -34,6 +34,7 @@ POLICY_DIR = Path(__file__).resolve().parent / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
+from utf8_runtime import configure_process_utf8_stdio
 from io_write_gateway import FileWriteError, append_text_atomic, write_json_atomic
 from alert_dedupe import (
     WORKFLOW_FAILURE_BUCKET,
@@ -46,6 +47,8 @@ from alert_dedupe import (
 )
 from task_capability_binding import extend_create_task_args_with_constraints
 from workflow_views import build_follow_up_progress_lines, build_ops_scan_event, render_human_view
+
+configure_process_utf8_stdio()
 
 TZ = timezone(timedelta(hours=8))
 UTC = timezone.utc
