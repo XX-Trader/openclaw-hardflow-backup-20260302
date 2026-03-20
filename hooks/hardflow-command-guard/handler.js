@@ -1,7 +1,23 @@
 import { access } from "node:fs/promises";
 import path from "node:path";
 
-export default async function hardflowCommandGuard(event: any): Promise<void> {
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate the HardFlow workspace files before /new or /reset commands run.
+ *
+ * @param {any} event OpenClaw command hook event. `event.messages` should be an array when present.
+ * @returns {Promise<void>} Resolves after appending a readiness or block message.
+ * @throws {Error} Propagates filesystem errors only when the guard cannot read required files.
+ */
+export default async function hardflowCommandGuard(event) {
   if (event?.type !== "command") {
     return;
   }
@@ -9,6 +25,7 @@ export default async function hardflowCommandGuard(event: any): Promise<void> {
     return;
   }
 
+  const messages = Array.isArray(event?.messages) ? event.messages : [];
   const workspaceDir = event?.context?.workspaceDir || process.cwd();
   const homeDir = process.env.HOME || "";
   const sharedPolicyDir = process.env.OPENCLAW_POLICY_ROOT || path.join(homeDir, ".openclaw", "ops", "policy");
@@ -38,34 +55,30 @@ export default async function hardflowCommandGuard(event: any): Promise<void> {
     },
   ];
 
-  const missing: string[] = [];
-  for (const rel of required) {
-    try {
-      await access(path.join(workspaceDir, rel));
-    } catch {
-      missing.push(rel);
+  const missing = [];
+  for (const relPath of required) {
+    if (!(await fileExists(path.join(workspaceDir, relPath)))) {
+      missing.push(relPath);
     }
   }
 
   for (const item of requiredPolicyFallback) {
-    const workspacePolicy = path.join(workspaceDir, item.local);
-    try {
-      await access(workspacePolicy);
+    const workspacePolicyPath = path.join(workspaceDir, item.local);
+    if (await fileExists(workspacePolicyPath)) {
       continue;
-    } catch {}
-    try {
-      await access(item.shared);
+    }
+    if (await fileExists(item.shared)) {
       continue;
-    } catch {}
+    }
     missing.push(`${item.local} (or ${item.shared})`);
   }
 
   if (missing.length === 0) {
-    event.messages.push("[HardFlow Guard] workflow core files are ready.");
+    messages.push("[HardFlow Guard] workflow core files are ready.");
     return;
   }
 
-  event.messages.push(
+  messages.push(
     [
       "[HardFlow Guard] required files are missing.",
       `missing: ${missing.join(", ")}`,

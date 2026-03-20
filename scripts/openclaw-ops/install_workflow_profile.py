@@ -159,6 +159,7 @@ def build_install_task_executor_cmd(
     here: Path,
     jobs_file: str,
     ops_home: str,
+    workflow_repo_path: str,
     task_db: str,
     every_ms: int,
     max_tasks: int,
@@ -184,6 +185,8 @@ def build_install_task_executor_cmd(
         "coordinator",
         "--planner-id",
         "coordinator",
+        "--agent-capability-manifest",
+        str(Path(workflow_repo_path) / "agents/agent_capability_manifest.json"),
         "--openclaw-bin",
         "openclaw",
         "--report-dir",
@@ -596,6 +599,30 @@ def build_ensure_runtime_skills_cmd(
     return cmd
 
 
+def build_sync_openclaw_hooks_cmd(
+    *,
+    python_bin: str,
+    here: Path,
+    workflow_repo_path: str,
+    openclaw_home: str,
+    dry_run: bool,
+) -> list[str]:
+    hooks_source_dir = str((Path(workflow_repo_path) / "hooks").resolve())
+    hooks_runtime_dir = str((Path(openclaw_home) / "hooks-runtime").resolve())
+    cmd = [
+        python_bin,
+        str(here / "sync_openclaw_hooks_files.py"),
+        "--source-dir",
+        hooks_source_dir,
+        "--target-hooks-dir",
+        hooks_runtime_dir,
+        "--emit-json",
+    ]
+    if dry_run:
+        cmd.append("--dry-run")
+    return cmd
+
+
 def build_sync_runtime_plugin_overrides_cmd(
     *,
     python_bin: str,
@@ -787,9 +814,14 @@ def preserve_local_telegram_credentials(base_cfg: dict[str, Any], merged_cfg: di
     return preserved
 
 
-def apply_runtime_bridge_config(merged_cfg: dict[str, Any], workflow_repo_path: str) -> dict[str, Any]:
+def apply_runtime_bridge_config(
+    merged_cfg: dict[str, Any],
+    workflow_repo_path: str,
+    hooks_runtime_dir: str,
+) -> dict[str, Any]:
     workflow_root = Path(workflow_repo_path).resolve()
     hooks_dir = workflow_root / "hooks"
+    hooks_runtime_path = Path(hooks_runtime_dir).resolve()
     skills_dir = workflow_root / "skills"
     compatibility_cleanup: list[str] = []
 
@@ -800,6 +832,7 @@ def apply_runtime_bridge_config(merged_cfg: dict[str, Any], workflow_repo_path: 
 
     env_cfg = ensure_object(ensure_object(merged_cfg, "env"), "vars")
     env_cfg["HARDFLOW_OPENCLAW_HOOKS_SOURCE_DIR"] = str(hooks_dir)
+    env_cfg["HARDFLOW_OPENCLAW_HOOKS_RUNTIME_DIR"] = str(hooks_runtime_path)
     env_cfg["HARDFLOW_OPENCLAW_SKILLS_SOURCE_DIR"] = str(skills_dir)
 
     hooks_cfg = ensure_object(merged_cfg, "hooks")
@@ -817,9 +850,11 @@ def apply_runtime_bridge_config(merged_cfg: dict[str, Any], workflow_repo_path: 
         "workflow_repo_path": str(workflow_root),
         "hooks": {
             "managed_by": "official-hooks-loader",
-            "install_mode": "config-extraDirs",
+            "install_mode": "runtime-extraDirs",
             "source_dir": str(hooks_dir),
+            "runtime_dir": str(hooks_runtime_path),
             "exists": hooks_dir.exists(),
+            "runtime_entry_policy": "handler-js-runtime",
             "core_entries": list(CORE_RUNTIME_HOOKS),
             "link_commands": [
                 render_cmd(["openclaw", "hooks", "install", "-l", str((hooks_dir / hook_id).resolve())])
@@ -848,9 +883,9 @@ def apply_runtime_bridge_config(merged_cfg: dict[str, Any], workflow_repo_path: 
     if hooks_dir.exists():
         load_cfg = ensure_object(internal_cfg, "load")
         extra_dirs = normalize_string_list(load_cfg.get("extraDirs"))
-        hooks_dir_text = str(hooks_dir)
-        if hooks_dir_text not in extra_dirs:
-            extra_dirs.append(hooks_dir_text)
+        hooks_runtime_text = str(hooks_runtime_path)
+        if hooks_runtime_text not in extra_dirs:
+            extra_dirs.append(hooks_runtime_text)
         load_cfg["extraDirs"] = extra_dirs
         bridge["hooks"]["extra_dirs"] = list(extra_dirs)
 
@@ -876,6 +911,7 @@ def sync_overlay_config(
     vendor_runtime_root: str,
     boundary_doc_path: str,
     workflow_repo_path: str,
+    hooks_runtime_dir: str,
     dry_run: bool,
 ) -> dict[str, Any]:
     source = Path(source_path)
@@ -917,7 +953,11 @@ def sync_overlay_config(
     preserved_local_keys = preserve_local_telegram_credentials(target_cfg, merged_cfg)
     if preserved_local_keys:
         result["preserved_local_config_keys"] = preserved_local_keys
-    result["runtime_bridge"] = apply_runtime_bridge_config(merged_cfg, workflow_repo_path=workflow_repo_path)
+    result["runtime_bridge"] = apply_runtime_bridge_config(
+        merged_cfg,
+        workflow_repo_path=workflow_repo_path,
+        hooks_runtime_dir=hooks_runtime_dir,
+    )
     changed = (not target.exists()) or (merged_cfg != target_cfg)
     result["changed"] = changed
     if (not changed) or dry_run:
@@ -1324,6 +1364,7 @@ def main() -> None:
     vendor_runtime_root = str((Path(workflow_repo_path) / "vendor" / "openclaw-official").resolve())
     runtime_boundary_doc = str((Path(workflow_repo_path) / "integration" / "openclaw-bridge" / "runtime-boundary.md").resolve())
     hooks_source_dir = str((Path(workflow_repo_path) / "hooks").resolve())
+    hooks_runtime_dir = str((Path(openclaw_home) / "hooks-runtime").resolve())
     skills_source_dir = str((Path(workflow_repo_path) / "skills").resolve())
     plugin_overrides_source_dir = str((here / "runtime-plugin-overrides").resolve())
     required_skills_manifest = normalize_path(args.required_skills_manifest) if str(args.required_skills_manifest).strip() else str(
@@ -1358,6 +1399,7 @@ def main() -> None:
         here=here,
         jobs_file=jobs_file,
         ops_home=ops_home,
+        workflow_repo_path=workflow_repo_path,
         task_db=task_db,
         every_ms=int(args.task_executor_every_ms),
         max_tasks=int(args.task_executor_max_tasks),
@@ -1613,6 +1655,13 @@ def main() -> None:
         manifest_path=required_skills_manifest,
         dry_run=bool(args.dry_run),
     )
+    sync_runtime_hooks_cmd = build_sync_openclaw_hooks_cmd(
+        python_bin=args.python_bin,
+        here=here,
+        workflow_repo_path=workflow_repo_path,
+        openclaw_home=openclaw_home,
+        dry_run=bool(args.dry_run),
+    )
     sync_runtime_plugin_overrides_cmd = build_sync_runtime_plugin_overrides_cmd(
         python_bin=args.python_bin,
         here=here,
@@ -1653,6 +1702,8 @@ def main() -> None:
         steps.append(("normalize_openclaw_home_paths (linux compatibility)", normalize_paths_cmd))
     if bool(args.ensure_runtime_skills):
         steps.append(("ensure_runtime_skills (required skills and bins)", ensure_runtime_skills_cmd))
+    if Path(hooks_source_dir).exists():
+        steps.append(("sync_runtime_hooks (runtime-safe hooks copy)", sync_runtime_hooks_cmd))
     if Path(plugin_overrides_source_dir).exists():
         steps.append(("sync_runtime_plugin_overrides (managed plugin patches)", sync_runtime_plugin_overrides_cmd))
     steps.append(("normalize_runtime_binding_tasks (legacy backlog cleanup)", normalize_runtime_binding_tasks_cmd))
@@ -1706,6 +1757,7 @@ def main() -> None:
     print(f"vendor_runtime_root={vendor_runtime_root}")
     print(f"runtime_boundary_doc={runtime_boundary_doc}")
     print(f"hooks_source_dir={hooks_source_dir}")
+    print(f"hooks_runtime_dir={hooks_runtime_dir}")
     print(f"skills_source_dir={skills_source_dir}")
     print(f"plugin_overrides_source_dir={plugin_overrides_source_dir}")
     print(f"required_skills_manifest={required_skills_manifest}")
@@ -1729,6 +1781,7 @@ def main() -> None:
             vendor_runtime_root=vendor_runtime_root,
             boundary_doc_path=runtime_boundary_doc,
             workflow_repo_path=workflow_repo_path,
+            hooks_runtime_dir=hooks_runtime_dir,
             dry_run=bool(args.dry_run),
         )
         print(f"\n== {OVERLAY_SYNC_STEP} ==")
@@ -1774,6 +1827,7 @@ def main() -> None:
             "local_config_path": local_config_path,
             "boundary_doc": runtime_boundary_doc,
             "hooks_source_dir": hooks_source_dir,
+            "hooks_runtime_dir": hooks_runtime_dir,
             "skills_source_dir": skills_source_dir,
             "plugin_overrides_source_dir": plugin_overrides_source_dir,
             "sync_overlay_config": bool(args.sync_overlay_config),

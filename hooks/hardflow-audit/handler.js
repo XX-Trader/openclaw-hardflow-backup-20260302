@@ -1,7 +1,14 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 
-export default async function hardflowAudit(event: any): Promise<void> {
+/**
+ * Append command events to the workflow audit log.
+ *
+ * @param {any} event OpenClaw command hook event.
+ * @returns {Promise<void>} Resolves after appending a JSONL record when the event is a command.
+ * @throws {Error} Propagates filesystem write failures after logging the underlying message.
+ */
+export default async function hardflowAudit(event) {
   if (event?.type !== "command") {
     return;
   }
@@ -9,7 +16,6 @@ export default async function hardflowAudit(event: any): Promise<void> {
   const workspaceDir = event?.context?.workspaceDir || process.cwd();
   const logDir = path.join(workspaceDir, ".workflow", "hook-audit");
   const logFile = path.join(logDir, "commands.log");
-
   const record = {
     ts: event?.timestamp?.toISOString?.() ?? new Date().toISOString(),
     type: event?.type ?? "unknown",
@@ -23,8 +29,8 @@ export default async function hardflowAudit(event: any): Promise<void> {
   try {
     await mkdir(logDir, { recursive: true });
     await appendFile(logFile, `${JSON.stringify(record)}\n`, "utf8");
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error(`[hardflow-audit] append log failed: ${message}`);
   }
 }

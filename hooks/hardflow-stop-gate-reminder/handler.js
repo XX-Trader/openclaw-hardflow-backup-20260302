@@ -1,9 +1,9 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 
-async function gatePassed(file: string): Promise<"passed" | "failed" | "missing"> {
+async function gatePassed(filePath) {
   try {
-    const raw = await readFile(file, "utf8");
+    const raw = await readFile(filePath, "utf8");
     const data = JSON.parse(raw);
     return data?.passed === true ? "passed" : "failed";
   } catch {
@@ -11,20 +11,28 @@ async function gatePassed(file: string): Promise<"passed" | "failed" | "missing"
   }
 }
 
-async function fileExists(file: string): Promise<boolean> {
+async function fileExists(filePath) {
   try {
-    await access(file);
+    await access(filePath);
     return true;
   } catch {
     return false;
   }
 }
 
-export default async function hardflowStopGateReminder(event: any): Promise<void> {
+/**
+ * Remind the operator about unresolved gates before `/stop` finishes.
+ *
+ * @param {any} event OpenClaw command hook event.
+ * @returns {Promise<void>} Resolves after appending a stop-state reminder message.
+ * @throws {Error} Propagates filesystem errors only when required gate files cannot be inspected.
+ */
+export default async function hardflowStopGateReminder(event) {
   if (event?.type !== "command" || event?.action !== "stop") {
     return;
   }
 
+  const messages = Array.isArray(event?.messages) ? event.messages : [];
   const workspaceDir = event?.context?.workspaceDir || process.cwd();
   const gateDir = path.join(workspaceDir, ".workflow", "gates");
   const stateFile = path.join(workspaceDir, ".workflow", "current_run_id");
@@ -55,29 +63,29 @@ export default async function hardflowStopGateReminder(event: any): Promise<void
     }
   }
 
-  const missing: string[] = [];
-  const failed: string[] = [];
+  const missing = [];
+  const failed = [];
 
-  for (const gate of required) {
-    const status = await gatePassed(path.join(gateDir, `${gate}.json`));
+  for (const gateName of required) {
+    const status = await gatePassed(path.join(gateDir, `${gateName}.json`));
     if (status === "missing") {
-      missing.push(gate);
+      missing.push(gateName);
     } else if (status === "failed") {
-      failed.push(gate);
+      failed.push(gateName);
     }
   }
 
   if (missing.length === 0 && failed.length === 0) {
-    event.messages.push("HardFlow 收口检查已通过，所有必需门禁均已通过。");
+    messages.push("HardFlow stop reminder: all required gates are passed.");
     return;
   }
 
-  event.messages.push(
+  messages.push(
     [
-      "HardFlow 收口检查未通过，当前仍有未闭环门禁。",
-      `缺失门禁：${missing.length > 0 ? missing.join(", ") : "无"}`,
-      `失败门禁：${failed.length > 0 ? failed.join(", ") : "无"}`,
-      "请先继续修复、重新评分并复测，再结束当前流程。",
+      "HardFlow stop reminder: unresolved gate constraints.",
+      `missing gates: ${missing.length > 0 ? missing.join(", ") : "none"}`,
+      `failed gates: ${failed.length > 0 ? failed.join(", ") : "none"}`,
+      "Please fix, re-score, and re-test before ending the workflow.",
     ].join("\n"),
   );
 }

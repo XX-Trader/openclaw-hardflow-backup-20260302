@@ -14,7 +14,7 @@ import re
 import sqlite3
 import time as time_module
 import uuid
-from dataclasses import dataclass
+from dataclass_compat import compat_dataclass as dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any

@@ -12,6 +12,7 @@
       "HARDFLOW_OPENCLAW_HOOKS_INSTALL_DOC": "integration/openclaw-bridge/hooks-install.md",
       "HARDFLOW_OPENCLAW_GOVERNANCE_BRIDGE_DOC": "integration/openclaw-bridge/governance-bridge.md",
       "HARDFLOW_OPENCLAW_PLUGIN_POLICY_DOC": "integration/openclaw-bridge/plugin-policy.md",
+      "HARDFLOW_OPENCLAW_OPENVIKING_STACK_DOC": "integration/openclaw-bridge/openviking-stack.md",
       "HARDFLOW_OPENCLAW_ACCEPTANCE_CHECKLIST_DOC": "integration/openclaw-bridge/acceptance-checklist.md",
       "HARDFLOW_OPENCLAW_CRON_SURFACE": "official-cron",
       "HARDFLOW_OPENCLAW_HOOKS_SURFACE": "official-hooks",
@@ -423,6 +424,9 @@
     }
   },
   "plugins": {
+    "slots": {
+      "memory": "memory-core"
+    },
     "entries": {
       "telegram": {
         "enabled": true

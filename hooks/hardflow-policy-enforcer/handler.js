@@ -3,7 +3,7 @@ import { access } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 
-async function ensureFile(filePath: string): Promise<void> {
+async function ensureFile(filePath) {
   try {
     await access(filePath);
   } catch {
@@ -11,15 +11,7 @@ async function ensureFile(filePath: string): Promise<void> {
   }
 }
 
-type RuntimeFiles = {
-  policyPy: string;
-  dbPath: string;
-  policyFile: string;
-  routingFile: string;
-  pricingFile: string;
-};
-
-function resolveEntryAgent(event: any): string {
+function resolveEntryAgent(event) {
   const candidates = [
     event?.context?.agentId,
     event?.context?.targetAgentId,
@@ -28,8 +20,8 @@ function resolveEntryAgent(event: any): string {
     event?.agentId,
     process.env.POLICY_ENTRY_AGENT,
   ];
-  for (const item of candidates) {
-    const value = String(item || "").trim();
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim();
     if (value) {
       return value;
     }
@@ -37,23 +29,17 @@ function resolveEntryAgent(event: any): string {
   return "coordinator";
 }
 
-function runPolicy(cwd: string, runtime: RuntimeFiles, commandArgs: string[]): string {
-  const policyPy = runtime.policyPy;
-  const dbPath = runtime.dbPath;
-  const policyFile = runtime.policyFile;
-  const routingFile = runtime.routingFile;
-  const pricingFile = runtime.pricingFile;
-
+function runPolicy(cwd, runtime, commandArgs) {
   const args = [
-    policyPy,
+    runtime.policyPy,
     "--db",
-    dbPath,
+    runtime.dbPath,
     "--policy-file",
-    policyFile,
+    runtime.policyFile,
     "--routing-file",
-    routingFile,
+    runtime.routingFile,
     "--pricing-file",
-    pricingFile,
+    runtime.pricingFile,
     ...commandArgs,
   ];
 
@@ -75,7 +61,6 @@ function runPolicy(cwd: string, runtime: RuntimeFiles, commandArgs: string[]): s
     const spawnErr = result.error ? String(result.error.message || result.error) : "";
     lastDetail = stderr || stdout || spawnErr || `status=${result.status}`;
 
-    // If interpreter exists but command failed, do not continue to hide the actual policy error.
     if (!spawnErr) {
       throw new Error(`policy command failed: ${bin} ${args.join(" ")} | ${lastDetail}`);
     }
@@ -84,7 +69,14 @@ function runPolicy(cwd: string, runtime: RuntimeFiles, commandArgs: string[]): s
   throw new Error(`policy command failed: ${pythonCandidates[0]} ${args.join(" ")} | ${lastDetail}`);
 }
 
-export default async function hardflowPolicyEnforcer(event: any): Promise<void> {
+/**
+ * Enforce HardFlow policy gates for start and stop commands.
+ *
+ * @param {any} event OpenClaw command hook event.
+ * @returns {Promise<void>} Resolves when policy checks pass or strict mode is disabled.
+ * @throws {Error} Propagates policy runtime failures when strict mode is enabled.
+ */
+export default async function hardflowPolicyEnforcer(event) {
   if (event?.type !== "command") {
     return;
   }
@@ -94,6 +86,7 @@ export default async function hardflowPolicyEnforcer(event: any): Promise<void> 
     return;
   }
 
+  const messages = Array.isArray(event?.messages) ? event.messages : [];
   const workspaceDir = event?.context?.workspaceDir || process.cwd();
   const strict = (process.env.POLICY_HOOK_STRICT || "1") !== "0";
 
@@ -103,7 +96,7 @@ export default async function hardflowPolicyEnforcer(event: any): Promise<void> 
   const sharedPolicyDir = process.env.OPENCLAW_POLICY_ROOT || path.join(openclawHome, "ops", "policy");
   const workspacePolicyDir = path.join(workspaceDir, "scripts", "openclaw-ops", "policy");
 
-  const runtime: RuntimeFiles = {
+  const runtime = {
     policyPy:
       process.env.POLICY_ENFORCER_PY ||
       (existsSync(path.join(workspacePolicyDir, "policy_enforcer.py"))
@@ -140,25 +133,19 @@ export default async function hardflowPolicyEnforcer(event: any): Promise<void> 
     if (action === "new" || action === "reset") {
       const entryAgent = resolveEntryAgent(event);
       runPolicy(workspaceDir, runtime, ["assert-entry", "--entry-agent", entryAgent]);
-      if (Array.isArray(event.messages)) {
-        event.messages.push(`[Policy Enforcer] entry_agent=${entryAgent} passed`);
-      }
+      messages.push(`[Policy Enforcer] entry_agent=${entryAgent} passed`);
     }
 
     if (action === "stop") {
       runPolicy(workspaceDir, runtime, ["assert-stop-safe"]);
     }
 
-    if (Array.isArray(event.messages)) {
-      event.messages.push(`[Policy Enforcer] action=${action} passed`);
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (Array.isArray(event.messages)) {
-      event.messages.push(`[Policy Enforcer] blocked: ${message}`);
-    }
+    messages.push(`[Policy Enforcer] action=${action} passed`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    messages.push(`[Policy Enforcer] blocked: ${message}`);
     if (strict) {
-      throw err;
+      throw error;
     }
   }
 }

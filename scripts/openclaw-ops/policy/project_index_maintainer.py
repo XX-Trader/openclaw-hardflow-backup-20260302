@@ -16,7 +16,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclass_compat import compat_dataclass as dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any

@@ -27,6 +27,20 @@ if [[ -n "${HARDFLOW_ENV_FILE}" && -f "${HARDFLOW_ENV_FILE}" ]]; then
   source "${HARDFLOW_ENV_FILE}"
 fi
 
+resolve_python_bin() {
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s\n' "python3"
+    return 0
+  fi
+  if command -v python >/dev/null 2>&1; then
+    printf '%s\n' "python"
+    return 0
+  fi
+  printf '%s\n' "python3"
+}
+
+PYTHON_BIN="${HARDFLOW_PYTHON_BIN:-$(resolve_python_bin)}"
+
 POLICY_ENFORCER_PY_DEFAULT="${ROOT_DIR}/scripts/openclaw-ops/policy/policy_enforcer.py"
 POLICY_ENFORCER_PY="${POLICY_ENFORCER_PY:-${POLICY_ENFORCER_PY_DEFAULT}}"
 POLICY_DB_FILE="${POLICY_DB_FILE:-${WORKFLOW_DIR}/task-center/task_center.db}"
@@ -74,6 +88,7 @@ timestamp() {
 usage() {
   cat <<'EOF'
 Usage:
+  hardflow-run.sh workflow --task "task text" [--max-retries N] [--score-max-retries N]
   hardflow-run.sh classify --task "task text"
   hardflow-run.sh dispatch
   hardflow-run.sh implement
@@ -84,6 +99,8 @@ Usage:
   hardflow-run.sh review
   hardflow-run.sh deploy
   hardflow-run.sh post-test
+  hardflow-run.sh acceptance-test
+  hardflow-run.sh verify-completion
   hardflow-run.sh rollback [--reason TEXT]
   hardflow-run.sh git-push
 
@@ -97,6 +114,15 @@ Env (optional):
   POST_TEST_CMD
   ROLLBACK_CMD
   GIT_PUSH_CMD
+  DEPLOY_ACCEPT_GATEWAY_CMD
+  DEPLOY_ACCEPT_STATUS_CMD
+  DEPLOY_ACCEPT_PLUGINS_CMD
+  DEPLOY_ACCEPT_HOOKS_CMD
+  DEPLOY_ACCEPT_JOBS_CMD
+  DEPLOY_ACCEPT_OPENVIKING_CMD
+  DEPLOY_ACCEPT_OPENVIKING_HEALTH_URL
+  DEPLOY_ACCEPT_TELEGRAM_CMD
+  DEPLOY_ACCEPT_FEISHU_CMD
   MAX_RETRIES
   AUTO_ROLLBACK_ON_POST_TEST_FAIL   # 1(default) / 0
   SCORE_MAX_RETRIES
@@ -251,7 +277,7 @@ ensure_atomic_task_json() {
     log "ERROR" "atomic task guard missing: ${guard_py}"
     return 2
   fi
-  if python3 "${guard_py}" \
+  if "${PYTHON_BIN}" "${guard_py}" \
     --task-file "${ATOMIC_TASK_FILE}" \
     --task-text "${task_text}" \
     --min-items 4 >"${RUN_DIR}/task-atomic.log" 2>&1; then
@@ -421,6 +447,8 @@ policy_agent_for_stage() {
     score-*) printf '%s\n' "${POLICY_AGENT_SCORE}" ;;
     deploy) printf '%s\n' "${POLICY_AGENT_DEPLOY}" ;;
     post-test) printf '%s\n' "${POLICY_AGENT_POST_TEST}" ;;
+    acceptance-test) printf '%s\n' "${POLICY_AGENT_POST_TEST}" ;;
+    verify-completion) printf '%s\n' "${POLICY_AGENT_REVIEW}" ;;
     git-push) printf '%s\n' "${POLICY_AGENT_GIT_PUSH}" ;;
     *) printf '%s\n' "${POLICY_AGENT_ID}" ;;
   esac
@@ -439,7 +467,7 @@ policy_run() {
   log_file="$(policy_log_file "${label}")"
 
   set +e
-  python3 "${POLICY_ENFORCER_PY}" \
+  "${PYTHON_BIN}" "${POLICY_ENFORCER_PY}" \
     --db "${POLICY_DB_FILE}" \
     --policy-file "${POLICY_FILE}" \
     --routing-file "${POLICY_ROUTING_FILE}" \
@@ -474,6 +502,31 @@ policy_save_task_id() {
   fi
 }
 
+policy_task_exists() {
+  local task_id="$1"
+  if [[ -z "${task_id}" || ! -f "${POLICY_DB_FILE}" ]]; then
+    return 1
+  fi
+  "${PYTHON_BIN}" - "${POLICY_DB_FILE}" "${task_id}" <<'PY'
+import sqlite3
+import sys
+from pathlib import Path
+
+db_path = Path(sys.argv[1])
+task_id = sys.argv[2]
+if not db_path.exists():
+    raise SystemExit(1)
+
+conn = sqlite3.connect(str(db_path))
+try:
+    row = conn.execute("SELECT 1 FROM tasks WHERE task_id = ? LIMIT 1", (task_id,)).fetchone()
+finally:
+    conn.close()
+
+raise SystemExit(0 if row else 1)
+PY
+}
+
 policy_ensure_task() {
   local reason="$1"
   local requirement="$2"
@@ -481,6 +534,7 @@ policy_ensure_task() {
   local acceptance="$4"
   local observable_outputs="${POLICY_OBSERVABLE_OUTPUTS:-${result_output}}"
   local acceptance_thresholds="${POLICY_ACCEPTANCE_THRESHOLDS:-${acceptance}}"
+  local context_json=""
 
   if ! policy_enabled; then
     return 0
@@ -488,16 +542,23 @@ policy_ensure_task() {
 
   policy_load_task_id
   if [[ -n "${POLICY_TASK_ID}" ]]; then
-    policy_save_task_id
-    return 0
+    if policy_task_exists "${POLICY_TASK_ID}"; then
+      policy_save_task_id
+      return 0
+    fi
   fi
 
-  POLICY_TASK_ID="wf-${RUN_ID}"
+  POLICY_TASK_ID="${POLICY_TASK_ID:-wf-${RUN_ID}}"
+  context_json="$(cat <<EOF
+{"problem":"$(json_escape "${reason}")","location":"$(json_escape "${ROOT_DIR}/scripts/hardflow/hardflow-run.sh")","first_seen_at":"$(timestamp)","impact":"$(json_escape "workflow stage cannot proceed when policy gating blocks internal verification stages")","evidence":"$(json_escape "${observable_outputs}")","current_state":"$(json_escape "${reason}")","expected_state":"$(json_escape "${result_output}")","operation_path":"$(json_escape "${ROOT_DIR}/scripts/hardflow/hardflow-run.sh")","reproduction_steps":"$(json_escape "${requirement}")","scope":"hardflow-workflow-stage","constraints":"$(json_escape "internal hardflow orchestration stage; must remain executable without extra human clarification")","acceptance_criteria":"$(json_escape "${acceptance}")","full_background":"$(json_escape "${reason}")"}
+EOF
+)"
   policy_run "create-task-${POLICY_TASK_ID}" create-task \
     --task-id "${POLICY_TASK_ID}" \
     --task-type "workflow" \
     --reason "${reason}" \
     --source "hardflow" \
+    --request-source "ai" \
     --priority "high" \
     --risk-level "low" \
     --pool "jobs" \
@@ -506,8 +567,11 @@ policy_ensure_task() {
     --requirement "${requirement}" \
     --result-output "${result_output}" \
     --acceptance "${acceptance}" \
+    --context-json "${context_json}" \
     --observable-outputs "${observable_outputs}" \
     --acceptance-thresholds "${acceptance_thresholds}" \
+    --need-human-confirm "false" \
+    --human-confirmed "true" \
     --actor "${POLICY_ACTOR}"
   policy_save_task_id
 }
@@ -587,6 +651,36 @@ write_gate() {
   cat > "${GATE_DIR}/${gate_name}.json" <<EOF
 {"passed":${passed},"updated_at":"$(timestamp)","run_id":"${RUN_ID}","reason":"${safe_reason}"}
 EOF
+}
+
+gate_passed() {
+  local gate_name="$1"
+  local gate_file="${GATE_DIR}/${gate_name}.json"
+  [[ -f "${gate_file}" ]] && grep -Eq '"passed"[[:space:]]*:[[:space:]]*true' "${gate_file}"
+}
+
+gate_matches_run() {
+  local gate_name="$1"
+  local gate_file="${GATE_DIR}/${gate_name}.json"
+  [[ -f "${gate_file}" ]] && grep -Eq "\"run_id\"[[:space:]]*:[[:space:]]*\"${RUN_ID}\"" "${gate_file}"
+}
+
+require_completion_verification() {
+  local gate_name="completion_verification"
+  local gate_file="${GATE_DIR}/${gate_name}.json"
+  if [[ ! -f "${gate_file}" ]]; then
+    log "ERROR" "git-push blocked: completion verification missing, run 'hardflow-run.sh verify-completion' first"
+    return 1
+  fi
+  if ! gate_matches_run "${gate_name}"; then
+    log "ERROR" "git-push blocked: completion verification is stale for current run_id=${RUN_ID}"
+    return 1
+  fi
+  if ! gate_passed "${gate_name}"; then
+    log "ERROR" "git-push blocked: completion verification failed, see ${gate_file}"
+    return 1
+  fi
+  return 0
 }
 
 run_cmd_capture() {
@@ -1050,6 +1144,82 @@ cmd_score_all() {
   done
 }
 
+run_hardflow_subcommand() {
+  local label="$1"
+  shift
+  log "INFO" "workflow step '${label}'"
+  bash "${SCRIPT_DIR}/hardflow-run.sh" "$@"
+}
+
+cmd_workflow() {
+  local task=""
+  local max_retries="${MAX_RETRIES:-3}"
+  local score_max_retries="${SCORE_MAX_RETRIES:-${MAX_RETRIES:-3}}"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --task)
+        task="${2:-}"
+        shift 2
+        ;;
+      --max-retries)
+        max_retries="${2:-3}"
+        shift 2
+        ;;
+      --score-max-retries)
+        score_max_retries="${2:-3}"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  if [[ -z "${task}" ]]; then
+    log "ERROR" "workflow requires --task"
+    return 2
+  fi
+
+  run_hardflow_subcommand "classify" classify --task "${task}"
+  run_hardflow_subcommand "score-g0-requirements" score-gate --gate requirements --max-retries "${score_max_retries}"
+  run_hardflow_subcommand "dispatch" dispatch
+  run_hardflow_subcommand "score-g1-solution" score-gate --gate solution --max-retries "${score_max_retries}"
+  run_hardflow_subcommand "implement" implement
+  run_hardflow_subcommand "test-loop" test-loop --max-retries "${max_retries}"
+  run_hardflow_subcommand "review" review
+  run_hardflow_subcommand "score-g2-frontend" score-gate --gate frontend --max-retries "${score_max_retries}"
+  run_hardflow_subcommand "score-g3-backend" score-gate --gate backend --max-retries "${score_max_retries}"
+  run_hardflow_subcommand "score-g4-security" score-gate --gate security --max-retries "${score_max_retries}"
+  log "INFO" "workflow step 'api-doc-gate'"
+  bash "${SCRIPT_DIR}/check-api-doc-gate.sh"
+  log "INFO" "workflow step 'quality-gate-predeploy'"
+  bash "${SCRIPT_DIR}/check-review-test-gate.sh" --stage predeploy
+  log "INFO" "workflow step 'preview-deploy'"
+  bash "${SCRIPT_DIR}/preview-action.sh" deploy
+  run_hardflow_subcommand "deploy" deploy
+  if ! run_hardflow_subcommand "post-test" post-test; then
+    log "ERROR" "post-test failed; workflow stopped before release/final gates"
+    return 1
+  fi
+  run_hardflow_subcommand "score-g5-release" score-gate --gate release --max-retries "${score_max_retries}"
+  run_hardflow_subcommand "score-g6-final" score-gate --gate final --max-retries "${score_max_retries}"
+  log "INFO" "workflow step 'quality-gate-postdeploy'"
+  bash "${SCRIPT_DIR}/check-review-test-gate.sh" --stage postdeploy
+  if ! run_hardflow_subcommand "acceptance-test" acceptance-test; then
+    log "ERROR" "acceptance-test failed; workflow stopped before completion verification"
+    return 1
+  fi
+  if ! run_hardflow_subcommand "verify-completion" verify-completion; then
+    log "ERROR" "verify-completion failed; workflow stopped before git-push"
+    return 1
+  fi
+  log "INFO" "workflow step 'preview-git-push'"
+  bash "${SCRIPT_DIR}/preview-action.sh" git-push
+  run_hardflow_subcommand "git-push" git-push
+  run_hardflow_subcommand "score-report" score-report --format text
+}
+
 cmd_score_report() {
   local gate=""
   local format="text"
@@ -1173,6 +1343,60 @@ cmd_post_test() {
   return 1
 }
 
+cmd_acceptance_test() {
+  local acceptance_log="${RUN_DIR}/acceptance-test.log"
+  local acceptance_artifact="${RUN_DIR}/acceptance/deployment.json"
+  local stage_rc=0
+  local stage_reason="deployment acceptance passed"
+
+  policy_pre_stage "acceptance-test" "${acceptance_artifact}"
+  refresh_progress_context "acceptance-test" "0"
+
+  set +e
+  bash "${SCRIPT_DIR}/check-deployment-acceptance.sh" >"${acceptance_log}" 2>&1
+  stage_rc=$?
+  set -e
+
+  if [[ ${stage_rc} -ne 0 ]]; then
+    stage_reason="deployment acceptance failed"
+  fi
+
+  policy_post_stage "acceptance-test" "${stage_rc}" "${stage_reason}" "${acceptance_artifact}" || return $?
+  if [[ ${stage_rc} -ne 0 ]]; then
+    log "ERROR" "deployment acceptance failed, see ${acceptance_log}"
+    return ${stage_rc}
+  fi
+
+  log "INFO" "deployment acceptance passed"
+}
+
+cmd_verify_completion() {
+  local verify_log="${RUN_DIR}/verify-completion.log"
+  local verification_artifact="${RUN_DIR}/verification/completion.json"
+  local stage_rc=0
+  local stage_reason="completion verification passed"
+
+  policy_pre_stage "verify-completion" "${verification_artifact}"
+  refresh_progress_context "verify-completion" "0"
+
+  set +e
+  bash "${SCRIPT_DIR}/check-completion-verification.sh" >"${verify_log}" 2>&1
+  stage_rc=$?
+  set -e
+
+  if [[ ${stage_rc} -ne 0 ]]; then
+    stage_reason="completion verification failed"
+  fi
+
+  policy_post_stage "verify-completion" "${stage_rc}" "${stage_reason}" "${verification_artifact}" || return $?
+  if [[ ${stage_rc} -ne 0 ]]; then
+    log "ERROR" "completion verification failed, see ${verify_log}"
+    return ${stage_rc}
+  fi
+
+  log "INFO" "completion verification passed"
+}
+
 cmd_rollback() {
   local reason="manual"
 
@@ -1193,6 +1417,7 @@ cmd_rollback() {
 
 cmd_git_push() {
   local stage_rc=0
+  require_completion_verification
   policy_pre_stage "git-push" "${RUN_DIR}/git-push.log"
   refresh_progress_context "git-push" "0"
   if ! run_cmd_capture "GIT_PUSH_CMD" "${GIT_PUSH_CMD:-}" "${RUN_DIR}/git-push.log" 1; then
@@ -1209,6 +1434,7 @@ cmd_git_push() {
 policy_init_runtime
 
 case "${SUBCOMMAND}" in
+  workflow) cmd_workflow "$@" ;;
   classify) cmd_classify "$@" ;;
   dispatch) cmd_dispatch "$@" ;;
   implement) cmd_implement "$@" ;;
@@ -1219,6 +1445,8 @@ case "${SUBCOMMAND}" in
   review) cmd_review "$@" ;;
   deploy) cmd_deploy "$@" ;;
   post-test) cmd_post_test "$@" ;;
+  acceptance-test) cmd_acceptance_test "$@" ;;
+  verify-completion) cmd_verify_completion "$@" ;;
   rollback) cmd_rollback "$@" ;;
   git-push) cmd_git_push "$@" ;;
   *)

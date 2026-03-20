@@ -9,6 +9,8 @@ HardFlow v2 是基于 `tmux + Codex CLI + Lobster + Hooks` 的多角色自动化
 3. Security Gate（G4）启用一票否决（高危未闭环直接失败）。
 4. 接口变更必须同步 API 文档，否则阻断。
 5. reviewer + tester + score gates 通过后，才允许部署/推送。
+6. 没有当前 run 的完成前验证产物，不允许执行 `git-push`。
+7. 部署后验收测试必须生成当前 run 的统一验收产物，否则不能进入完成前验证。
 
 ## 2. Gate 列表与阈值
 
@@ -29,11 +31,115 @@ HardFlow v2 是基于 `tmux + Codex CLI + Lobster + Hooks` 的多角色自动化
 3. `SCORECARD_SCHEMA.md`：评分输入格式约束。
 4. `check-api-doc-gate.sh`：接口文档门禁。
 5. `check-review-test-gate.sh`：部署前/后综合门禁。
-6. `hardflow-v1.lobster.yaml`：Lobster 工作流。
-7. `hardflow-tmux-runner.sh`：tmux 常驻执行入口。
-8. `atomic_task_guard.py`：保证 `.workflow/task.json` 为原子化细粒度任务（最少 4 个可执行子任务）。
+6. `check-deployment-acceptance.sh`：部署后验收测试门禁。
+7. `check-completion-verification.sh`：完成前验证门禁。
+8. `hardflow-v1.lobster.yaml`：Lobster 工作流。
+9. `hardflow-tmux-runner.sh`：tmux 常驻执行入口。
+10. `atomic_task_guard.py`：保证 `.workflow/task.json` 为原子化细粒度任务（最少 4 个可执行子任务）。
 
-## 4. 评分命令约定
+## 4. 主流程入口
+
+正式主流程入口：
+
+```bash
+bash scripts/hardflow/hardflow-run.sh workflow --task "实现XX需求" --max-retries 3 --score-max-retries 3
+```
+
+这条命令会按固定顺序执行：
+
+1. classify
+2. `G0 requirements`
+3. dispatch
+4. `G1 solution`
+5. implement
+6. test-loop
+7. review
+8. `G2 frontend`
+9. `G3 backend`
+10. `G4 security`
+11. API doc gate
+12. predeploy quality gate
+13. preview deploy
+14. deploy
+15. post-test
+16. `G5 release`
+17. `G6 final`
+18. postdeploy quality gate
+19. acceptance-test
+20. verify-completion
+21. preview git-push
+22. git-push
+23. score-report
+
+说明：
+
+1. `workflow` 现在是 direct 模式下的正式统一入口。
+2. `hardflow-tmux-runner.sh` 的 direct 模式已改为调用这条主流程命令。
+3. `hardflow-v1.lobster.yaml` 仍保留显式分步编排，作为 Lobster 模式入口。
+4. `post-test` 失败现在会直接中断 workflow，不再继续进入 `G5 release` / `G6 final`。
+5. `git-push` 现在显式依赖 `verify-completion` 产物，缺失或过期都会阻断推送。
+6. `verify-completion` 现在显式依赖 `acceptance-test` 产物，缺失或失败都会阻断完成。
+
+### 安全演练模式
+
+如果目标是验证 `G0-G6 + acceptance-test + verify-completion` 链路本身，而不是执行真实部署或外部提交，可以在运行前覆盖以下命令：
+
+1. `DISPATCH_CMD`
+2. `IMPLEMENT_CMD`
+3. `TEST_CMD`
+4. `REVIEW_CMD`
+5. `DEPLOY_CMD`
+6. `POST_TEST_CMD`
+7. `ROLLBACK_CMD`
+8. `SCORE_*_CMD`
+
+推荐做法：
+
+1. 业务阶段命令改为本地 no-op 命令
+2. `SCORE_*_CMD` 生成满足 `score-policy.json` 的标准 scorecard
+3. 仍然执行真实的：
+   - `check-api-doc-gate.sh`
+   - `check-review-test-gate.sh`
+   - `acceptance-test`
+   - `verify-completion`
+
+这样可以在不触发外部提交的前提下，验证完整门禁链路是否可运行。
+
+## 5. 部署后验收测试约定
+
+正式阶段入口：
+
+```bash
+bash scripts/hardflow/hardflow-run.sh acceptance-test
+```
+
+默认必检项：
+
+1. `openclaw gateway status`
+2. `openclaw status`
+3. `openclaw plugins list`
+4. `openclaw hooks check --json`
+5. `openclaw cron status --json`
+6. `python scripts/openclaw-ops/check_openviking_stack.py --workspace-root .`
+
+运行说明：
+
+1. `check-deployment-acceptance.sh` 会自动优先使用 `python3`，不存在时回退到 `python`。
+2. `check_openviking_stack.py` 会优先从运行时 `openclaw.json` 的 `memory-openviking` 配置推导健康检查地址，兼容 Windows 本机这类非默认端口场景。
+
+可选补充项：
+
+1. `DEPLOY_ACCEPT_OPENVIKING_CMD`
+2. `DEPLOY_ACCEPT_OPENVIKING_HEALTH_URL`
+3. `DEPLOY_ACCEPT_TELEGRAM_CMD`
+4. `DEPLOY_ACCEPT_FEISHU_CMD`
+
+产物：
+
+1. `.workflow/runs/<run_id>/acceptance/deployment.json`
+2. `.workflow/gates/deployment_acceptance.json`
+
+## 6. 评分命令约定
 
 每个 Gate 支持两类命令：
 
@@ -72,7 +178,7 @@ HardFlow v2 是基于 `tmux + Codex CLI + Lobster + Hooks` 的多角色自动化
 3. `~/.claude/hardflow/hardflow.env`
 4. `<repo>/.workflow/hardflow.env`
 
-## 5. 直跑示例
+## 7. 分步调试示例
 
 ```bash
 bash scripts/hardflow/hardflow-run.sh classify --task "实现XX需求"
@@ -92,11 +198,13 @@ bash scripts/hardflow/hardflow-run.sh post-test || true
 bash scripts/hardflow/hardflow-run.sh score-gate --gate release --max-retries 3
 bash scripts/hardflow/hardflow-run.sh score-gate --gate final --max-retries 3
 bash scripts/hardflow/check-review-test-gate.sh --stage postdeploy
+bash scripts/hardflow/hardflow-run.sh acceptance-test
+bash scripts/hardflow/hardflow-run.sh verify-completion
 bash scripts/hardflow/hardflow-run.sh git-push
 bash scripts/hardflow/hardflow-run.sh score-report --format text
 ```
 
-## 6. Lobster 运行
+## 8. Lobster 运行
 
 ```json
 {
@@ -107,19 +215,50 @@ bash scripts/hardflow/hardflow-run.sh score-report --format text
 }
 ```
 
-## 7. 产物目录
+## 9. 产物目录
 
 1. `.workflow/runs/<run_id>/timeline.log`
 2. `.workflow/runs/<run_id>/issues.ndjson`
 3. `.workflow/runs/<run_id>/scorecards/*.json`
 4. `.workflow/runs/<run_id>/score-gate-audit.ndjson`
-5. `.workflow/gates/*.json`
-6. `.workflow/hook-audit/commands.log`
-7. `.workflow/task.json`
-8. `.workflow/progress.txt`
+5. `.workflow/runs/<run_id>/acceptance/deployment.json`
+6. `.workflow/gates/*.json`
+7. `.workflow/runs/<run_id>/verification/completion.json`
+8. `.workflow/hook-audit/commands.log`
+9. `.workflow/task.json`
+10. `.workflow/progress.txt`
 
-## 8. 记忆说明
+## 10. 记忆说明
 
-当前工作流不再内置自定义 experience/recall/evolve 记忆链路，也不再覆盖 `memorySearch` 配置。
-运行时统一回退到 OpenClaw 官方默认的 `memory-core` / `session-memory` 能力。
-自测命令：`node --experimental-strip-types scripts/hardflow/hook-selftest.mjs --hooks-dir .claude/hardflow/hooks --workspace .workflow/tmp-hook-selftest`
+当前工作流已把记忆路线标准化为两种明确模式，而不是混合表述：
+
+1. 官方默认模式：`memory-core`
+2. 增强记忆模式：`OpenViking + memory-openviking`
+
+标准三层：
+
+1. 服务层：`OpenViking`
+2. 插件层：`memory-openviking`
+3. 路由层：`plugins.allow` + `plugins.slots.memory`
+
+运行说明：
+
+1. 仓库基线 `openclaw/openclaw.json` 显式保留 `plugins.slots.memory = "memory-core"` 作为默认基线。
+2. 运行时切到增强记忆模式时，必须同时满足：
+   - `plugins.slots.memory = "memory-openviking"`
+   - `memory-openviking` 插件层通过
+   - `OpenViking` 服务层健康检查通过
+3. `check_openviking_stack.py` 会优先读取运行时 `memory-openviking.config.port` / `healthUrl` / `baseUrl`，再回退到环境变量和默认端口。
+
+标准自检命令：
+
+```bash
+python scripts/openclaw-ops/check_openviking_stack.py --workspace-root .
+```
+
+2026-03-20 本机安全演练结果：
+
+1. `run_id=20260320_142433`
+2. `G0-G6` 全部通过
+3. `deployment acceptance` 通过
+4. `completion verification` 通过

@@ -101,7 +101,7 @@ case "${subcmd}" in
       fi
       RUN_CMD="${LOBSTER_RUN_CMD}"
     else
-      RUN_CMD="bash scripts/hardflow/hardflow-run.sh classify --task \"${TASK}\" && bash scripts/hardflow/hardflow-run.sh score-gate --gate requirements --max-retries ${MAX_RETRIES} && bash scripts/hardflow/hardflow-run.sh dispatch && bash scripts/hardflow/hardflow-run.sh score-gate --gate solution --max-retries ${MAX_RETRIES} && bash scripts/hardflow/hardflow-run.sh implement && bash scripts/hardflow/hardflow-run.sh test-loop --max-retries ${MAX_RETRIES} && bash scripts/hardflow/hardflow-run.sh review && bash scripts/hardflow/hardflow-run.sh score-gate --gate frontend --max-retries ${MAX_RETRIES} && bash scripts/hardflow/hardflow-run.sh score-gate --gate backend --max-retries ${MAX_RETRIES} && bash scripts/hardflow/hardflow-run.sh score-gate --gate security --max-retries ${MAX_RETRIES} && bash scripts/hardflow/check-api-doc-gate.sh && bash scripts/hardflow/check-review-test-gate.sh --stage predeploy && bash scripts/hardflow/preview-action.sh deploy && bash scripts/hardflow/hardflow-run.sh deploy && (bash scripts/hardflow/hardflow-run.sh post-test || true) && bash scripts/hardflow/hardflow-run.sh score-gate --gate release --max-retries ${MAX_RETRIES} && bash scripts/hardflow/hardflow-run.sh score-gate --gate final --max-retries ${MAX_RETRIES} && bash scripts/hardflow/check-review-test-gate.sh --stage postdeploy && bash scripts/hardflow/preview-action.sh git-push && bash scripts/hardflow/hardflow-run.sh git-push && bash scripts/hardflow/hardflow-run.sh score-report --format text"
+      RUN_CMD="bash scripts/hardflow/hardflow-run.sh workflow --task \"${TASK}\" --max-retries ${MAX_RETRIES} --score-max-retries ${MAX_RETRIES}"
     fi
 
     cat > "${ENTRY_SCRIPT}" <<EOF

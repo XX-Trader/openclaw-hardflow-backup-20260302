@@ -25,7 +25,7 @@ import subprocess
 import sys
 import time
 import uuid
-from dataclasses import dataclass
+from dataclass_compat import compat_dataclass as dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any

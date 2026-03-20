@@ -36,8 +36,21 @@ async function mustExist(file) {
 }
 
 async function importHandler(hooksDir, hookName) {
-  const file = path.join(hooksDir, hookName, "handler.ts");
-  await mustExist(file);
+  const candidateFiles = ["handler.js", "index.js", "handler.ts", "index.ts"];
+  let file = "";
+  for (const candidate of candidateFiles) {
+    const candidatePath = path.join(hooksDir, hookName, candidate);
+    try {
+      await mustExist(candidatePath);
+      file = candidatePath;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!file) {
+    throw new Error(`required handler file missing: ${path.join(hooksDir, hookName)}`);
+  }
   const mod = await import(pathToFileURL(file).href);
   if (typeof mod.default !== "function") {
     throw new Error(`invalid handler export: ${file}`);

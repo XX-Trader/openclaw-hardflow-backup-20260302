@@ -9,7 +9,7 @@ import os
 import re
 import sys
 import uuid
-from dataclasses import dataclass
+from dataclass_compat import compat_dataclass as dataclass
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any

@@ -104,7 +104,11 @@ for server in "${SERVERS[@]}"; do
   for hook_name in hardflow-policy-enforcer hardflow-command-guard; do
     ssh_run "${server}" "mkdir -p '${remote_hooks_dir}/${hook_name}'"
     scp_run "${LOCAL_HOOKS_DIR}/${hook_name}/HOOK.md" "${server}:${remote_hooks_dir}/${hook_name}/HOOK.md" >/dev/null
-    scp_run "${LOCAL_HOOKS_DIR}/${hook_name}/handler.ts" "${server}:${remote_hooks_dir}/${hook_name}/handler.ts" >/dev/null
+    if [[ -f "${LOCAL_HOOKS_DIR}/${hook_name}/handler.js" ]]; then
+      scp_run "${LOCAL_HOOKS_DIR}/${hook_name}/handler.js" "${server}:${remote_hooks_dir}/${hook_name}/handler.js" >/dev/null
+    else
+      scp_run "${LOCAL_HOOKS_DIR}/${hook_name}/handler.ts" "${server}:${remote_hooks_dir}/${hook_name}/handler.ts" >/dev/null
+    fi
   done
 
   ssh_run "${server}" "python3 '${remote_policy_dir}/policy_enforcer.py' --db '${remote_db}' --policy-file '${remote_policy_dir}/policy-config.json' --routing-file '${remote_policy_dir}/routing-rules.json' --pricing-file '${remote_policy_dir}/token-pricing.json' init"

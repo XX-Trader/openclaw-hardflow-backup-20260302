@@ -80,6 +80,7 @@ def build_message(
     model: str,
     actor: str,
     planner_id: str,
+    agent_capability_manifest: str,
     openclaw_bin: str,
     report_dir: str,
     local_agent: bool,
@@ -96,6 +97,9 @@ def build_message(
         f'--report-dir "{report_dir}" '
         f"--notify-on {notify_on}"
     )
+    normalized_manifest = str(agent_capability_manifest or "").strip()
+    if normalized_manifest:
+        command += f' --agent-capability-manifest "{normalized_manifest}"'
     normalized_model = str(model or "").strip()
     if normalized_model:
         command += f" --model {normalized_model}"
@@ -121,6 +125,7 @@ def upsert_job(
     model: str,
     actor: str,
     planner_id: str,
+    agent_capability_manifest: str,
     openclaw_bin: str,
     report_dir: str,
     local_agent: bool,
@@ -163,6 +168,7 @@ def upsert_job(
                 model=model,
                 actor=actor,
                 planner_id=planner_id,
+                agent_capability_manifest=agent_capability_manifest,
                 openclaw_bin=openclaw_bin,
                 report_dir=report_dir,
                 local_agent=local_agent,
@@ -205,6 +211,7 @@ def main() -> None:
     parser.add_argument("--model", default="auto")
     parser.add_argument("--actor", default="coordinator")
     parser.add_argument("--planner-id", default="coordinator")
+    parser.add_argument("--agent-capability-manifest", default="")
     parser.add_argument("--openclaw-bin", default="openclaw")
     parser.add_argument("--report-dir", default=str(default_report_dir))
     parser.add_argument("--local-agent", dest="local_agent", action="store_true", default=True)
@@ -252,6 +259,7 @@ def main() -> None:
         model=model,
         actor=str(args.actor),
         planner_id=str(args.planner_id),
+        agent_capability_manifest=str(args.agent_capability_manifest).strip(),
         openclaw_bin=str(args.openclaw_bin),
         report_dir=report_dir,
         local_agent=bool(args.local_agent),
@@ -282,6 +290,7 @@ def main() -> None:
         "model": (model or "auto(policy-config)"),
         "actor": str(args.actor),
         "planner_id": str(args.planner_id),
+        "agent_capability_manifest": str(args.agent_capability_manifest).strip(),
         "openclaw_bin": str(args.openclaw_bin),
         "report_dir": report_dir,
         "local_agent": bool(args.local_agent),
@@ -306,6 +315,8 @@ def main() -> None:
     print(f"model={result['model']}")
     print(f"actor={args.actor}")
     print(f"planner_id={args.planner_id}")
+    if str(args.agent_capability_manifest).strip():
+        print(f"agent_capability_manifest={str(args.agent_capability_manifest).strip()}")
     print(f"openclaw_bin={args.openclaw_bin}")
     print(f"report_dir={report_dir}")
     print(f"local_agent={str(bool(args.local_agent)).lower()}")

@@ -62,7 +62,13 @@ foreach ($server in $Servers) {
         foreach ($hookName in @("hardflow-policy-enforcer", "hardflow-command-guard")) {
             Invoke-Remote -Server $server -Command "mkdir -p '$remoteHooksDir/$hookName'"
             Upload-File -Server $server -LocalPath (Join-Path $localHooksDir "$hookName/HOOK.md") -RemotePath "$remoteHooksDir/$hookName/HOOK.md"
-            Upload-File -Server $server -LocalPath (Join-Path $localHooksDir "$hookName/handler.ts") -RemotePath "$remoteHooksDir/$hookName/handler.ts"
+            $jsHandler = Join-Path $localHooksDir "$hookName/handler.js"
+            $tsHandler = Join-Path $localHooksDir "$hookName/handler.ts"
+            if (Test-Path $jsHandler) {
+                Upload-File -Server $server -LocalPath $jsHandler -RemotePath "$remoteHooksDir/$hookName/handler.js"
+            } else {
+                Upload-File -Server $server -LocalPath $tsHandler -RemotePath "$remoteHooksDir/$hookName/handler.ts"
+            }
         }
 
         Invoke-Remote -Server $server -Command "python3 '$remotePolicyDir/policy_enforcer.py' --db '$remoteDb' --policy-file '$remotePolicyDir/policy-config.json' --routing-file '$remotePolicyDir/routing-rules.json' --pricing-file '$remotePolicyDir/token-pricing.json' init"

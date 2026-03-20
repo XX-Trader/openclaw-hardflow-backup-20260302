@@ -68,6 +68,26 @@ openclaw plugins list
 openclaw config get channels.telegram
 ```
 
+5.1 OpenViking 记忆链路标准化检查
+
+```bash
+python scripts/openclaw-ops/check_openviking_stack.py --workspace-root .
+```
+
+预期：
+
+- 输出 `mode=official-default` 或 `mode=openviking`
+- 若为 `openviking`：
+  - `routing_layer.passed=true`
+  - `plugin_layer.passed=true`
+  - `service_layer.passed=true`
+- 会产出当前 run 的 `openviking-stack.json` 与 `openviking_stack.json` gate 文件
+
+说明：
+
+- `check-deployment-acceptance.sh` 会自动优先使用 `python3`，不存在时回退到 `python`
+- `check_openviking_stack.py` 会优先读取运行时 `memory-openviking` 的 URL / 端口配置，再回退到环境变量和默认端口
+
 6. Python 治理层仍可独立运行
 
 ```bash
