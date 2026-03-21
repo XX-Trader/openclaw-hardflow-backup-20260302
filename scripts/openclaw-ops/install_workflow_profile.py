@@ -36,6 +36,12 @@ LOCAL_TELEGRAM_CREDENTIAL_KEYS = (
     "session",
     "sessionString",
 )
+LOCAL_TELEGRAM_RUNTIME_OVERRIDE_KEYS = (
+    *LOCAL_TELEGRAM_CREDENTIAL_KEYS,
+    "cronDeliveryChannel",
+    "cronDeliveryChatId",
+)
+DEFAULT_TELEGRAM_DELIVERY_CHANNEL = "telegram"
 
 
 def render_cmd(cmd: list[str]) -> str:
@@ -76,6 +82,65 @@ def delivery_args(channel: str, target: str) -> list[str]:
     if target.strip():
         out.extend(["--to", target.strip()])
     return out
+
+
+def load_optional_json_object(path: str) -> dict[str, Any]:
+    config_path = Path(path).expanduser()
+    if not config_path.exists():
+        return {}
+    data = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    if not isinstance(data, dict):
+        raise ValueError(f"config must be a JSON object: {config_path}")
+    return data
+
+
+def resolve_runtime_delivery_target(
+    *,
+    channel: str,
+    target: str,
+    local_config_path: str,
+) -> tuple[str, str, dict[str, str]]:
+    """Resolve cron delivery defaults, preferring explicit server-local Telegram group config."""
+
+    resolved_channel = str(channel or "").strip()
+    resolved_target = str(target or "").strip()
+    meta: dict[str, str] = {"source": "cli" if (resolved_channel or resolved_target) else "unset"}
+    normalized_channel = resolved_channel.lower()
+    if normalized_channel and normalized_channel != DEFAULT_TELEGRAM_DELIVERY_CHANNEL:
+        return resolved_channel, resolved_target, meta
+    if resolved_channel and resolved_target:
+        return resolved_channel, resolved_target, meta
+
+    runtime_cfg = load_optional_json_object(local_config_path)
+    channels_cfg = runtime_cfg.get("channels")
+    if not isinstance(channels_cfg, dict):
+        return resolved_channel, resolved_target, meta
+    telegram_cfg = channels_cfg.get("telegram")
+    if not isinstance(telegram_cfg, dict):
+        return resolved_channel, resolved_target, meta
+
+    runtime_target = str(telegram_cfg.get("cronDeliveryChatId", "")).strip()
+    explicit_runtime_channel = str(telegram_cfg.get("cronDeliveryChannel", "")).strip()
+    runtime_channel = explicit_runtime_channel or (
+        DEFAULT_TELEGRAM_DELIVERY_CHANNEL if runtime_target else ""
+    )
+    resolved_from: list[str] = []
+    if runtime_channel and not resolved_channel:
+        resolved_channel = runtime_channel
+        resolved_from.append(
+            "channels.telegram.cronDeliveryChannel"
+            if explicit_runtime_channel
+            else "channels.telegram.cronDeliveryChatId->telegram"
+        )
+    if runtime_target and not resolved_target:
+        resolved_target = runtime_target
+        resolved_from.append("channels.telegram.cronDeliveryChatId")
+    if resolved_from:
+        meta = {
+            "source": "runtime_openclaw_config",
+            "resolved_from": ",".join(resolved_from),
+        }
+    return resolved_channel, resolved_target, meta
 
 
 def repo_path_key(value: str) -> str:
@@ -803,7 +868,7 @@ def preserve_local_telegram_credentials(base_cfg: dict[str, Any], merged_cfg: di
         return []
 
     preserved: list[str] = []
-    for key in LOCAL_TELEGRAM_CREDENTIAL_KEYS:
+    for key in LOCAL_TELEGRAM_RUNTIME_OVERRIDE_KEYS:
         value = base_tg.get(key)
         if value in (None, "", [], {}):
             continue
@@ -1361,6 +1426,11 @@ def main() -> None:
     ops_home = str(Path(openclaw_home) / "ops")
     workflow_repo_id = str(args.workflow_repo_id).strip() or Path(workflow_repo_path).name
     local_config_path = str((Path(openclaw_home) / "openclaw.json").resolve())
+    delivery_channel, delivery_target, delivery_meta = resolve_runtime_delivery_target(
+        channel=str(args.channel),
+        target=str(args.to),
+        local_config_path=local_config_path,
+    )
     vendor_runtime_root = str((Path(workflow_repo_path) / "vendor" / "openclaw-official").resolve())
     runtime_boundary_doc = str((Path(workflow_repo_path) / "integration" / "openclaw-bridge" / "runtime-boundary.md").resolve())
     hooks_source_dir = str((Path(workflow_repo_path) / "hooks").resolve())
@@ -1392,7 +1462,7 @@ def main() -> None:
         "--output-mode",
         str(args.todo_output_mode),
     ]
-    install_todo_cmd.extend(delivery_args(args.channel, args.to))
+    install_todo_cmd.extend(delivery_args(delivery_channel, delivery_target))
 
     install_task_executor_cmd = build_install_task_executor_cmd(
         python_bin=args.python_bin,
@@ -1405,8 +1475,8 @@ def main() -> None:
         max_tasks=int(args.task_executor_max_tasks),
         model=str(args.task_executor_model),
         local_agent=bool(args.task_executor_local_agent),
-        channel=str(args.channel),
-        target=str(args.to),
+        channel=delivery_channel,
+        target=delivery_target,
     )
 
     install_index_cmd = build_install_project_index_cmd(
@@ -1417,8 +1487,8 @@ def main() -> None:
         project_registry=project_registry,
         task_db=task_db,
         every_ms=int(args.project_index_every_ms),
-        channel=str(args.channel),
-        target=str(args.to),
+        channel=delivery_channel,
+        target=delivery_target,
     )
 
     cron_setup_cmd = build_cron_setup_cmd(
@@ -1449,8 +1519,8 @@ def main() -> None:
         auto_update_install_every_ms=int(args.auto_update_install_every_ms),
         github_web_every_ms=int(args.github_web_every_ms),
         include_github_web=(profile == "all"),
-        channel=str(args.channel),
-        target=str(args.to),
+        channel=delivery_channel,
+        target=delivery_target,
     )
     cron_setup_cmd.append("--emit-json")
 
@@ -1468,7 +1538,7 @@ def main() -> None:
         "--notify-on",
         str(args.local_backup_notify_on),
     ]
-    install_local_backup_cmd.extend(delivery_args(args.channel, args.to))
+    install_local_backup_cmd.extend(delivery_args(delivery_channel, delivery_target))
 
     install_reviewer_cmd = [
         args.python_bin,
@@ -1518,7 +1588,7 @@ def main() -> None:
                 )
             if bool(args.reviewer_hourly_push_after_merge):
                 install_reviewer_cmd.append("--hourly-push-after-merge")
-    install_reviewer_cmd.extend(delivery_args(args.channel, args.to))
+    install_reviewer_cmd.extend(delivery_args(delivery_channel, delivery_target))
     install_reviewer_cmd.append("--emit-json")
 
     multi_project_governance_cmds = [
@@ -1564,8 +1634,8 @@ def main() -> None:
                 merge_approval_file=str(args.reviewer_hourly_merge_approval_file).strip(),
                 allow_merge=bool(args.reviewer_hourly_allow_merge),
                 push_after_merge=bool(args.reviewer_hourly_push_after_merge),
-                channel=str(args.channel),
-                target=str(args.to),
+                channel=delivery_channel,
+                target=delivery_target,
             ),
         )
         for item in multi_project_targets
@@ -1630,8 +1700,8 @@ def main() -> None:
         project_review_every_ms=int(args.web_intel_project_review_every_ms),
         collect_min_interval_minutes=int(args.web_intel_collect_min_interval_minutes),
         review_min_interval_minutes=int(args.web_intel_review_min_interval_minutes),
-        channel=str(args.channel),
-        target=str(args.to),
+        channel=delivery_channel,
+        target=delivery_target,
     )
 
     normalize_paths_cmd = [
@@ -1764,6 +1834,14 @@ def main() -> None:
     print(f"workflow_registry_file={workflow_registry_file}")
     print(f"jobs_agent_mapping_file={jobs_agent_mapping_file}")
     print(f"gateway_service_prefer={args.gateway_service_prefer}")
+    print("resolved_delivery=" + json.dumps(
+        {
+            "channel": delivery_channel,
+            "to": delivery_target,
+            **delivery_meta,
+        },
+        ensure_ascii=False,
+    ))
     print("multi_project_targets=" + json.dumps(multi_project_targets, ensure_ascii=False))
     print(f"install_multi_project_governance_jobs={bool(args.install_multi_project_governance_jobs)}")
     print(f"install_multi_project_reviewer_pr_gates={bool(args.install_multi_project_reviewer_pr_gates)}")

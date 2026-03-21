@@ -91,6 +91,19 @@ Linux 服务器更常用的参数如下。
 - `--channel`
 - `--to`
 
+如果 Linux 服务器上的 cron 需要统一发到机器人所在群，而不是私聊某个用户，推荐直接在运行时配置 `~/.openclaw/openclaw.json` 中写入：
+
+- `channels.telegram.cronDeliveryChannel = "telegram"`
+- `channels.telegram.cronDeliveryChatId = "<group_chat_id>"`
+
+之后再执行：
+
+```bash
+python scripts/openclaw-ops/install_workflow_profile.py --profile core --workflow-repo-path .
+```
+
+安装器在没有显式传 `--channel/--to` 时，会优先读取这两个本机字段作为 cron 默认投递目标。
+
 ### 4.4 jobs 频率参数
 
 - `--todo-every-ms`

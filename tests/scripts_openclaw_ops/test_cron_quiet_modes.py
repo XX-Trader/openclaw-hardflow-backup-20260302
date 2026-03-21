@@ -2,6 +2,7 @@ import json
 import contextlib
 import io
 import importlib.util
+import json
 import sqlite3
 import subprocess
 import sys
@@ -1432,6 +1433,7 @@ class CronQuietModeTests(unittest.TestCase):
             here=Path("/repo/scripts/openclaw-ops"),
             jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
             ops_home="/home/ubuntu/.openclaw/ops",
+            workflow_repo_path="/repo",
             task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
             every_ms=600000,
             max_tasks=3,
@@ -1443,6 +1445,67 @@ class CronQuietModeTests(unittest.TestCase):
         rendered = " ".join(cmd)
         self.assertIn("--notify-on error", rendered)
         self.assertIn("--emit-json", rendered)
+
+    def test_install_workflow_profile_resolve_delivery_uses_runtime_telegram_group_target(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "openclaw.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "channels": {
+                            "telegram": {
+                                "botToken": "demo-token",
+                                "cronDeliveryChatId": "-1003775035700",
+                            }
+                        }
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            channel, target, meta = module.resolve_runtime_delivery_target(
+                channel="",
+                target="",
+                local_config_path=str(config_path),
+            )
+
+        self.assertEqual(channel, "telegram")
+        self.assertEqual(target, "-1003775035700")
+        self.assertEqual(meta["source"], "runtime_openclaw_config")
+        self.assertIn("channels.telegram.cronDeliveryChatId", meta["resolved_from"])
+
+    def test_install_workflow_profile_preserves_local_telegram_cron_delivery_chat_id(self):
+        module = load_module(
+            "install_workflow_profile",
+            "scripts/openclaw-ops/install_workflow_profile.py",
+        )
+        base_cfg = {
+            "channels": {
+                "telegram": {
+                    "botToken": "local-token",
+                    "cronDeliveryChatId": "-1003775035700",
+                }
+            }
+        }
+        merged_cfg = {
+            "channels": {
+                "telegram": {
+                    "enabled": True,
+                }
+            }
+        }
+
+        preserved = module.preserve_local_telegram_credentials(base_cfg, merged_cfg)
+
+        self.assertEqual(
+            merged_cfg["channels"]["telegram"]["cronDeliveryChatId"],
+            "-1003775035700",
+        )
+        self.assertIn("channels.telegram.cronDeliveryChatId", preserved)
 
     def test_install_workflow_profile_project_index_cmd_disables_git_pull(self):
         module = load_module(
