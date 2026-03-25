@@ -113,6 +113,28 @@
         "commit_prefix": "chore(project-b): sync automation updates"
       },
       "auto_update_install_cmd": "bash scripts/deploy/install.sh"
+    },
+    {
+      "id": "lobster",
+      "name": "lobster",
+      "path": "/srv/lobster",
+      "index_dir": ".workflow/project-index-local",
+      "auto_pull": true,
+      "git_remote": "origin",
+      "git_branch": "main",
+      "external_readonly": true,
+      "description": "外部上游开源仓库，仅拉取更新，不提交任何变更",
+      "governance": {
+        "watch_prefixes": [
+          "src/",
+          "README.md"
+        ],
+        "exclude_prefixes": [
+          ".git/",
+          "test/"
+        ],
+        "auto_pr_enabled": false
+      }
     }
   ]
 }

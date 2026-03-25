@@ -49,9 +49,25 @@
   "mcp-builder": [
     "backend-dev"
   ],
+  "openclaw-evolution-upgrader": [
+    "main",
+    "coordinator",
+    "ops-agent",
+    "project-agent",
+    "optimization-agent",
+    "reviewer"
+  ],
   "openclaw-security-audit": [
     "reviewer",
     "deployer"
+  ],
+  "openclaw-workflow-manager": [
+    "main",
+    "coordinator",
+    "ops-agent",
+    "project-agent",
+    "optimization-agent",
+    "reviewer"
   ],
   "parallel-executor": [
     "coordinator"

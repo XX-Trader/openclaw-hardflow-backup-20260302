@@ -98,6 +98,43 @@ class TaskCenterDisplaySanitizationTests(unittest.TestCase):
                     details={"payload_ref": "/tmp/report.json"},
                     actor="project-agent",
                 )
+                task_center.record_task_output(
+                    task_id="todo-display-safe-1",
+                    output_type="agent_report",
+                    audience="human",
+                    channel="none",
+                    status="prepared",
+                    summary="请查看 /tmp/output-report.json",
+                    payload={"delivery": {"report_file": "/tmp/output-report.json"}},
+                    actor="project-agent",
+                )
+                task_center.record_task_incident(
+                    task_id="todo-display-safe-1",
+                    incident_type="needs_clarification",
+                    severity="warning",
+                    status="open",
+                    reason="missing_context",
+                    summary="参考 /tmp/incident.json",
+                    owner="coordinator",
+                    details={"report_file": "/tmp/incident.json"},
+                    actor="coordinator",
+                )
+                task_center.record_benchmark_run(
+                    task_id="todo-display-safe-1",
+                    benchmark_suite_id="coding-default-core",
+                    benchmark_run_id="benchmark-display-safe-1",
+                    workflow_profile_id="coding-default",
+                    workflow_channel="candidate",
+                    target_kind="workflow",
+                    target_id="coding-default",
+                    baseline_run_ids=["/tmp/baseline-1.json"],
+                    candidate_run_ids=["/tmp/candidate-1.json"],
+                    summary_file="/tmp/benchmark-summary.json",
+                    scorecard_file="/tmp/benchmark-scorecard.json",
+                    decision={"promote_to_new_baseline": False},
+                    details={"report_file": "/tmp/benchmark-details.json"},
+                    actor="upgrade-feedback-runner",
+                )
 
                 public_task = task_center.get_task("todo-display-safe-1")
                 raw_task = task_center.get_task("todo-display-safe-1", display_safe=False)
@@ -119,10 +156,18 @@ class TaskCenterDisplaySanitizationTests(unittest.TestCase):
         self.assertNotIn("/tmp/parsed.json", str(public_report))
         self.assertNotIn("/tmp/input.json", str(public_report))
         self.assertNotIn("/tmp/output.json", str(public_report))
+        self.assertNotIn("/tmp/output-report.json", str(public_report))
+        self.assertNotIn("/tmp/incident.json", str(public_report))
+        self.assertNotIn("/tmp/benchmark-summary.json", str(public_report))
+        self.assertNotIn("/tmp/benchmark-scorecard.json", str(public_report))
         self.assertIn("/tmp/report.json", str(raw_report))
         self.assertIn("/tmp/parsed.json", str(raw_report))
         self.assertIn("/tmp/input.json", str(raw_report))
         self.assertIn("/tmp/output.json", str(raw_report))
+        self.assertIn("/tmp/output-report.json", str(raw_report))
+        self.assertIn("/tmp/incident.json", str(raw_report))
+        self.assertIn("/tmp/benchmark-summary.json", str(raw_report))
+        self.assertIn("/tmp/benchmark-scorecard.json", str(raw_report))
 
     def test_planner_summary_defaults_to_sanitized_report_view(self):
         module = load_module(

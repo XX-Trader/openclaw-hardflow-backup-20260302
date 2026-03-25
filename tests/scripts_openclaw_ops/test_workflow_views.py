@@ -23,6 +23,229 @@ def load_module(name: str, rel_path: str):
 
 
 class WorkflowViewsTests(unittest.TestCase):
+    def test_control_plane_summary_event_summarizes_incidents_and_vetoes(self):
+        module = load_module(
+            "workflow_views",
+            "scripts/openclaw-ops/workflow_views.py",
+        )
+
+        summary = {
+            "generated_at": "2026-03-22T15:00:00+00:00",
+            "lookback_hours": 24,
+            "scanned_task_count": 3,
+            "open_incident_count": 2,
+            "critical_open_incident_count": 1,
+            "human_assistance_task_count": 1,
+            "waiting_human_confirm_task_count": 1,
+            "needs_clarification_task_count": 0,
+            "benchmark_run_task_count": 2,
+            "benchmark_promoted_count": 1,
+            "benchmark_blocked_count": 1,
+            "total_tokens": 12345,
+            "total_cost_estimate": 1.2345,
+            "veto_reason_counts": [
+                {"reason": "critical_incidents_present", "count": 1},
+            ],
+            "top_tasks": [
+                {
+                    "task_id": "todo-1",
+                    "workflow_profile_id": "coding-default",
+                    "workflow_channel": "candidate",
+                    "stage_id": "review",
+                    "open_incident_count": 1,
+                    "critical_open_incident_count": 1,
+                    "requires_human_assistance": True,
+                    "waiting_human_confirm": False,
+                    "needs_clarification": False,
+                }
+            ],
+        }
+
+        event = module.build_control_plane_summary_event(summary, notify_on="error")
+        text = module.render_human_view(event["views"]["human"])
+
+        self.assertEqual(event["kind"], "control_plane_summary")
+        self.assertTrue(event["views"]["human"]["visible"])
+        self.assertIn("控制面当前仍有待处理风险", text)
+        self.assertIn("窗口：最近 24 小时，扫描 3 个 task", text)
+        self.assertIn("未闭环 incident 2 个（critical 1 个）", text)
+        self.assertIn("benchmark：最近有结果 2 个 task，允许晋升 1 个，未通过 1 个", text)
+        self.assertIn("critical_incidents_present x1", text)
+        self.assertIn("todo-1 coding-default@candidate / 评审", text)
+
+    def test_benchmark_sweep_event_summarizes_failures_and_promotions(self):
+        module = load_module(
+            "workflow_views",
+            "scripts/openclaw-ops/workflow_views.py",
+        )
+
+        summary = {
+            "status": "partial_failure",
+            "generated_at": "2026-03-22T12:00:00+00:00",
+            "requested_suite_ids": ["coding-default-core", "research-default-core"],
+            "success_count": 1,
+            "failure_count": 1,
+            "results": [
+                {
+                    "suite_id": "coding-default-core",
+                    "status": "ok",
+                    "summary": {
+                        "workflow_scorecard": {
+                            "decision": {
+                                "promote_to_new_baseline": True,
+                                "veto_reasons": [],
+                            }
+                        }
+                    },
+                }
+            ],
+            "failures": [
+                {
+                    "suite_id": "research-default-core",
+                    "error_type": "ValueError",
+                    "error": "benchmark suite not found: research-default-core",
+                }
+            ],
+        }
+
+        event = module.build_benchmark_sweep_event(summary, notify_on="error")
+        text = module.render_human_view(event["views"]["human"])
+
+        self.assertEqual(event["kind"], "benchmark_sweep")
+        self.assertTrue(event["views"]["human"]["visible"])
+        self.assertIn("基准批跑出现 1 个失败", text)
+        self.assertIn("请求基准集：coding-default-core, research-default-core", text)
+        self.assertIn("成功 1 个，失败 1 个", text)
+        self.assertIn("coding-default-core -> 允许晋升", text)
+        self.assertIn("research-default-core -> ValueError", text)
+
+    def test_task_control_plane_event_summarizes_open_incident_and_benchmark(self):
+        module = load_module(
+            "workflow_views",
+            "scripts/openclaw-ops/workflow_views.py",
+        )
+
+        report = {
+            "task": {
+                "task_id": "todo-control-1",
+                "status": "running",
+                "action": "retry",
+                "workflow_profile_id": "coding-default",
+                "workflow_channel": "candidate",
+                "stage_id": "implement",
+            },
+            "control_plane": {
+                "latest_output": {
+                    "output_type": "agent_report",
+                    "summary": "需要人工协助",
+                    "payload": {
+                        "human_gate": {
+                            "requires_human_assistance": True,
+                            "need_human_confirm": False,
+                            "human_confirmed": True,
+                            "needs_clarification": False,
+                        }
+                    },
+                },
+                "latest_incident": {
+                    "incident_type": "stage_contract_failed",
+                    "severity": "critical",
+                    "status": "open",
+                    "summary": "仍需人工复核",
+                },
+                "latest_benchmark_run": {
+                    "benchmark_suite_id": "coding-default-core",
+                    "workflow_channel": "candidate",
+                    "decision": {
+                        "promote_to_new_baseline": False,
+                        "veto_reasons": ["critical_incidents_present"],
+                    },
+                },
+                "open_incidents": [
+                    {
+                        "incident_type": "stage_contract_failed",
+                        "severity": "critical",
+                        "status": "open",
+                        "summary": "仍需人工复核",
+                    }
+                ],
+                "open_incident_count": 1,
+                "critical_open_incident_count": 1,
+                "requires_human_assistance": True,
+                "waiting_human_confirm": False,
+                "needs_clarification": False,
+                "benchmark_suite_ids": ["coding-default-core"],
+            },
+            "diagnostics": {
+                "task_output_count": 1,
+                "incident_count": 1,
+                "benchmark_run_count": 1,
+            },
+            "timing": {"completed_at": "", "started_at": "2026-03-22T10:00:00+00:00"},
+        }
+
+        event = module.build_task_control_plane_event(report, notify_on="error")
+        text = module.render_human_view(event["views"]["human"])
+
+        self.assertEqual(event["kind"], "task_control_plane")
+        self.assertTrue(event["views"]["human"]["visible"])
+        self.assertIn("当前有 1 个未闭环事件，其中 1 个为 critical。", text)
+        self.assertIn("工作流：coding-default@candidate / 实现", text)
+        self.assertIn("人工门禁：需要人工协助", text)
+        self.assertIn("stage_contract_failed（critical/open） -> 仍需人工复核", text)
+        self.assertIn("最近基准：coding-default-core -> 未通过晋升", text)
+        self.assertIn("critical_incidents_present", text)
+
+    def test_task_control_plane_event_error_mode_hides_clean_task(self):
+        module = load_module(
+            "workflow_views",
+            "scripts/openclaw-ops/workflow_views.py",
+        )
+
+        report = {
+            "task": {
+                "task_id": "todo-control-clean-1",
+                "status": "passed",
+                "action": "complete",
+                "workflow_profile_id": "coding-default",
+                "workflow_channel": "stable",
+                "stage_id": "review",
+            },
+            "control_plane": {
+                "latest_output": {
+                    "output_type": "agent_report",
+                    "summary": "任务已完成",
+                    "payload": {
+                        "human_gate": {
+                            "requires_human_assistance": False,
+                            "need_human_confirm": False,
+                            "human_confirmed": True,
+                            "needs_clarification": False,
+                        }
+                    },
+                },
+                "latest_incident": {},
+                "latest_benchmark_run": {},
+                "open_incidents": [],
+                "open_incident_count": 0,
+                "critical_open_incident_count": 0,
+                "requires_human_assistance": False,
+                "waiting_human_confirm": False,
+                "needs_clarification": False,
+                "benchmark_suite_ids": [],
+            },
+            "diagnostics": {
+                "task_output_count": 1,
+                "incident_count": 0,
+                "benchmark_run_count": 0,
+            },
+            "timing": {"completed_at": "2026-03-22T11:00:00+00:00", "started_at": "2026-03-22T10:30:00+00:00"},
+        }
+
+        event = module.build_task_control_plane_event(report, notify_on="error")
+        self.assertFalse(event["views"]["human"]["visible"])
+        self.assertEqual(module.render_human_view(event["views"]["human"]), "NO_REPLY")
+
     def test_task_executor_human_view_shows_structured_task_details_and_progress(self):
         module = load_module(
             "workflow_views",

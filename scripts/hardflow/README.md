@@ -1,6 +1,17 @@
-# HardFlow v2（完整版高分门禁）
+# HardFlow Core（默认编码工作流底座）
 
-HardFlow v2 是基于 `tmux + Codex CLI + Lobster + Hooks` 的多角色自动化流程，采用 G0-G6 独立评分门禁。
+HardFlow Core 是 OpenClaw 工作流体系的共享流程内核，不再只表示“一个很强的编码脚本链”。  
+从 2026-03-22 起，推荐统一口径：
+
+- 平台总流程：`需求输入 -> 澄清 -> 拆分 -> 选择 workflow -> 进入执行闭环`
+- `HardFlow Core`
+  - 负责阶段编排、G0-G6 评分门禁、验收、完成前验证、证据落盘、回流整改
+- `coding-default`
+  - 唯一默认 workflow profile
+- `hardflow-run.sh workflow`
+  - 当前等价于 `coding-default@stable` 的主入口
+
+未来新增其他 workflow profile 时，必须复用同一套 HardFlow Core，而不是复制一套平行的 runner 链。
 
 ## 1. 硬约束
 
@@ -11,6 +22,8 @@ HardFlow v2 是基于 `tmux + Codex CLI + Lobster + Hooks` 的多角色自动化
 5. reviewer + tester + score gates 通过后，才允许部署/推送。
 6. 没有当前 run 的完成前验证产物，不允许执行 `git-push`。
 7. 部署后验收测试必须生成当前 run 的统一验收产物，否则不能进入完成前验证。
+8. 自我进化只能先改 candidate，不能直接覆盖默认 stable。
+9. workflow 绑定 capability，不直接把 skill 当作流程真值。
 
 ## 2. Gate 列表与阈值
 
@@ -24,7 +37,20 @@ HardFlow v2 是基于 `tmux + Codex CLI + Lobster + Hooks` 的多角色自动化
 
 策略文件：`scripts/hardflow/score-policy.json`
 
-## 3. 关键文件
+## 3. Core 与 Profile 的关系
+
+| 层 | 负责什么 |
+| --- | --- |
+| `HardFlow Core` | 阶段机、Gate、验收、完成前验证、评分、证据 |
+| `coding-default` | 默认编码工作流的阶段图与能力绑定 |
+| `skill` | capability 的实现说明 |
+| `hook` | 运行时护栏与审计 |
+
+一句话理解：
+
+`HardFlow 负责怎么管流程，coding-default 负责默认跑哪条流程。`
+
+## 4. 关键文件
 
 1. `hardflow-run.sh`：主执行器（含测试回流、评分回流、部署回滚、上下文重置、git 存档点回滚）。
 2. `check-score-gate.mjs`：单 Gate 评分校验器。
@@ -37,13 +63,23 @@ HardFlow v2 是基于 `tmux + Codex CLI + Lobster + Hooks` 的多角色自动化
 9. `hardflow-tmux-runner.sh`：tmux 常驻执行入口。
 10. `atomic_task_guard.py`：保证 `.workflow/task.json` 为原子化细粒度任务（最少 4 个可执行子任务）。
 
-## 4. 主流程入口
+## 5. 主流程入口
 
 正式主流程入口：
 
 ```bash
 bash scripts/hardflow/hardflow-run.sh workflow --task "实现XX需求" --max-retries 3 --score-max-retries 3
 ```
+
+当前推荐把这条命令理解成：
+
+`coding-default@stable` 的默认执行入口
+
+注意：
+
+- 这不是整个平台接到需求后的第一步
+- 正确顺序是先做需求澄清和任务拆分
+- 当任务被识别为编码类任务后，再进入这条默认执行入口
 
 这条命令会按固定顺序执行：
 
@@ -79,6 +115,7 @@ bash scripts/hardflow/hardflow-run.sh workflow --task "实现XX需求" --max-ret
 4. `post-test` 失败现在会直接中断 workflow，不再继续进入 `G5 release` / `G6 final`。
 5. `git-push` 现在显式依赖 `verify-completion` 产物，缺失或过期都会阻断推送。
 6. `verify-completion` 现在显式依赖 `acceptance-test` 产物，缺失或失败都会阻断完成。
+7. 未来若新增其他 workflow profile，应通过 profile/manifest 切换，而不是改写 HardFlow Core 本身。
 
 ### 安全演练模式
 
@@ -105,7 +142,7 @@ bash scripts/hardflow/hardflow-run.sh workflow --task "实现XX需求" --max-ret
 
 这样可以在不触发外部提交的前提下，验证完整门禁链路是否可运行。
 
-## 5. 部署后验收测试约定
+## 6. 部署后验收测试约定
 
 正式阶段入口：
 
@@ -139,7 +176,7 @@ bash scripts/hardflow/hardflow-run.sh acceptance-test
 1. `.workflow/runs/<run_id>/acceptance/deployment.json`
 2. `.workflow/gates/deployment_acceptance.json`
 
-## 6. 评分命令约定
+## 7. 评分命令约定
 
 每个 Gate 支持两类命令：
 
@@ -173,12 +210,13 @@ bash scripts/hardflow/hardflow-run.sh acceptance-test
 3. 权限收敛：`chmod 600 ~/.openclaw/hardflow/hardflow.env`
 
 `hardflow-run.sh` 会在每次执行时自动按以下顺序查找配置：
+
 1. `HARDFLOW_ENV_FILE`（显式指定）
 2. `~/.openclaw/hardflow/hardflow.env`
 3. `~/.claude/hardflow/hardflow.env`
 4. `<repo>/.workflow/hardflow.env`
 
-## 7. 分步调试示例
+## 8. 分步调试示例
 
 ```bash
 bash scripts/hardflow/hardflow-run.sh classify --task "实现XX需求"
@@ -204,7 +242,7 @@ bash scripts/hardflow/hardflow-run.sh git-push
 bash scripts/hardflow/hardflow-run.sh score-report --format text
 ```
 
-## 8. Lobster 运行
+## 9. Lobster 运行
 
 ```json
 {
@@ -215,7 +253,7 @@ bash scripts/hardflow/hardflow-run.sh score-report --format text
 }
 ```
 
-## 9. 产物目录
+## 10. 产物目录
 
 1. `.workflow/runs/<run_id>/timeline.log`
 2. `.workflow/runs/<run_id>/issues.ndjson`
@@ -228,9 +266,24 @@ bash scripts/hardflow/hardflow-run.sh score-report --format text
 9. `.workflow/task.json`
 10. `.workflow/progress.txt`
 
-## 10. 记忆说明
+## 11. 进化与晋升说明
 
-当前工作流已把记忆路线标准化为两种明确模式，而不是混合表述：
+当前阶段建议把默认编码工作流的自我进化统一成：
+
+- `coding-default@stable`
+- `coding-default@candidate`
+
+upgrade feedback、workflow scorecard、skill review 的最终目标，不只是输出报告，而是支撑：
+
+1. candidate 重跑
+2. stable/candidate 对比
+3. 晋升或回滚
+
+在这套机制成熟前，不建议让自我进化直接覆盖默认稳定流。
+
+## 12. 记忆说明
+
+当前工作流已把记忆链路标准化成两种明确模式，而不是混合表述：
 
 1. 官方默认模式：`memory-core`
 2. 增强记忆模式：`OpenViking + memory-openviking`
@@ -249,16 +302,3 @@ bash scripts/hardflow/hardflow-run.sh score-report --format text
    - `memory-openviking` 插件层通过
    - `OpenViking` 服务层健康检查通过
 3. `check_openviking_stack.py` 会优先读取运行时 `memory-openviking.config.port` / `healthUrl` / `baseUrl`，再回退到环境变量和默认端口。
-
-标准自检命令：
-
-```bash
-python scripts/openclaw-ops/check_openviking_stack.py --workspace-root .
-```
-
-2026-03-20 本机安全演练结果：
-
-1. `run_id=20260320_142433`
-2. `G0-G6` 全部通过
-3. `deployment acceptance` 通过
-4. `completion verification` 通过

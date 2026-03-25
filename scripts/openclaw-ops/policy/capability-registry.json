@@ -1,0 +1,294 @@
+{
+  "schema_version": "2026-03-22",
+  "capabilities": [
+    {
+      "capability_id": "role_only",
+      "display_name": "Role Only",
+      "owner_domain": "policy",
+      "default_agent": "project-agent",
+      "allowed_agents": [
+        "agent-factory",
+        "ops-agent",
+        "optimization-agent",
+        "project-agent",
+        "self-evolution-agent",
+        "web-agent"
+      ],
+      "required_skills": [],
+      "required_runtime": [
+        "task-center"
+      ],
+      "tool_requirements": [],
+      "input_contract": "任务必须指定 assignee，并且 assignee 必须属于 allowed_agents。",
+      "output_contract": "任务约束保持为单角色、单 agent 执行。",
+      "verification_contract": "校验 assignee 是否在 allowed_agents 内。",
+      "failure_modes": [
+        "assignee_not_allowed"
+      ]
+    },
+    {
+      "capability_id": "skill_backed",
+      "display_name": "Skill Backed",
+      "owner_domain": "workflow",
+      "default_agent": "coordinator",
+      "allowed_agents": [
+        "main",
+        "coordinator",
+        "backend-dev",
+        "frontend-dev",
+        "reviewer",
+        "tester",
+        "deployer",
+        "doc-writer"
+      ],
+      "required_skills": [],
+      "required_runtime": [
+        "task-center",
+        "skills"
+      ],
+      "tool_requirements": [],
+      "input_contract": "任务必须声明 skill 或由 agent 默认技能补齐。",
+      "output_contract": "执行前需要完成 skill 和 assignee 约束检查。",
+      "verification_contract": "校验 required_skills 是否被 agent manifest 满足。",
+      "failure_modes": [
+        "required_skills_unmet",
+        "required_capabilities_unmet"
+      ]
+    },
+    {
+      "capability_id": "project_context",
+      "display_name": "Project Context",
+      "owner_domain": "project",
+      "default_agent": "project-agent",
+      "allowed_agents": [
+        "project-agent",
+        "coordinator"
+      ],
+      "required_skills": [],
+      "required_runtime": [
+        "task-center"
+      ],
+      "tool_requirements": [
+        "filesystem"
+      ],
+      "input_contract": "输入必须包含项目上下文、范围与位置。",
+      "output_contract": "输出补全项目背景、结构与范围判断。",
+      "verification_contract": "校验 context gate 所需字段是否齐全。",
+      "failure_modes": [
+        "context_fields_missing"
+      ]
+    },
+    {
+      "capability_id": "routing",
+      "display_name": "Routing",
+      "owner_domain": "workflow",
+      "default_agent": "coordinator",
+      "allowed_agents": [
+        "coordinator",
+        "main"
+      ],
+      "required_skills": [],
+      "required_runtime": [
+        "task-center"
+      ],
+      "tool_requirements": [],
+      "input_contract": "输入必须包含任务类别、优先级与来源。",
+      "output_contract": "输出 assignee、pool、priority 等路由结果。",
+      "verification_contract": "校验 assignee 与 allowed_agents 是否一致。",
+      "failure_modes": [
+        "assignee_not_allowed"
+      ]
+    },
+    {
+      "capability_id": "task_execution",
+      "display_name": "Task Execution",
+      "owner_domain": "execution",
+      "default_agent": "backend-dev",
+      "allowed_agents": [
+        "backend-dev",
+        "frontend-dev",
+        "reviewer",
+        "tester",
+        "deployer",
+        "ops-agent",
+        "optimization-agent"
+      ],
+      "required_skills": [],
+      "required_runtime": [
+        "task-center"
+      ],
+      "tool_requirements": [
+        "filesystem",
+        "shell"
+      ],
+      "input_contract": "输入必须包含 requirement、acceptance 与 observable outputs。",
+      "output_contract": "输出结构化执行结果、质量分与验证信息。",
+      "verification_contract": "校验执行结果满足 acceptance thresholds。",
+      "failure_modes": [
+        "required_capabilities_unmet",
+        "quality_score_low"
+      ]
+    }
+  ],
+  "agent_defaults": [
+    {
+      "agent_id": "agent-factory",
+      "required_capabilities": [
+        "role_only"
+      ],
+      "required_skills": [],
+      "allowed_agents": [
+        "agent-factory"
+      ]
+    },
+    {
+      "agent_id": "ops-agent",
+      "required_capabilities": [
+        "role_only"
+      ],
+      "required_skills": [],
+      "allowed_agents": [
+        "ops-agent"
+      ]
+    },
+    {
+      "agent_id": "optimization-agent",
+      "required_capabilities": [
+        "role_only"
+      ],
+      "required_skills": [],
+      "allowed_agents": [
+        "optimization-agent"
+      ]
+    },
+    {
+      "agent_id": "project-agent",
+      "required_capabilities": [
+        "role_only"
+      ],
+      "required_skills": [],
+      "allowed_agents": [
+        "project-agent"
+      ]
+    },
+    {
+      "agent_id": "self-evolution-agent",
+      "required_capabilities": [
+        "role_only"
+      ],
+      "required_skills": [],
+      "allowed_agents": [
+        "self-evolution-agent"
+      ]
+    },
+    {
+      "agent_id": "web-agent",
+      "required_capabilities": [
+        "role_only"
+      ],
+      "required_skills": [],
+      "allowed_agents": [
+        "web-agent"
+      ]
+    },
+    {
+      "agent_id": "main",
+      "required_capabilities": [
+        "skill_backed"
+      ],
+      "required_skills": [
+        "requirements-clarity",
+        "task-decomposer"
+      ],
+      "allowed_agents": [
+        "main"
+      ]
+    },
+    {
+      "agent_id": "coordinator",
+      "required_capabilities": [
+        "skill_backed"
+      ],
+      "required_skills": [
+        "requirements-clarity",
+        "task-decomposer"
+      ],
+      "allowed_agents": [
+        "coordinator"
+      ]
+    },
+    {
+      "agent_id": "backend-dev",
+      "required_capabilities": [
+        "skill_backed"
+      ],
+      "required_skills": [
+        "feature-development"
+      ],
+      "allowed_agents": [
+        "backend-dev"
+      ]
+    },
+    {
+      "agent_id": "frontend-dev",
+      "required_capabilities": [
+        "skill_backed"
+      ],
+      "required_skills": [
+        "frontend-design",
+        "feature-development"
+      ],
+      "allowed_agents": [
+        "frontend-dev"
+      ]
+    },
+    {
+      "agent_id": "reviewer",
+      "required_capabilities": [
+        "skill_backed"
+      ],
+      "required_skills": [
+        "requesting-code-review"
+      ],
+      "allowed_agents": [
+        "reviewer"
+      ]
+    },
+    {
+      "agent_id": "tester",
+      "required_capabilities": [
+        "skill_backed"
+      ],
+      "required_skills": [
+        "webapp-testing"
+      ],
+      "allowed_agents": [
+        "tester"
+      ]
+    },
+    {
+      "agent_id": "deployer",
+      "required_capabilities": [
+        "skill_backed"
+      ],
+      "required_skills": [
+        "deployment-test"
+      ],
+      "allowed_agents": [
+        "deployer"
+      ]
+    },
+    {
+      "agent_id": "doc-writer",
+      "required_capabilities": [
+        "skill_backed"
+      ],
+      "required_skills": [
+        "writing-plans"
+      ],
+      "allowed_agents": [
+        "doc-writer"
+      ]
+    }
+  ]
+}

@@ -1,5 +1,279 @@
 # OpenClaw Ops Scripts
 
+## 标准入口
+
+- 基建输入输出与通信标准收口
+- 基建设施输入输出与通信标准
+- 基建设施模板文档
+- 字段字典
+
+## 2026-03-24 需求包硬门禁（最小版）
+
+- `create-task / route-task / preflight` 现在统一暴露 `requirement_package_gate`
+- 当前只对 `request_source=human` 且 `task_type=workflow` 生效
+- 当前只在两类场景自动触发：
+  - 显式声明 `context_payload.requirement_package_required=true`
+  - 命中强项目型需求措辞，例如 `project requirement / requirement package / PRD / 需求文档`
+- 普通 `docs / research / ops` 任务里仅出现 `workflow / readme` 这类弱词时，不会再误触发需求包门禁
+- 当前最小必填字段：
+  - `goal`
+  - `success_criteria`
+  - `scope.in_scope`
+  - `scope.out_of_scope`
+- 当需求包不完整时，任务会自动 reroute 到 `clarification_required`，并改派给 `project-agent`
+- 运行时观测入口：
+  - `selection_inputs.requirement_package_gate`
+  - `context_payload.requirement_package_contract`
+  - `build_task_preflight(...).requirement_package_gate`
+
+## 2026-03-24 ExecutionEnvelope 主链扩展
+
+- `task_center.py` 现在会为任务自动补齐最小 `execution_envelope` 快照
+- `task_outputs / task_incidents / benchmark_runs` 现在会自动继承：
+  - `trace_id`
+  - `attempt_id`
+  - `execution_envelope`
+- `task_report(...)` 现在会直接返回顶层 `execution_envelope`
+- `report_agent_result` 生成的 `standard_output` 现在也会带：
+  - `trace_id`
+  - `attempt_id`
+  - `execution_envelope`
+
+## 2026-03-24 删环节候选证据门槛收口
+
+- `control_plane_optimization_advisor.py` 现在会为 `stage_simplification_candidate` 生成结构化 `evidence`
+- `control_plane_optimization_review_runner.py` 现在会基于 `task_count / benchmark_promoted_count / incident / human_assistance / clarification` 评审是否允许进入 `profile_update`
+- `control_plane_profile_update_applier.py` 现在会对 `stage_simplification_candidate` 二次检查 `profile_update_guard`，避免无证据候选直接回写 candidate registry
+- `simplification_hint` 当前只会以 `deletion_mode=suggest_only` 写入 candidate，仍然属于“删环节建议”，不是直接自动删 stage
+
+## 2026-03-24 Capability 声明式装配快照扩展
+
+- `task_capability_binding.py` 现在会返回完整的声明式装配快照：
+  - `capability_declarations`
+  - `capability_contracts`
+  - `resolved_agent_profile`
+- `create-task` 现在会把这份快照写入 `selection_inputs.capability_binding`
+- `execution_envelope.capability_binding` 现在也会继承这份装配结果，不再只保留 `runtime / tool`
+- `build_task_preflight(...)` 现在会直接暴露：
+  - `resolved_assignee`
+  - `resolved_agent_profile`
+  - `capability_declarations`
+  - `capability_contracts`
+- 这一批的目标是把 `task -> output -> incident -> benchmark -> report` 这条主链继续统一，给后面的统一 logger 和真实 live 验收打底
+
+## 2026-03-23 工作流进化闭环收口
+- 删环节 / 并行自适应 统一归类为工作流进化闭环，不新增第 5 条 workflow。
+- 高级负载均衡已从当前主线移除；现阶段只保留全局并发上限、stage 并发上限与 retry/backoff。
+- `stage_execution_strategy` 当前只汇总：
+  - parallel_execution
+  - simplification_hint
+  - optimization_hints
+- `stage_simplification_candidate` 属于工作流进化模块中的正式优化策略，按“建议 -> 派单 -> 回写 candidate -> benchmark 验证”执行。
+
+## 2026-03-23 基建输入输出与通信标准收口
+- 从这一批开始，后续所有 workflow、agent、benchmark、公告链、profile 升级都必须优先遵循这三份 SSOT：
+  - [基建设施输入输出与通信标准](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/adr/2026-03-23-openclaw-foundation-contract-standard.md)
+  - [基建设施模板文档](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/templates/openclaw-foundation-contract-templates.md)
+  - [字段字典](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/policy/FIELD_DICTIONARY.md)
+- 当前统一范围已经正式覆盖：
+  - 人类需求输入模板
+  - workflow 任务输入模板
+  - agent 执行输入模板
+  - agent 间通信模板
+  - agent 结果输出模板
+  - 标准输出包
+  - incident 模板
+  - benchmark 结果模板
+
+## 2026-03-23 阶段优化提示进入运行时主链
+- `policy_enforcer.py`
+  - 现在会读取 workflow stage 上的 `clarification_required_fields / parallel_execution / simplification_hint / optimization_hints`
+  - 当阶段要求的澄清字段缺失时，会把任务从 `workflow` 自动改派为 `clarification_required`
+  - `selection_inputs` 现在会保留 `stage_context_gate / stage_parallel_execution / stage_simplification_hint / stage_optimization_hints`
+- `task_executor_runner.py`
+  - preflight 与执行 prompt 现在能直接看到上述阶段优化提示
+- 这批改动的目标是：让 `profile_update_apply` 写回 registry 后，优化结果第一次真正影响 task intake 和执行预检查
+
+## 2026-03-23 控制面 ROI 分层与 install-surface job 回放落地
+- `control_plane_dashboard.py` 现在除了总览 ROI，还会输出：
+  - `workflow_roi_breakdown`
+  - `stage_roi_breakdown`
+  - Markdown / HTML 中对应的 `Workflow ROI` 与 `Stage ROI` 分层视图
+- `control_plane_optimization_advisor.py` 现在会同步输出 `stage_roi_breakdown`
+  - recommendation 已带 `roi_context`
+  - Markdown 已补 `Stage ROI` 分层摘要
+- `control_plane_live_acceptance_runner.py` 现在在隔离安装面生成 `jobs.json` 后，会继续回放一组关键 install-surface job
+  - 已验证 `summary / dashboard / optimization / profile_update / acceptance` 关键 job 命令可实际执行
+
+## 2026-03-23 控制面 dashboard HTML 产品层落地
+- `control_plane_dashboard.py` 现在除了 `json + markdown`，还会输出静态 `html` 看板
+- `cron_setup.py` 的 dashboard job 已新增 `--html-output`
+- `install_workflow_profile.py` 生成的默认 cron setup 命令已自动接入 `control-plane-dashboard-html-output`
+- `control_plane_acceptance_runner.py` 与 `control_plane_live_acceptance_runner.py` 已把 HTML 产物纳入契约与实跑校验
+
+当前主链状态：
+- 已打通 `selector -> profile -> stage -> capability -> profile_update_apply -> targeted validation -> dashboard html`
+
+## 2026-03-23 控制面 profile update 定向 benchmark 验证落地
+- 已新增 `control_plane_profile_update_validation_runner.py`
+  - 读取 `control-plane-profile-update-apply/latest-report.json`
+  - 按受影响 `workflow_profile_id` 定向匹配 benchmark suite
+  - 对已回写的 candidate profile 运行验证，并用 `change_id` 做去重
+- 已接入 `cron_setup.py`、`install_workflow_profile.py`、`control_plane_acceptance_runner.py`、`control_plane_live_acceptance_runner.py`
+  - 默认 job 名称 `ops_control_plane_profile_update_validation_12h`
+
+## 2026-03-23 控制面 profile update 回写闭环落地
+- 已新增 `control_plane_profile_update_applier.py`
+  - 扫描最近已完成的 `workflow_profile_update` 任务
+  - 对通过控制面门禁的任务，把变更安全回写到目标 `workflow-profile-registry.json`
+  - 当前默认回写到 `candidate` channel，并在 registry 中记录 `profile_update_history`
+- 已接入 `cron_setup.py`
+  - 新增 `build_control_plane_profile_update_apply_job(...)`
+  - 默认 job 名称 `ops_control_plane_profile_update_apply_12h`
+  - 默认每 12 小时执行一次，默认延迟 `660000ms`
+- 已接入 `install_workflow_profile.py`
+  - 默认安装 `control-plane-profile-update-apply` job
+  - 默认输出 `ops/control-plane-profile-update-apply/latest-report.json`
+  - 默认同步输出 `ops/control-plane-profile-update-apply/latest-report.md`
+- 已接入 `control_plane_acceptance_runner.py` 与 `control_plane_live_acceptance_runner.py`
+  - 静态验收会校验 apply job 是否已安装
+  - live acceptance 现在会实跑 `profile_update_apply`
+
+## 2026-03-23 控制面看板趋势层升级
+- `control_plane_dashboard.py` 已升级为“快照 + 趋势”双层视图
+  - 修复了 dashboard 直接输出链上的高频中文乱码文案
+  - 新增最近 7 天趋势汇总：benchmark 次数、晋升/阻断、incident、critical incident、人工协助
+  - 新增按 workflow 的历史分布汇总，便于横向比较 `coding-default / research-default / docs-default / ops-default`
+- dashboard CLI 现支持 `--trend-days`
+  - 不传时默认最近 7 天
+  - 继续兼容现有 `cron_setup.py` 与 `install_workflow_profile.py` 的 dashboard job
+- 已补并通过 `test_control_plane_dashboard.py`
+  - 覆盖趋势统计
+  - 覆盖 workflow 分布
+  - 覆盖 Markdown 中文输出
+
+## 2026-03-23 控制面长链路验收 runner 落地
+- 已新增 `control_plane_acceptance_runner.py`
+  - 读取安装后的 `jobs.json`
+  - 校验关键控制面 job 是否存在、是否启用、`delivery.mode` 是否符合预期
+  - 校验命令消息里是否包含关键脚本和核心参数契约
+  - 输出 `latest-report.json + latest-report.md`
+- 已接入 `cron_setup.py`
+  - 新增 `build_control_plane_acceptance_job(...)`
+  - 默认 job 名称为 `ops_control_plane_acceptance_12h`
+  - 默认每 12 小时运行一次，默认延迟 `420000ms`
+  - `delivery.mode=none`，先把验收结果稳定落盘
+- 已接入 `install_workflow_profile.py`
+  - 默认安装 `control-plane-acceptance` job
+  - 默认读取 `cron/jobs.json`
+  - 默认输出到 `ops/control-plane-acceptance/latest-report.json`
+  - 默认同时写出 `ops/control-plane-acceptance/latest-report.md`
+
+## 2026-03-23 中文显示链 CLI UTF-8 守护落地
+- 这批直接对人输出中文摘要的 CLI 入口已统一接入 `configure_process_utf8_stdio()`
+  - `control_plane_summary_runner.py`
+  - `control_plane_dashboard.py`
+  - `control_plane_optimization_advisor.py`
+  - `control_plane_acceptance_runner.py`
+  - `task_output_consumer.py`
+  - `benchmark_output_consumer.py`
+  - `task_output_broadcast_runner.py`
+  - `benchmark_orchestrator.py`
+- 目标是统一 `stdout/stderr` 与子进程默认编码，降低 Windows 终端链路出现中文乱码的概率
+- 已补 UTF-8 entrypoint 守护测试，后续新增人类可读输出脚本时会被回归测试拦住
+
+## 2026-03-23 能力声明式自动装配最小闭环落地
+- `task_capability_binding.py` 已新增 `resolve_task_capability_binding(...)`
+  - 基于 `required_capabilities / required_skills / allowed_agents` 推导默认 assignee
+  - 输出合并后的 capability、skill、allowlist 与解析原因
+- `policy_enforcer.py` 的 `create-task` 已接入这条绑定逻辑
+  - 未显式指定 assignee 时，`implement` 阶段可自动落到 `backend-dev`
+  - `review` 阶段可按 `requesting-code-review` 自动落到 `reviewer`
+  - `selection_inputs.capability_binding` 会留下绑定来源与候选信息，便于审计
+
+## 2026-03-23 控制面优化建议层落地
+- 已新增 `control_plane_optimization_advisor.py`
+  - 基于最近 `task / incident / benchmark / promotion` 信号生成优化建议
+  - 输出 `report.json + report.md`
+  - 给出环节裁剪、并行候选、澄清补强、门禁强化等建议
+- 已接入 `cron_setup.py`
+  - 新增 `build_control_plane_optimization_job(...)`
+  - 默认每 12 小时运行一次
+  - 默认延迟 `360000ms`
+  - `delivery.mode=none`，先稳定落盘，再由上层消费
+- 已接入 `install_workflow_profile.py`
+  - 默认安装 `control-plane-optimization` job
+  - 默认输出到 `ops/control-plane-optimization/latest-report.json`
+  - 默认同时写出 `ops/control-plane-optimization/latest-report.md`
+
+## 2026-03-23 控制面看板快照层落地
+- 已新增 `control_plane_dashboard.py`
+  - 复用 `control_plane_summary_runner.py` 的聚合结果
+  - 输出静态 `dashboard.json + dashboard.md`
+  - 汇总最近 `task / incident / benchmark / promotion` 信号
+- 看板快照当前包含：
+  - 总览指标：incident、人工协助、benchmark、token、cost
+  - 重点任务：workflow/channel/stage 与重点风险徽标
+  - benchmark 概览：最近 sweep 的 suite、成功/失败、晋升/阻断结果
+- 当前先提供静态快照 CLI，不急着接前端页面
+
+## 2026-03-22 控制面汇总 job 落地
+- 已新增 `control_plane_summary_runner.py`
+  - 聚合最近 `task / incident / benchmark / promotion` 信号
+  - 输出统一 `event + human_text`
+  - 使用 state 文件做去重，避免重复公告
+- `workflow_views.py` 已新增 `build_control_plane_summary_event(...)`
+  - 统一渲染控制面汇总的人类视图、结构化事件和公告文本
+- `cron_setup.py` 已新增 `build_control_plane_summary_job(...)`
+  - `delivery.mode=announce`
+  - 默认每 6 小时运行一次，默认延迟 `180000ms`
+- `install_workflow_profile.py` 生成的默认 cron setup 命令，现已自动安装 `control-plane-summary` job
+
+## 2026-03-22 task 控制面广播 job 落地
+- 已新增 `task_output_broadcast_runner.py`
+  - 扫描最近有控制面变化的 task
+  - 复用 `task_output_consumer.py` 渲染单 task 统一事件
+  - 通过 state 文件去重，只广播新的可见事件
+- `cron_setup.py` 现已新增 `build_task_output_broadcast_job(...)`
+  - `delivery.mode=announce`
+  - 默认每 15 分钟运行一次，默认延迟 `120000ms`
+- `install_workflow_profile.py` 生成的默认 cron setup 命令，现已自动安装 `task-output-broadcast` job
+
+## 2026-03-22 benchmark 输出通知 job 落地
+- `cron_setup.py` 现已新增 `build_benchmark_output_job(...)`
+  - 独立读取 `benchmark-sweeps/sweeps/latest-summary.json`
+  - 通过 `benchmark_output_consumer.py` 渲染统一 `human_text`
+  - `delivery.mode=announce`，用于走正式 cron delivery 通道
+- `install_workflow_profile.py` 生成的默认 cron setup 命令，现已自动安装 `benchmark-output` job
+  - 默认每 24 小时执行一次
+  - 默认延迟 `300000ms`，避免与 benchmark sweep 同时触发
+
+## 2026-03-22 benchmark 输出进入调度主链
+- `cron_setup.py` 的 `build_benchmark_sweep_job(...)` 现在会在 benchmark sweep 完成后继续调用 `benchmark_output_consumer.py`
+  - 默认读取 `benchmark-sweeps/sweeps/latest-summary.json`
+  - 默认写入 `benchmark-sweeps/output/latest-event.json`
+  - 默认使用 `--notify-on error`
+- `install_workflow_profile.py` 生成的默认 cron setup 命令也已经自动接入这组 `benchmark-sweep-output-*` 参数
+
+这个目录用于维护 OpenClaw 的工作流运行时、定时任务和控制面脚本。
+
+## 2026-03-22 当前主链状态
+
+- 已完成正式 workflow：`coding-default`、`research-default`、`docs-default`、`ops-default`
+- 已完成控制面主链：workflow selector、profile/stage manifest、capability registry、output/human gate/incident、benchmark suite、promotion/rollback
+- 已新增 `benchmark_orchestrator.py`
+  - 支持 `list-suites`、`run-suite`、`run-all`
+  - 单 suite 默认写入 `output_root/suites/<suite_id>`
+  - sweep 总摘要默认写入 `output_root/sweeps/latest-summary.json`
+- 已新增 benchmark sweep 定时任务接线
+  - `cron_setup.py` 现在支持 `--install-benchmark-sweep-job`
+  - `install_workflow_profile.py` 默认会把 benchmark sweep job 一起装上
+  - 默认跑 4 个正式 suite，但保守模式下不自动批量创建任务、也不自动批量晋升
+- 已新增 benchmark sweep 统一输出消费层
+  - `workflow_views.py` 已支持 `build_benchmark_sweep_event(...)`
+  - `benchmark_output_consumer.py` 可把 sweep summary 渲染成统一 `event + human_text`
+- 所有自动消息输出与运行记录应统一包含 `sender_identity`，并默认使用 UTF-8 无 BOM 落盘
+
 这个目录用于维护 OpenClaw 工作流、定时任务和运维巡检脚本。
 
 所有自动消息输出与运行记录统一包含 `sender_identity` 字段，便于排查是谁发送、链路是否正常。
@@ -9,6 +283,33 @@
 - `policy/task_center.py`
   - 对外读取任务、stage run、module log、module communication、agent task report、planner summary、daily summary 等接口时，默认返回展示安全视图，只展示中文留痕编号。
   - 如需原始存储值用于内部回写、底层审计或数据修复，显式传入 `display_safe=False`。
+  - 现已新增 `task_outputs`、`task_incidents` 两张统一控制面表，用于沉淀标准化输出包、人工协助/异常升级记录。
+  - `task_report(...)` 现在会额外带出 `task_outputs`、`task_incidents`、`benchmark_runs`、`control_plane` 四段控制面视图，便于直接审计人机协助、open incident 与 benchmark 结果。
+  - `update_task_incident(...)` 支持把 incident 从 `open` 推进到 `acked/resolved/suppressed`，并自动留下事件审计。
+  - `report_agent_result` 会自动写入统一 `standard_output`，其中包含 `workflow`、`outcome`、`human_gate`、`telemetry`、`contracts`、`delivery` 六段结构。
+- `task_output_consumer.py`
+  - 统一消费 `task_report` 里的控制面数据，输出标准 `event` + `human_text`。
+  - 复用 `workflow_views.py` 的 `human/agent/external/storage` 四视图结构，不再单独定义一套聊天格式。
+  - 适合给后续 Telegram、钉钉、面板、webhook 当统一出口层。
+- `policy/capability-registry.json`
+  - 定义 runtime `Capability Registry`，统一收口 `capability_id -> allowed_agents/default_agent/contracts`。
+  - 同时维护 `agent_defaults`，把现有 `assignee -> required_capabilities/required_skills/allowed_agents` 默认推断收进正式 registry。
+  - `policy_enforcer init` / `validate-runtime` / `create-task` 已经接入这份 registry，未知 capability 会 fail-fast。
+- `policy/benchmark-suite-registry.json`
+  - 定义 runtime `Benchmark Suite Registry`，统一收口 `suite_id -> workflow_target/skill_name/window/channel`。
+  - `policy_enforcer init` 现会自动写出默认 `coding-default-core`、`research-default-core`、`docs-default-core` 与 `ops-default-core` 基准集。
+  - `upgrade_feedback_runner.py` 已支持读取该文件，并把 suite 信息固化到 `benchmark_suite` 与 `promotion_bundle`。
+  - `cron_setup.py` / `install_workflow_profile.py` 现在会默认把这份 registry 作为 `upgrade feedback` 定时任务的 benchmark 输入。
+- `policy/workflow-profile-registry.json`
+  - 现在除了 profile/channel 之外，也正式维护 `default_stage_id`、`task_type_stage_map`、`stages`。
+  - 当前正式 profile 已包含 `coding-default`、`research-default`、`docs-default` 与 `ops-default`，四者都具备 `stable/candidate` 双通道。
+  - `create-task` 会根据 workflow profile 自动解析 `stage_id`，并把 stage 的 `required_capabilities/required_skills` 合并进任务约束。
+  - 每个 stage 现在还能声明 `score_gate`、`min_evidence_count`、`output_contract`、`verification_contract`。
+  - `task_center` 与 `task_executor_runner` 已支持透传 `stage_id` 和 stage 合同字段，便于后续做 stage 级审计、评分和证据校验。
+  - `task_executor_runner` 现在会在执行后生成 stage evidence、校验 deliverable / verification contract，并把评估结果写入 `stage_runs.details.stage_contract`。
+  - 当 `stage_contract.contract_passed = false` 时，`report_agent_result` 会自动把原本 `passed` 的结果降级为 `partial + retry`，并在升级分析里统计 `stage_contract_failure_count`。
+  - 当任务需要人工协助、澄清、升级或 stage contract 失败时，`report_agent_result` 还会自动生成 `task_incidents` 记录，后续可直接接通知与 benchmark 审计。
+  - `complete-task` 现会读取统一 `task_outputs/task_incidents` 门禁；若仍存在 `requires_human_assistance` 或 open critical incident，则不会再被高分直接判通过。
 
 ## TODO 巡检
 
@@ -719,3 +1020,82 @@ openclaw gateway run
 ```bash
 npm install -g @skill4agent/cli
 ```
+
+## Upgrade Scoring And Review (2026-03-22)
+
+- `upgrade_analysis.py`
+  - 统一装载 executor-style reports，并输出升级归因所需的聚合指标。
+  - 内置 `architecture_gap / workflow_gap / skill_gap / runtime_gap` 分类、workflow/skill 评分口径与晋升判断。
+- `workflow_upgrade_scoring.py`
+  - 把 baseline / candidate executor reports 转成 workflow scorecard JSON。
+  - 适合判断 job 频率、runner、installer、preflight 链路的升级是否值得晋升为新基线。
+  - 现会额外统计 `human_assistance_count`、`open_incident_count`、`critical_incident_count`，并在必要时写入 `decision.veto_reasons`。
+- `skill_evolution_review.py`
+  - 把 baseline / candidate executor reports 转成 skill review markdown / JSON。
+  - 适合判断 skill 指令是否补足了触发条件、边界说明、验证动作与失败回流。
+- `upgrade_feedback_runner.py`
+  - 从 `executor-runs` 自动切 baseline / candidate 窗口。
+  - 同时产出 workflow scorecard、skill review 和 summary JSON。
+  - 支持把低分或未晋升候选自动包装成 task-center 任务，生成 `workflow_upgrade` / `skill_upgrade` 待办并用 `change_id` 去重。
+  - 现支持 `benchmark-suite-registry.json`，可把这次对比绑定到正式 `benchmark_suite`。
+  - `cron_setup.py` 安装出的默认 maintenance job 会自动携带 `--benchmark-suite-file` 与 `--benchmark-suite-id coding-default-core`。
+  - 若提供 `task-db`，会自动把对比结果写入 `task_center.benchmark_runs`，形成可审计的 benchmark run 记录。
+  - summary 现会额外产出 `benchmark_suite`、`benchmark_run`、`promotion_bundle` 三段结构。
+  - 支持在满足 `promote_to_new_baseline = true` 时自动回写 `workflow-profile-registry.json`，形成 registry 级 stable/candidate 晋升记录。
+  - 适合作为低风险的升级反馈主链，先沉淀证据，再把明确的升级缺口推入 task-center。
+
+- `policy_enforcer.py`
+  - 新增 `update-task-incident` CLI，可推进 incident 生命周期并写审计事件。
+  - `task-report` 现在会直接返回任务控制面视图，方便消费端后续接聊天、面板或 webhook。
+- `workflow_views.py`
+  - 现已新增 `build_task_control_plane_event(...)`，把 `task_outputs/task_incidents/benchmark_runs` 统一成人类可读事件。
+## 2026-03-23 控制面优化建议派发层落地
+- 已新增 `control_plane_optimization_dispatcher.py`
+  - 读取 `control_plane_optimization_advisor.py` 生成的优化报告
+  - 将 recommendation 去重包装为 task-center 正式任务
+  - 默认以 `coding-default@stable` 作为执行 workflow，并保留目标 workflow/stage 审计信息
+- 已接入 `cron_setup.py`
+  - 新增 `build_control_plane_optimization_dispatch_job(...)`
+  - 默认 job 名称 `ops_control_plane_optimization_dispatch_12h`
+  - 默认延迟 `480000ms`，保证晚于 optimization advisor job 运行
+- 已接入 `install_workflow_profile.py`
+  - 默认安装 `control-plane-optimization-dispatch` job
+  - 默认输出 `ops/control-plane-optimization-dispatch/latest-report.json`
+  - 默认同步输出 `ops/control-plane-optimization-dispatch/latest-report.md`
+## 2026-03-23 控制面 live 验收层落地
+- 已新增 `control_plane_live_acceptance_runner.py`
+  - 在隔离工作区播种样本 task-center 数据
+  - 顺序实跑 optimization advisor、dispatcher、optimization review、profile update dispatch、summary、task output consumer、benchmark output consumer、dashboard、acceptance
+  - 输出 `latest-report.json + latest-report.md`
+- 已接入 `cron_setup.py`
+  - 新增 `build_control_plane_live_acceptance_job(...)`
+  - 默认 job 名称 `ops_control_plane_live_acceptance_24h`
+  - 默认延迟 `540000ms`
+- 已接入 `install_workflow_profile.py`
+  - 默认安装 `control-plane-live-acceptance` job
+  - 默认工作区 `ops/control-plane-live-acceptance`
+## 2026-03-23 控制面 profile update 派发层落地
+- 已新增 `control_plane_profile_update_dispatcher.py`
+  - 读取 `control_plane_optimization_review_runner.py` 生成的评审报告
+  - 仅对 `ready_for_profile_update=true` 的项创建 `workflow_profile_update` 正式任务
+  - 按 `change_id` 去重，避免重复派发相同 profile update
+- 已接入 `cron_setup.py`
+  - 新增 `build_control_plane_profile_update_dispatch_job(...)`
+  - 默认 job 名称 `ops_control_plane_profile_update_dispatch_12h`
+  - 默认延迟 `600000ms`，保证晚于 optimization review job 运行
+- 已接入 `install_workflow_profile.py`
+  - 默认安装 `control-plane-profile-update-dispatch` job
+  - 默认输出 `ops/control-plane-profile-update-dispatch/latest-report.json`
+  - 默认同步输出 `ops/control-plane-profile-update-dispatch/latest-report.md`
+## 2026-03-23 Trace 与 ExecutionEnvelope 最小闭环
+- `create-task` 现在会统一生成或继承 `trace_id / attempt_id`
+- `selection_inputs` 现在固定补齐：
+  - `trace_id`
+  - `attempt_id`
+  - `execution_envelope`
+- `task-center` 现在会让 `task_outputs / task_incidents / benchmark_runs` 继承任务级 `trace_id`
+- `preflight` 现在会透传：
+  - `trace_id`
+  - `attempt_id`
+  - `execution_envelope`
+- 当前目标是先把 `task -> output -> incident -> benchmark -> preflight` 主链统一起来，为后续统一 logger、真实 live 验收、工作流进化闭环打底

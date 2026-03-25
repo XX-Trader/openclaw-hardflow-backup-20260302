@@ -436,9 +436,11 @@ def resolve_repo_from_inputs(
         )
 
     if len(candidates) == 1:
-        selected = Path(str(candidates[0].get("path", "")).strip()).expanduser()
+        selected_item = candidates[0]
+        selected = Path(str(selected_item.get("path", "")).strip()).expanduser()
         detail["source"] = "project_registry"
         detail["resolved_repo_path"] = str(selected)
+        detail["project"] = selected_item
         return selected, detail
 
     if len(candidates) <= 0:
@@ -1366,9 +1368,16 @@ def main() -> int:
                     notify = True
             context_gate = task_packaging.get("context_gate", {}) if isinstance(task_packaging, dict) else {}
             context_blocked = bool(context_gate.get("blocked", False)) if isinstance(context_gate, dict) else False
-            if bool(args.auto_pr):
+
+            # 只读仓库保护：external_readonly标记的仓库禁止任何自动PR操作
+            auto_pr_enabled = bool(args.auto_pr)
+            project_info = repo_resolve.get("project", {}) if isinstance(repo_resolve, dict) else {}
+            if bool(project_info.get("external_readonly", False)):
+                auto_pr_enabled = False
+
+            if auto_pr_enabled:
                 auto_pr_result = resolve_auto_pr_result(
-                    auto_pr_enabled=bool(args.auto_pr),
+                    auto_pr_enabled=auto_pr_enabled,
                     context_blocked=context_blocked,
                     changes_scoped_count=len(changes_scoped),
                     attempt_auto_pr_fn=lambda: attempt_auto_pr(

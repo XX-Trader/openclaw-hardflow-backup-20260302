@@ -1,0 +1,914 @@
+{
+  "schema_version": "2026-03-22",
+  "default_profile_id": "coding-default",
+  "default_channel": "stable",
+  "profiles": [
+    {
+      "profile_id": "coding-default",
+      "channel": "stable",
+      "enabled": true,
+      "display_name": "默认编码工作流",
+      "description": "默认编码工作流的稳定通道。",
+      "entry_task_types": [
+        "workflow",
+        "clarification_required"
+      ],
+      "promotion_target_channel": "candidate",
+      "score_policy_ref": "scripts/hardflow/score-policy.json",
+      "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+      "default_stage_id": "implement",
+      "task_type_stage_map": {
+        "workflow": "implement",
+        "clarification_required": "clarify"
+      },
+      "stages": [
+        {
+          "stage_id": "clarify",
+          "display_name": "需求澄清",
+          "score_gate": "requirements",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "clarified_requirement",
+              "context_payload"
+            ],
+            "observable_outputs": [
+              "clarification summary",
+              "missing fields list"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "context_complete_or_escalated"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "implement",
+          "display_name": "实现与验证",
+          "score_gate": "backend",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "code_changes",
+              "verification_result"
+            ],
+            "observable_outputs": [
+              "diff summary",
+              "test evidence"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "tests_or_validation_recorded"
+            ]
+          },
+          "required_capabilities": [
+            "task_execution",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "review",
+          "display_name": "评审与验收",
+          "score_gate": "final",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "review_decision",
+              "acceptance_summary"
+            ],
+            "observable_outputs": [
+              "review notes",
+              "remaining risks"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "review_completed"
+            ]
+          },
+          "required_capabilities": [
+            "skill_backed"
+          ],
+          "required_skills": [
+            "requesting-code-review"
+          ]
+        }
+      ]
+    },
+    {
+      "profile_id": "coding-default",
+      "channel": "candidate",
+      "enabled": true,
+      "display_name": "默认编码工作流候选通道",
+      "description": "默认编码工作流的候选升级通道。",
+      "entry_task_types": [
+        "workflow",
+        "clarification_required"
+      ],
+      "promotion_target_channel": "stable",
+      "score_policy_ref": "scripts/hardflow/score-policy.json",
+      "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+      "default_stage_id": "implement",
+      "task_type_stage_map": {
+        "workflow": "implement",
+        "clarification_required": "clarify"
+      },
+      "stages": [
+        {
+          "stage_id": "clarify",
+          "display_name": "需求澄清",
+          "score_gate": "requirements",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "clarified_requirement",
+              "context_payload"
+            ],
+            "observable_outputs": [
+              "clarification summary",
+              "missing fields list"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "context_complete_or_escalated"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "implement",
+          "display_name": "实现与验证",
+          "score_gate": "backend",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "code_changes",
+              "verification_result"
+            ],
+            "observable_outputs": [
+              "diff summary",
+              "test evidence"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "tests_or_validation_recorded"
+            ]
+          },
+          "required_capabilities": [
+            "task_execution",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "review",
+          "display_name": "评审与验收",
+          "score_gate": "final",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "review_decision",
+              "acceptance_summary"
+            ],
+            "observable_outputs": [
+              "review notes",
+              "remaining risks"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "review_completed"
+            ]
+          },
+          "required_capabilities": [
+            "skill_backed"
+          ],
+          "required_skills": [
+            "requesting-code-review"
+          ],
+          "optimization_hints": {
+            "strengthen_stage_gate": {
+              "enabled": true,
+              "source_task_id": "todo-control-plane-profile-update-20260323134056-dacb99",
+              "source_change_id": "control-plane-profile-update:control-plane-optimization:2ac4dc496487",
+              "applied_at": "2026-03-23T05:40:58+00:00"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "profile_id": "research-default",
+      "channel": "stable",
+      "enabled": true,
+      "display_name": "默认研究工作流",
+      "description": "默认研究工作流的稳定通道。",
+      "entry_task_types": [
+        "workflow",
+        "clarification_required"
+      ],
+      "promotion_target_channel": "candidate",
+      "score_policy_ref": "scripts/hardflow/score-policy.json",
+      "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+      "default_stage_id": "investigate",
+      "task_type_stage_map": {
+        "workflow": "investigate",
+        "clarification_required": "clarify"
+      },
+      "stages": [
+        {
+          "stage_id": "clarify",
+          "display_name": "需求澄清",
+          "score_gate": "requirements",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "clarified_research_goal",
+              "context_payload"
+            ],
+            "observable_outputs": [
+              "research brief",
+              "missing fields list"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "context_complete_or_escalated"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "investigate",
+          "display_name": "资料调研",
+          "score_gate": "solution",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "research_findings",
+              "source_summary"
+            ],
+            "observable_outputs": [
+              "evidence notes",
+              "comparison summary"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "sources_or_findings_recorded"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "skill_backed",
+            "routing"
+          ],
+          "required_skills": [
+            "content-research-writer"
+          ]
+        },
+        {
+          "stage_id": "synthesize",
+          "display_name": "综合结论",
+          "score_gate": "final",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "recommendation",
+              "risk_summary"
+            ],
+            "observable_outputs": [
+              "decision summary",
+              "follow-up suggestions"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "recommendation_completed"
+            ]
+          },
+          "required_capabilities": [
+            "skill_backed",
+            "routing"
+          ],
+          "required_skills": [
+            "writing-plans"
+          ]
+        }
+      ]
+    },
+    {
+      "profile_id": "research-default",
+      "channel": "candidate",
+      "enabled": true,
+      "display_name": "默认研究工作流候选通道",
+      "description": "默认研究工作流的候选升级通道。",
+      "entry_task_types": [
+        "workflow",
+        "clarification_required"
+      ],
+      "promotion_target_channel": "stable",
+      "score_policy_ref": "scripts/hardflow/score-policy.json",
+      "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+      "default_stage_id": "investigate",
+      "task_type_stage_map": {
+        "workflow": "investigate",
+        "clarification_required": "clarify"
+      },
+      "stages": [
+        {
+          "stage_id": "clarify",
+          "display_name": "需求澄清",
+          "score_gate": "requirements",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "clarified_research_goal",
+              "context_payload"
+            ],
+            "observable_outputs": [
+              "research brief",
+              "missing fields list"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "context_complete_or_escalated"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "investigate",
+          "display_name": "资料调研",
+          "score_gate": "solution",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "research_findings",
+              "source_summary"
+            ],
+            "observable_outputs": [
+              "evidence notes",
+              "comparison summary"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "sources_or_findings_recorded"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "skill_backed",
+            "routing"
+          ],
+          "required_skills": [
+            "content-research-writer"
+          ]
+        },
+        {
+          "stage_id": "synthesize",
+          "display_name": "综合结论",
+          "score_gate": "final",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "recommendation",
+              "risk_summary"
+            ],
+            "observable_outputs": [
+              "decision summary",
+              "follow-up suggestions"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "recommendation_completed"
+            ]
+          },
+          "required_capabilities": [
+            "skill_backed",
+            "routing"
+          ],
+          "required_skills": [
+            "writing-plans"
+          ]
+        }
+      ]
+    },
+    {
+      "profile_id": "docs-default",
+      "channel": "stable",
+      "enabled": true,
+      "display_name": "默认文档工作流",
+      "description": "默认文档工作流的稳定通道。",
+      "entry_task_types": [
+        "workflow",
+        "clarification_required"
+      ],
+      "promotion_target_channel": "candidate",
+      "score_policy_ref": "scripts/hardflow/score-policy.json",
+      "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+      "default_stage_id": "draft",
+      "task_type_stage_map": {
+        "workflow": "draft",
+        "clarification_required": "clarify"
+      },
+      "stages": [
+        {
+          "stage_id": "clarify",
+          "display_name": "需求澄清",
+          "score_gate": "requirements",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "clarified_doc_goal",
+              "context_payload"
+            ],
+            "observable_outputs": [
+              "doc brief",
+              "missing fields list"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "context_complete_or_escalated"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "draft",
+          "display_name": "文档起草",
+          "score_gate": "solution",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "draft_document",
+              "change_summary"
+            ],
+            "observable_outputs": [
+              "doc outline",
+              "updated sections summary"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "draft_completed"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "skill_backed",
+            "routing"
+          ],
+          "required_skills": [
+            "writing-plans"
+          ]
+        },
+        {
+          "stage_id": "review",
+          "display_name": "文档评审",
+          "score_gate": "final",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "review_decision",
+              "doc_publish_summary"
+            ],
+            "observable_outputs": [
+              "review notes",
+              "remaining doc risks"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "review_completed"
+            ]
+          },
+          "required_capabilities": [
+            "skill_backed"
+          ],
+          "required_skills": [
+            "requesting-code-review"
+          ]
+        }
+      ]
+    },
+    {
+      "profile_id": "docs-default",
+      "channel": "candidate",
+      "enabled": true,
+      "display_name": "默认文档工作流候选通道",
+      "description": "默认文档工作流的候选升级通道。",
+      "entry_task_types": [
+        "workflow",
+        "clarification_required"
+      ],
+      "promotion_target_channel": "stable",
+      "score_policy_ref": "scripts/hardflow/score-policy.json",
+      "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+      "default_stage_id": "draft",
+      "task_type_stage_map": {
+        "workflow": "draft",
+        "clarification_required": "clarify"
+      },
+      "stages": [
+        {
+          "stage_id": "clarify",
+          "display_name": "需求澄清",
+          "score_gate": "requirements",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "clarified_doc_goal",
+              "context_payload"
+            ],
+            "observable_outputs": [
+              "doc brief",
+              "missing fields list"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "context_complete_or_escalated"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "draft",
+          "display_name": "文档起草",
+          "score_gate": "solution",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "draft_document",
+              "change_summary"
+            ],
+            "observable_outputs": [
+              "doc outline",
+              "updated sections summary"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "draft_completed"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "skill_backed",
+            "routing"
+          ],
+          "required_skills": [
+            "writing-plans"
+          ]
+        },
+        {
+          "stage_id": "review",
+          "display_name": "文档评审",
+          "score_gate": "final",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "review_decision",
+              "doc_publish_summary"
+            ],
+            "observable_outputs": [
+              "review notes",
+              "remaining doc risks"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "review_completed"
+            ]
+          },
+          "required_capabilities": [
+            "skill_backed"
+          ],
+          "required_skills": [
+            "requesting-code-review"
+          ]
+        }
+      ]
+    },
+    {
+      "profile_id": "ops-default",
+      "channel": "stable",
+      "enabled": true,
+      "display_name": "默认运维工作流",
+      "description": "默认运维工作流的稳定通道。",
+      "entry_task_types": [
+        "workflow",
+        "clarification_required"
+      ],
+      "promotion_target_channel": "candidate",
+      "score_policy_ref": "scripts/hardflow/score-policy.json",
+      "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+      "default_stage_id": "stabilize",
+      "task_type_stage_map": {
+        "workflow": "stabilize",
+        "clarification_required": "clarify"
+      },
+      "stages": [
+        {
+          "stage_id": "clarify",
+          "display_name": "需求澄清",
+          "score_gate": "requirements",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "clarified_ops_goal",
+              "context_payload"
+            ],
+            "observable_outputs": [
+              "ops brief",
+              "missing fields list"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "context_complete_or_escalated"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "stabilize",
+          "display_name": "运行稳定化",
+          "score_gate": "release",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "ops_change",
+              "service_health_evidence"
+            ],
+            "observable_outputs": [
+              "command summary",
+              "health check summary"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "service_state_recorded"
+            ]
+          },
+          "required_capabilities": [
+            "task_execution",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "verify",
+          "display_name": "验证与回退准备",
+          "score_gate": "final",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "verification_summary",
+              "rollback_readiness"
+            ],
+            "observable_outputs": [
+              "verification notes",
+              "remaining ops risks"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "verification_completed"
+            ]
+          },
+          "required_capabilities": [
+            "skill_backed"
+          ],
+          "required_skills": [
+            "deployment-test"
+          ]
+        }
+      ]
+    },
+    {
+      "profile_id": "ops-default",
+      "channel": "candidate",
+      "enabled": true,
+      "display_name": "默认运维工作流候选通道",
+      "description": "默认运维工作流的候选升级通道。",
+      "entry_task_types": [
+        "workflow",
+        "clarification_required"
+      ],
+      "promotion_target_channel": "stable",
+      "score_policy_ref": "scripts/hardflow/score-policy.json",
+      "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+      "default_stage_id": "stabilize",
+      "task_type_stage_map": {
+        "workflow": "stabilize",
+        "clarification_required": "clarify"
+      },
+      "stages": [
+        {
+          "stage_id": "clarify",
+          "display_name": "需求澄清",
+          "score_gate": "requirements",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "clarified_ops_goal",
+              "context_payload"
+            ],
+            "observable_outputs": [
+              "ops brief",
+              "missing fields list"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "context_complete_or_escalated"
+            ]
+          },
+          "required_capabilities": [
+            "project_context",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "stabilize",
+          "display_name": "运行稳定化",
+          "score_gate": "release",
+          "min_evidence_count": 3,
+          "output_contract": {
+            "deliverables": [
+              "ops_change",
+              "service_health_evidence"
+            ],
+            "observable_outputs": [
+              "command summary",
+              "health check summary"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "service_state_recorded"
+            ]
+          },
+          "required_capabilities": [
+            "task_execution",
+            "routing"
+          ],
+          "required_skills": []
+        },
+        {
+          "stage_id": "verify",
+          "display_name": "验证与回退准备",
+          "score_gate": "final",
+          "min_evidence_count": 2,
+          "output_contract": {
+            "deliverables": [
+              "verification_summary",
+              "rollback_readiness"
+            ],
+            "observable_outputs": [
+              "verification notes",
+              "remaining ops risks"
+            ]
+          },
+          "verification_contract": {
+            "checks": [
+              "verification_completed"
+            ]
+          },
+          "required_capabilities": [
+            "skill_backed"
+          ],
+          "required_skills": [
+            "deployment-test"
+          ]
+        }
+      ]
+    }
+  ],
+  "profile_update_history": [
+    {
+      "profile_update_id": "profile-update-20260323054058-c468a07e",
+      "applied_at": "2026-03-23T05:40:58+00:00",
+      "task_id": "todo-control-plane-profile-update-20260323134056-dacb99",
+      "change_id": "control-plane-profile-update:control-plane-optimization:2ac4dc496487",
+      "target_profile_id": "coding-default",
+      "target_stage_id": "review",
+      "target_stage_label": "评审",
+      "target_channel": "candidate",
+      "recommendation_type": "strengthen_stage_gate",
+      "latest_agent_report_summary": "",
+      "stage_snapshot_before": {
+        "stage_id": "review",
+        "display_name": "评审与验收",
+        "score_gate": "final",
+        "min_evidence_count": 2,
+        "output_contract": {
+          "deliverables": [
+            "review_decision",
+            "acceptance_summary"
+          ],
+          "observable_outputs": [
+            "review notes",
+            "remaining risks"
+          ]
+        },
+        "verification_contract": {
+          "checks": [
+            "review_completed"
+          ]
+        },
+        "required_capabilities": [
+          "skill_backed"
+        ],
+        "required_skills": [
+          "requesting-code-review"
+        ]
+      },
+      "stage_snapshot_after": {
+        "stage_id": "review",
+        "display_name": "评审与验收",
+        "score_gate": "final",
+        "min_evidence_count": 3,
+        "output_contract": {
+          "deliverables": [
+            "review_decision",
+            "acceptance_summary"
+          ],
+          "observable_outputs": [
+            "review notes",
+            "remaining risks"
+          ]
+        },
+        "verification_contract": {
+          "checks": [
+            "review_completed"
+          ]
+        },
+        "required_capabilities": [
+          "skill_backed"
+        ],
+        "required_skills": [
+          "requesting-code-review"
+        ],
+        "optimization_hints": {
+          "strengthen_stage_gate": {
+            "enabled": true,
+            "source_task_id": "todo-control-plane-profile-update-20260323134056-dacb99",
+            "source_change_id": "control-plane-profile-update:control-plane-optimization:2ac4dc496487",
+            "applied_at": "2026-03-23T05:40:58+00:00"
+          }
+        }
+      }
+    }
+  ],
+  "last_profile_update": {
+    "task_id": "todo-control-plane-profile-update-20260323134056-dacb99",
+    "change_id": "control-plane-profile-update:control-plane-optimization:2ac4dc496487",
+    "target_profile_id": "coding-default",
+    "target_stage_id": "review",
+    "target_channel": "candidate",
+    "recommendation_type": "strengthen_stage_gate",
+    "applied_at": "2026-03-23T05:40:58+00:00"
+  }
+}

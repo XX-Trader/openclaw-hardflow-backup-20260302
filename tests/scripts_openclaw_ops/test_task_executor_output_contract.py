@@ -25,6 +25,85 @@ def load_module(name: str, rel_path: str):
 
 
 class TaskExecutorOutputContractTests(unittest.TestCase):
+    def test_evaluate_stage_contract_builds_evidence_and_validation_summary(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        assessment = module.evaluate_stage_contract(
+            {
+                "stage_id": "implement",
+                "stage_score_gate": "backend",
+                "stage_min_evidence_count": 3,
+                "stage_output_contract": {
+                    "deliverables": ["code_changes", "verification_result"],
+                },
+                "stage_verification_contract": {
+                    "checks": ["tests_or_validation_recorded"],
+                },
+            },
+            {
+                "status": "passed",
+                "solved": True,
+                "resolution_summary": "Implemented API fix and ran pytest -q successfully.",
+                "resolution_steps": ["updated service handler", "ran pytest -q"],
+                "resolved_issues": ["fixed endpoint regression"],
+                "failed_items": [],
+                "context_fields_missing": [],
+                "need_clarification": False,
+                "clarification_reason": "",
+                "raw_text": "Implemented API fix and ran pytest -q successfully.",
+            },
+        )
+
+        self.assertEqual(assessment["stage_id"], "implement")
+        self.assertEqual(assessment["score_gate"], "backend")
+        self.assertEqual(assessment["evidence_count"], 4)
+        self.assertTrue(assessment["deliverables_passed"])
+        self.assertTrue(assessment["verification_passed"])
+        self.assertTrue(assessment["contract_passed"])
+        self.assertEqual(assessment["missing_deliverables"], [])
+
+    def test_evaluate_stage_contract_flags_missing_validation_evidence(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        assessment = module.evaluate_stage_contract(
+            {
+                "stage_id": "implement",
+                "stage_score_gate": "backend",
+                "stage_min_evidence_count": 3,
+                "stage_output_contract": {
+                    "deliverables": ["code_changes", "verification_result"],
+                },
+                "stage_verification_contract": {
+                    "checks": ["tests_or_validation_recorded"],
+                },
+            },
+            {
+                "status": "passed",
+                "solved": True,
+                "resolution_summary": "Implemented API fix.",
+                "resolution_steps": ["updated service handler"],
+                "resolved_issues": ["fixed endpoint regression"],
+                "failed_items": [],
+                "context_fields_missing": [],
+                "need_clarification": False,
+                "clarification_reason": "",
+                "raw_text": "Implemented API fix.",
+            },
+        )
+
+        self.assertEqual(assessment["evidence_count"], 3)
+        self.assertFalse(assessment["deliverables_passed"])
+        self.assertFalse(assessment["verification_passed"])
+        self.assertFalse(assessment["contract_passed"])
+        self.assertIn("verification_result", assessment["missing_deliverables"])
+        self.assertIn("tests_or_validation_recorded", assessment["failed_checks"])
+
     def test_gateway_agent_step_uses_chat_history_reply_for_local_runs(self):
         module = load_module(
             "task_executor_runner",

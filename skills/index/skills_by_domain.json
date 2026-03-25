@@ -32,6 +32,8 @@
     "agent-manager",
     "dispatching-parallel-agents",
     "intelligent-router",
+    "openclaw-evolution-upgrader",
+    "openclaw-workflow-manager",
     "parallel-executor",
     "requirements-clarity",
     "result-synthesizer",

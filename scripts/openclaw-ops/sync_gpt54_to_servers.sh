@@ -73,19 +73,26 @@ MODEL_AGENTS=(
 )
 
 OPS_FILES=(
+  "scripts/openclaw-ops/chat_output.py"
   "scripts/openclaw-ops/model_tier_profiles.json"
   "scripts/openclaw-ops/MODEL_TIER_SWITCH.md"
   "scripts/openclaw-ops/switch_model_tier.py"
   "scripts/openclaw-ops/sync_agents_12_to_servers.sh"
+  "scripts/openclaw-ops/utf8_runtime.py"
+  "scripts/openclaw-ops/workflow_views.py"
 )
 
 POLICY_FILES=(
+  "scripts/openclaw-ops/policy/alert_dedupe.py"
+  "scripts/openclaw-ops/policy/dataclass_compat.py"
   "scripts/openclaw-ops/policy/gateway_service_manager.py"
   "scripts/openclaw-ops/policy/io_write_gateway.py"
   "scripts/openclaw-ops/policy/policy-config.json"
   "scripts/openclaw-ops/policy/policy_enforcer.py"
   "scripts/openclaw-ops/policy/routing-rules.json"
+  "scripts/openclaw-ops/policy/task_capability_binding.py"
   "scripts/openclaw-ops/policy/task_center.py"
+  "scripts/openclaw-ops/policy/task_executor_runner.py"
   "scripts/openclaw-ops/policy/token-pricing.json"
 )
 
@@ -209,11 +216,19 @@ targets = [
     Path.home() / ".openclaw" / "openclaw.json",
     Path.home() / ".openclaw" / "agents" / "agent_index.json",
     Path.home() / ".openclaw" / "agents" / "agent_index.md",
+    Path.home() / ".openclaw" / "ops" / "chat_output.py",
     Path.home() / ".openclaw" / "ops" / "model_tier_profiles.json",
     Path.home() / ".openclaw" / "ops" / "switch_model_tier.py",
+    Path.home() / ".openclaw" / "ops" / "utf8_runtime.py",
+    Path.home() / ".openclaw" / "ops" / "workflow_views.py",
+    Path.home() / ".openclaw" / "ops" / "policy" / "alert_dedupe.py",
     Path.home() / ".openclaw" / "ops" / "policy" / "policy-config.json",
+    Path.home() / ".openclaw" / "ops" / "policy" / "dataclass_compat.py",
     Path.home() / ".openclaw" / "ops" / "policy" / "policy_enforcer.py",
+    Path.home() / ".openclaw" / "ops" / "policy" / "task_capability_binding.py",
     Path.home() / ".openclaw" / "ops" / "policy" / "token-pricing.json",
+    Path.home() / ".openclaw" / "ops" / "policy" / "task_center.py",
+    Path.home() / ".openclaw" / "ops" / "policy" / "task_executor_runner.py",
 ]
 
 targets.extend(
@@ -309,6 +324,8 @@ ${REMOTE_PATCH_OPENCLAW}
 PY"
 
   if [[ "${DRY_RUN}" != "1" ]]; then
+    ssh_run "${server}" "python3 '${remote_ops_policy_dir}/policy_enforcer.py' --db '${remote_task_db}' --policy-file '${remote_ops_policy_dir}/policy-config.json' --routing-file '${remote_ops_policy_dir}/routing-rules.json' --pricing-file '${remote_ops_policy_dir}/token-pricing.json' validate-runtime" || true
+    ssh_run "${server}" "python3 '${remote_ops_policy_dir}/task_executor_runner.py' --help >/dev/null" || true
     ssh_run "${server}" "python3 '${remote_workspace_ops_policy_dir}/policy_enforcer.py' --db '${remote_task_db}' --policy-file '${remote_workspace_ops_policy_dir}/policy-config.json' --routing-file '${remote_workspace_ops_policy_dir}/routing-rules.json' --pricing-file '${remote_workspace_ops_policy_dir}/token-pricing.json' validate-runtime" || true
     if [[ "${RESTART_GATEWAY}" == "1" ]]; then
       ssh_run "${server}" "python3 '${remote_workspace_ops_policy_dir}/gateway_service_manager.py' --action restart --prefer system --emit-json >/dev/null"

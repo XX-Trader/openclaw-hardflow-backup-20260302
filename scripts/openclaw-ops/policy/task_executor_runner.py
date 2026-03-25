@@ -54,6 +54,23 @@ ERROR_TASK_STATUSES = {"failed", "partial", "escalated"}
 SUCCESS_TASK_STATUSES = {"passed", "resolved", "solved", "ok", "success"}
 TASK_EXECUTOR_NOTIFY_STATE_KEY = "task_executor_notify"
 TASK_EXECUTOR_NOTIFY_KEEP_DAYS = 14
+VALIDATION_EVIDENCE_KEYWORDS = (
+    "test",
+    "tests",
+    "pytest",
+    "validation",
+    "validate",
+    "validated",
+    "verify",
+    "verified",
+    "check",
+    "checked",
+    "验收",
+    "验证",
+    "测试",
+    "复跑",
+    "校验",
+)
 RETRYABLE_AGENT_ERROR_PATTERNS = (
     "api rate limit reached",
     "too many requests",
@@ -214,6 +231,191 @@ def build_task_preflight(
             recommended_agents = planner_intersection or list(planner_allow_agents)
         else:
             recommended_agents = list(planner_allow_agents)
+    workflow_profile_id = str(task.get("workflow_profile_id", "")).strip()
+    workflow_channel = str(task.get("workflow_channel", "")).strip().lower()
+    stage_id = str(task.get("stage_id", "")).strip()
+    stage_score_gate = str(task.get("stage_score_gate", "")).strip().lower()
+    try:
+        stage_min_evidence_count = max(0, int(task.get("stage_min_evidence_count", 0) or 0))
+    except (TypeError, ValueError):
+        stage_min_evidence_count = 0
+    stage_output_contract_raw = task.get("stage_output_contract", {})
+    if isinstance(stage_output_contract_raw, str):
+        try:
+            stage_output_contract = json.loads(stage_output_contract_raw) if stage_output_contract_raw.strip() else {}
+        except json.JSONDecodeError:
+            stage_output_contract = {}
+    elif isinstance(stage_output_contract_raw, dict):
+        stage_output_contract = stage_output_contract_raw
+    else:
+        stage_output_contract = {}
+    stage_verification_contract_raw = task.get("stage_verification_contract", {})
+    if isinstance(stage_verification_contract_raw, str):
+        try:
+            stage_verification_contract = (
+                json.loads(stage_verification_contract_raw) if stage_verification_contract_raw.strip() else {}
+            )
+        except json.JSONDecodeError:
+            stage_verification_contract = {}
+    elif isinstance(stage_verification_contract_raw, dict):
+        stage_verification_contract = stage_verification_contract_raw
+    else:
+        stage_verification_contract = {}
+    selection_reason = str(task.get("selection_reason", "")).strip()
+    selection_inputs_raw = task.get("selection_inputs", {})
+    if isinstance(selection_inputs_raw, str):
+        try:
+            parsed_selection_inputs = json.loads(selection_inputs_raw) if selection_inputs_raw.strip() else {}
+        except json.JSONDecodeError:
+            parsed_selection_inputs = {}
+    elif isinstance(selection_inputs_raw, dict):
+        parsed_selection_inputs = selection_inputs_raw
+    else:
+        parsed_selection_inputs = {}
+    capability_binding = (
+        parsed_selection_inputs.get("capability_binding", {})
+        if isinstance(parsed_selection_inputs.get("capability_binding", {}), dict)
+        else {}
+    )
+    capability_declarations = (
+        capability_binding.get("capability_declarations", [])
+        if isinstance(capability_binding.get("capability_declarations", []), list)
+        else []
+    )
+    capability_declarations = [item for item in capability_declarations if isinstance(item, dict)]
+    capability_contracts = (
+        capability_binding.get("capability_contracts", {})
+        if isinstance(capability_binding.get("capability_contracts", {}), dict)
+        else {}
+    )
+    resolved_agent_profile = (
+        capability_binding.get("resolved_agent_profile", {})
+        if isinstance(capability_binding.get("resolved_agent_profile", {}), dict)
+        else {}
+    )
+    resolved_assignee = str(capability_binding.get("resolved_assignee", "")).strip() or assignee
+    stage_context_gate = (
+        parsed_selection_inputs.get("stage_context_gate", {})
+        if isinstance(parsed_selection_inputs.get("stage_context_gate", {}), dict)
+        else {}
+    )
+    stage_parallel_execution = (
+        parsed_selection_inputs.get("stage_parallel_execution", {})
+        if isinstance(parsed_selection_inputs.get("stage_parallel_execution", {}), dict)
+        else {}
+    )
+    stage_simplification_hint = (
+        parsed_selection_inputs.get("stage_simplification_hint", {})
+        if isinstance(parsed_selection_inputs.get("stage_simplification_hint", {}), dict)
+        else {}
+    )
+    stage_optimization_hints = (
+        parsed_selection_inputs.get("stage_optimization_hints", {})
+        if isinstance(parsed_selection_inputs.get("stage_optimization_hints", {}), dict)
+        else {}
+    )
+    requirement_package_gate = (
+        parsed_selection_inputs.get("requirement_package_gate", {})
+        if isinstance(parsed_selection_inputs.get("requirement_package_gate", {}), dict)
+        else {}
+    )
+    task_id = str(task.get("task_id", "")).strip()
+    trace_id = str(task.get("trace_id", "")).strip() or str(parsed_selection_inputs.get("trace_id", "")).strip()
+    if not trace_id and task_id:
+        trace_id = f"trace-{task_id}"
+    attempt_id = (
+        str(task.get("attempt_id", "")).strip()
+        or str(parsed_selection_inputs.get("attempt_id", "")).strip()
+        or "attempt-001"
+    )
+    required_runtime = split_list(capability_binding.get("required_runtime", []))
+    tool_requirements = split_list(capability_binding.get("tool_requirements", []))
+    execution_envelope = (
+        parsed_selection_inputs.get("execution_envelope", {})
+        if isinstance(parsed_selection_inputs.get("execution_envelope", {}), dict)
+        else {}
+    )
+    execution_envelope = dict(execution_envelope)
+    envelope_workflow = execution_envelope.get("workflow", {})
+    if not isinstance(envelope_workflow, dict):
+        envelope_workflow = {}
+    envelope_workflow.update(
+        {
+            "profile_id": workflow_profile_id,
+            "channel": workflow_channel,
+            "stage_id": stage_id,
+            "selection_reason": selection_reason,
+        }
+    )
+    envelope_routing = execution_envelope.get("routing", {})
+    if not isinstance(envelope_routing, dict):
+        envelope_routing = {}
+    envelope_routing.update(
+        {
+            "assignee": assignee,
+            "allowed_agents": list(allowed_agents),
+        }
+    )
+    envelope_capability_binding = execution_envelope.get("capability_binding", {})
+    if not isinstance(envelope_capability_binding, dict):
+        envelope_capability_binding = {}
+    envelope_capability_binding.update(
+        {
+            "resolved_assignee": resolved_assignee,
+            "capability_declarations": capability_declarations,
+            "capability_contracts": capability_contracts,
+            "resolved_agent_profile": resolved_agent_profile,
+        }
+    )
+    envelope_capability_binding.update(
+        {
+            "required_capabilities": list(required_capabilities),
+            "required_skills": list(required_skills),
+            "required_runtime": list(required_runtime),
+            "tool_requirements": list(tool_requirements),
+        }
+    )
+    envelope_contracts = execution_envelope.get("contracts", {})
+    if not isinstance(envelope_contracts, dict):
+        envelope_contracts = {}
+    envelope_contracts.update(
+        {
+            "output_contract": dict(stage_output_contract),
+            "verification_contract": dict(stage_verification_contract),
+            "stage_context_gate": dict(stage_context_gate),
+        }
+    )
+    execution_envelope.update(
+        {
+            "schema_version": str(execution_envelope.get("schema_version", "2026-03-23")).strip() or "2026-03-23",
+            "trace_id": trace_id,
+            "attempt_id": attempt_id,
+            "task_id": task_id,
+            "workflow": envelope_workflow,
+            "routing": envelope_routing,
+            "capability_binding": envelope_capability_binding,
+            "contracts": envelope_contracts,
+        }
+    )
+    parsed_selection_inputs["trace_id"] = trace_id
+    parsed_selection_inputs["attempt_id"] = attempt_id
+    parsed_selection_inputs["execution_envelope"] = execution_envelope
+    agent_declared_runtime = split_list(agent_profile.get("declared_runtime", []))
+    agent_available_tools = split_list(agent_profile.get("available_tools", []))
+    runtime_inventory_declared = "declared_runtime" in agent_profile
+    tool_inventory_declared = "available_tools" in agent_profile
+    missing_runtime_requirements = []
+    missing_tool_requirements = []
+    if runtime_inventory_declared:
+        declared_runtime_set = set(agent_declared_runtime)
+        missing_runtime_requirements = [item for item in required_runtime if item not in declared_runtime_set]
+        if missing_runtime_requirements:
+            warnings.append("required_runtime_unmet")
+    if tool_inventory_declared:
+        available_tool_set = set(agent_available_tools)
+        missing_tool_requirements = [item for item in tool_requirements if item not in available_tool_set]
+        if missing_tool_requirements:
+            warnings.append("tool_requirements_unmet")
 
     return {
         "ok": not warnings,
@@ -225,8 +427,38 @@ def build_task_preflight(
         "recommended_agents": recommended_agents,
         "required_skills": required_skills,
         "required_capabilities": required_capabilities,
+        "resolved_assignee": resolved_assignee,
+        "resolved_agent_profile": resolved_agent_profile,
+        "capability_declarations": capability_declarations,
+        "capability_contracts": capability_contracts,
+        "required_runtime": required_runtime,
+        "tool_requirements": tool_requirements,
+        "stage_id": stage_id,
+        "stage_score_gate": stage_score_gate,
+        "stage_min_evidence_count": stage_min_evidence_count,
+        "stage_output_contract": stage_output_contract,
+        "stage_verification_contract": stage_verification_contract,
+        "stage_context_gate": stage_context_gate,
+        "stage_parallel_execution": stage_parallel_execution,
+        "stage_simplification_hint": stage_simplification_hint,
+        "stage_execution_strategy": {
+            "parallel_execution": dict(stage_parallel_execution),
+            "simplification_hint": dict(stage_simplification_hint),
+            "optimization_hints": dict(stage_optimization_hints),
+        },
+        "stage_optimization_hints": stage_optimization_hints,
         "missing_skills": missing_skills,
         "missing_capabilities": missing_capabilities,
+        "missing_runtime_requirements": missing_runtime_requirements,
+        "missing_tool_requirements": missing_tool_requirements,
+        "workflow_profile_id": workflow_profile_id,
+        "workflow_channel": workflow_channel,
+        "selection_reason": selection_reason,
+        "requirement_package_gate": requirement_package_gate,
+        "trace_id": trace_id,
+        "attempt_id": attempt_id,
+        "execution_envelope": execution_envelope,
+        "selection_inputs": parsed_selection_inputs,
     }
 
 
@@ -430,6 +662,152 @@ def normalize_contract(reply_text: str) -> dict[str, Any]:
         "context_fields_missing": missing,
         "cost_estimate": cost_estimate,
         "raw_text": str(reply_text or "").strip(),
+    }
+
+
+def parse_stage_contract_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        raw = str(value or "").strip()
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def collect_stage_contract_evidence(contract: dict[str, Any]) -> list[str]:
+    evidence: list[str] = []
+    candidates: list[str] = []
+    summary = str(contract.get("resolution_summary", "")).strip()
+    if summary:
+        candidates.append(summary)
+    candidates.extend(split_list(contract.get("resolution_steps")))
+    candidates.extend(split_list(contract.get("resolved_issues")))
+    candidates.extend(f"failed:{item}" for item in split_list(contract.get("failed_items")))
+    candidates.extend(f"context_missing:{item}" for item in split_list(contract.get("context_fields_missing")))
+    clarification_reason = str(contract.get("clarification_reason", "")).strip()
+    if clarification_reason:
+        candidates.append(f"clarification:{clarification_reason}")
+
+    seen: set[str] = set()
+    for item in candidates:
+        text = str(item or "").strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        evidence.append(text)
+    return evidence
+
+
+def has_validation_evidence(contract: dict[str, Any]) -> bool:
+    text_blob = " ".join(
+        [
+            str(contract.get("resolution_summary", "")).strip(),
+            str(contract.get("raw_text", "")).strip(),
+            " ".join(split_list(contract.get("resolution_steps"))),
+            " ".join(split_list(contract.get("resolved_issues"))),
+            " ".join(split_list(contract.get("failed_items"))),
+        ]
+    ).lower()
+    return any(keyword in text_blob for keyword in VALIDATION_EVIDENCE_KEYWORDS if keyword)
+
+
+def deliverable_present(deliverable: str, contract: dict[str, Any]) -> bool:
+    name = str(deliverable or "").strip().lower()
+    summary = str(contract.get("resolution_summary", "")).strip()
+    has_summary = bool(summary)
+    has_steps = bool(split_list(contract.get("resolution_steps")))
+    has_resolved = bool(split_list(contract.get("resolved_issues")))
+    status = str(contract.get("status", "")).strip().lower()
+    missing_context = split_list(contract.get("context_fields_missing"))
+    need_clarification = bool(contract.get("need_clarification", False))
+
+    if name == "clarified_requirement":
+        return has_summary or has_steps or has_resolved
+    if name == "context_payload":
+        return (not missing_context) or need_clarification or status == "escalated"
+    if name == "code_changes":
+        return has_summary or has_steps or has_resolved
+    if name == "verification_result":
+        return has_validation_evidence(contract)
+    if name == "review_decision":
+        return status in {"passed", "failed", "partial", "escalated"} and (has_summary or has_resolved)
+    if name == "acceptance_summary":
+        return has_summary or has_steps
+    return has_summary or has_steps or has_resolved
+
+
+def verification_check_passed(check_name: str, contract: dict[str, Any]) -> bool:
+    name = str(check_name or "").strip().lower()
+    summary = str(contract.get("resolution_summary", "")).strip()
+    status = str(contract.get("status", "")).strip().lower()
+    missing_context = split_list(contract.get("context_fields_missing"))
+    need_clarification = bool(contract.get("need_clarification", False))
+
+    if name == "context_complete_or_escalated":
+        return (not missing_context) or need_clarification or status == "escalated"
+    if name == "tests_or_validation_recorded":
+        return has_validation_evidence(contract)
+    if name == "review_completed":
+        return status in {"passed", "failed", "partial", "escalated"} and bool(summary)
+    return bool(summary or split_list(contract.get("resolution_steps")) or split_list(contract.get("resolved_issues")))
+
+
+def evaluate_stage_contract(task: dict[str, Any], contract: dict[str, Any]) -> dict[str, Any]:
+    stage_id = str(task.get("stage_id", "")).strip()
+    score_gate = str(task.get("stage_score_gate", "")).strip().lower()
+    try:
+        min_evidence_count = max(0, int(task.get("stage_min_evidence_count", 0) or 0))
+    except (TypeError, ValueError):
+        min_evidence_count = 0
+    output_contract = parse_stage_contract_object(task.get("stage_output_contract", {}))
+    verification_contract = parse_stage_contract_object(task.get("stage_verification_contract", {}))
+    deliverables = split_list(output_contract.get("deliverables", []))
+    checks = split_list(verification_contract.get("checks", []))
+    evidence = collect_stage_contract_evidence(contract)
+    evidence_count = len(evidence)
+
+    deliverable_results = [
+        {"deliverable": deliverable, "present": deliverable_present(deliverable, contract)}
+        for deliverable in deliverables
+    ]
+    verification_results = [
+        {"check": check_name, "passed": verification_check_passed(check_name, contract)}
+        for check_name in checks
+    ]
+    missing_deliverables = [item["deliverable"] for item in deliverable_results if not bool(item.get("present", False))]
+    failed_checks = [item["check"] for item in verification_results if not bool(item.get("passed", False))]
+    deliverables_passed = not missing_deliverables
+    verification_passed = not failed_checks
+    evidence_passed = evidence_count >= min_evidence_count
+
+    return {
+        "stage_id": stage_id,
+        "score_gate": score_gate,
+        "min_evidence_count": min_evidence_count,
+        "evidence": evidence,
+        "evidence_count": evidence_count,
+        "evidence_passed": evidence_passed,
+        "output_contract": output_contract,
+        "verification_contract": verification_contract,
+        "deliverables": deliverables,
+        "checks": checks,
+        "deliverable_results": deliverable_results,
+        "verification_results": verification_results,
+        "missing_deliverables": missing_deliverables,
+        "failed_checks": failed_checks,
+        "deliverables_passed": deliverables_passed,
+        "verification_passed": verification_passed,
+        "contract_passed": evidence_passed and deliverables_passed and verification_passed,
+        "contract_status": str(contract.get("status", "")).strip().lower(),
     }
 
 
@@ -1083,7 +1461,45 @@ def web_context(sources_file: Path, keyword: str, max_chars: int) -> list[dict[s
 def prompt_for_task(task: dict[str, Any], local_hits: list[str], web_hits: list[dict[str, str]]) -> str:
     local_text = "\n".join(f"- {x}" for x in local_hits) or "- (none)"
     web_text = "\n".join(f"- [{x['id']}] {x['url']} | {x['snippet']}" for x in web_hits) or "- (none)"
-    return f"""你是执行代理，请完成任务并只输出 JSON 对象（不要解释）。\n\n任务:\n- task_id: {task.get('task_id')}\n- reason: {task.get('reason')}\n- requirement: {task.get('requirement')}\n- result_output: {task.get('result_output')}\n- acceptance: {task.get('acceptance')}\n- observable_outputs: {task.get('observable_outputs')}\n- acceptance_thresholds: {task.get('acceptance_thresholds')}\n- required_capabilities: {task.get('required_capabilities')}\n- required_skills: {task.get('required_skills')}\n- allowed_agents: {task.get('allowed_agents')}\n\n本地检索:\n{local_text}\n\n网络检索:\n{web_text}\n\n输出模板:\n{{\"status\":\"passed|failed|partial|escalated\",\"solved\":true,\"resolution_summary\":\"\",\"resolution_steps\":[],\"resolved_issues\":[],\"failed_items\":[],\"failure_count\":0,\"quality_score\":0,\"quality_grade\":\"a|b|c|d\",\"need_clarification\":false,\"clarification_reason\":\"\",\"context_fields_missing\":[],\"cost_estimate\":0}}"""
+    workflow_selection_inputs = task.get("selection_inputs", {})
+    if not isinstance(workflow_selection_inputs, dict):
+        workflow_selection_inputs = {}
+    return f"""你是执行代理，请完成任务并只输出 JSON 对象，不要解释。
+
+任务:
+- task_id: {task.get('task_id')}
+- reason: {task.get('reason')}
+- requirement: {task.get('requirement')}
+- result_output: {task.get('result_output')}
+- acceptance: {task.get('acceptance')}
+- observable_outputs: {task.get('observable_outputs')}
+- acceptance_thresholds: {task.get('acceptance_thresholds')}
+- stage_id: {task.get('stage_id', '')}
+- stage_score_gate: {task.get('stage_score_gate', '')}
+- stage_min_evidence_count: {task.get('stage_min_evidence_count', 0)}
+- stage_output_contract: {json.dumps(task.get('stage_output_contract', {}), ensure_ascii=False, sort_keys=True)}
+- stage_verification_contract: {json.dumps(task.get('stage_verification_contract', {}), ensure_ascii=False, sort_keys=True)}
+- stage_context_gate: {json.dumps(workflow_selection_inputs.get('stage_context_gate', {}), ensure_ascii=False, sort_keys=True)}
+- stage_parallel_execution: {json.dumps(workflow_selection_inputs.get('stage_parallel_execution', {}), ensure_ascii=False, sort_keys=True)}
+- stage_simplification_hint: {json.dumps(workflow_selection_inputs.get('stage_simplification_hint', {}), ensure_ascii=False, sort_keys=True)}
+- stage_execution_strategy: {json.dumps(workflow_selection_inputs.get('stage_execution_strategy', {}), ensure_ascii=False, sort_keys=True)}
+- stage_optimization_hints: {json.dumps(workflow_selection_inputs.get('stage_optimization_hints', {}), ensure_ascii=False, sort_keys=True)}
+- required_capabilities: {task.get('required_capabilities')}
+- required_skills: {task.get('required_skills')}
+- allowed_agents: {task.get('allowed_agents')}
+- workflow_profile_id: {task.get('workflow_profile_id', '')}
+- workflow_channel: {task.get('workflow_channel', '')}
+- selection_reason: {task.get('selection_reason', '')}
+- selection_inputs: {json.dumps(workflow_selection_inputs, ensure_ascii=False, sort_keys=True)}
+
+本地检索:
+{local_text}
+
+网络检索:
+{web_text}
+
+输出模板:
+{{"status":"passed|failed|partial|escalated","solved":true,"resolution_summary":"","resolution_steps":[],"resolved_issues":[],"failed_items":[],"failure_count":0,"quality_score":0,"quality_grade":"a|b|c|d","need_clarification":false,"clarification_reason":"","context_fields_missing":[],"cost_estimate":0}}"""
 
 
 def call_agent(
@@ -1570,12 +1986,6 @@ def main() -> int:
                 )
             except Exception:
                 pass
-            post_reason = "ok" if rc == 0 else f"agent_exit_{rc}"
-            try:
-                enforcer.post_stage(ns(task_id=task_id, stage=stage, exit_code=str(rc), reason=post_reason, output_ref=str(agent_log_path), actor=str(args.actor)))
-            except Exception:
-                pass
-
             contract, agent_json, reply_text, sanitized_stderr = contract_from_agent_result(rc, out, err)
             in_tokens, out_tokens, duration_ms = extract_usage(agent_json)
             if duration_ms <= 0:
@@ -1625,6 +2035,23 @@ def main() -> int:
                 "web_context_hits": len(web_hits),
                 "raw_reply_excerpt": str(contract.get("raw_text", ""))[:1200],
             }
+            stage_contract = evaluate_stage_contract(task, contract)
+            details["stage_contract"] = stage_contract
+            post_reason = "ok" if rc == 0 else f"agent_exit_{rc}"
+            try:
+                enforcer.post_stage(
+                    ns(
+                        task_id=task_id,
+                        stage=stage,
+                        exit_code=str(rc),
+                        reason=post_reason,
+                        output_ref=str(agent_log_path),
+                        details_json=json.dumps({"stage_contract": stage_contract}, ensure_ascii=False),
+                        actor=str(args.actor),
+                    )
+                )
+            except Exception:
+                pass
             try:
                 report = enforcer.report_agent_result(
                     ns(
@@ -1661,15 +2088,24 @@ def main() -> int:
             result.update(
                 {
                     "status": "executed",
+                    "reason": ("stage_contract_failed" if not bool(stage_contract.get("contract_passed", True)) else ""),
                     "task_status_after": end_status,
                     "report_status": str(contract.get("status", "partial")),
                     "solved": bool(contract.get("solved", False)),
                     "quality_score": float(contract.get("quality_score", 0.0) or 0.0),
                     "resolution_summary": str(contract.get("resolution_summary", "")),
                     "failed_items": list(contract.get("failed_items", [])),
+                    "stage_contract": stage_contract,
                     "failure_count": max(0, int(contract.get("failure_count", 0) or 0)),
                     "duration_ms": duration_ms,
                     "model": task_model_name,
+                    "stage_contract": stage_contract,
+                    "standard_output": dict(report.get("standard_output", {})) if isinstance(report.get("standard_output", {}), dict) else {},
+                    "human_gate": dict(report.get("planner_payload", {}).get("human_gate", {}))
+                    if isinstance(report.get("planner_payload", {}), dict)
+                    and isinstance(report.get("planner_payload", {}).get("human_gate", {}), dict)
+                    else {},
+                    "incident": dict(report.get("incident", {})) if isinstance(report.get("incident", {}), dict) else {},
                     "input_tokens": in_tokens,
                     "output_tokens": out_tokens,
                     "total_tokens": max(0, int(in_tokens)) + max(0, int(out_tokens)),

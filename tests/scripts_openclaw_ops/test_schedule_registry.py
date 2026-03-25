@@ -146,6 +146,51 @@ class ScheduleRegistryTests(unittest.TestCase):
         self.assertIn("auto-pr", managed["ops_governance_evolution_incremental"]["purpose"])
         self.assertIn("PR 审查", managed["reviewer_git_update_hourly"]["purpose"])
 
+    def test_schedule_registry_describes_upgrade_feedback_job(self):
+        module = load_module(
+            "export_schedule_registry",
+            "scripts/openclaw-ops/export_schedule_registry.py",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            jobs_file = tmp / "jobs.json"
+            mapping_file = tmp / "jobs_agent_mapping.md"
+            jobs_file.write_text(
+                json.dumps(
+                    {
+                        "jobs": [
+                            {
+                                "id": "upgrade-feedback",
+                                "name": "ops_upgrade_feedback_daily",
+                                "agentId": "ops-agent",
+                                "schedule": {"everyMs": 86400000},
+                                "payload": {"message": "upgrade feedback"},
+                            }
+                        ]
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            mapping_file.write_text(
+                "- upgrade-feedback | ops_upgrade_feedback_daily | agent=ops-agent | exists=True | schedule=86400000\n",
+                encoding="utf-8",
+            )
+
+            registry = module.build_schedule_registry(
+                jobs_file=jobs_file,
+                mapping_file=mapping_file,
+                profile="core",
+            )
+
+        managed = {item["schedule_name"]: item for item in registry["openclaw_managed"]}
+        self.assertEqual(managed["ops_upgrade_feedback_daily"]["owner_agent"], "ops-agent")
+        self.assertEqual(managed["ops_upgrade_feedback_daily"]["capability"], "upgrade_feedback_analysis")
+        self.assertIn("workflow scorecard", managed["ops_upgrade_feedback_daily"]["outputs"][0])
+
 
 if __name__ == "__main__":
     unittest.main()

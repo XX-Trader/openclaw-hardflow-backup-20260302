@@ -144,6 +144,43 @@ class GatewayRestartScriptUsageTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8", errors="replace")
             self.assertIn("gateway_service_manager.py", text, msg=str(path))
 
+    def test_sync_gpt54_scripts_sync_runtime_dependencies(self):
+        required_entries = [
+            "scripts/openclaw-ops/chat_output.py",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "scripts/openclaw-ops/policy/alert_dedupe.py",
+            "scripts/openclaw-ops/policy/task_capability_binding.py",
+            "scripts/openclaw-ops/policy/dataclass_compat.py",
+            "scripts/openclaw-ops/utf8_runtime.py",
+            "scripts/openclaw-ops/workflow_views.py",
+        ]
+        targets = [
+            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.sh",
+            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.ps1",
+        ]
+        for path in targets:
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for entry in required_entries:
+                with self.subTest(path=str(path), entry=entry):
+                    self.assertIn(entry, text, msg=f"{path} missing runtime dependency {entry}")
+
+    def test_sync_gpt54_scripts_validate_real_runtime_policy_dir(self):
+        expectations = {
+            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.sh": [
+                "${remote_ops_policy_dir}/policy_enforcer.py",
+                "${remote_workspace_ops_policy_dir}/policy_enforcer.py",
+            ],
+            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.ps1": [
+                "$remoteOpsPolicyDir/policy_enforcer.py",
+                "$remoteWorkspaceOpsPolicyDir/policy_enforcer.py",
+            ],
+        }
+        for path, snippets in expectations.items():
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for snippet in snippets:
+                with self.subTest(path=str(path), snippet=snippet):
+                    self.assertIn(snippet, text, msg=f"{path} missing validate-runtime target {snippet}")
+
 
 if __name__ == "__main__":
     unittest.main()

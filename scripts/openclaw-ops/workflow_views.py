@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from chat_output import format_beijing_time
+from chat_output import format_beijing_time, sanitize_text
 
 SUCCESS_STATUSES = {"passed", "resolved", "solved", "ok", "success"}
 PARTIAL_STATUSES = {"partial", "escalated"}
@@ -303,6 +303,18 @@ def humanize_executor_model(value: Any) -> str:
 
 def humanize_task_stage(stage: str) -> str:
     normalized = str(stage or "").strip().lower()
+    stage_labels = {
+        "plan": "规划",
+        "implement": "实现",
+        "implementation": "实现",
+        "test-loop": "验证",
+        "test": "验证",
+        "review": "评审",
+        "document": "文档",
+        "deploy": "部署",
+    }
+    if normalized in stage_labels:
+        return stage_labels[normalized]
     if normalized == "plan":
         return "规划"
     if normalized in {"implement", "implementation"}:
@@ -987,3 +999,411 @@ def build_ops_scan_event(record: dict[str, Any]) -> dict[str, Any]:
         "workflow_follow_up_summary": follow_up,
     }
     return _make_event("ops_scan", facts, human_view)
+
+
+def _safe_compact_text(value: Any, max_len: int = 96) -> str:
+    text = sanitize_text(value, max_len=max_len * 2)
+    return compact_task_text(text, max_len=max_len)
+
+
+def _normalize_optional_text(value: Any) -> str:
+    normalized = str(value or "").strip()
+    if normalized.lower() in {"none", "null"}:
+        return ""
+    return normalized
+
+
+def _humanize_task_status(status: Any) -> str:
+    normalized = _normalize_optional_text(status).lower()
+    if normalized == "pending":
+        return "待执行"
+    if normalized == "running":
+        return "执行中"
+    if normalized == "passed":
+        return "已通过"
+    if normalized == "failed":
+        return "失败"
+    if normalized == "escalated":
+        return "已升级"
+    if normalized == "cancelled":
+        return "已取消"
+    return compact_task_text(normalized or "-", 24)
+
+
+def _humanize_task_action(action: Any) -> str:
+    normalized = _normalize_optional_text(action).lower()
+    if normalized == "retry":
+        return "等待重试"
+    if normalized == "escalate_human":
+        return "转人工处理"
+    if normalized == "complete":
+        return "已闭环"
+    if normalized == "waiting_human_confirm":
+        return "等待人工确认"
+    if normalized == "needs_clarification":
+        return "待补充上下文"
+    if not normalized:
+        return "未指定"
+    return compact_task_text(normalized, 32)
+
+
+def _normalize_event_dict(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _normalize_event_list(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [dict(item) for item in value if isinstance(item, dict)]
+
+
+def build_benchmark_sweep_event(summary: dict[str, Any], notify_on: str = "activity") -> dict[str, Any]:
+    """Build one unified event for a benchmark sweep summary."""
+
+    data = _normalize_event_dict(summary)
+    requested_suite_ids = [
+        _safe_compact_text(item, 48)
+        for item in data.get("requested_suite_ids", [])
+        if _safe_compact_text(item, 48)
+    ]
+    results = _normalize_event_list(data.get("results", []))
+    failures = _normalize_event_list(data.get("failures", []))
+    success_count = max(0, int(data.get("success_count", len(results)) or 0))
+    failure_count = max(0, int(data.get("failure_count", len(failures)) or 0))
+    mode = normalize_notify_mode(notify_on)
+    visible = True
+    if mode == "error":
+        visible = failure_count > 0
+    elif mode == "activity":
+        visible = bool(success_count > 0 or failure_count > 0 or requested_suite_ids)
+
+    summary_text = "基准批跑已完成。"
+    if failure_count > 0:
+        summary_text = f"基准批跑出现 {failure_count} 个失败。"
+    elif success_count > 0:
+        summary_text = f"基准批跑完成，共成功 {success_count} 个。"
+
+    lines = [
+        f"- 请求基准集：{', '.join(requested_suite_ids) if requested_suite_ids else '未指定'}",
+        f"- 执行结果：成功 {success_count} 个，失败 {failure_count} 个。",
+    ]
+
+    for item in results[:4]:
+        suite_id = _safe_compact_text(item.get("suite_id", ""), 48) or "未命名基准集"
+        item_summary = _normalize_event_dict(item.get("summary", {}))
+        workflow_scorecard = _normalize_event_dict(item_summary.get("workflow_scorecard", {}))
+        decision = _normalize_event_dict(workflow_scorecard.get("decision", {}))
+        promoted = bool(decision.get("promote_to_new_baseline", False))
+        veto_reasons = [
+            _safe_compact_text(reason, 48)
+            for reason in decision.get("veto_reasons", [])
+            if _safe_compact_text(reason, 48)
+        ]
+        line = f"- {suite_id} -> {'允许晋升' if promoted else '未通过晋升'}"
+        if veto_reasons:
+            line += f"（{', '.join(veto_reasons[:2])}）"
+        lines.append(line)
+
+    for item in failures[:4]:
+        suite_id = _safe_compact_text(item.get("suite_id", ""), 48) or "未命名基准集"
+        error_type = _safe_compact_text(item.get("error_type", ""), 32) or "RuntimeError"
+        error_text = _safe_compact_text(item.get("error", ""), 88) or "未记录错误详情"
+        lines.append(f"- {suite_id} -> {error_type}: {error_text}")
+
+    human_view = {
+        "visible": visible,
+        "title": "Benchmark Sweep",
+        "summary": summary_text,
+        "run_time": str(data.get("generated_at", "")).strip(),
+        "lines": lines,
+        "trace_id": _safe_compact_text(data.get("summary_file", ""), 64) or "",
+    }
+    facts = {
+        "status": _normalize_optional_text(data.get("status", "")),
+        "requested_suite_ids": requested_suite_ids,
+        "success_count": success_count,
+        "failure_count": failure_count,
+        "results": results,
+        "failures": failures,
+        "summary_file": _normalize_optional_text(data.get("summary_file", "")),
+        "latest_summary_file": _normalize_optional_text(data.get("latest_summary_file", "")),
+    }
+    return _make_event("benchmark_sweep", facts, human_view)
+
+
+def _format_control_plane_summary_task_line(item: dict[str, Any]) -> str:
+    task_id = _safe_compact_text(item.get("task_id", ""), 32) or "unknown-task"
+    workflow_profile_id = _safe_compact_text(item.get("workflow_profile_id", ""), 48) or "unbound"
+    workflow_channel = _safe_compact_text(item.get("workflow_channel", ""), 24)
+    workflow_stage = humanize_task_stage(_normalize_optional_text(item.get("stage_id", "")))
+    workflow_label = workflow_profile_id
+    if workflow_channel:
+        workflow_label += f"@{workflow_channel}"
+    if workflow_stage:
+        workflow_label += f" / {workflow_stage}"
+    badges: list[str] = []
+    open_incident_count = max(0, int(item.get("open_incident_count", 0) or 0))
+    critical_open_incident_count = max(0, int(item.get("critical_open_incident_count", 0) or 0))
+    if open_incident_count > 0:
+        badges.append(f"open_incidents={open_incident_count}")
+    if critical_open_incident_count > 0:
+        badges.append(f"critical={critical_open_incident_count}")
+    if bool(item.get("requires_human_assistance", False)):
+        badges.append("需要人工协助")
+    if bool(item.get("waiting_human_confirm", False)):
+        badges.append("等待人工确认")
+    if bool(item.get("needs_clarification", False)):
+        badges.append("待补充上下文")
+    if bool(item.get("benchmark_blocked", False)):
+        badges.append("benchmark未通过")
+    if bool(item.get("benchmark_promoted", False)):
+        badges.append("benchmark允许晋升")
+    detail = "，".join(badges) if badges else "最近有控制面活动"
+    return f"- {task_id} {workflow_label} -> {detail}"
+
+
+def build_control_plane_summary_event(summary: dict[str, Any], notify_on: str = "activity") -> dict[str, Any]:
+    """Build one unified event for aggregated control-plane summary."""
+
+    data = _normalize_event_dict(summary)
+    mode = normalize_notify_mode(notify_on)
+    scanned_task_count = max(0, int(data.get("scanned_task_count", 0) or 0))
+    open_incident_count = max(0, int(data.get("open_incident_count", 0) or 0))
+    critical_open_incident_count = max(0, int(data.get("critical_open_incident_count", 0) or 0))
+    human_assistance_task_count = max(0, int(data.get("human_assistance_task_count", 0) or 0))
+    waiting_human_confirm_task_count = max(0, int(data.get("waiting_human_confirm_task_count", 0) or 0))
+    needs_clarification_task_count = max(0, int(data.get("needs_clarification_task_count", 0) or 0))
+    benchmark_run_task_count = max(0, int(data.get("benchmark_run_task_count", 0) or 0))
+    benchmark_promoted_count = max(0, int(data.get("benchmark_promoted_count", 0) or 0))
+    benchmark_blocked_count = max(0, int(data.get("benchmark_blocked_count", 0) or 0))
+    lookback_hours = max(1, int(data.get("lookback_hours", 24) or 24))
+    total_tokens = max(0, int(data.get("total_tokens", 0) or 0))
+    total_cost_estimate = round(float(data.get("total_cost_estimate", 0.0) or 0.0), 6)
+    top_tasks = _normalize_event_list(data.get("top_tasks", []))
+    veto_reason_counts = _normalize_event_list(data.get("veto_reason_counts", []))
+
+    visible = True
+    if mode == "error":
+        visible = bool(
+            open_incident_count > 0
+            or critical_open_incident_count > 0
+            or human_assistance_task_count > 0
+            or waiting_human_confirm_task_count > 0
+            or needs_clarification_task_count > 0
+            or benchmark_blocked_count > 0
+        )
+    elif mode == "activity":
+        visible = bool(
+            scanned_task_count > 0
+            or benchmark_run_task_count > 0
+            or open_incident_count > 0
+        )
+
+    summary_text = "控制面最近无新增活动"
+    if critical_open_incident_count > 0 or open_incident_count > 0 or human_assistance_task_count > 0:
+        summary_text = "控制面当前仍有待处理风险"
+    elif benchmark_blocked_count > 0:
+        summary_text = "控制面最近存在未通过晋升的 benchmark"
+    elif scanned_task_count > 0:
+        summary_text = "控制面最近有新的运行活动"
+
+    lines = [
+        f"- 窗口：最近 {lookback_hours} 小时，扫描 {scanned_task_count} 个 task",
+        (
+            f"- 门禁：未闭环 incident {open_incident_count} 个（critical {critical_open_incident_count} 个），"
+            f"人工协助 {human_assistance_task_count} 个，等待确认 {waiting_human_confirm_task_count} 个，"
+            f"待澄清 {needs_clarification_task_count} 个"
+        ),
+        (
+            f"- benchmark：最近有结果 {benchmark_run_task_count} 个 task，允许晋升 {benchmark_promoted_count} 个，"
+            f"未通过 {benchmark_blocked_count} 个"
+        ),
+        f"- 资源：tokens {total_tokens}，成本估算 {total_cost_estimate}",
+    ]
+    for item in veto_reason_counts[:3]:
+        reason = _safe_compact_text(item.get("reason", ""), 48)
+        count = max(0, int(item.get("count", 0) or 0))
+        if reason and count > 0:
+            lines.append(f"- veto：{reason} x{count}")
+    for item in top_tasks[:5]:
+        lines.append(_format_control_plane_summary_task_line(item))
+
+    human_view = {
+        "visible": visible,
+        "title": "Control Plane Summary",
+        "summary": summary_text,
+        "run_time": str(data.get("generated_at", "")).strip(),
+        "lines": lines,
+        "trace_id": _safe_compact_text(data.get("state_file", ""), 64) or "",
+    }
+    facts = {
+        "lookback_hours": lookback_hours,
+        "scanned_task_count": scanned_task_count,
+        "open_incident_count": open_incident_count,
+        "critical_open_incident_count": critical_open_incident_count,
+        "human_assistance_task_count": human_assistance_task_count,
+        "waiting_human_confirm_task_count": waiting_human_confirm_task_count,
+        "needs_clarification_task_count": needs_clarification_task_count,
+        "benchmark_run_task_count": benchmark_run_task_count,
+        "benchmark_promoted_count": benchmark_promoted_count,
+        "benchmark_blocked_count": benchmark_blocked_count,
+        "total_tokens": total_tokens,
+        "total_cost_estimate": total_cost_estimate,
+        "veto_reason_counts": veto_reason_counts,
+        "top_tasks": top_tasks,
+        "state_file": _normalize_optional_text(data.get("state_file", "")),
+    }
+    return _make_event("control_plane_summary", facts, human_view)
+
+
+def build_task_control_plane_event(report: dict[str, Any], notify_on: str = "activity") -> dict[str, Any]:
+    task = _normalize_event_dict(report.get("task", {}))
+    control = _normalize_event_dict(report.get("control_plane", {}))
+    diagnostics = _normalize_event_dict(report.get("diagnostics", {}))
+    timing = _normalize_event_dict(report.get("timing", {}))
+
+    latest_output = _normalize_event_dict(control.get("latest_output", {}))
+    latest_output_payload = _normalize_event_dict(latest_output.get("payload", {}))
+    latest_human_gate = _normalize_event_dict(latest_output_payload.get("human_gate", {}))
+    latest_incident = _normalize_event_dict(control.get("latest_incident", {}))
+    latest_benchmark_run = _normalize_event_dict(control.get("latest_benchmark_run", {}))
+    latest_benchmark_decision = _normalize_event_dict(latest_benchmark_run.get("decision", {}))
+    open_incidents = _normalize_event_list(control.get("open_incidents", []))
+
+    open_incident_count = max(0, int(control.get("open_incident_count", len(open_incidents)) or 0))
+    critical_open_incident_count = max(0, int(control.get("critical_open_incident_count", 0) or 0))
+    requires_human_assistance = bool(control.get("requires_human_assistance", False))
+    waiting_human_confirm = bool(control.get("waiting_human_confirm", False))
+    needs_clarification = bool(control.get("needs_clarification", False))
+    benchmark_run_count = max(0, int(diagnostics.get("benchmark_run_count", 0) or 0))
+    task_output_count = max(0, int(diagnostics.get("task_output_count", 0) or 0))
+    incident_count = max(0, int(diagnostics.get("incident_count", 0) or 0))
+
+    mode = normalize_notify_mode(notify_on)
+    visible = True
+    if mode == "error":
+        visible = bool(
+            open_incident_count > 0
+            or critical_open_incident_count > 0
+            or requires_human_assistance
+            or waiting_human_confirm
+            or needs_clarification
+        )
+    elif mode == "activity":
+        visible = bool(
+            open_incident_count > 0
+            or requires_human_assistance
+            or waiting_human_confirm
+            or needs_clarification
+            or benchmark_run_count > 0
+            or task_output_count > 0
+        )
+
+    workflow_profile_id = _normalize_optional_text(task.get("workflow_profile_id", "")) or "未绑定"
+    workflow_channel = _normalize_optional_text(task.get("workflow_channel", ""))
+    workflow_stage = humanize_task_stage(_normalize_optional_text(task.get("stage_id", "")))
+    workflow_label = workflow_profile_id
+    if workflow_channel:
+        workflow_label += f"@{workflow_channel}"
+    if workflow_stage:
+        workflow_label += f" / {workflow_stage}"
+
+    summary_text = "任务控制面状态正常。"
+    if open_incident_count > 0:
+        summary_text = f"当前有 {open_incident_count} 个未闭环事件，其中 {critical_open_incident_count} 个为 critical。"
+    elif requires_human_assistance:
+        summary_text = "当前任务需要人工协助。"
+    elif waiting_human_confirm:
+        summary_text = "当前任务等待人工确认。"
+    elif needs_clarification:
+        summary_text = "当前任务待补充上下文。"
+    elif benchmark_run_count > 0 and latest_benchmark_run:
+        promoted = bool(latest_benchmark_decision.get("promote_to_new_baseline", False))
+        summary_text = "最近基准对比允许晋升。" if promoted else "最近基准对比未通过晋升。"
+
+    gate_states: list[str] = []
+    if requires_human_assistance or bool(latest_human_gate.get("requires_human_assistance", False)):
+        gate_states.append("需要人工协助")
+    if waiting_human_confirm or (
+        bool(latest_human_gate.get("need_human_confirm", False))
+        and not bool(latest_human_gate.get("human_confirmed", False))
+    ):
+        gate_states.append("等待人工确认")
+    if needs_clarification or bool(latest_human_gate.get("needs_clarification", False)):
+        gate_states.append("待补充上下文")
+    if not gate_states:
+        gate_states.append("已通过")
+
+    lines = [
+        f"- 当前状态：{_humanize_task_status(task.get('status', ''))} / {_humanize_task_action(task.get('action', ''))}",
+        f"- 工作流：{workflow_label}",
+        f"- 人工门禁：{'；'.join(gate_states)}",
+    ]
+
+    if latest_output:
+        latest_output_type = str(latest_output.get("output_type", "")).strip() or "agent_report"
+        latest_output_summary = _safe_compact_text(latest_output.get("summary", ""), 96) or "未记录摘要"
+        lines.append(f"- 最近输出：{latest_output_type} -> {latest_output_summary}")
+
+    if open_incident_count > 0:
+        lines.append(f"- 未闭环事件：{open_incident_count} 个，其中 critical {critical_open_incident_count} 个。")
+        for idx, item in enumerate(open_incidents[:3], start=1):
+            incident_type = _safe_compact_text(item.get("incident_type", ""), 40) or "runtime_issue"
+            severity = _safe_compact_text(item.get("severity", ""), 20) or "-"
+            status = _safe_compact_text(item.get("status", ""), 20) or "-"
+            summary = _safe_compact_text(item.get("summary", ""), 88) or "待进一步分诊"
+            lines.append(f"  {idx}. {incident_type}（{severity}/{status}） -> {summary}")
+    elif latest_incident:
+        incident_type = _safe_compact_text(latest_incident.get("incident_type", ""), 40) or "runtime_issue"
+        severity = _safe_compact_text(latest_incident.get("severity", ""), 20) or "-"
+        status = _safe_compact_text(latest_incident.get("status", ""), 20) or "-"
+        summary = _safe_compact_text(latest_incident.get("summary", ""), 88) or "已记录"
+        lines.append(f"- 最近事件：{incident_type}（{severity}/{status}） -> {summary}")
+
+    if latest_benchmark_run:
+        suite_id = _safe_compact_text(latest_benchmark_run.get("benchmark_suite_id", ""), 48) or "未命名基准集"
+        promoted = bool(latest_benchmark_decision.get("promote_to_new_baseline", False))
+        decision_text = "允许晋升" if promoted else "未通过晋升"
+        veto_reasons = [
+            _safe_compact_text(item, 48)
+            for item in latest_benchmark_decision.get("veto_reasons", [])
+            if _safe_compact_text(item, 48)
+        ]
+        benchmark_line = f"- 最近基准：{suite_id} -> {decision_text}"
+        if veto_reasons:
+            benchmark_line += f"（{', '.join(veto_reasons[:2])}）"
+        lines.append(benchmark_line)
+
+    lines.append(f"- 控制面统计：输出 {task_output_count}，incident {incident_count}，benchmark {benchmark_run_count}。")
+
+    run_time = (
+        str(timing.get("completed_at", "")).strip()
+        or str(timing.get("started_at", "")).strip()
+        or str(task.get("updated_at", "")).strip()
+    )
+    human_view = {
+        "visible": visible,
+        "title": "任务控制面",
+        "summary": summary_text,
+        "run_time": run_time,
+        "lines": lines,
+        "trace_id": _normalize_optional_text(task.get("task_id", "")),
+    }
+    facts = {
+        "task_id": _normalize_optional_text(task.get("task_id", "")),
+        "task_status": _normalize_optional_text(task.get("status", "")),
+        "task_action": _normalize_optional_text(task.get("action", "")),
+        "workflow_profile_id": workflow_profile_id,
+        "workflow_channel": workflow_channel,
+        "stage_id": _normalize_optional_text(task.get("stage_id", "")),
+        "open_incident_count": open_incident_count,
+        "critical_open_incident_count": critical_open_incident_count,
+        "requires_human_assistance": requires_human_assistance,
+        "waiting_human_confirm": waiting_human_confirm,
+        "needs_clarification": needs_clarification,
+        "latest_output": latest_output,
+        "latest_incident": latest_incident,
+        "latest_benchmark_run": latest_benchmark_run,
+        "diagnostics": diagnostics,
+    }
+    return _make_event("task_control_plane", facts, human_view)

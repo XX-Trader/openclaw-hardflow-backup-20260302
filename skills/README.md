@@ -10,6 +10,6 @@
 ## Summary
 
 - agents_total: 13
-- used_skills_total: 35
-- existing_skills_total: 35
+- used_skills_total: 37
+- existing_skills_total: 37
 - missing_skills_total: 0

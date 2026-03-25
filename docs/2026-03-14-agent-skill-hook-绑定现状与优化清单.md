@@ -51,6 +51,31 @@
 - planner `allowAgents` 已接入 preflight 自动校验
 - 已新增 `task-capability-coverage` 统计命令与 `cron/index/cron_agent_capability_matrix.json`
 
+## 状态更新（2026-03-22）
+
+- 默认产品口径已经收口为：`coding-default` 是唯一默认 workflow profile
+- 平台总入口口径已经收口为：`需求澄清 -> 任务拆分 -> workflow 选择 -> 执行`
+- `HardFlow` 的定位从“一个很强的 workflow”上升为“所有 workflow 共享的 Core”
+- `capability` 现在被正式定义为 workflow 与 skill 之间的稳定接口
+- `skill` 不再作为默认工作流的一等真值源，而是 capability 的实现说明
+- task 层后续应补充 `workflow_profile_id`，避免“同一任务约束不属于哪条 workflow”继续漂移
+- self-evolution 升级统一采用 `stable -> candidate -> compare -> promote/rollback` 口径
+
+### 新的边界原则
+
+从现在开始，推荐把这五层严格区分：
+
+1. `workflow selector`
+   - 定义需求澄清后如何选择 workflow profile
+2. `workflow profile`
+   - 定义阶段图、默认链路、评分策略、hook 策略
+3. `capability`
+   - 定义这条 workflow 某个阶段需要什么能力
+4. `skill`
+   - 定义 agent 如何实现该能力
+5. `hook`
+   - 定义运行时护栏和审计，不承载 workflow 真值
+
 ### 1. 任务不是直接绑定 skill
 
 当前执行链路是：
@@ -62,6 +87,10 @@
 - `scripts/openclaw-ops/policy/task_executor_runner.py` 直接把 `task.assignee` 写入 `agentId`
 - `cron/jobs_agent_mapping.md` 只记录 `agent=...`
 - 当前任务执行路径里没有 `task.skill`、`required_skill`、`required_capability` 这类正式字段
+
+新的收口方向应是：
+
+`workflow_selector -> workflow_profile -> stage -> required_capabilities -> allowed_agents -> agent runtime -> skill`
 
 ### 2. hook 不是绑定到单个 agent
 
@@ -85,6 +114,10 @@
 
 这两层目前没有自动收敛成单一真值。
 
+新的优先级应是：
+
+`workflow profile > capability binding > skill declaration > runtime required skill`
+
 ### 4. 调度层字段与任务层字段需要分层理解
 
 当前文档里容易混淆的不是“有没有能力字段”，而是“能力字段属于哪一层”。
@@ -105,6 +138,19 @@
 - 调度层回答“这个任务长期依赖什么能力与运行时”。
 - 任务层回答“这一次具体任务允许谁执行、缺能力时怎么回退”。
 - 后续如果新增字段，必须显式说明属于哪一层，避免在不同文档里对同一个概念重复命名。
+
+从默认编码工作流角度，建议新增或固定以下任务层字段：
+
+- `workflow_profile_id`
+- `required_capabilities`
+- `required_skills`
+- `allowed_agents`
+- `verification_contract`
+
+从平台总入口角度，建议后续再补一层选择字段：
+
+- `workflow_selection_reason`
+- `workflow_selection_inputs`
 
 ## 当前 agent -> skill 摘要
 

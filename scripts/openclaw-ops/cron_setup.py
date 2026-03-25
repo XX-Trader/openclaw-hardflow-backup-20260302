@@ -268,6 +268,76 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             reason="install_self_evolution_job skipped: self-evolution script missing",
         )
         enable_flag(
+            "install_upgrade_feedback_job",
+            when=Path(str(args.upgrade_feedback_py)).expanduser().is_file(),
+            reason="install_upgrade_feedback_job skipped: upgrade-feedback script missing",
+        )
+        enable_flag(
+            "install_benchmark_sweep_job",
+            when=Path(str(args.benchmark_sweep_py)).expanduser().is_file(),
+            reason="install_benchmark_sweep_job skipped: benchmark-orchestrator script missing",
+        )
+        enable_flag(
+            "install_benchmark_output_job",
+            when=Path(str(args.benchmark_output_py)).expanduser().is_file(),
+            reason="install_benchmark_output_job skipped: benchmark-output script missing",
+        )
+        enable_flag(
+            "install_task_output_broadcast_job",
+            when=Path(str(args.task_output_broadcast_py)).expanduser().is_file(),
+            reason="install_task_output_broadcast_job skipped: task-output-broadcast script missing",
+        )
+        enable_flag(
+            "install_control_plane_summary_job",
+            when=Path(str(args.control_plane_summary_py)).expanduser().is_file(),
+            reason="install_control_plane_summary_job skipped: control-plane-summary script missing",
+        )
+        enable_flag(
+            "install_control_plane_dashboard_job",
+            when=Path(str(args.control_plane_dashboard_py)).expanduser().is_file(),
+            reason="install_control_plane_dashboard_job skipped: control-plane-dashboard script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_job",
+            when=Path(str(args.control_plane_optimization_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_job skipped: control-plane-optimization script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_dispatch_job",
+            when=Path(str(args.control_plane_optimization_dispatch_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_dispatch_job skipped: control-plane-optimization-dispatch script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_review_job",
+            when=Path(str(args.control_plane_optimization_review_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_review_job skipped: control-plane-optimization-review script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_dispatch_job",
+            when=Path(str(args.control_plane_profile_update_dispatch_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_dispatch_job skipped: control-plane-profile-update-dispatch script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_apply_job",
+            when=Path(str(args.control_plane_profile_update_apply_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_apply_job skipped: control-plane-profile-update-apply script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_validation_job",
+            when=Path(str(args.control_plane_profile_update_validation_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_validation_job skipped: control-plane-profile-update-validation script missing",
+        )
+        enable_flag(
+            "install_control_plane_acceptance_job",
+            when=Path(str(args.control_plane_acceptance_py)).expanduser().is_file(),
+            reason="install_control_plane_acceptance_job skipped: control-plane-acceptance script missing",
+        )
+        enable_flag(
+            "install_control_plane_live_acceptance_job",
+            when=Path(str(args.control_plane_live_acceptance_py)).expanduser().is_file(),
+            reason="install_control_plane_live_acceptance_job skipped: control-plane-live-acceptance script missing",
+        )
+        enable_flag(
             "install_git_sync_job",
             when=git_sync_ready_for_install(),
             reason="install_git_sync_job skipped: git-sync script missing or repo-path not git",
@@ -299,6 +369,76 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             "install_self_evolution_job",
             when=Path(str(args.self_evolution_py)).expanduser().is_file(),
             reason="install_self_evolution_job skipped: self-evolution script missing",
+        )
+        enable_flag(
+            "install_upgrade_feedback_job",
+            when=Path(str(args.upgrade_feedback_py)).expanduser().is_file(),
+            reason="install_upgrade_feedback_job skipped: upgrade-feedback script missing",
+        )
+        enable_flag(
+            "install_benchmark_sweep_job",
+            when=Path(str(args.benchmark_sweep_py)).expanduser().is_file(),
+            reason="install_benchmark_sweep_job skipped: benchmark-orchestrator script missing",
+        )
+        enable_flag(
+            "install_benchmark_output_job",
+            when=Path(str(args.benchmark_output_py)).expanduser().is_file(),
+            reason="install_benchmark_output_job skipped: benchmark-output script missing",
+        )
+        enable_flag(
+            "install_task_output_broadcast_job",
+            when=Path(str(args.task_output_broadcast_py)).expanduser().is_file(),
+            reason="install_task_output_broadcast_job skipped: task-output-broadcast script missing",
+        )
+        enable_flag(
+            "install_control_plane_summary_job",
+            when=Path(str(args.control_plane_summary_py)).expanduser().is_file(),
+            reason="install_control_plane_summary_job skipped: control-plane-summary script missing",
+        )
+        enable_flag(
+            "install_control_plane_dashboard_job",
+            when=Path(str(args.control_plane_dashboard_py)).expanduser().is_file(),
+            reason="install_control_plane_dashboard_job skipped: control-plane-dashboard script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_job",
+            when=Path(str(args.control_plane_optimization_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_job skipped: control-plane-optimization script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_dispatch_job",
+            when=Path(str(args.control_plane_optimization_dispatch_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_dispatch_job skipped: control-plane-optimization-dispatch script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_review_job",
+            when=Path(str(args.control_plane_optimization_review_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_review_job skipped: control-plane-optimization-review script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_dispatch_job",
+            when=Path(str(args.control_plane_profile_update_dispatch_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_dispatch_job skipped: control-plane-profile-update-dispatch script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_apply_job",
+            when=Path(str(args.control_plane_profile_update_apply_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_apply_job skipped: control-plane-profile-update-apply script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_validation_job",
+            when=Path(str(args.control_plane_profile_update_validation_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_validation_job skipped: control-plane-profile-update-validation script missing",
+        )
+        enable_flag(
+            "install_control_plane_acceptance_job",
+            when=Path(str(args.control_plane_acceptance_py)).expanduser().is_file(),
+            reason="install_control_plane_acceptance_job skipped: control-plane-acceptance script missing",
+        )
+        enable_flag(
+            "install_control_plane_live_acceptance_job",
+            when=Path(str(args.control_plane_live_acceptance_py)).expanduser().is_file(),
+            reason="install_control_plane_live_acceptance_job skipped: control-plane-live-acceptance script missing",
         )
         enable_flag(
             "install_git_sync_job",
@@ -335,6 +475,76 @@ def apply_install_profile(args: argparse.Namespace) -> dict[str, Any]:
             "install_self_evolution_job",
             when=Path(str(args.self_evolution_py)).expanduser().is_file(),
             reason="install_self_evolution_job skipped: self-evolution script missing",
+        )
+        enable_flag(
+            "install_upgrade_feedback_job",
+            when=Path(str(args.upgrade_feedback_py)).expanduser().is_file(),
+            reason="install_upgrade_feedback_job skipped: upgrade-feedback script missing",
+        )
+        enable_flag(
+            "install_benchmark_sweep_job",
+            when=Path(str(args.benchmark_sweep_py)).expanduser().is_file(),
+            reason="install_benchmark_sweep_job skipped: benchmark-orchestrator script missing",
+        )
+        enable_flag(
+            "install_benchmark_output_job",
+            when=Path(str(args.benchmark_output_py)).expanduser().is_file(),
+            reason="install_benchmark_output_job skipped: benchmark-output script missing",
+        )
+        enable_flag(
+            "install_task_output_broadcast_job",
+            when=Path(str(args.task_output_broadcast_py)).expanduser().is_file(),
+            reason="install_task_output_broadcast_job skipped: task-output-broadcast script missing",
+        )
+        enable_flag(
+            "install_control_plane_summary_job",
+            when=Path(str(args.control_plane_summary_py)).expanduser().is_file(),
+            reason="install_control_plane_summary_job skipped: control-plane-summary script missing",
+        )
+        enable_flag(
+            "install_control_plane_dashboard_job",
+            when=Path(str(args.control_plane_dashboard_py)).expanduser().is_file(),
+            reason="install_control_plane_dashboard_job skipped: control-plane-dashboard script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_job",
+            when=Path(str(args.control_plane_optimization_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_job skipped: control-plane-optimization script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_dispatch_job",
+            when=Path(str(args.control_plane_optimization_dispatch_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_dispatch_job skipped: control-plane-optimization-dispatch script missing",
+        )
+        enable_flag(
+            "install_control_plane_optimization_review_job",
+            when=Path(str(args.control_plane_optimization_review_py)).expanduser().is_file(),
+            reason="install_control_plane_optimization_review_job skipped: control-plane-optimization-review script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_dispatch_job",
+            when=Path(str(args.control_plane_profile_update_dispatch_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_dispatch_job skipped: control-plane-profile-update-dispatch script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_apply_job",
+            when=Path(str(args.control_plane_profile_update_apply_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_apply_job skipped: control-plane-profile-update-apply script missing",
+        )
+        enable_flag(
+            "install_control_plane_profile_update_validation_job",
+            when=Path(str(args.control_plane_profile_update_validation_py)).expanduser().is_file(),
+            reason="install_control_plane_profile_update_validation_job skipped: control-plane-profile-update-validation script missing",
+        )
+        enable_flag(
+            "install_control_plane_acceptance_job",
+            when=Path(str(args.control_plane_acceptance_py)).expanduser().is_file(),
+            reason="install_control_plane_acceptance_job skipped: control-plane-acceptance script missing",
+        )
+        enable_flag(
+            "install_control_plane_live_acceptance_job",
+            when=Path(str(args.control_plane_live_acceptance_py)).expanduser().is_file(),
+            reason="install_control_plane_live_acceptance_job skipped: control-plane-live-acceptance script missing",
         )
         enable_flag(
             "install_git_sync_job",
@@ -963,6 +1173,817 @@ def build_self_evolution_job(
     }
 
 
+def build_upgrade_feedback_job(
+    *,
+    script_py: str,
+    executor_run_dir: str,
+    output_dir: str,
+    state_file: str,
+    workflow_profile_registry: str,
+    benchmark_suite_file: str,
+    benchmark_suite_id: str,
+    every_ms: int,
+    log_mode: str,
+    workflow_target: str,
+    skill_name: str,
+    skill_assignee: str,
+    baseline_count: int,
+    candidate_count: int,
+    task_db: str,
+    auto_create_tasks: bool,
+    auto_apply_workflow_promotion: bool,
+    promotion_operator: str,
+    task_score_threshold: float,
+    task_schedule_gap_minutes: int,
+) -> dict[str, Any]:
+    ts = now_ms()
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" --executor-run-dir \"{executor_run_dir}\" "
+        f"--output-dir \"{output_dir}\" --state-file \"{state_file}\" "
+        f"--workflow-target {q(str(workflow_target).strip() or 'task_executor_10m')} "
+        f"--skill-name {q(str(skill_name).strip() or 'openclaw-evolution-upgrader')} "
+        f"--skill-assignee {q(str(skill_assignee).strip() or 'optimization-agent')} "
+        f"--baseline-count {max(1, int(baseline_count))} "
+        f"--candidate-count {max(1, int(candidate_count))} "
+        f"--task-db {q(str(task_db).strip())} "
+        f"{f'--workflow-profile-registry {q(str(workflow_profile_registry).strip())} ' if str(workflow_profile_registry).strip() else ''}"
+        f"{f'--benchmark-suite-file {q(str(benchmark_suite_file).strip())} ' if str(benchmark_suite_file).strip() else ''}"
+        f"{f'--benchmark-suite-id {q(str(benchmark_suite_id).strip())} ' if str(benchmark_suite_id).strip() else ''}"
+        f"{'--auto-create-tasks' if bool(auto_create_tasks) else '--no-auto-create-tasks'} "
+        f"{'--auto-apply-workflow-promotion' if bool(auto_apply_workflow_promotion) else '--no-auto-apply-workflow-promotion'} "
+        f"--promotion-operator {q(str(promotion_operator).strip() or 'upgrade-feedback-runner')} "
+        f"--task-score-threshold {max(0.0, min(float(task_score_threshold), 100.0))} "
+        f"--task-schedule-gap-minutes {max(1, int(task_schedule_gap_minutes))}"
+    )
+    return {
+        "id": "0bdb11dd-1594-4c06-a40e-b428c3a4df55",
+        "agentId": "ops-agent",
+        "name": "ops_upgrade_feedback_daily",
+        "description": "升级反馈汇总：从 executor runs 生成 workflow scorecard 与 skill review",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts,
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 1200,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_benchmark_sweep_job(
+    *,
+    script_py: str,
+    executor_run_dir: str,
+    output_root: str,
+    state_root: str,
+    benchmark_suite_file: str,
+    workflow_profile_registry: str,
+    task_db: str,
+    output_consumer_py: str,
+    summary_file: str,
+    consumer_output_file: str,
+    consumer_notify_on: str,
+    every_ms: int,
+    log_mode: str,
+    auto_create_tasks: bool,
+    auto_apply_workflow_promotion: bool,
+    promotion_operator: str,
+    task_score_threshold: float,
+    task_schedule_gap_minutes: int,
+    suite_ids: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    suite_args = "".join(
+        f"--suite-id {q(str(item).strip())} "
+        for item in suite_ids
+        if str(item).strip()
+    )
+    benchmark_cmd = (
+        f"python3 \"{script_py}\" run-all "
+        f"--executor-run-dir \"{executor_run_dir}\" "
+        f"--output-root \"{output_root}\" "
+        f"--state-root \"{state_root}\" "
+        f"{f'--benchmark-suite-file {q(str(benchmark_suite_file).strip())} ' if str(benchmark_suite_file).strip() else ''}"
+        f"{f'--workflow-profile-registry {q(str(workflow_profile_registry).strip())} ' if str(workflow_profile_registry).strip() else ''}"
+        f"{f'--task-db {q(str(task_db).strip())} ' if str(task_db).strip() else ''}"
+        f"{'--auto-create-tasks' if bool(auto_create_tasks) else '--no-auto-create-tasks'} "
+        f"{'--auto-apply-workflow-promotion' if bool(auto_apply_workflow_promotion) else '--no-auto-apply-workflow-promotion'} "
+        f"--promotion-operator {q(str(promotion_operator).strip() or 'benchmark-orchestrator')} "
+        f"--task-score-threshold {max(0.0, min(float(task_score_threshold), 100.0))} "
+        f"--task-schedule-gap-minutes {max(1, int(task_schedule_gap_minutes))} "
+        f"{suite_args}".rstrip()
+    )
+    notify_mode = str(consumer_notify_on or "error").strip().lower()
+    if notify_mode not in {"error", "activity", "always"}:
+        notify_mode = "error"
+    consumer_cmd = ""
+    if str(output_consumer_py).strip():
+        consumer_cmd = (
+            " && "
+            f"python3 \"{output_consumer_py}\" "
+            f"{f'--summary-file {q(str(summary_file).strip())} ' if str(summary_file).strip() else ''}"
+            f"--notify-on {q(notify_mode)} "
+            f"{f'--output {q(str(consumer_output_file).strip())} ' if str(consumer_output_file).strip() else ''}"
+        ).rstrip()
+    cmd = f"{benchmark_cmd}{consumer_cmd}"
+    return {
+        "id": "3c0f8cb2-7793-4d5a-9b4e-223dc0a698ea",
+        "agentId": "ops-agent",
+        "name": "ops_benchmark_sweep_daily",
+        "description": "benchmark sweep：批量执行多工作流基准集并固化控制面摘要",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts,
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 1800,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_benchmark_output_job(
+    *,
+    script_py: str,
+    summary_file: str,
+    output_file: str,
+    notify_on: str,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    notify_mode = str(notify_on or "error").strip().lower()
+    if notify_mode not in {"error", "activity", "always"}:
+        notify_mode = "error"
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"{f'--summary-file {q(str(summary_file).strip())} ' if str(summary_file).strip() else ''}"
+        f"--notify-on {q(notify_mode)} "
+        f"{f'--output {q(str(output_file).strip())} ' if str(output_file).strip() else ''}"
+    ).rstrip()
+    return {
+        "id": "6e6b677d-f912-47af-b65c-a31a8db82c94",
+        "agentId": "ops-agent",
+        "name": "ops_benchmark_output_daily",
+        "description": "benchmark 输出公告：把最新 benchmark sweep 摘要渲染成统一通知文本",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="announce"),
+    }
+
+
+def build_task_output_broadcast_job(
+    *,
+    script_py: str,
+    db_file: str,
+    state_file: str,
+    output_file: str,
+    lookback_hours: int,
+    limit: int,
+    event_limit: int,
+    notify_on: str,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    notify_mode = str(notify_on or "error").strip().lower()
+    if notify_mode not in {"error", "activity", "always"}:
+        notify_mode = "error"
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--db {q(str(db_file).strip())} "
+        f"--state-file {q(str(state_file).strip())} "
+        f"--output {q(str(output_file).strip())} "
+        f"--lookback-hours {max(1, int(lookback_hours))} "
+        f"--limit {max(1, int(limit))} "
+        f"--event-limit {max(20, int(event_limit))} "
+        f"--notify-on {q(notify_mode)}"
+    ).rstrip()
+    return {
+        "id": "d69be6a2-8619-4476-9178-cb63f4ab56f8",
+        "agentId": "ops-agent",
+        "name": "ops_task_output_broadcast_15m",
+        "description": "task 控制面广播：批量扫描最近变更任务并公告新的控制面事件",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(300000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="announce"),
+    }
+
+
+def build_control_plane_summary_job(
+    *,
+    script_py: str,
+    db_file: str,
+    state_file: str,
+    output_file: str,
+    lookback_hours: int,
+    limit: int,
+    notify_on: str,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    notify_mode = str(notify_on or "activity").strip().lower()
+    if notify_mode not in {"error", "activity", "always"}:
+        notify_mode = "activity"
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--db {q(str(db_file).strip())} "
+        f"--state-file {q(str(state_file).strip())} "
+        f"--output {q(str(output_file).strip())} "
+        f"--lookback-hours {max(1, int(lookback_hours))} "
+        f"--limit {max(1, int(limit))} "
+        f"--notify-on {q(notify_mode)}"
+    ).rstrip()
+    return {
+        "id": "c7d52a06-6f78-4a58-a75c-e2d9d9018561",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_summary_6h",
+        "description": "控制面汇总：聚合最近 task/incident/benchmark/promotion 信号并生成运营摘要",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="announce"),
+    }
+
+
+def build_control_plane_dashboard_job(
+    *,
+    script_py: str,
+    db_file: str,
+    benchmark_summary_file: str,
+    json_output: str,
+    markdown_output: str,
+    html_output: str,
+    lookback_hours: int,
+    limit: int,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--db {q(str(db_file).strip())} "
+        f"{f'--benchmark-summary-file {q(str(benchmark_summary_file).strip())} ' if str(benchmark_summary_file).strip() else ''}"
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+        f"{f'--html-output {q(str(html_output).strip())} ' if str(html_output).strip() else ''}"
+        f"--lookback-hours {max(1, int(lookback_hours))} "
+        f"--limit {max(1, int(limit))}"
+    ).rstrip()
+    return {
+        "id": "401e118b-0e92-423c-b255-45746997b1e8",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_dashboard_6h",
+        "description": "控制面看板快照：定期生成 dashboard JSON/Markdown 快照文件",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_control_plane_optimization_job(
+    *,
+    script_py: str,
+    db_file: str,
+    json_output: str,
+    markdown_output: str,
+    lookback_hours: int,
+    limit: int,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--db {q(str(db_file).strip())} "
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+        f"--lookback-hours {max(1, int(lookback_hours))} "
+        f"--limit {max(1, int(limit))}"
+    ).rstrip()
+    return {
+        "id": "6ab36dff-3809-465d-befa-9424b6c4088c",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_optimization_12h",
+        "description": "控制面优化建议：定期生成阶段裁剪、并行和门禁强化建议报告",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_control_plane_optimization_dispatch_job(
+    *,
+    script_py: str,
+    report_file: str,
+    task_db: str,
+    json_output: str,
+    markdown_output: str,
+    execution_workflow_profile: str,
+    execution_workflow_channel: str,
+    schedule_gap_minutes: int,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--report-file {q(str(report_file).strip())} "
+        f"--task-db {q(str(task_db).strip())} "
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+        f"--execution-workflow-profile {q(str(execution_workflow_profile).strip())} "
+        f"--execution-workflow-channel {q(str(execution_workflow_channel).strip())} "
+        f"--schedule-gap-minutes {max(0, int(schedule_gap_minutes))}"
+    ).rstrip()
+    return {
+        "id": "e85e75c1-41b4-44df-a6ff-4a699e6f949b",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_optimization_dispatch_12h",
+        "description": "控制面优化建议派发：把 advisor 报告转成 task-center 正式任务",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_control_plane_optimization_review_job(
+    *,
+    script_py: str,
+    task_db: str,
+    json_output: str,
+    markdown_output: str,
+    lookback_hours: int,
+    limit: int,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--task-db {q(str(task_db).strip())} "
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+        f"--lookback-hours {max(1, int(lookback_hours))} "
+        f"--limit {max(1, int(limit))}"
+    ).rstrip()
+    return {
+        "id": "471307bc-d7fb-401c-ae7e-c2242986510f",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_optimization_review_12h",
+        "description": "控制面优化任务复盘：汇总已派发 optimization task 的执行结果与可晋升候选",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_control_plane_profile_update_dispatch_job(
+    *,
+    script_py: str,
+    review_file: str,
+    task_db: str,
+    json_output: str,
+    markdown_output: str,
+    execution_workflow_profile: str,
+    execution_workflow_channel: str,
+    schedule_gap_minutes: int,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--review-file {q(str(review_file).strip())} "
+        f"--task-db {q(str(task_db).strip())} "
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+        f"--execution-workflow-profile {q(str(execution_workflow_profile).strip())} "
+        f"--execution-workflow-channel {q(str(execution_workflow_channel).strip())} "
+        f"--schedule-gap-minutes {max(0, int(schedule_gap_minutes))}"
+    ).rstrip()
+    return {
+        "id": "7f0ee69c-64c3-4675-8f4c-71b4ba7b1d0b",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_profile_update_dispatch_12h",
+        "description": "控制面 profile update 派发：把 ready_for_profile_update 项落成正式 workflow_profile_update 任务",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_control_plane_profile_update_apply_job(
+    *,
+    script_py: str,
+    task_db: str,
+    registry_file: str,
+    json_output: str,
+    markdown_output: str,
+    target_channel: str,
+    lookback_hours: int,
+    limit: int,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--task-db {q(str(task_db).strip())} "
+        f"--registry-file {q(str(registry_file).strip())} "
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+        f"--target-channel {q(str(target_channel).strip())} "
+        f"--lookback-hours {max(1, int(lookback_hours))} "
+        f"--limit {max(1, int(limit))}"
+    ).rstrip()
+    return {
+        "id": "4c2c2f4b-a1a6-43f6-b2f1-c8ff0b71f632",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_profile_update_apply_12h",
+        "description": "控制面 profile update 回写：把已完成的 workflow_profile_update 任务安全写回 workflow registry",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_control_plane_profile_update_validation_job(
+    *,
+    script_py: str,
+    apply_file: str,
+    benchmark_suite_file: str,
+    executor_run_dir: str,
+    output_root: str,
+    state_file: str,
+    task_db: str,
+    workflow_profile_registry: str,
+    json_output: str,
+    markdown_output: str,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+    auto_create_tasks: bool,
+    auto_apply_workflow_promotion: bool,
+    promotion_operator: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--apply-file {q(str(apply_file).strip())} "
+        f"--benchmark-suite-file {q(str(benchmark_suite_file).strip())} "
+        f"--executor-run-dir {q(str(executor_run_dir).strip())} "
+        f"--output-root {q(str(output_root).strip())} "
+        f"--state-file {q(str(state_file).strip())} "
+        f"{f'--task-db {q(str(task_db).strip())} ' if str(task_db).strip() else ''}"
+        f"{f'--workflow-profile-registry {q(str(workflow_profile_registry).strip())} ' if str(workflow_profile_registry).strip() else ''}"
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+        f"{'--auto-create-tasks ' if bool(auto_create_tasks) else ''}"
+        f"{'--auto-apply-workflow-promotion ' if bool(auto_apply_workflow_promotion) else ''}"
+        f"--promotion-operator {q(str(promotion_operator).strip() or 'control-plane-validation')}"
+    ).rstrip()
+    return {
+        "id": "d7c66f8d-1644-4c18-b339-4b495b28458b",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_profile_update_validation_12h",
+        "description": "控制面 profile update 定向验证：回写后按受影响 workflow 执行 benchmark suite 验证",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 900,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_control_plane_acceptance_job(
+    *,
+    script_py: str,
+    jobs_file: str,
+    json_output: str,
+    markdown_output: str,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--jobs-file {q(str(jobs_file).strip())} "
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+    ).rstrip()
+    return {
+        "id": "df6ea260-d7a6-48f0-ad08-18c43e0f1e1a",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_acceptance_12h",
+        "description": "控制面长链路验收：校验已安装 jobs.json 是否包含关键控制面 job 与预期命令契约",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 600,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
+def build_control_plane_live_acceptance_job(
+    *,
+    script_py: str,
+    workspace_root: str,
+    jobs_file: str,
+    json_output: str,
+    markdown_output: str,
+    lookback_hours: int,
+    limit: int,
+    every_ms: int,
+    delay_ms: int,
+    log_mode: str,
+) -> dict[str, Any]:
+    ts = now_ms()
+
+    def q(value: Any) -> str:
+        return str(value or "").replace("\"", "\\\"")
+
+    cmd = (
+        f"python3 \"{script_py}\" "
+        f"--workspace-root {q(str(workspace_root).strip())} "
+        f"{f'--jobs-file {q(str(jobs_file).strip())} ' if str(jobs_file).strip() else ''}"
+        f"{f'--json-output {q(str(json_output).strip())} ' if str(json_output).strip() else ''}"
+        f"{f'--markdown-output {q(str(markdown_output).strip())} ' if str(markdown_output).strip() else ''}"
+        f"--lookback-hours {max(1, int(lookback_hours))} "
+        f"--limit {max(1, int(limit))}"
+    ).rstrip()
+    return {
+        "id": "13b1f8fe-6173-4f98-8ce6-cac203b49166",
+        "agentId": "ops-agent",
+        "name": "ops_control_plane_live_acceptance_24h",
+        "description": "控制面 live 验收：在隔离工作区实跑 advisor、dispatch、summary、dashboard 与 acceptance 链路",
+        "enabled": True,
+        "createdAtMs": ts,
+        "updatedAtMs": ts,
+        "schedule": {
+            "kind": "every",
+            "everyMs": max(3600000, int(every_ms)),
+            "anchorMs": ts + max(60000, int(delay_ms)),
+        },
+        "sessionTarget": "isolated",
+        "wakeMode": "now",
+        "payload": {
+            "kind": "agentTurn",
+            "message": build_message(cmd),
+            "model": DEFAULT_MAINTENANCE_CRON_MODEL,
+            "lightContext": True,
+            "timeoutSeconds": 900,
+        },
+        "delivery": build_delivery(mode="none"),
+    }
+
+
 def build_conversation_evolution_job(
     *,
     script_py: str,
@@ -1530,6 +2551,15 @@ def validate_runtime_paths(args: argparse.Namespace) -> dict[str, Any]:
         add_check("daily_work_env_file", str(args.daily_work_env_file), required=False, expect="file")
     if bool(args.install_self_evolution_job):
         add_check("self_evolution_py", str(args.self_evolution_py), required=True, expect="file")
+    if bool(args.install_upgrade_feedback_job):
+        add_check("upgrade_feedback_py", str(args.upgrade_feedback_py), required=True, expect="file")
+        if bool(args.upgrade_feedback_auto_apply_workflow_promotion):
+            add_check(
+                "upgrade_feedback_workflow_profile_registry",
+                str(args.upgrade_feedback_workflow_profile_registry),
+                required=True,
+                expect="file",
+            )
     if bool(args.install_conversation_evolution_job):
         add_check("conversation_evolution_py", str(args.conversation_evolution_py), required=True, expect="file")
         add_check("conversation_evolution_openclaw_home", str(args.conversation_evolution_openclaw_home), required=True, expect="dir")
@@ -1636,6 +2666,70 @@ def main() -> int:
         local_ops_dir / "self_evolution_todo.py",
         home / ".openclaw/ops/self_evolution_todo.py",
     )
+    default_upgrade_feedback_py = prefer_existing_path(
+        local_ops_dir / "upgrade_feedback_runner.py",
+        home / ".openclaw/ops/upgrade_feedback_runner.py",
+    )
+    default_upgrade_feedback_workflow_profile_registry = prefer_existing_path(
+        local_ops_dir / "policy/workflow-profile-registry.json",
+        home / ".openclaw/ops/policy/workflow-profile-registry.json",
+    )
+    default_upgrade_feedback_benchmark_suite_file = prefer_existing_path(
+        local_ops_dir / "policy/benchmark-suite-registry.json",
+        home / ".openclaw/ops/policy/benchmark-suite-registry.json",
+    )
+    default_benchmark_sweep_py = prefer_existing_path(
+        local_ops_dir / "benchmark_orchestrator.py",
+        home / ".openclaw/ops/benchmark_orchestrator.py",
+    )
+    default_benchmark_output_consumer_py = prefer_existing_path(
+        local_ops_dir / "benchmark_output_consumer.py",
+        home / ".openclaw/ops/benchmark_output_consumer.py",
+    )
+    default_task_output_broadcast_py = prefer_existing_path(
+        local_ops_dir / "task_output_broadcast_runner.py",
+        home / ".openclaw/ops/task_output_broadcast_runner.py",
+    )
+    default_control_plane_summary_py = prefer_existing_path(
+        local_ops_dir / "control_plane_summary_runner.py",
+        home / ".openclaw/ops/control_plane_summary_runner.py",
+    )
+    default_control_plane_dashboard_py = prefer_existing_path(
+        local_ops_dir / "control_plane_dashboard.py",
+        home / ".openclaw/ops/control_plane_dashboard.py",
+    )
+    default_control_plane_optimization_py = prefer_existing_path(
+        local_ops_dir / "control_plane_optimization_advisor.py",
+        home / ".openclaw/ops/control_plane_optimization_advisor.py",
+    )
+    default_control_plane_optimization_dispatch_py = prefer_existing_path(
+        local_ops_dir / "control_plane_optimization_dispatcher.py",
+        home / ".openclaw/ops/control_plane_optimization_dispatcher.py",
+    )
+    default_control_plane_optimization_review_py = prefer_existing_path(
+        local_ops_dir / "control_plane_optimization_review_runner.py",
+        home / ".openclaw/ops/control_plane_optimization_review_runner.py",
+    )
+    default_control_plane_profile_update_dispatch_py = prefer_existing_path(
+        local_ops_dir / "control_plane_profile_update_dispatcher.py",
+        home / ".openclaw/ops/control_plane_profile_update_dispatcher.py",
+    )
+    default_control_plane_profile_update_apply_py = prefer_existing_path(
+        local_ops_dir / "control_plane_profile_update_applier.py",
+        home / ".openclaw/ops/control_plane_profile_update_applier.py",
+    )
+    default_control_plane_profile_update_validation_py = prefer_existing_path(
+        local_ops_dir / "control_plane_profile_update_validation_runner.py",
+        home / ".openclaw/ops/control_plane_profile_update_validation_runner.py",
+    )
+    default_control_plane_acceptance_py = prefer_existing_path(
+        local_ops_dir / "control_plane_acceptance_runner.py",
+        home / ".openclaw/ops/control_plane_acceptance_runner.py",
+    )
+    default_control_plane_live_acceptance_py = prefer_existing_path(
+        local_ops_dir / "control_plane_live_acceptance_runner.py",
+        home / ".openclaw/ops/control_plane_live_acceptance_runner.py",
+    )
     default_conversation_evolution_py = prefer_existing_path(
         local_ops_dir / "conversation_evolution_runner.py",
         home / ".openclaw/ops/conversation_evolution_runner.py",
@@ -1735,6 +2829,206 @@ def main() -> int:
     parser.add_argument("--self-evolution-low-score-guarantee-min-agents", type=int, default=2)
     parser.add_argument("--self-evolution-low-score-guarantee-max-agents", type=int, default=6)
     parser.add_argument("--self-evolution-low-score-guarantee-threshold", type=float, default=70.0)
+
+    parser.add_argument("--install-upgrade-feedback-job", action="store_true")
+    parser.add_argument("--upgrade-feedback-py", default=str(default_upgrade_feedback_py))
+    parser.add_argument("--upgrade-feedback-executor-run-dir", default=str(home / ".openclaw/ops/task-center/executor-runs"))
+    parser.add_argument("--upgrade-feedback-output-dir", default=str(home / ".openclaw/ops/upgrade-feedback/reports"))
+    parser.add_argument("--upgrade-feedback-state", default=str(home / ".openclaw/ops/upgrade-feedback/state.json"))
+    parser.add_argument("--upgrade-feedback-every-ms", type=int, default=86400000)
+    parser.add_argument("--upgrade-feedback-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--upgrade-feedback-workflow-target", default="task_executor_10m")
+    parser.add_argument("--upgrade-feedback-skill-name", default="openclaw-evolution-upgrader")
+    parser.add_argument("--upgrade-feedback-skill-assignee", default="optimization-agent")
+    parser.add_argument("--upgrade-feedback-baseline-count", type=int, default=3)
+    parser.add_argument("--upgrade-feedback-candidate-count", type=int, default=3)
+    parser.add_argument("--upgrade-feedback-task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--upgrade-feedback-auto-create-tasks", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--upgrade-feedback-workflow-profile-registry",
+        default=str(default_upgrade_feedback_workflow_profile_registry),
+    )
+    parser.add_argument(
+        "--upgrade-feedback-benchmark-suite-file",
+        default=str(default_upgrade_feedback_benchmark_suite_file),
+    )
+    parser.add_argument("--upgrade-feedback-benchmark-suite-id", default="coding-default-core")
+    parser.add_argument(
+        "--upgrade-feedback-auto-apply-workflow-promotion",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+    )
+    parser.add_argument("--upgrade-feedback-promotion-operator", default="cron-upgrade-feedback")
+    parser.add_argument("--upgrade-feedback-task-score-threshold", type=float, default=80.0)
+    parser.add_argument("--upgrade-feedback-task-schedule-gap-minutes", type=int, default=120)
+
+    parser.add_argument("--install-benchmark-sweep-job", action="store_true")
+    parser.add_argument("--benchmark-sweep-py", default=str(default_benchmark_sweep_py))
+    parser.add_argument("--benchmark-sweep-executor-run-dir", default=str(home / ".openclaw/ops/task-center/executor-runs"))
+    parser.add_argument("--benchmark-sweep-output-root", default=str(home / ".openclaw/ops/benchmark-sweeps"))
+    parser.add_argument("--benchmark-sweep-state-root", default=str(home / ".openclaw/ops/benchmark-sweeps/state"))
+    parser.add_argument("--benchmark-sweep-output-py", default=str(default_benchmark_output_consumer_py))
+    parser.add_argument("--benchmark-sweep-summary-file", default=str(home / ".openclaw/ops/benchmark-sweeps/sweeps/latest-summary.json"))
+    parser.add_argument("--benchmark-sweep-consumer-output-file", default=str(home / ".openclaw/ops/benchmark-sweeps/output/latest-event.json"))
+    parser.add_argument("--benchmark-sweep-consumer-notify-on", default="error", choices=["error", "activity", "always"])
+    parser.add_argument(
+        "--benchmark-sweep-benchmark-suite-file",
+        default=str(default_upgrade_feedback_benchmark_suite_file),
+    )
+    parser.add_argument(
+        "--benchmark-sweep-workflow-profile-registry",
+        default=str(default_upgrade_feedback_workflow_profile_registry),
+    )
+    parser.add_argument("--benchmark-sweep-suite-id", action="append", default=[])
+    parser.add_argument("--benchmark-sweep-task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--benchmark-sweep-every-ms", type=int, default=86400000)
+    parser.add_argument("--benchmark-sweep-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--benchmark-sweep-auto-create-tasks", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--benchmark-sweep-auto-apply-workflow-promotion",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
+    parser.add_argument("--benchmark-sweep-promotion-operator", default="cron-benchmark-sweep")
+    parser.add_argument("--benchmark-sweep-task-score-threshold", type=float, default=80.0)
+    parser.add_argument("--benchmark-sweep-task-schedule-gap-minutes", type=int, default=120)
+
+    parser.add_argument("--install-benchmark-output-job", action="store_true")
+    parser.add_argument("--benchmark-output-py", default=str(default_benchmark_output_consumer_py))
+    parser.add_argument("--benchmark-output-summary-file", default=str(home / ".openclaw/ops/benchmark-sweeps/sweeps/latest-summary.json"))
+    parser.add_argument("--benchmark-output-output-file", default=str(home / ".openclaw/ops/benchmark-sweeps/output/latest-event.json"))
+    parser.add_argument("--benchmark-output-notify-on", default="error", choices=["error", "activity", "always"])
+    parser.add_argument("--benchmark-output-every-ms", type=int, default=86400000)
+    parser.add_argument("--benchmark-output-delay-ms", type=int, default=300000)
+    parser.add_argument("--benchmark-output-log-mode", default="silent", choices=sorted(LOG_MODES))
+
+    parser.add_argument("--install-task-output-broadcast-job", action="store_true")
+    parser.add_argument("--task-output-broadcast-py", default=str(default_task_output_broadcast_py))
+    parser.add_argument("--task-output-broadcast-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--task-output-broadcast-state", default=str(home / ".openclaw/ops/task-output/state.json"))
+    parser.add_argument("--task-output-broadcast-output", default=str(home / ".openclaw/ops/task-output/latest-event.json"))
+    parser.add_argument("--task-output-broadcast-lookback-hours", type=int, default=24)
+    parser.add_argument("--task-output-broadcast-limit", type=int, default=12)
+    parser.add_argument("--task-output-broadcast-event-limit", type=int, default=200)
+    parser.add_argument("--task-output-broadcast-notify-on", default="error", choices=["error", "activity", "always"])
+    parser.add_argument("--task-output-broadcast-every-ms", type=int, default=900000)
+    parser.add_argument("--task-output-broadcast-delay-ms", type=int, default=120000)
+    parser.add_argument("--task-output-broadcast-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-summary-job", action="store_true")
+    parser.add_argument("--control-plane-summary-py", default=str(default_control_plane_summary_py))
+    parser.add_argument("--control-plane-summary-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--control-plane-summary-state", default=str(home / ".openclaw/ops/control-plane-summary/state.json"))
+    parser.add_argument("--control-plane-summary-output", default=str(home / ".openclaw/ops/control-plane-summary/latest-event.json"))
+    parser.add_argument("--control-plane-summary-lookback-hours", type=int, default=24)
+    parser.add_argument("--control-plane-summary-limit", type=int, default=20)
+    parser.add_argument("--control-plane-summary-notify-on", default="activity", choices=["error", "activity", "always"])
+    parser.add_argument("--control-plane-summary-every-ms", type=int, default=21600000)
+    parser.add_argument("--control-plane-summary-delay-ms", type=int, default=180000)
+    parser.add_argument("--control-plane-summary-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-dashboard-job", action="store_true")
+    parser.add_argument("--control-plane-dashboard-py", default=str(default_control_plane_dashboard_py))
+    parser.add_argument("--control-plane-dashboard-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--control-plane-dashboard-benchmark-summary-file", default=str(home / ".openclaw/ops/benchmark-sweeps/sweeps/latest-summary.json"))
+    parser.add_argument("--control-plane-dashboard-json-output", default=str(home / ".openclaw/ops/control-plane-dashboard/latest-dashboard.json"))
+    parser.add_argument("--control-plane-dashboard-markdown-output", default=str(home / ".openclaw/ops/control-plane-dashboard/latest-dashboard.md"))
+    parser.add_argument("--control-plane-dashboard-html-output", default=str(home / ".openclaw/ops/control-plane-dashboard/latest-dashboard.html"))
+    parser.add_argument("--control-plane-dashboard-lookback-hours", type=int, default=24)
+    parser.add_argument("--control-plane-dashboard-limit", type=int, default=20)
+    parser.add_argument("--control-plane-dashboard-every-ms", type=int, default=21600000)
+    parser.add_argument("--control-plane-dashboard-delay-ms", type=int, default=240000)
+    parser.add_argument("--control-plane-dashboard-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-optimization-job", action="store_true")
+    parser.add_argument("--control-plane-optimization-py", default=str(default_control_plane_optimization_py))
+    parser.add_argument("--control-plane-optimization-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--control-plane-optimization-json-output", default=str(home / ".openclaw/ops/control-plane-optimization/latest-report.json"))
+    parser.add_argument("--control-plane-optimization-markdown-output", default=str(home / ".openclaw/ops/control-plane-optimization/latest-report.md"))
+    parser.add_argument("--control-plane-optimization-lookback-hours", type=int, default=24)
+    parser.add_argument("--control-plane-optimization-limit", type=int, default=20)
+    parser.add_argument("--control-plane-optimization-every-ms", type=int, default=43200000)
+    parser.add_argument("--control-plane-optimization-delay-ms", type=int, default=360000)
+    parser.add_argument("--control-plane-optimization-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-optimization-dispatch-job", action="store_true")
+    parser.add_argument("--control-plane-optimization-dispatch-py", default=str(default_control_plane_optimization_dispatch_py))
+    parser.add_argument("--control-plane-optimization-dispatch-report-file", default=str(home / ".openclaw/ops/control-plane-optimization/latest-report.json"))
+    parser.add_argument("--control-plane-optimization-dispatch-task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--control-plane-optimization-dispatch-json-output", default=str(home / ".openclaw/ops/control-plane-optimization-dispatch/latest-report.json"))
+    parser.add_argument("--control-plane-optimization-dispatch-markdown-output", default=str(home / ".openclaw/ops/control-plane-optimization-dispatch/latest-report.md"))
+    parser.add_argument("--control-plane-optimization-dispatch-execution-workflow-profile", default="coding-default")
+    parser.add_argument("--control-plane-optimization-dispatch-execution-workflow-channel", default="stable")
+    parser.add_argument("--control-plane-optimization-dispatch-schedule-gap-minutes", type=int, default=30)
+    parser.add_argument("--control-plane-optimization-dispatch-every-ms", type=int, default=43200000)
+    parser.add_argument("--control-plane-optimization-dispatch-delay-ms", type=int, default=480000)
+    parser.add_argument("--control-plane-optimization-dispatch-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-optimization-review-job", action="store_true")
+    parser.add_argument("--control-plane-optimization-review-py", default=str(default_control_plane_optimization_review_py))
+    parser.add_argument("--control-plane-optimization-review-task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--control-plane-optimization-review-json-output", default=str(home / ".openclaw/ops/control-plane-optimization-review/latest-report.json"))
+    parser.add_argument("--control-plane-optimization-review-markdown-output", default=str(home / ".openclaw/ops/control-plane-optimization-review/latest-report.md"))
+    parser.add_argument("--control-plane-optimization-review-lookback-hours", type=int, default=72)
+    parser.add_argument("--control-plane-optimization-review-limit", type=int, default=20)
+    parser.add_argument("--control-plane-optimization-review-every-ms", type=int, default=43200000)
+    parser.add_argument("--control-plane-optimization-review-delay-ms", type=int, default=540000)
+    parser.add_argument("--control-plane-optimization-review-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-profile-update-dispatch-job", action="store_true")
+    parser.add_argument("--control-plane-profile-update-dispatch-py", default=str(default_control_plane_profile_update_dispatch_py))
+    parser.add_argument("--control-plane-profile-update-dispatch-review-file", default=str(home / ".openclaw/ops/control-plane-optimization-review/latest-report.json"))
+    parser.add_argument("--control-plane-profile-update-dispatch-task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--control-plane-profile-update-dispatch-json-output", default=str(home / ".openclaw/ops/control-plane-profile-update-dispatch/latest-report.json"))
+    parser.add_argument("--control-plane-profile-update-dispatch-markdown-output", default=str(home / ".openclaw/ops/control-plane-profile-update-dispatch/latest-report.md"))
+    parser.add_argument("--control-plane-profile-update-dispatch-execution-workflow-profile", default="coding-default")
+    parser.add_argument("--control-plane-profile-update-dispatch-execution-workflow-channel", default="stable")
+    parser.add_argument("--control-plane-profile-update-dispatch-schedule-gap-minutes", type=int, default=60)
+    parser.add_argument("--control-plane-profile-update-dispatch-every-ms", type=int, default=43200000)
+    parser.add_argument("--control-plane-profile-update-dispatch-delay-ms", type=int, default=600000)
+    parser.add_argument("--control-plane-profile-update-dispatch-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-profile-update-apply-job", action="store_true")
+    parser.add_argument("--control-plane-profile-update-apply-py", default=str(default_control_plane_profile_update_apply_py))
+    parser.add_argument("--control-plane-profile-update-apply-task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--control-plane-profile-update-apply-registry-file", default=str(home / ".openclaw/ops/policy/workflow-profile-registry.json"))
+    parser.add_argument("--control-plane-profile-update-apply-json-output", default=str(home / ".openclaw/ops/control-plane-profile-update-apply/latest-report.json"))
+    parser.add_argument("--control-plane-profile-update-apply-markdown-output", default=str(home / ".openclaw/ops/control-plane-profile-update-apply/latest-report.md"))
+    parser.add_argument("--control-plane-profile-update-apply-target-channel", default="candidate")
+    parser.add_argument("--control-plane-profile-update-apply-lookback-hours", type=int, default=72)
+    parser.add_argument("--control-plane-profile-update-apply-limit", type=int, default=20)
+    parser.add_argument("--control-plane-profile-update-apply-every-ms", type=int, default=43200000)
+    parser.add_argument("--control-plane-profile-update-apply-delay-ms", type=int, default=660000)
+    parser.add_argument("--control-plane-profile-update-apply-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-profile-update-validation-job", action="store_true")
+    parser.add_argument("--control-plane-profile-update-validation-py", default=str(default_control_plane_profile_update_validation_py))
+    parser.add_argument("--control-plane-profile-update-validation-apply-file", default=str(home / ".openclaw/ops/control-plane-profile-update-apply/latest-report.json"))
+    parser.add_argument("--control-plane-profile-update-validation-benchmark-suite-file", default=str(home / ".openclaw/ops/policy/benchmark-suite-registry.json"))
+    parser.add_argument("--control-plane-profile-update-validation-executor-run-dir", default=str(home / ".openclaw/ops/task-center/executor-runs"))
+    parser.add_argument("--control-plane-profile-update-validation-output-root", default=str(home / ".openclaw/ops/control-plane-profile-update-validation"))
+    parser.add_argument("--control-plane-profile-update-validation-state-file", default=str(home / ".openclaw/ops/control-plane-profile-update-validation/state.json"))
+    parser.add_argument("--control-plane-profile-update-validation-task-db", default=str(home / ".openclaw/ops/task-center/task_center.db"))
+    parser.add_argument("--control-plane-profile-update-validation-workflow-profile-registry", default=str(home / ".openclaw/ops/policy/workflow-profile-registry.json"))
+    parser.add_argument("--control-plane-profile-update-validation-json-output", default=str(home / ".openclaw/ops/control-plane-profile-update-validation/latest-report.json"))
+    parser.add_argument("--control-plane-profile-update-validation-markdown-output", default=str(home / ".openclaw/ops/control-plane-profile-update-validation/latest-report.md"))
+    parser.add_argument("--control-plane-profile-update-validation-every-ms", type=int, default=43200000)
+    parser.add_argument("--control-plane-profile-update-validation-delay-ms", type=int, default=720000)
+    parser.add_argument("--control-plane-profile-update-validation-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--control-plane-profile-update-validation-auto-create-tasks", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--control-plane-profile-update-validation-auto-apply-workflow-promotion", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument("--control-plane-profile-update-validation-promotion-operator", default="control-plane-validation")
+    parser.add_argument("--install-control-plane-acceptance-job", action="store_true")
+    parser.add_argument("--control-plane-acceptance-py", default=str(default_control_plane_acceptance_py))
+    parser.add_argument("--control-plane-acceptance-jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
+    parser.add_argument("--control-plane-acceptance-json-output", default=str(home / ".openclaw/ops/control-plane-acceptance/latest-report.json"))
+    parser.add_argument("--control-plane-acceptance-markdown-output", default=str(home / ".openclaw/ops/control-plane-acceptance/latest-report.md"))
+    parser.add_argument("--control-plane-acceptance-every-ms", type=int, default=43200000)
+    parser.add_argument("--control-plane-acceptance-delay-ms", type=int, default=420000)
+    parser.add_argument("--control-plane-acceptance-log-mode", default="silent", choices=sorted(LOG_MODES))
+    parser.add_argument("--install-control-plane-live-acceptance-job", action="store_true")
+    parser.add_argument("--control-plane-live-acceptance-py", default=str(default_control_plane_live_acceptance_py))
+    parser.add_argument("--control-plane-live-acceptance-workspace-root", default=str(home / ".openclaw/ops/control-plane-live-acceptance"))
+    parser.add_argument("--control-plane-live-acceptance-jobs-file", default=str(home / ".openclaw/cron/jobs.json"))
+    parser.add_argument("--control-plane-live-acceptance-json-output", default=str(home / ".openclaw/ops/control-plane-live-acceptance/latest-report.json"))
+    parser.add_argument("--control-plane-live-acceptance-markdown-output", default=str(home / ".openclaw/ops/control-plane-live-acceptance/latest-report.md"))
+    parser.add_argument("--control-plane-live-acceptance-lookback-hours", type=int, default=24)
+    parser.add_argument("--control-plane-live-acceptance-limit", type=int, default=20)
+    parser.add_argument("--control-plane-live-acceptance-every-ms", type=int, default=86400000)
+    parser.add_argument("--control-plane-live-acceptance-delay-ms", type=int, default=540000)
+    parser.add_argument("--control-plane-live-acceptance-log-mode", default="silent", choices=sorted(LOG_MODES))
 
     parser.add_argument("--install-conversation-evolution-job", action="store_true")
     parser.add_argument("--conversation-evolution-py", default=str(default_conversation_evolution_py))
@@ -1993,6 +3287,238 @@ def main() -> int:
                 low_score_guarantee_threshold=float(args.self_evolution_low_score_guarantee_threshold),
             )
         )
+    if bool(args.install_upgrade_feedback_job):
+        fresh_jobs.append(
+            build_upgrade_feedback_job(
+                script_py=str(Path(args.upgrade_feedback_py).expanduser()),
+                executor_run_dir=str(Path(args.upgrade_feedback_executor_run_dir).expanduser()),
+                output_dir=str(Path(args.upgrade_feedback_output_dir).expanduser()),
+                state_file=str(Path(args.upgrade_feedback_state).expanduser()),
+                every_ms=max(3600000, int(args.upgrade_feedback_every_ms)),
+                log_mode=str(args.upgrade_feedback_log_mode),
+                workflow_target=str(args.upgrade_feedback_workflow_target),
+                skill_name=str(args.upgrade_feedback_skill_name),
+                skill_assignee=str(args.upgrade_feedback_skill_assignee),
+                baseline_count=max(1, int(args.upgrade_feedback_baseline_count)),
+                candidate_count=max(1, int(args.upgrade_feedback_candidate_count)),
+                task_db=str(Path(args.upgrade_feedback_task_db).expanduser()),
+                auto_create_tasks=bool(args.upgrade_feedback_auto_create_tasks),
+                workflow_profile_registry=str(Path(args.upgrade_feedback_workflow_profile_registry).expanduser()),
+                benchmark_suite_file=str(Path(args.upgrade_feedback_benchmark_suite_file).expanduser()),
+                benchmark_suite_id=str(args.upgrade_feedback_benchmark_suite_id).strip(),
+                auto_apply_workflow_promotion=bool(args.upgrade_feedback_auto_apply_workflow_promotion),
+                promotion_operator=str(args.upgrade_feedback_promotion_operator).strip() or "cron-upgrade-feedback",
+                task_score_threshold=float(args.upgrade_feedback_task_score_threshold),
+                task_schedule_gap_minutes=max(1, int(args.upgrade_feedback_task_schedule_gap_minutes)),
+            )
+        )
+    if bool(args.install_benchmark_sweep_job):
+        fresh_jobs.append(
+            build_benchmark_sweep_job(
+                script_py=str(Path(args.benchmark_sweep_py).expanduser()),
+                executor_run_dir=str(Path(args.benchmark_sweep_executor_run_dir).expanduser()),
+                output_root=str(Path(args.benchmark_sweep_output_root).expanduser()),
+                state_root=str(Path(args.benchmark_sweep_state_root).expanduser()),
+                benchmark_suite_file=str(Path(args.benchmark_sweep_benchmark_suite_file).expanduser()),
+                workflow_profile_registry=str(Path(args.benchmark_sweep_workflow_profile_registry).expanduser()),
+                task_db=str(Path(args.benchmark_sweep_task_db).expanduser()),
+                output_consumer_py=str(Path(args.benchmark_sweep_output_py).expanduser()),
+                summary_file=str(Path(args.benchmark_sweep_summary_file).expanduser()),
+                consumer_output_file=str(Path(args.benchmark_sweep_consumer_output_file).expanduser()),
+                consumer_notify_on=str(args.benchmark_sweep_consumer_notify_on).strip() or "error",
+                every_ms=max(3600000, int(args.benchmark_sweep_every_ms)),
+                log_mode=str(args.benchmark_sweep_log_mode),
+                auto_create_tasks=bool(args.benchmark_sweep_auto_create_tasks),
+                auto_apply_workflow_promotion=bool(args.benchmark_sweep_auto_apply_workflow_promotion),
+                promotion_operator=str(args.benchmark_sweep_promotion_operator).strip() or "cron-benchmark-sweep",
+                task_score_threshold=float(args.benchmark_sweep_task_score_threshold),
+                task_schedule_gap_minutes=max(1, int(args.benchmark_sweep_task_schedule_gap_minutes)),
+                suite_ids=[str(item).strip() for item in (args.benchmark_sweep_suite_id or []) if str(item).strip()],
+            )
+        )
+    if bool(args.install_benchmark_output_job):
+        fresh_jobs.append(
+            build_benchmark_output_job(
+                script_py=str(Path(args.benchmark_output_py).expanduser()),
+                summary_file=str(Path(args.benchmark_output_summary_file).expanduser()),
+                output_file=str(Path(args.benchmark_output_output_file).expanduser()),
+                notify_on=str(args.benchmark_output_notify_on).strip() or "error",
+                every_ms=max(3600000, int(args.benchmark_output_every_ms)),
+                delay_ms=max(60000, int(args.benchmark_output_delay_ms)),
+                log_mode=str(args.benchmark_output_log_mode),
+            )
+        )
+    if bool(args.install_task_output_broadcast_job):
+        fresh_jobs.append(
+            build_task_output_broadcast_job(
+                script_py=str(Path(args.task_output_broadcast_py).expanduser()),
+                db_file=str(Path(args.task_output_broadcast_db).expanduser()),
+                state_file=str(Path(args.task_output_broadcast_state).expanduser()),
+                output_file=str(Path(args.task_output_broadcast_output).expanduser()),
+                lookback_hours=max(1, int(args.task_output_broadcast_lookback_hours)),
+                limit=max(1, int(args.task_output_broadcast_limit)),
+                event_limit=max(20, int(args.task_output_broadcast_event_limit)),
+                notify_on=str(args.task_output_broadcast_notify_on).strip() or "error",
+                every_ms=max(300000, int(args.task_output_broadcast_every_ms)),
+                delay_ms=max(60000, int(args.task_output_broadcast_delay_ms)),
+                log_mode=str(args.task_output_broadcast_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_summary_job):
+        fresh_jobs.append(
+            build_control_plane_summary_job(
+                script_py=str(Path(args.control_plane_summary_py).expanduser()),
+                db_file=str(Path(args.control_plane_summary_db).expanduser()),
+                state_file=str(Path(args.control_plane_summary_state).expanduser()),
+                output_file=str(Path(args.control_plane_summary_output).expanduser()),
+                lookback_hours=max(1, int(args.control_plane_summary_lookback_hours)),
+                limit=max(1, int(args.control_plane_summary_limit)),
+                notify_on=str(args.control_plane_summary_notify_on).strip() or "activity",
+                every_ms=max(3600000, int(args.control_plane_summary_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_summary_delay_ms)),
+                log_mode=str(args.control_plane_summary_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_dashboard_job):
+        fresh_jobs.append(
+            build_control_plane_dashboard_job(
+                script_py=str(Path(args.control_plane_dashboard_py).expanduser()),
+                db_file=str(Path(args.control_plane_dashboard_db).expanduser()),
+                benchmark_summary_file=str(Path(args.control_plane_dashboard_benchmark_summary_file).expanduser()),
+                json_output=str(Path(args.control_plane_dashboard_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_dashboard_markdown_output).expanduser()),
+                html_output=str(Path(args.control_plane_dashboard_html_output).expanduser()),
+                lookback_hours=max(1, int(args.control_plane_dashboard_lookback_hours)),
+                limit=max(1, int(args.control_plane_dashboard_limit)),
+                every_ms=max(3600000, int(args.control_plane_dashboard_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_dashboard_delay_ms)),
+                log_mode=str(args.control_plane_dashboard_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_optimization_job):
+        fresh_jobs.append(
+            build_control_plane_optimization_job(
+                script_py=str(Path(args.control_plane_optimization_py).expanduser()),
+                db_file=str(Path(args.control_plane_optimization_db).expanduser()),
+                json_output=str(Path(args.control_plane_optimization_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_optimization_markdown_output).expanduser()),
+                lookback_hours=max(1, int(args.control_plane_optimization_lookback_hours)),
+                limit=max(1, int(args.control_plane_optimization_limit)),
+                every_ms=max(3600000, int(args.control_plane_optimization_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_optimization_delay_ms)),
+                log_mode=str(args.control_plane_optimization_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_optimization_dispatch_job):
+        fresh_jobs.append(
+            build_control_plane_optimization_dispatch_job(
+                script_py=str(Path(args.control_plane_optimization_dispatch_py).expanduser()),
+                report_file=str(Path(args.control_plane_optimization_dispatch_report_file).expanduser()),
+                task_db=str(Path(args.control_plane_optimization_dispatch_task_db).expanduser()),
+                json_output=str(Path(args.control_plane_optimization_dispatch_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_optimization_dispatch_markdown_output).expanduser()),
+                execution_workflow_profile=str(args.control_plane_optimization_dispatch_execution_workflow_profile),
+                execution_workflow_channel=str(args.control_plane_optimization_dispatch_execution_workflow_channel),
+                schedule_gap_minutes=max(0, int(args.control_plane_optimization_dispatch_schedule_gap_minutes)),
+                every_ms=max(3600000, int(args.control_plane_optimization_dispatch_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_optimization_dispatch_delay_ms)),
+                log_mode=str(args.control_plane_optimization_dispatch_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_optimization_review_job):
+        fresh_jobs.append(
+            build_control_plane_optimization_review_job(
+                script_py=str(Path(args.control_plane_optimization_review_py).expanduser()),
+                task_db=str(Path(args.control_plane_optimization_review_task_db).expanduser()),
+                json_output=str(Path(args.control_plane_optimization_review_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_optimization_review_markdown_output).expanduser()),
+                lookback_hours=max(1, int(args.control_plane_optimization_review_lookback_hours)),
+                limit=max(1, int(args.control_plane_optimization_review_limit)),
+                every_ms=max(3600000, int(args.control_plane_optimization_review_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_optimization_review_delay_ms)),
+                log_mode=str(args.control_plane_optimization_review_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_profile_update_dispatch_job):
+        fresh_jobs.append(
+            build_control_plane_profile_update_dispatch_job(
+                script_py=str(Path(args.control_plane_profile_update_dispatch_py).expanduser()),
+                review_file=str(Path(args.control_plane_profile_update_dispatch_review_file).expanduser()),
+                task_db=str(Path(args.control_plane_profile_update_dispatch_task_db).expanduser()),
+                json_output=str(Path(args.control_plane_profile_update_dispatch_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_profile_update_dispatch_markdown_output).expanduser()),
+                execution_workflow_profile=str(args.control_plane_profile_update_dispatch_execution_workflow_profile),
+                execution_workflow_channel=str(args.control_plane_profile_update_dispatch_execution_workflow_channel),
+                schedule_gap_minutes=max(0, int(args.control_plane_profile_update_dispatch_schedule_gap_minutes)),
+                every_ms=max(3600000, int(args.control_plane_profile_update_dispatch_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_profile_update_dispatch_delay_ms)),
+                log_mode=str(args.control_plane_profile_update_dispatch_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_profile_update_apply_job):
+        fresh_jobs.append(
+            build_control_plane_profile_update_apply_job(
+                script_py=str(Path(args.control_plane_profile_update_apply_py).expanduser()),
+                task_db=str(Path(args.control_plane_profile_update_apply_task_db).expanduser()),
+                registry_file=str(Path(args.control_plane_profile_update_apply_registry_file).expanduser()),
+                json_output=str(Path(args.control_plane_profile_update_apply_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_profile_update_apply_markdown_output).expanduser()),
+                target_channel=str(args.control_plane_profile_update_apply_target_channel),
+                lookback_hours=max(1, int(args.control_plane_profile_update_apply_lookback_hours)),
+                limit=max(1, int(args.control_plane_profile_update_apply_limit)),
+                every_ms=max(3600000, int(args.control_plane_profile_update_apply_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_profile_update_apply_delay_ms)),
+                log_mode=str(args.control_plane_profile_update_apply_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_profile_update_validation_job):
+        fresh_jobs.append(
+            build_control_plane_profile_update_validation_job(
+                script_py=str(Path(args.control_plane_profile_update_validation_py).expanduser()),
+                apply_file=str(Path(args.control_plane_profile_update_validation_apply_file).expanduser()),
+                benchmark_suite_file=str(Path(args.control_plane_profile_update_validation_benchmark_suite_file).expanduser()),
+                executor_run_dir=str(Path(args.control_plane_profile_update_validation_executor_run_dir).expanduser()),
+                output_root=str(Path(args.control_plane_profile_update_validation_output_root).expanduser()),
+                state_file=str(Path(args.control_plane_profile_update_validation_state_file).expanduser()),
+                task_db=str(Path(args.control_plane_profile_update_validation_task_db).expanduser()),
+                workflow_profile_registry=str(Path(args.control_plane_profile_update_validation_workflow_profile_registry).expanduser()),
+                json_output=str(Path(args.control_plane_profile_update_validation_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_profile_update_validation_markdown_output).expanduser()),
+                every_ms=max(3600000, int(args.control_plane_profile_update_validation_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_profile_update_validation_delay_ms)),
+                log_mode=str(args.control_plane_profile_update_validation_log_mode),
+                auto_create_tasks=bool(args.control_plane_profile_update_validation_auto_create_tasks),
+                auto_apply_workflow_promotion=bool(args.control_plane_profile_update_validation_auto_apply_workflow_promotion),
+                promotion_operator=str(args.control_plane_profile_update_validation_promotion_operator).strip() or "control-plane-validation",
+            )
+        )
+    if bool(args.install_control_plane_acceptance_job):
+        fresh_jobs.append(
+            build_control_plane_acceptance_job(
+                script_py=str(Path(args.control_plane_acceptance_py).expanduser()),
+                jobs_file=str(Path(args.control_plane_acceptance_jobs_file).expanduser()),
+                json_output=str(Path(args.control_plane_acceptance_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_acceptance_markdown_output).expanduser()),
+                every_ms=max(3600000, int(args.control_plane_acceptance_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_acceptance_delay_ms)),
+                log_mode=str(args.control_plane_acceptance_log_mode),
+            )
+        )
+    if bool(args.install_control_plane_live_acceptance_job):
+        fresh_jobs.append(
+            build_control_plane_live_acceptance_job(
+                script_py=str(Path(args.control_plane_live_acceptance_py).expanduser()),
+                workspace_root=str(Path(args.control_plane_live_acceptance_workspace_root).expanduser()),
+                jobs_file=str(Path(args.control_plane_live_acceptance_jobs_file).expanduser()),
+                json_output=str(Path(args.control_plane_live_acceptance_json_output).expanduser()),
+                markdown_output=str(Path(args.control_plane_live_acceptance_markdown_output).expanduser()),
+                lookback_hours=max(1, int(args.control_plane_live_acceptance_lookback_hours)),
+                limit=max(1, int(args.control_plane_live_acceptance_limit)),
+                every_ms=max(3600000, int(args.control_plane_live_acceptance_every_ms)),
+                delay_ms=max(60000, int(args.control_plane_live_acceptance_delay_ms)),
+                log_mode=str(args.control_plane_live_acceptance_log_mode),
+            )
+        )
     if bool(args.install_conversation_evolution_job):
         fresh_jobs.append(
             build_conversation_evolution_job(
@@ -2213,6 +3739,9 @@ def main() -> int:
             "api_test_job": bool(args.install_api_test_job),
             "daily_work_job": bool(args.install_daily_work_job),
             "self_evolution_job": bool(args.install_self_evolution_job),
+            "benchmark_sweep_job": bool(args.install_benchmark_sweep_job),
+            "control_plane_profile_update_validation_job": bool(args.install_control_plane_profile_update_validation_job),
+            "control_plane_acceptance_job": bool(args.install_control_plane_acceptance_job),
             "conversation_evolution_job": bool(args.install_conversation_evolution_job),
             "governance_evolution_job": bool(args.install_governance_evolution_job),
             "git_sync_job": bool(args.install_git_sync_job),

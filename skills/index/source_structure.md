@@ -1,7 +1,7 @@
 # Source Structure
 
 - skills_root: /home/ubuntu/.openclaw/skills
-- available_skill_dirs: 68
+- available_skill_dirs: 70
 
 - agent-combos
 - agent-manager
@@ -40,7 +40,9 @@
 - mcp-builder
 - netlify-deploy
 - openai-docs
+- openclaw-evolution-upgrader
 - openclaw-security-audit
+- openclaw-workflow-manager
 - openclaw-server-setup
 - parallel-executor
 - pdf

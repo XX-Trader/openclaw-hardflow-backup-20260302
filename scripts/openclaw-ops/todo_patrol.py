@@ -723,7 +723,7 @@ def build_task_payload(
                 "todo_line": item.line_num,
             },
             "full_background": to_text(context_payload.get("full_background")) or item.text,
-            "deliverables": list(context_payload.get("deliverables", [])) or ["浠ｇ爜鍙樻洿", "楠岃瘉缁撴灉", "椋庨櫓璇存槑"],
+            "deliverables": list(context_payload.get("deliverables", [])) or ["代码变更", "验证结果", "风险说明"],
             "dependencies": list(context_payload.get("dependencies", [])),
             "history_changes": list(context_payload.get("history_changes", [])),
         },

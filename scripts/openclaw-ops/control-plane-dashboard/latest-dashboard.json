@@ -1,0 +1,396 @@
+{
+  "snapshot": {
+    "generated_at": "2026-03-23T06:19:06+00:00",
+    "summary": {
+      "generated_at": "2026-03-23T06:19:06+00:00",
+      "lookback_hours": 24,
+      "scanned_task_count": 4,
+      "open_incident_count": 1,
+      "critical_open_incident_count": 1,
+      "human_assistance_task_count": 1,
+      "waiting_human_confirm_task_count": 0,
+      "needs_clarification_task_count": 0,
+      "benchmark_run_task_count": 2,
+      "benchmark_promoted_count": 1,
+      "benchmark_blocked_count": 1,
+      "total_tokens": 0,
+      "total_cost_estimate": 0.0,
+      "veto_reason_counts": [
+        {
+          "reason": "critical_incidents_present",
+          "count": 1
+        }
+      ],
+      "top_tasks": [
+        {
+          "task_id": "todo-control-plane-profile-update-20260323141906-5cd26f",
+          "workflow_profile_id": "coding-default",
+          "workflow_channel": "stable",
+          "stage_id": "review",
+          "latest_ts": "2026-03-23T06:19:06+00:00",
+          "sources": [
+            "task"
+          ],
+          "open_incident_count": 0,
+          "critical_open_incident_count": 0,
+          "requires_human_assistance": false,
+          "waiting_human_confirm": false,
+          "needs_clarification": false,
+          "benchmark_blocked": false,
+          "benchmark_promoted": false
+        },
+        {
+          "task_id": "todo-control-plane-optimization-20260323141905-569e0c",
+          "workflow_profile_id": "coding-default",
+          "workflow_channel": "stable",
+          "stage_id": "review",
+          "latest_ts": "2026-03-23T06:19:05+00:00",
+          "sources": [
+            "task"
+          ],
+          "open_incident_count": 0,
+          "critical_open_incident_count": 0,
+          "requires_human_assistance": false,
+          "waiting_human_confirm": false,
+          "needs_clarification": false,
+          "benchmark_blocked": false,
+          "benchmark_promoted": false
+        },
+        {
+          "task_id": "live-accept-stable-b331f782",
+          "workflow_profile_id": "docs-default",
+          "workflow_channel": "stable",
+          "stage_id": "draft",
+          "latest_ts": "2026-03-23T06:19:05+00:00",
+          "sources": [
+            "task",
+            "benchmark"
+          ],
+          "open_incident_count": 0,
+          "critical_open_incident_count": 0,
+          "requires_human_assistance": false,
+          "waiting_human_confirm": false,
+          "needs_clarification": false,
+          "benchmark_blocked": false,
+          "benchmark_promoted": true
+        },
+        {
+          "task_id": "live-accept-risk-b331f782",
+          "workflow_profile_id": "coding-default",
+          "workflow_channel": "candidate",
+          "stage_id": "review",
+          "latest_ts": "2026-03-23T06:19:05+00:00",
+          "sources": [
+            "task",
+            "output",
+            "incident",
+            "benchmark"
+          ],
+          "open_incident_count": 1,
+          "critical_open_incident_count": 1,
+          "requires_human_assistance": true,
+          "waiting_human_confirm": false,
+          "needs_clarification": false,
+          "benchmark_blocked": true,
+          "benchmark_promoted": false
+        }
+      ]
+    },
+    "top_tasks": [
+      {
+        "task_id": "todo-control-plane-profile-update-20260323141906-5cd26f",
+        "workflow_profile_id": "coding-default",
+        "workflow_channel": "stable",
+        "stage_id": "review",
+        "latest_ts": "2026-03-23T06:19:06+00:00",
+        "sources": [
+          "task"
+        ],
+        "open_incident_count": 0,
+        "critical_open_incident_count": 0,
+        "requires_human_assistance": false,
+        "waiting_human_confirm": false,
+        "needs_clarification": false,
+        "benchmark_blocked": false,
+        "benchmark_promoted": false
+      },
+      {
+        "task_id": "todo-control-plane-optimization-20260323141905-569e0c",
+        "workflow_profile_id": "coding-default",
+        "workflow_channel": "stable",
+        "stage_id": "review",
+        "latest_ts": "2026-03-23T06:19:05+00:00",
+        "sources": [
+          "task"
+        ],
+        "open_incident_count": 0,
+        "critical_open_incident_count": 0,
+        "requires_human_assistance": false,
+        "waiting_human_confirm": false,
+        "needs_clarification": false,
+        "benchmark_blocked": false,
+        "benchmark_promoted": false
+      },
+      {
+        "task_id": "live-accept-stable-b331f782",
+        "workflow_profile_id": "docs-default",
+        "workflow_channel": "stable",
+        "stage_id": "draft",
+        "latest_ts": "2026-03-23T06:19:05+00:00",
+        "sources": [
+          "task",
+          "benchmark"
+        ],
+        "open_incident_count": 0,
+        "critical_open_incident_count": 0,
+        "requires_human_assistance": false,
+        "waiting_human_confirm": false,
+        "needs_clarification": false,
+        "benchmark_blocked": false,
+        "benchmark_promoted": true
+      },
+      {
+        "task_id": "live-accept-risk-b331f782",
+        "workflow_profile_id": "coding-default",
+        "workflow_channel": "candidate",
+        "stage_id": "review",
+        "latest_ts": "2026-03-23T06:19:05+00:00",
+        "sources": [
+          "task",
+          "output",
+          "incident",
+          "benchmark"
+        ],
+        "open_incident_count": 1,
+        "critical_open_incident_count": 1,
+        "requires_human_assistance": true,
+        "waiting_human_confirm": false,
+        "needs_clarification": false,
+        "benchmark_blocked": true,
+        "benchmark_promoted": false
+      }
+    ],
+    "hotspots": {
+      "top_veto_reasons": [
+        {
+          "reason": "critical_incidents_present",
+          "count": 1
+        }
+      ],
+      "critical_open_incident_count": 1,
+      "human_assistance_task_count": 1,
+      "benchmark_blocked_count": 1
+    },
+    "benchmark_overview": {
+      "available": false,
+      "summary_file": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\benchmark-sweeps\\sweeps\\latest-summary.json",
+      "requested_suite_ids": [],
+      "success_count": 0,
+      "failure_count": 0,
+      "promoted_count": 0,
+      "blocked_count": 0,
+      "failures": []
+    },
+    "trend_overview": {
+      "lookback_days": 7,
+      "daily": [
+        {
+          "day": "2026-03-17",
+          "benchmark_run_count": 0,
+          "benchmark_promoted_count": 0,
+          "benchmark_blocked_count": 0,
+          "incident_count": 0,
+          "critical_incident_count": 0,
+          "human_assistance_count": 0
+        },
+        {
+          "day": "2026-03-18",
+          "benchmark_run_count": 0,
+          "benchmark_promoted_count": 0,
+          "benchmark_blocked_count": 0,
+          "incident_count": 0,
+          "critical_incident_count": 0,
+          "human_assistance_count": 0
+        },
+        {
+          "day": "2026-03-19",
+          "benchmark_run_count": 0,
+          "benchmark_promoted_count": 0,
+          "benchmark_blocked_count": 0,
+          "incident_count": 0,
+          "critical_incident_count": 0,
+          "human_assistance_count": 0
+        },
+        {
+          "day": "2026-03-20",
+          "benchmark_run_count": 0,
+          "benchmark_promoted_count": 0,
+          "benchmark_blocked_count": 0,
+          "incident_count": 0,
+          "critical_incident_count": 0,
+          "human_assistance_count": 0
+        },
+        {
+          "day": "2026-03-21",
+          "benchmark_run_count": 0,
+          "benchmark_promoted_count": 0,
+          "benchmark_blocked_count": 0,
+          "incident_count": 0,
+          "critical_incident_count": 0,
+          "human_assistance_count": 0
+        },
+        {
+          "day": "2026-03-22",
+          "benchmark_run_count": 0,
+          "benchmark_promoted_count": 0,
+          "benchmark_blocked_count": 0,
+          "incident_count": 0,
+          "critical_incident_count": 0,
+          "human_assistance_count": 0
+        },
+        {
+          "day": "2026-03-23",
+          "benchmark_run_count": 2,
+          "benchmark_promoted_count": 1,
+          "benchmark_blocked_count": 1,
+          "incident_count": 1,
+          "critical_incident_count": 1,
+          "human_assistance_count": 1
+        }
+      ],
+      "workflow_breakdown": [
+        {
+          "workflow_profile_id": "coding-default",
+          "benchmark_run_count": 1,
+          "benchmark_promoted_count": 0,
+          "benchmark_blocked_count": 1,
+          "incident_count": 1,
+          "critical_incident_count": 1,
+          "human_assistance_count": 1
+        },
+        {
+          "workflow_profile_id": "docs-default",
+          "benchmark_run_count": 1,
+          "benchmark_promoted_count": 1,
+          "benchmark_blocked_count": 0,
+          "incident_count": 0,
+          "critical_incident_count": 0,
+          "human_assistance_count": 0
+        }
+      ],
+      "totals": {
+        "benchmark_run_count": 2,
+        "benchmark_promoted_count": 1,
+        "benchmark_blocked_count": 1,
+        "incident_count": 1,
+        "critical_incident_count": 1,
+        "human_assistance_count": 1
+      }
+    },
+    "roi_snapshot": {
+      "benchmark_sample_size": 2,
+      "benchmark_promote_rate": 0.5,
+      "benchmark_block_rate": 0.5,
+      "incident_per_100_benchmark_runs": 50.0,
+      "human_assistance_per_100_benchmark_runs": 50.0,
+      "tokens_per_benchmark_run": 0.0,
+      "cost_per_benchmark_run": 0.0,
+      "tokens_per_promotion": 0.0,
+      "cost_per_promotion": 0.0
+    },
+    "workflow_roi_breakdown": [
+      {
+        "workflow_profile_id": "coding-default",
+        "stage_id": "",
+        "stage_label": "",
+        "task_count": 3,
+        "benchmark_run_count": 1,
+        "benchmark_promoted_count": 0,
+        "benchmark_blocked_count": 1,
+        "open_incident_task_count": 1,
+        "critical_incident_task_count": 1,
+        "human_assistance_task_count": 1,
+        "total_tokens": 0,
+        "total_cost_estimate": 0.0,
+        "benchmark_promote_rate": 0.0,
+        "benchmark_block_rate": 1.0,
+        "incident_task_rate": 0.3333,
+        "human_assistance_rate": 0.3333,
+        "avg_tokens_per_task": 0.0,
+        "avg_cost_per_task": 0.0,
+        "avg_tokens_per_benchmark": 0.0,
+        "avg_cost_per_benchmark": 0.0
+      },
+      {
+        "workflow_profile_id": "docs-default",
+        "stage_id": "",
+        "stage_label": "",
+        "task_count": 1,
+        "benchmark_run_count": 1,
+        "benchmark_promoted_count": 1,
+        "benchmark_blocked_count": 0,
+        "open_incident_task_count": 0,
+        "critical_incident_task_count": 0,
+        "human_assistance_task_count": 0,
+        "total_tokens": 0,
+        "total_cost_estimate": 0.0,
+        "benchmark_promote_rate": 1.0,
+        "benchmark_block_rate": 0.0,
+        "incident_task_rate": 0.0,
+        "human_assistance_rate": 0.0,
+        "avg_tokens_per_task": 0.0,
+        "avg_cost_per_task": 0.0,
+        "avg_tokens_per_benchmark": 0.0,
+        "avg_cost_per_benchmark": 0.0
+      }
+    ],
+    "stage_roi_breakdown": [
+      {
+        "workflow_profile_id": "coding-default",
+        "stage_id": "review",
+        "stage_label": "评审",
+        "task_count": 3,
+        "benchmark_run_count": 1,
+        "benchmark_promoted_count": 0,
+        "benchmark_blocked_count": 1,
+        "open_incident_task_count": 1,
+        "critical_incident_task_count": 1,
+        "human_assistance_task_count": 1,
+        "total_tokens": 0,
+        "total_cost_estimate": 0.0,
+        "benchmark_promote_rate": 0.0,
+        "benchmark_block_rate": 1.0,
+        "incident_task_rate": 0.3333,
+        "human_assistance_rate": 0.3333,
+        "avg_tokens_per_task": 0.0,
+        "avg_cost_per_task": 0.0,
+        "avg_tokens_per_benchmark": 0.0,
+        "avg_cost_per_benchmark": 0.0
+      },
+      {
+        "workflow_profile_id": "docs-default",
+        "stage_id": "draft",
+        "stage_label": "",
+        "task_count": 1,
+        "benchmark_run_count": 1,
+        "benchmark_promoted_count": 1,
+        "benchmark_blocked_count": 0,
+        "open_incident_task_count": 0,
+        "critical_incident_task_count": 0,
+        "human_assistance_task_count": 0,
+        "total_tokens": 0,
+        "total_cost_estimate": 0.0,
+        "benchmark_promote_rate": 1.0,
+        "benchmark_block_rate": 0.0,
+        "incident_task_rate": 0.0,
+        "human_assistance_rate": 0.0,
+        "avg_tokens_per_task": 0.0,
+        "avg_cost_per_task": 0.0,
+        "avg_tokens_per_benchmark": 0.0,
+        "avg_cost_per_benchmark": 0.0
+      }
+    ],
+    "markdown": "# OpenClaw Control Plane Dashboard\n\n- 生成时间：2026-03-23T06:19:06+00:00\n- 时间窗口：最近 24 小时\n- 扫描 task：4\n- 未关闭 incident：1（critical 1）\n- 人工协助：1，等待确认：0，待澄清：0\n- benchmark：有结果 2 个 task，允许晋升 1 个，未通过 1 个\n- 资源：tokens 0，成本估算 0.0\n\n## Veto 热点\n- critical_incidents_present x1\n\n## 重点任务\n- todo-control-plane-profile-update-20260323141906-5cd26f coding-default@stable / 评审\n- todo-control-plane-optimization-20260323141905-569e0c coding-default@stable / 评审\n- live-accept-stable-b331f782 docs-default@stable -> benchmark 允许晋升\n- live-accept-risk-b331f782 coding-default@candidate / 评审 -> open_incidents=1，critical=1，需要人工协助，benchmark 未通过\n\n## 最新 Benchmark Sweep\n- 当前暂无 benchmark sweep 摘要\n\n## 最近趋势\n- 观察窗口：最近 7 天\n- 累计 benchmark 2 次，允许晋升 1 次，阻断 1 次\n- 累计 incident 1 条（critical 1），人工协助 1 次\n- 2026-03-17: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0\n- 2026-03-18: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0\n- 2026-03-19: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0\n- 2026-03-20: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0\n- 2026-03-21: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0\n- 2026-03-22: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0\n- 2026-03-23: benchmark 2 / 晋升 1 / 阻断 1 / incident 1 / critical 1 / 人工协助 1\n\n## Workflow 分布\n- coding-default: benchmark 1 / 晋升 0 / 阻断 1 / incident 1 / critical 1 / 人工协助 1\n- docs-default: benchmark 1 / 晋升 1 / 阻断 0 / incident 0 / critical 0 / 人工协助 0\n\n## ROI 摘要\n- benchmark 样本数：2\n- 晋升率：50.0%\n- 阻断率：50.0%\n- 每 100 次 benchmark 的 incident：50.0\n- 每 100 次 benchmark 的人工协助：50.0\n- 每次 benchmark 平均 token：0.0\n- 每次 benchmark 平均成本：0.0\n- 每次晋升平均 token：0.0\n- 每次晋升平均成本：0.0\n\n## Workflow ROI\n- coding-default: task 3 / benchmark 1 / 晋升率 0.0% / 阻断 1 / incident_task 1 / 人工协助 1 / 单 task 成本 0.0\n- docs-default: task 1 / benchmark 1 / 晋升率 100.0% / 阻断 0 / incident_task 0 / 人工协助 0 / 单 task 成本 0.0\n\n## Stage ROI\n- coding-default / 评审: task 3 / benchmark 1 / 晋升率 0.0% / 阻断 1 / incident_task 1 / 人工协助 1 / 单 task 成本 0.0\n- docs-default / 未知阶段: task 1 / benchmark 1 / 晋升率 100.0% / 阻断 0 / incident_task 0 / 人工协助 0 / 单 task 成本 0.0\n",
+    "html": "<!DOCTYPE html>\n<html lang=\"zh-CN\">\n<head>\n  <meta charset=\"utf-8\" />\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\n  <title>OpenClaw Control Plane Dashboard</title>\n  <style>\n    :root {\n      --bg: #f4f1e8;\n      --panel: #fffaf0;\n      --ink: #1f2a1f;\n      --muted: #5b6357;\n      --line: #d7cfbf;\n      --accent: #0e7c66;\n      --danger: #b63a2b;\n      --shadow: 0 12px 30px rgba(33, 42, 30, 0.08);\n    }\n    * { box-sizing: border-box; }\n    body {\n      margin: 0;\n      font-family: \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif;\n      color: var(--ink);\n      background:\n        radial-gradient(circle at top left, rgba(14,124,102,0.12), transparent 28%),\n        linear-gradient(180deg, #f9f5ec 0%, var(--bg) 100%);\n    }\n    .wrap { max-width: 1280px; margin: 0 auto; padding: 32px 20px 48px; }\n    .hero {\n      background: linear-gradient(135deg, rgba(14,124,102,0.95), rgba(21,34,28,0.92));\n      color: #f7f4ea;\n      border-radius: 24px;\n      padding: 28px;\n      box-shadow: var(--shadow);\n    }\n    .hero h1 { margin: 0 0 10px; font-size: 34px; }\n    .hero p { margin: 6px 0; color: rgba(247,244,234,0.88); }\n    .section { margin-top: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 22px; padding: 22px; box-shadow: var(--shadow); }\n    .section h2 { margin: 0 0 16px; font-size: 22px; }\n    .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }\n    .metric-card {\n      border: 1px solid var(--line);\n      border-radius: 18px;\n      padding: 16px;\n      background: rgba(255,255,255,0.75);\n    }\n    .metric-label { font-size: 13px; color: var(--muted); margin-bottom: 10px; }\n    .metric-value { font-size: 28px; font-weight: 700; }\n    ul { margin: 0; padding-left: 18px; }\n    li { margin: 8px 0; line-height: 1.5; }\n    .empty { color: var(--muted); margin: 0; }\n    .summary-grid {\n      display: grid;\n      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));\n      gap: 14px;\n      margin-top: 16px;\n    }\n    .summary-item {\n      border-left: 4px solid var(--accent);\n      padding: 12px 14px;\n      background: rgba(14,124,102,0.06);\n      border-radius: 14px;\n    }\n    .summary-item strong { display: block; margin-bottom: 4px; }\n    table { width: 100%; border-collapse: collapse; }\n    th, td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; }\n    th { color: var(--muted); font-size: 13px; }\n    .danger { color: var(--danger); }\n  </style>\n</head>\n<body>\n  <div class=\"wrap\">\n    <section class=\"hero\">\n      <h1>OpenClaw Control Plane Dashboard</h1>\n      <p>生成时间：2026-03-23T06:19:06+00:00</p>\n      <p>最近 24 小时控制面总览</p>\n    </section>\n\n    <section class=\"section\">\n      <h2>总览</h2>\n      <div class=\"summary-grid\">\n        <div class=\"summary-item\"><strong>扫描任务</strong>4</div>\n        <div class=\"summary-item\"><strong>未关闭 Incident</strong>1</div>\n        <div class=\"summary-item\"><strong>Critical Incident</strong><span class=\"danger\">1</span></div>\n        <div class=\"summary-item\"><strong>人工协助</strong>1</div>\n        <div class=\"summary-item\"><strong>Benchmark 阻断</strong>1</div>\n        <div class=\"summary-item\"><strong>总 Token</strong>0</div>\n      </div>\n    </section>\n\n    <section class=\"section\">\n      <h2>Veto 热点</h2>\n      <ul><li>critical_incidents_present x1</li></ul>\n    </section>\n\n    <section class=\"section\">\n      <h2>重点任务</h2>\n      <ul><li>todo-control-plane-profile-update-20260323141906-5cd26f coding-default@stable / 评审</li><li>todo-control-plane-optimization-20260323141905-569e0c coding-default@stable / 评审</li><li>live-accept-stable-b331f782 docs-default@stable -&gt; benchmark 允许晋升</li><li>live-accept-risk-b331f782 coding-default@candidate / 评审 -&gt; open_incidents=1，critical=1，需要人工协助，benchmark 未通过</li></ul>\n    </section>\n\n    <section class=\"section\">\n      <h2>最新 Benchmark Sweep</h2>\n      <ul><li>当前暂无 benchmark sweep 摘要</li></ul>\n    </section>\n\n    <section class=\"section\">\n      <h2>最近趋势</h2>\n      <div class=\"metrics\">\n        <div class=\"metric-card\"><div class=\"metric-label\">Benchmark</div><div class=\"metric-value\">2</div></div><div class=\"metric-card\"><div class=\"metric-label\">允许晋升</div><div class=\"metric-value\">1</div></div><div class=\"metric-card\"><div class=\"metric-label\">阻断</div><div class=\"metric-value\">1</div></div><div class=\"metric-card\"><div class=\"metric-label\">Incident</div><div class=\"metric-value\">1</div></div><div class=\"metric-card\"><div class=\"metric-label\">Critical</div><div class=\"metric-value\">1</div></div><div class=\"metric-card\"><div class=\"metric-label\">人工协助</div><div class=\"metric-value\">1</div></div>\n      </div>\n    </section>\n\n    <section class=\"section\">\n      <h2>ROI 摘要</h2>\n      <div class=\"metrics\">\n        <div class=\"metric-card\"><div class=\"metric-label\">ROI 样本数</div><div class=\"metric-value\">2</div></div><div class=\"metric-card\"><div class=\"metric-label\">晋升率</div><div class=\"metric-value\">50.0%</div></div><div class=\"metric-card\"><div class=\"metric-label\">阻断率</div><div class=\"metric-value\">50.0%</div></div><div class=\"metric-card\"><div class=\"metric-label\">每 100 次 benchmark incident</div><div class=\"metric-value\">50.0</div></div><div class=\"metric-card\"><div class=\"metric-label\">每 100 次 benchmark 人工协助</div><div class=\"metric-value\">50.0</div></div><div class=\"metric-card\"><div class=\"metric-label\">每次 benchmark 平均 token</div><div class=\"metric-value\">0.0</div></div><div class=\"metric-card\"><div class=\"metric-label\">每次 benchmark 平均成本</div><div class=\"metric-value\">0.0</div></div><div class=\"metric-card\"><div class=\"metric-label\">每次晋升平均 token</div><div class=\"metric-value\">0.0</div></div><div class=\"metric-card\"><div class=\"metric-label\">每次晋升平均成本</div><div class=\"metric-value\">0.0</div></div>\n      </div>\n    </section>\n\n    <section class=\"section\">\n      <h2>Workflow 分布</h2>\n      <table>\n        <thead>\n          <tr>\n            <th>Workflow</th>\n            <th>Benchmark</th>\n            <th>晋升</th>\n            <th>阻断</th>\n            <th>Incident</th>\n            <th>Critical</th>\n            <th>人工协助</th>\n          </tr>\n        </thead>\n        <tbody>\n          <tr><td>coding-default</td><td>1</td><td>0</td><td>1</td><td>1</td><td>1</td><td>1</td></tr><tr><td>docs-default</td><td>1</td><td>1</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>\n        </tbody>\n      </table>\n    </section>\n\n    <section class=\"section\">\n      <h2>Workflow ROI</h2>\n      <table>\n        <thead>\n          <tr>\n            <th>Workflow</th>\n            <th>Task</th>\n            <th>Benchmark</th>\n            <th>晋升率</th>\n            <th>阻断</th>\n            <th>Incident Task</th>\n            <th>人工协助</th>\n            <th>单 Task 成本</th>\n          </tr>\n        </thead>\n        <tbody>\n          <tr><td>coding-default</td><td>3</td><td>1</td><td>0.0%</td><td>1</td><td>1</td><td>1</td><td>0.0</td></tr><tr><td>docs-default</td><td>1</td><td>1</td><td>100.0%</td><td>0</td><td>0</td><td>0</td><td>0.0</td></tr>\n        </tbody>\n      </table>\n    </section>\n\n    <section class=\"section\">\n      <h2>Stage ROI</h2>\n      <table>\n        <thead>\n          <tr>\n            <th>Workflow</th>\n            <th>Stage</th>\n            <th>Task</th>\n            <th>Benchmark</th>\n            <th>晋升率</th>\n            <th>阻断</th>\n            <th>Incident Task</th>\n            <th>人工协助</th>\n            <th>单 Task 成本</th>\n          </tr>\n        </thead>\n        <tbody>\n          <tr><td>coding-default</td><td>评审</td><td>3</td><td>1</td><td>0.0%</td><td>1</td><td>1</td><td>1</td><td>0.0</td></tr><tr><td>docs-default</td><td></td><td>1</td><td>1</td><td>100.0%</td><td>0</td><td>0</td><td>0</td><td>0.0</td></tr>\n        </tbody>\n      </table>\n    </section>\n  </div>\n</body>\n</html>\n"
+  }
+}

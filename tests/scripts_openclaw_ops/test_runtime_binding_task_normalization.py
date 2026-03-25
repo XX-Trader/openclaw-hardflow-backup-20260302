@@ -76,6 +76,9 @@ class RuntimeBindingTaskNormalizationTests(unittest.TestCase):
         self.assertEqual(created["status"], "passed")
         self.assertEqual(created["action"], "runtime_binding")
         self.assertEqual(created["completed_at"], "2026-03-12T15:29:11+00:00")
+        self.assertEqual(created["workflow_profile_id"], "")
+        self.assertEqual(created["workflow_channel"], "")
+        self.assertEqual(created["selection_reason"], "")
 
     def test_normalize_runtime_binding_tasks_updates_legacy_backlog_rows(self):
         task_center_module = load_module(

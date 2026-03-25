@@ -45,7 +45,13 @@ STAGE_RUN_STATUSES = {"running", "passed", "failed"}
 MODULE_LOG_LEVELS = {"debug", "info", "warn", "error"}
 MODULE_RUN_STATUSES = {"started", "running", "passed", "failed", "timeout", "skipped"}
 COMMUNICATION_STATUSES = {"sent", "acked", "failed", "timeout"}
+TASK_OUTPUT_AUDIENCES = {"human", "machine", "ops"}
+TASK_OUTPUT_STATUSES = {"prepared", "sent", "suppressed", "failed"}
+INCIDENT_SEVERITIES = {"info", "warning", "critical"}
+INCIDENT_STATUSES = {"open", "acked", "resolved", "suppressed"}
+BINDING_TARGET_KINDS = {"workflow", "skill", "capability", "binding"}
 AGENT_REPORT_STATUSES = {"passed", "failed", "partial", "escalated"}
+WORKFLOW_SELECTION_CHANNELS = {"", "stable", "candidate"}
 SQLITE_LOCK_ERROR_SNIPPETS = ("database is locked", "database table is locked")
 SQLITE_WRITE_RETRY_ATTEMPTS = 4
 SQLITE_WRITE_RETRY_INITIAL_DELAY_SEC = 1.0
@@ -161,6 +167,28 @@ def parse_json(text: str | None) -> dict[str, Any]:
         return {}
 
 
+def parse_json_list(text: str | None) -> list[Any]:
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, list) else []
+    except json.JSONDecodeError:
+        return []
+
+
+def ensure_json_list(data: Any) -> str:
+    if isinstance(data, list):
+        payload = data
+    elif isinstance(data, tuple):
+        payload = list(data)
+    elif data in {None, ""}:
+        payload = []
+    else:
+        payload = [data]
+    return json.dumps(payload, ensure_ascii=False)
+
+
 def display_trace_label(key_hint: str = "") -> str:
     normalized = str(key_hint or "").strip().lower()
     if normalized in DISPLAY_TRACE_LABELS:
@@ -259,6 +287,66 @@ def split_text_list(value: Any) -> list[str]:
     return [x for x in (item.strip() for item in text.split(",")) if x]
 
 
+def normalize_workflow_channel(value: Any, default: str = "") -> str:
+    raw = str(value or "").strip().lower()
+    if raw in WORKFLOW_SELECTION_CHANNELS:
+        return raw
+    return str(default or "").strip().lower()
+
+
+def normalize_json_object_field(value: Any) -> str:
+    if isinstance(value, dict):
+        return ensure_json(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return ensure_json({})
+        parsed = parse_json(stripped)
+        if parsed:
+            return ensure_json(parsed)
+        return ensure_json({"raw": stripped})
+    if value is None:
+        return ensure_json({})
+    return ensure_json({"raw": str(value)})
+
+
+def normalize_json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return dict(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return {}
+        parsed = parse_json(stripped)
+        if parsed:
+            return parsed
+        return {"raw": stripped}
+    if value is None:
+        return {}
+    return {"raw": str(value)}
+
+
+def build_trace_id() -> str:
+    return f"trace-{datetime.now(tz=UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
+
+
+def normalize_trace_id(value: Any, *, task_id: str = "") -> str:
+    raw = str(value or "").strip()
+    if raw:
+        return raw
+    normalized_task_id = str(task_id or "").strip()
+    if normalized_task_id:
+        return f"trace-{normalized_task_id}"
+    return build_trace_id()
+
+
+def normalize_attempt_id(value: Any, *, retry_count: int = 0) -> str:
+    raw = str(value or "").strip()
+    if raw:
+        return raw
+    return f"attempt-{max(1, int(retry_count or 0) + 1):03d}"
+
+
 def load_pricing(pricing_file: str | Path) -> dict[str, Any]:
     path = Path(pricing_file)
     if not path.exists():
@@ -351,6 +439,8 @@ class TaskCenter:
                 reason TEXT NOT NULL,
                 source TEXT NOT NULL,
                 request_source TEXT NOT NULL DEFAULT 'human',
+                trace_id TEXT NOT NULL DEFAULT '',
+                attempt_id TEXT NOT NULL DEFAULT '',
                 priority TEXT NOT NULL,
                 risk_level TEXT NOT NULL,
                 assignee TEXT,
@@ -376,9 +466,18 @@ class TaskCenter:
                 acceptance TEXT NOT NULL,
                 observable_outputs TEXT NOT NULL DEFAULT '',
                 acceptance_thresholds TEXT NOT NULL DEFAULT '',
+                stage_id TEXT NOT NULL DEFAULT '',
+                stage_score_gate TEXT NOT NULL DEFAULT '',
+                stage_min_evidence_count INTEGER NOT NULL DEFAULT 0,
+                stage_output_contract TEXT NOT NULL DEFAULT '{}',
+                stage_verification_contract TEXT NOT NULL DEFAULT '{}',
                 required_capabilities TEXT NOT NULL DEFAULT '',
                 required_skills TEXT NOT NULL DEFAULT '',
                 allowed_agents TEXT NOT NULL DEFAULT '',
+                workflow_profile_id TEXT NOT NULL DEFAULT '',
+                workflow_channel TEXT NOT NULL DEFAULT '',
+                selection_reason TEXT NOT NULL DEFAULT '',
+                selection_inputs TEXT NOT NULL DEFAULT '{}',
                 score_raw REAL,
                 score_normalized REAL,
                 score_payload TEXT NOT NULL DEFAULT '{}',
@@ -465,6 +564,55 @@ class TaskCenter:
                 FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS task_outputs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                trace_id TEXT NOT NULL DEFAULT '',
+                output_type TEXT NOT NULL,
+                audience TEXT NOT NULL,
+                channel TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL,
+                summary TEXT NOT NULL DEFAULT '',
+                payload_json TEXT NOT NULL DEFAULT '{}',
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS task_incidents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT NOT NULL,
+                ts TEXT NOT NULL,
+                trace_id TEXT NOT NULL DEFAULT '',
+                incident_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT NOT NULL DEFAULT '',
+                summary TEXT NOT NULL DEFAULT '',
+                owner TEXT NOT NULL DEFAULT '',
+                details_json TEXT NOT NULL DEFAULT '{}',
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS benchmark_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                benchmark_run_id TEXT NOT NULL UNIQUE,
+                task_id TEXT,
+                ts TEXT NOT NULL,
+                trace_id TEXT NOT NULL DEFAULT '',
+                benchmark_suite_id TEXT NOT NULL,
+                workflow_profile_id TEXT NOT NULL DEFAULT '',
+                workflow_channel TEXT NOT NULL DEFAULT '',
+                target_kind TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                baseline_run_ids TEXT NOT NULL DEFAULT '[]',
+                candidate_run_ids TEXT NOT NULL DEFAULT '[]',
+                summary_file TEXT NOT NULL DEFAULT '',
+                scorecard_file TEXT NOT NULL DEFAULT '',
+                decision_json TEXT NOT NULL DEFAULT '{}',
+                details_json TEXT NOT NULL DEFAULT '{}',
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS agent_task_reports (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 task_id TEXT NOT NULL,
@@ -510,6 +658,19 @@ class TaskCenter:
                 UNIQUE(task_id, actor_type, actor_id, planner_id)
             );
 
+            CREATE TABLE IF NOT EXISTS workflow_selection_records (
+                selection_id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL UNIQUE,
+                workflow_profile_id TEXT NOT NULL,
+                workflow_channel TEXT NOT NULL DEFAULT '',
+                selection_reason TEXT NOT NULL DEFAULT '',
+                selection_inputs TEXT NOT NULL DEFAULT '{}',
+                selected_by TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(task_id) REFERENCES tasks(task_id) ON DELETE CASCADE
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
             CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at);
             CREATE INDEX IF NOT EXISTS idx_task_events_task_id ON task_events(task_id);
@@ -522,18 +683,42 @@ class TaskCenter:
             CREATE INDEX IF NOT EXISTS idx_module_communications_task_id ON module_communications(task_id);
             CREATE INDEX IF NOT EXISTS idx_module_communications_path_ts
                 ON module_communications(from_module, to_module, ts);
+            CREATE INDEX IF NOT EXISTS idx_task_outputs_task_id ON task_outputs(task_id);
+            CREATE INDEX IF NOT EXISTS idx_task_outputs_audience_ts ON task_outputs(audience, ts);
+            CREATE INDEX IF NOT EXISTS idx_task_incidents_task_id ON task_incidents(task_id);
+            CREATE INDEX IF NOT EXISTS idx_task_incidents_status_ts ON task_incidents(status, ts);
+            CREATE INDEX IF NOT EXISTS idx_benchmark_runs_suite_ts ON benchmark_runs(benchmark_suite_id, ts);
+            CREATE INDEX IF NOT EXISTS idx_benchmark_runs_task_id ON benchmark_runs(task_id);
             CREATE INDEX IF NOT EXISTS idx_agent_task_reports_task_id ON agent_task_reports(task_id);
             CREATE INDEX IF NOT EXISTS idx_agent_task_reports_planner_ts ON agent_task_reports(planner_id, ts);
             CREATE INDEX IF NOT EXISTS idx_agent_points_actor_ts ON agent_points_ledger(actor_type, actor_id, ts);
             CREATE INDEX IF NOT EXISTS idx_agent_points_task_id ON agent_points_ledger(task_id);
+            CREATE INDEX IF NOT EXISTS idx_workflow_selection_profile
+                ON workflow_selection_records(workflow_profile_id, workflow_channel);
             """
         )
         self._ensure_task_columns()
+        self._ensure_auxiliary_columns()
         self.conn.commit()
+
+    def _ensure_table_columns(self, table_name: str, required_columns: dict[str, str]) -> None:
+        rows = self.conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        existing = {str(row["name"]) for row in rows}
+        for column, ddl in required_columns.items():
+            if column in existing:
+                continue
+            try:
+                self.conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column} {ddl}")
+            except sqlite3.OperationalError as exc:
+                message = str(exc).lower()
+                if "duplicate column name" not in message:
+                    raise
 
     def _ensure_task_columns(self) -> None:
         required_columns = {
             "request_source": "TEXT NOT NULL DEFAULT 'human'",
+            "trace_id": "TEXT NOT NULL DEFAULT ''",
+            "attempt_id": "TEXT NOT NULL DEFAULT ''",
             "needs_clarification": "INTEGER NOT NULL DEFAULT 0",
             "clarification_reason": "TEXT NOT NULL DEFAULT ''",
             "context_completeness": "REAL NOT NULL DEFAULT 0",
@@ -548,28 +733,101 @@ class TaskCenter:
             "change_id": "TEXT NOT NULL DEFAULT ''",
             "observable_outputs": "TEXT NOT NULL DEFAULT ''",
             "acceptance_thresholds": "TEXT NOT NULL DEFAULT ''",
+            "stage_id": "TEXT NOT NULL DEFAULT ''",
+            "stage_score_gate": "TEXT NOT NULL DEFAULT ''",
+            "stage_min_evidence_count": "INTEGER NOT NULL DEFAULT 0",
+            "stage_output_contract": "TEXT NOT NULL DEFAULT '{}'",
+            "stage_verification_contract": "TEXT NOT NULL DEFAULT '{}'",
             "required_capabilities": "TEXT NOT NULL DEFAULT ''",
             "required_skills": "TEXT NOT NULL DEFAULT ''",
             "allowed_agents": "TEXT NOT NULL DEFAULT ''",
+            "workflow_profile_id": "TEXT NOT NULL DEFAULT ''",
+            "workflow_channel": "TEXT NOT NULL DEFAULT ''",
+            "selection_reason": "TEXT NOT NULL DEFAULT ''",
+            "selection_inputs": "TEXT NOT NULL DEFAULT '{}'",
             "score_payload": "TEXT NOT NULL DEFAULT '{}'",
             "token_usage_summary": "TEXT NOT NULL DEFAULT '{}'",
             "cost_estimate_total": "REAL NOT NULL DEFAULT 0",
             "started_at": "TEXT NOT NULL DEFAULT ''",
             "completed_at": "TEXT NOT NULL DEFAULT ''",
         }
-        rows = self.conn.execute("PRAGMA table_info(tasks)").fetchall()
-        existing = {str(row["name"]) for row in rows}
-        for column, ddl in required_columns.items():
-            if column in existing:
-                continue
-            try:
-                self.conn.execute(f"ALTER TABLE tasks ADD COLUMN {column} {ddl}")
-            except sqlite3.OperationalError as exc:
-                # Legacy databases can occasionally be in a partial-migrated state.
-                # Skip duplicate-column errors so init/check commands remain idempotent.
-                message = str(exc).lower()
-                if "duplicate column name" not in message:
-                    raise
+        self._ensure_table_columns("tasks", required_columns)
+
+    def _ensure_auxiliary_columns(self) -> None:
+        self._ensure_table_columns(
+            "task_outputs",
+            {"trace_id": "TEXT NOT NULL DEFAULT ''"},
+        )
+        self._ensure_table_columns(
+            "task_incidents",
+            {"trace_id": "TEXT NOT NULL DEFAULT ''"},
+        )
+        self._ensure_table_columns(
+            "benchmark_runs",
+            {"trace_id": "TEXT NOT NULL DEFAULT ''"},
+        )
+
+    def _deserialize_task_row(self, row: sqlite3.Row | dict[str, Any]) -> dict[str, Any]:
+        data = dict(row)
+        data["need_human_confirm"] = bool(data["need_human_confirm"])
+        data["human_confirmed"] = bool(data["human_confirmed"])
+        data["needs_clarification"] = bool(data.get("needs_clarification"))
+        data["trace_id"] = normalize_trace_id(data.get("trace_id"), task_id=str(data.get("task_id", "")).strip())
+        data["attempt_id"] = normalize_attempt_id(
+            data.get("attempt_id"),
+            retry_count=int(data.get("retry_count") or 0),
+        )
+        data["context_payload"] = parse_json(str(data.get("context_payload") or ""))
+        data["review_status"] = normalize_review_status(data.get("review_status"), default="unreviewed")
+        data["review_mode"] = str(data.get("review_mode") or "").strip()
+        data["review_head"] = str(data.get("review_head") or "").strip()
+        data["reviewed_at"] = str(data.get("reviewed_at") or "").strip()
+        missing_fields = str(data.get("context_fields_missing") or "").strip()
+        data["context_fields_missing"] = [x for x in missing_fields.split(",") if x]
+        recommended_missing_fields = str(data.get("context_fields_recommended_missing") or "").strip()
+        data["context_fields_recommended_missing"] = [x for x in recommended_missing_fields.split(",") if x]
+        data["required_capabilities"] = split_text_list(data.get("required_capabilities"))
+        data["required_skills"] = split_text_list(data.get("required_skills"))
+        data["allowed_agents"] = split_text_list(data.get("allowed_agents"))
+        data["stage_id"] = str(data.get("stage_id") or "").strip()
+        data["stage_score_gate"] = str(data.get("stage_score_gate") or "").strip().lower()
+        data["stage_min_evidence_count"] = max(0, int(data.get("stage_min_evidence_count") or 0))
+        data["stage_output_contract"] = parse_json(str(data.get("stage_output_contract") or ""))
+        data["stage_verification_contract"] = parse_json(str(data.get("stage_verification_contract") or ""))
+        data["workflow_profile_id"] = str(data.get("workflow_profile_id") or "").strip()
+        data["workflow_channel"] = normalize_workflow_channel(data.get("workflow_channel"), default="")
+        data["selection_reason"] = str(data.get("selection_reason") or "").strip()
+        data["selection_inputs"] = parse_json(str(data.get("selection_inputs") or ""))
+        data["score_payload"] = parse_json(str(data.get("score_payload") or ""))
+        data["token_usage_summary"] = parse_json(str(data.get("token_usage_summary") or ""))
+        data["context_completeness"] = round(float(data.get("context_completeness") or 0.0), 2)
+        data["cost_estimate_total"] = round(float(data.get("cost_estimate_total") or 0.0), 6)
+        data["started_at"] = str(data.get("started_at") or "").strip()
+        data["completed_at"] = str(data.get("completed_at") or "").strip()
+        return data
+
+    def _sync_workflow_selection_record(
+        self,
+        *,
+        task_id: str,
+        workflow_profile_id: Any,
+        workflow_channel: Any,
+        selection_reason: Any,
+        selection_inputs: Any,
+        actor: str,
+    ) -> None:
+        normalized_profile_id = str(workflow_profile_id or "").strip()
+        if not normalized_profile_id:
+            self.conn.execute("DELETE FROM workflow_selection_records WHERE task_id = ?", (task_id,))
+            return
+        self.upsert_workflow_selection_record(
+            task_id=task_id,
+            workflow_profile_id=normalized_profile_id,
+            workflow_channel=workflow_channel,
+            selection_reason=selection_reason,
+            selection_inputs=selection_inputs,
+            selected_by=actor,
+        )
 
     def _normalize_task(self, task: dict[str, Any]) -> dict[str, Any]:
         now = utc_now_iso()
@@ -604,20 +862,58 @@ class TaskCenter:
             reviewed_at = now
         owner = str(task.get("owner", "")).strip()
         change_id = str(task.get("change_id", "")).strip()
+        workflow_profile_id = str(task.get("workflow_profile_id", "")).strip()
+        workflow_channel = normalize_workflow_channel(task.get("workflow_channel"), default="")
+        selection_reason = str(task.get("selection_reason", "")).strip()
+        normalized_task_id = str(task.get("task_id") or "").strip()
+        retry_count = max(0, int(task.get("retry_count", 0) or 0))
+        selection_inputs_payload = normalize_json_object(task.get("selection_inputs"))
+        trace_id = normalize_trace_id(
+            task.get("trace_id")
+            or context_payload_raw.get("trace_id")
+            or selection_inputs_payload.get("trace_id", ""),
+            task_id=normalized_task_id,
+        )
+        attempt_id = normalize_attempt_id(
+            task.get("attempt_id") or selection_inputs_payload.get("attempt_id", ""),
+            retry_count=retry_count,
+        )
+        context_payload_raw["trace_id"] = trace_id
+        context_payload_raw["attempt_id"] = attempt_id
+        selection_inputs_payload["trace_id"] = trace_id
+        selection_inputs_payload["attempt_id"] = attempt_id
+        task_for_envelope = dict(task)
+        task_for_envelope.update(
+            {
+                "task_id": normalized_task_id,
+                "trace_id": trace_id,
+                "attempt_id": attempt_id,
+                "request_source": request_source,
+                "selection_inputs": selection_inputs_payload,
+                "context_payload": context_payload_raw,
+                "workflow_profile_id": workflow_profile_id,
+                "workflow_channel": workflow_channel,
+                "selection_reason": selection_reason,
+            }
+        )
+        selection_inputs_payload["execution_envelope"] = self._build_execution_envelope_snapshot(task_for_envelope)
+        selection_inputs = ensure_json(selection_inputs_payload)
 
         normalized = {
-            "task_id": task.get("task_id")
+            "task_id": normalized_task_id
             or f"task-{datetime.now(tz=UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}",
             "pool": str(task.get("pool", "jobs")).lower(),
             "task_type": str(task.get("task_type", "workflow")).strip(),
             "reason": str(task.get("reason", "")).strip(),
             "source": str(task.get("source", "openclaw")).strip(),
             "request_source": request_source,
+            "trace_id": trace_id,
+            "attempt_id": attempt_id,
             "priority": str(task.get("priority", "medium")).lower(),
             "risk_level": str(task.get("risk_level", "low")).lower(),
             "assignee": str(task.get("assignee", "")).strip() or None,
             "status": str(task.get("status", "pending")).lower(),
-            "retry_count": int(task.get("retry_count", 0) or 0),
+            "retry_count": retry_count,
             "failure_count": int(task.get("failure_count", 0) or 0),
             "needs_clarification": needs_clarification,
             "clarification_reason": clarification_reason,
@@ -638,9 +934,18 @@ class TaskCenter:
             "acceptance": str(task.get("acceptance", "")).strip(),
             "observable_outputs": str(task.get("observable_outputs", "")).strip(),
             "acceptance_thresholds": str(task.get("acceptance_thresholds", "")).strip(),
+            "stage_id": str(task.get("stage_id", "")).strip(),
+            "stage_score_gate": str(task.get("stage_score_gate", "")).strip().lower(),
+            "stage_min_evidence_count": max(0, int(task.get("stage_min_evidence_count", 0) or 0)),
+            "stage_output_contract": normalize_json_object_field(task.get("stage_output_contract")),
+            "stage_verification_contract": normalize_json_object_field(task.get("stage_verification_contract")),
             "required_capabilities": normalize_text_list(task.get("required_capabilities")),
             "required_skills": normalize_text_list(task.get("required_skills")),
             "allowed_agents": normalize_text_list(task.get("allowed_agents")),
+            "workflow_profile_id": workflow_profile_id,
+            "workflow_channel": workflow_channel,
+            "selection_reason": selection_reason,
+            "selection_inputs": selection_inputs,
             "score_raw": task.get("score_raw"),
             "score_normalized": task.get("score_normalized"),
             "score_payload": ensure_json(task.get("score_payload") or {}),
@@ -687,6 +992,127 @@ class TaskCenter:
         row = self.conn.execute("SELECT 1 FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
         return bool(row)
 
+    def _lookup_task_trace_id(self, task_id: str) -> str:
+        row = self.conn.execute(
+            "SELECT trace_id FROM tasks WHERE task_id = ?",
+            (str(task_id or "").strip(),),
+        ).fetchone()
+        raw = str(row["trace_id"] or "").strip() if row else ""
+        return normalize_trace_id(raw, task_id=str(task_id or "").strip())
+
+    def _build_execution_envelope_snapshot(self, task: dict[str, Any]) -> dict[str, Any]:
+        task_payload = dict(task or {})
+        selection_inputs_payload = normalize_json_object(task_payload.get("selection_inputs"))
+        context_payload = normalize_json_object(task_payload.get("context_payload"))
+        envelope = normalize_json_object(selection_inputs_payload.get("execution_envelope"))
+        task_id = str(task_payload.get("task_id", "")).strip()
+        retry_count = max(0, int(task_payload.get("retry_count", 0) or 0))
+        trace_id = normalize_trace_id(
+            task_payload.get("trace_id") or selection_inputs_payload.get("trace_id", ""),
+            task_id=task_id,
+        )
+        attempt_id = normalize_attempt_id(
+            task_payload.get("attempt_id") or selection_inputs_payload.get("attempt_id", ""),
+            retry_count=retry_count,
+        )
+
+        workflow_payload = normalize_json_object(envelope.get("workflow"))
+        workflow_payload.update(
+            {
+                "profile_id": str(workflow_payload.get("profile_id") or task_payload.get("workflow_profile_id", "")).strip(),
+                "channel": str(workflow_payload.get("channel") or task_payload.get("workflow_channel", "")).strip(),
+                "stage_id": str(workflow_payload.get("stage_id") or task_payload.get("stage_id", "")).strip(),
+                "score_gate": str(workflow_payload.get("score_gate") or task_payload.get("stage_score_gate", "")).strip(),
+                "selection_reason": str(
+                    workflow_payload.get("selection_reason") or task_payload.get("selection_reason", "")
+                ).strip(),
+            }
+        )
+
+        task_section = normalize_json_object(envelope.get("task"))
+        task_section.update(
+            {
+                "task_type": str(task_section.get("task_type") or task_payload.get("task_type", "")).strip(),
+                "request_source": str(
+                    task_section.get("request_source") or task_payload.get("request_source", "")
+                ).strip(),
+                "reason": str(task_section.get("reason") or task_payload.get("reason", "")).strip(),
+                "requirement": str(task_section.get("requirement") or task_payload.get("requirement", "")).strip(),
+                "acceptance": str(task_section.get("acceptance") or task_payload.get("acceptance", "")).strip(),
+                "observable_outputs": str(
+                    task_section.get("observable_outputs") or task_payload.get("observable_outputs", "")
+                ).strip(),
+                "assignee": str(task_section.get("assignee") or task_payload.get("assignee", "")).strip(),
+                "priority": str(task_section.get("priority") or task_payload.get("priority", "")).strip(),
+                "risk_level": str(task_section.get("risk_level") or task_payload.get("risk_level", "")).strip(),
+                "needs_clarification": bool(task_payload.get("needs_clarification", False)),
+            }
+        )
+
+        routing_payload = normalize_json_object(envelope.get("routing"))
+        allowed_agents = task_payload.get("allowed_agents", [])
+        if not isinstance(allowed_agents, list):
+            allowed_agents = []
+        routing_payload.update(
+            {
+                "assignee": str(routing_payload.get("assignee") or task_payload.get("assignee", "")).strip(),
+                "allowed_agents": [str(item).strip() for item in allowed_agents if str(item).strip()],
+            }
+        )
+
+        capability_payload = normalize_json_object(envelope.get("capability_binding"))
+        if not capability_payload:
+            capability_payload = normalize_json_object(selection_inputs_payload.get("capability_binding"))
+
+        contracts_payload = normalize_json_object(envelope.get("contracts"))
+        output_contract = normalize_json_object(contracts_payload.get("output_contract"))
+        if not output_contract:
+            output_contract = normalize_json_object(task_payload.get("stage_output_contract"))
+        verification_contract = normalize_json_object(contracts_payload.get("verification_contract"))
+        if not verification_contract:
+            verification_contract = normalize_json_object(task_payload.get("stage_verification_contract"))
+        stage_context_gate = normalize_json_object(contracts_payload.get("stage_context_gate"))
+        if not stage_context_gate:
+            stage_context_gate = normalize_json_object(selection_inputs_payload.get("stage_context_gate"))
+        requirement_package_gate = normalize_json_object(contracts_payload.get("requirement_package_gate"))
+        if not requirement_package_gate:
+            requirement_package_gate = normalize_json_object(selection_inputs_payload.get("requirement_package_gate"))
+        context_contract = normalize_json_object(contracts_payload.get("context_contract"))
+        if not context_contract:
+            context_contract = normalize_json_object(
+                context_payload.get("context_contract") or context_payload.get("requirement_package_contract")
+            )
+        contracts_payload.update(
+            {
+                "output_contract": output_contract,
+                "verification_contract": verification_contract,
+                "stage_context_gate": stage_context_gate,
+                "requirement_package_gate": requirement_package_gate,
+                "context_contract": context_contract,
+            }
+        )
+
+        return {
+            "schema_version": str(envelope.get("schema_version", "2026-03-24")).strip() or "2026-03-24",
+            "trace_id": trace_id,
+            "attempt_id": attempt_id,
+            "task_id": task_id,
+            "workflow": workflow_payload,
+            "task": task_section,
+            "routing": routing_payload,
+            "capability_binding": capability_payload,
+            "contracts": contracts_payload,
+        }
+
+    def _lookup_task_execution_context(self, task_id: str) -> dict[str, Any]:
+        task = self.get_task(str(task_id or "").strip(), display_safe=False)
+        execution_envelope = self._build_execution_envelope_snapshot(task)
+        return {
+            "trace_id": str(execution_envelope.get("trace_id", "")).strip(),
+            "attempt_id": str(execution_envelope.get("attempt_id", "")).strip(),
+            "execution_envelope": execution_envelope,
+        }
+
     def create_task(self, task: dict[str, Any], actor: str = "system") -> dict[str, Any]:
         payload = self._normalize_task(task)
 
@@ -701,7 +1127,7 @@ class TaskCenter:
             self.conn.execute(
                 """
                 INSERT INTO tasks (
-                    task_id, pool, task_type, reason, source, request_source, priority, risk_level,
+                    task_id, pool, task_type, reason, source, request_source, trace_id, attempt_id, priority, risk_level,
                     assignee, status, retry_count, failure_count,
                     needs_clarification, clarification_reason,
                     need_human_confirm, human_confirmed,
@@ -710,12 +1136,15 @@ class TaskCenter:
                     owner, change_id,
                     requirement, result_output, acceptance,
                     observable_outputs, acceptance_thresholds,
+                    stage_id, stage_score_gate, stage_min_evidence_count,
+                    stage_output_contract, stage_verification_contract,
                     required_capabilities, required_skills, allowed_agents,
+                    workflow_profile_id, workflow_channel, selection_reason, selection_inputs,
                     score_raw, score_normalized, score_payload,
                     token_usage_summary, cost_estimate_total, action,
                     scheduled_at, started_at, completed_at, created_at, updated_at
                 ) VALUES (
-                    :task_id, :pool, :task_type, :reason, :source, :request_source, :priority, :risk_level,
+                    :task_id, :pool, :task_type, :reason, :source, :request_source, :trace_id, :attempt_id, :priority, :risk_level,
                     :assignee, :status, :retry_count, :failure_count,
                     :needs_clarification, :clarification_reason,
                     :need_human_confirm, :human_confirmed,
@@ -724,7 +1153,10 @@ class TaskCenter:
                     :owner, :change_id,
                     :requirement, :result_output, :acceptance,
                     :observable_outputs, :acceptance_thresholds,
+                    :stage_id, :stage_score_gate, :stage_min_evidence_count,
+                    :stage_output_contract, :stage_verification_contract,
                     :required_capabilities, :required_skills, :allowed_agents,
+                    :workflow_profile_id, :workflow_channel, :selection_reason, :selection_inputs,
                     :score_raw, :score_normalized, :score_payload,
                     :token_usage_summary, :cost_estimate_total, :action,
                     :scheduled_at, :started_at, :completed_at, :created_at, :updated_at
@@ -742,12 +1174,24 @@ class TaskCenter:
                     "priority": payload["priority"],
                     "risk_level": payload["risk_level"],
                     "request_source": payload["request_source"],
+                    "trace_id": payload["trace_id"],
+                    "attempt_id": payload["attempt_id"],
                     "needs_clarification": bool(payload["needs_clarification"]),
                     "review_status": payload.get("review_status", "unreviewed"),
                     "review_mode": payload.get("review_mode", ""),
                     "owner": payload.get("owner", ""),
                     "change_id": payload.get("change_id", ""),
+                    "workflow_profile_id": payload.get("workflow_profile_id", ""),
+                    "workflow_channel": payload.get("workflow_channel", ""),
                 },
+            )
+            self._sync_workflow_selection_record(
+                task_id=payload["task_id"],
+                workflow_profile_id=payload.get("workflow_profile_id", ""),
+                workflow_channel=payload.get("workflow_channel", ""),
+                selection_reason=payload.get("selection_reason", ""),
+                selection_inputs=payload.get("selection_inputs", "{}"),
+                actor=actor,
             )
 
         self._run_transaction_with_retry(write_op)
@@ -764,6 +1208,8 @@ class TaskCenter:
             "reason",
             "source",
             "request_source",
+            "trace_id",
+            "attempt_id",
             "priority",
             "risk_level",
             "assignee",
@@ -789,9 +1235,18 @@ class TaskCenter:
             "acceptance",
             "observable_outputs",
             "acceptance_thresholds",
+            "stage_id",
+            "stage_score_gate",
+            "stage_min_evidence_count",
+            "stage_output_contract",
+            "stage_verification_contract",
             "required_capabilities",
             "required_skills",
             "allowed_agents",
+            "workflow_profile_id",
+            "workflow_channel",
+            "selection_reason",
+            "selection_inputs",
             "score_raw",
             "score_normalized",
             "score_payload",
@@ -846,6 +1301,14 @@ class TaskCenter:
             updates["reviewed_at"] = str(updates["reviewed_at"] or "").strip()
         if "request_source" in updates:
             updates["request_source"] = normalize_request_source(updates["request_source"], default="human")
+        if "trace_id" in updates:
+            updates["trace_id"] = normalize_trace_id(updates["trace_id"], task_id=task_id)
+        if "attempt_id" in updates:
+            retry_count_for_attempt = updates.get("retry_count", self.get_task(task_id, display_safe=False).get("retry_count", 0))
+            updates["attempt_id"] = normalize_attempt_id(
+                updates["attempt_id"],
+                retry_count=int(retry_count_for_attempt or 0),
+            )
         if "needs_clarification" in updates:
             updates["needs_clarification"] = 1 if to_bool(updates["needs_clarification"]) else 0
         if "need_human_confirm" in updates:
@@ -870,6 +1333,31 @@ class TaskCenter:
             updates["required_skills"] = normalize_text_list(updates["required_skills"])
         if "allowed_agents" in updates:
             updates["allowed_agents"] = normalize_text_list(updates["allowed_agents"])
+        if "stage_id" in updates:
+            updates["stage_id"] = str(updates["stage_id"] or "").strip()
+        if "stage_score_gate" in updates:
+            updates["stage_score_gate"] = str(updates["stage_score_gate"] or "").strip().lower()
+        if "stage_min_evidence_count" in updates:
+            try:
+                updates["stage_min_evidence_count"] = max(0, int(updates["stage_min_evidence_count"] or 0))
+            except (TypeError, ValueError) as exc:
+                raise TaskCenterError(
+                    f"invalid stage_min_evidence_count: {updates['stage_min_evidence_count']}"
+                ) from exc
+        if "stage_output_contract" in updates:
+            updates["stage_output_contract"] = normalize_json_object_field(updates["stage_output_contract"])
+        if "stage_verification_contract" in updates:
+            updates["stage_verification_contract"] = normalize_json_object_field(
+                updates["stage_verification_contract"]
+            )
+        if "workflow_profile_id" in updates:
+            updates["workflow_profile_id"] = str(updates["workflow_profile_id"] or "").strip()
+        if "workflow_channel" in updates:
+            updates["workflow_channel"] = normalize_workflow_channel(updates["workflow_channel"], default="")
+        if "selection_reason" in updates:
+            updates["selection_reason"] = str(updates["selection_reason"] or "").strip()
+        if "selection_inputs" in updates:
+            updates["selection_inputs"] = normalize_json_object_field(updates["selection_inputs"])
         if "context_payload" in updates:
             payload = updates["context_payload"]
             if isinstance(payload, str):
@@ -907,11 +1395,38 @@ class TaskCenter:
         updates["updated_at"] = utc_now_iso()
         cols = [f"{name} = ?" for name in updates.keys()]
         vals = list(updates.values()) + [task_id]
+        current_selection = self.conn.execute(
+            """
+            SELECT workflow_profile_id, workflow_channel, selection_reason, selection_inputs
+            FROM tasks
+            WHERE task_id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+        if not current_selection:
+            raise TaskCenterError(f"task not found: {task_id}")
+        selection_payload = {
+            "workflow_profile_id": str(current_selection["workflow_profile_id"] or "").strip(),
+            "workflow_channel": normalize_workflow_channel(current_selection["workflow_channel"], default=""),
+            "selection_reason": str(current_selection["selection_reason"] or "").strip(),
+            "selection_inputs": str(current_selection["selection_inputs"] or "").strip(),
+        }
+        for key in ("workflow_profile_id", "workflow_channel", "selection_reason", "selection_inputs"):
+            if key in updates:
+                selection_payload[key] = updates[key]
 
         def write_op() -> None:
             self.conn.execute(
                 f"UPDATE tasks SET {', '.join(cols)} WHERE task_id = ?",
                 vals,
+            )
+            self._sync_workflow_selection_record(
+                task_id=task_id,
+                workflow_profile_id=selection_payload.get("workflow_profile_id", ""),
+                workflow_channel=selection_payload.get("workflow_channel", ""),
+                selection_reason=selection_payload.get("selection_reason", ""),
+                selection_inputs=selection_payload.get("selection_inputs", "{}"),
+                actor=actor,
             )
             self.add_event(
                 task_id=task_id,
@@ -929,29 +1444,109 @@ class TaskCenter:
         if not row:
             raise TaskCenterError(f"task not found: {task_id}")
 
-        data = dict(row)
-        data["need_human_confirm"] = bool(data["need_human_confirm"])
-        data["human_confirmed"] = bool(data["human_confirmed"])
-        data["needs_clarification"] = bool(data.get("needs_clarification"))
-        data["context_payload"] = parse_json(str(data.get("context_payload") or ""))
-        data["review_status"] = normalize_review_status(data.get("review_status"), default="unreviewed")
-        data["review_mode"] = str(data.get("review_mode") or "").strip()
-        data["review_head"] = str(data.get("review_head") or "").strip()
-        data["reviewed_at"] = str(data.get("reviewed_at") or "").strip()
-        missing_fields = str(data.get("context_fields_missing") or "").strip()
-        data["context_fields_missing"] = [x for x in missing_fields.split(",") if x]
-        recommended_missing_fields = str(data.get("context_fields_recommended_missing") or "").strip()
-        data["context_fields_recommended_missing"] = [x for x in recommended_missing_fields.split(",") if x]
-        data["required_capabilities"] = split_text_list(data.get("required_capabilities"))
-        data["required_skills"] = split_text_list(data.get("required_skills"))
-        data["allowed_agents"] = split_text_list(data.get("allowed_agents"))
-        data["score_payload"] = parse_json(str(data.get("score_payload") or ""))
-        data["token_usage_summary"] = parse_json(str(data.get("token_usage_summary") or ""))
-        data["context_completeness"] = round(float(data.get("context_completeness") or 0.0), 2)
-        data["cost_estimate_total"] = round(float(data.get("cost_estimate_total") or 0.0), 6)
-        data["started_at"] = str(data.get("started_at") or "").strip()
-        data["completed_at"] = str(data.get("completed_at") or "").strip()
+        data = self._deserialize_task_row(row)
         return sanitize_display_payload(data) if display_safe else data
+
+    def get_workflow_selection_record(self, task_id: str, display_safe: bool = True) -> dict[str, Any]:
+        row = self.conn.execute(
+            """
+            SELECT *
+            FROM workflow_selection_records
+            WHERE task_id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+        if not row:
+            raise TaskCenterError(f"workflow selection record not found for task: {task_id}")
+        item = dict(row)
+        item["workflow_profile_id"] = str(item.get("workflow_profile_id") or "").strip()
+        item["workflow_channel"] = normalize_workflow_channel(item.get("workflow_channel"), default="")
+        item["selection_reason"] = str(item.get("selection_reason") or "").strip()
+        item["selection_inputs"] = parse_json(str(item.get("selection_inputs") or ""))
+        item["selected_by"] = str(item.get("selected_by") or "").strip()
+        return sanitize_display_payload(item) if display_safe else item
+
+    def upsert_workflow_selection_record(
+        self,
+        *,
+        task_id: str,
+        workflow_profile_id: str,
+        workflow_channel: str = "",
+        selection_reason: str = "",
+        selection_inputs: Any = None,
+        selected_by: str = "",
+    ) -> dict[str, Any]:
+        if not self._task_exists(task_id):
+            raise TaskCenterError(f"task not found: {task_id}")
+        profile_id = str(workflow_profile_id or "").strip()
+        if not profile_id:
+            raise TaskCenterError("workflow_profile_id cannot be empty")
+        channel = normalize_workflow_channel(workflow_channel, default="")
+        reason = str(selection_reason or "").strip()
+        selected_by_text = str(selected_by or "").strip()
+        inputs_json = normalize_json_object_field(selection_inputs)
+        existing = self.conn.execute(
+            """
+            SELECT selection_id, created_at
+            FROM workflow_selection_records
+            WHERE task_id = ?
+            """,
+            (task_id,),
+        ).fetchone()
+        now = utc_now_iso()
+        selection_id = (
+            str(existing["selection_id"]).strip()
+            if existing and str(existing["selection_id"]).strip()
+            else f"selection-{datetime.now(tz=UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
+        )
+        created_at = str(existing["created_at"]).strip() if existing else now
+        payload = {
+            "selection_id": selection_id,
+            "task_id": task_id,
+            "workflow_profile_id": profile_id,
+            "workflow_channel": channel,
+            "selection_reason": reason,
+            "selection_inputs": inputs_json,
+            "selected_by": selected_by_text,
+            "created_at": created_at,
+            "updated_at": now,
+        }
+
+        def write_op() -> None:
+            self.conn.execute(
+                """
+                INSERT INTO workflow_selection_records (
+                    selection_id, task_id, workflow_profile_id, workflow_channel,
+                    selection_reason, selection_inputs, selected_by, created_at, updated_at
+                ) VALUES (
+                    :selection_id, :task_id, :workflow_profile_id, :workflow_channel,
+                    :selection_reason, :selection_inputs, :selected_by, :created_at, :updated_at
+                )
+                ON CONFLICT(task_id) DO UPDATE SET
+                    workflow_profile_id = excluded.workflow_profile_id,
+                    workflow_channel = excluded.workflow_channel,
+                    selection_reason = excluded.selection_reason,
+                    selection_inputs = excluded.selection_inputs,
+                    selected_by = excluded.selected_by,
+                    updated_at = excluded.updated_at
+                """,
+                payload,
+            )
+            self.add_event(
+                task_id=task_id,
+                actor=selected_by_text or "workflow-selector",
+                event_type="workflow_selected",
+                stage="workflow_select",
+                details={
+                    "selection_id": selection_id,
+                    "workflow_profile_id": profile_id,
+                    "workflow_channel": channel,
+                    "selection_reason": reason,
+                },
+            )
+
+        self._run_transaction_with_retry(write_op)
+        return self.get_workflow_selection_record(task_id)
 
     def add_event(
         self,
@@ -1327,6 +1922,503 @@ class TaskCenter:
             out.append(item)
         out.reverse()
         return sanitize_display_payload(out) if display_safe else out
+
+    def get_task_output(self, output_id: int, display_safe: bool = True) -> dict[str, Any]:
+        """Return a single standardized task output record."""
+        row = self.conn.execute("SELECT * FROM task_outputs WHERE id = ?", (int(output_id),)).fetchone()
+        if not row:
+            raise TaskCenterError(f"task_output not found: {output_id}")
+        item = dict(row)
+        item["payload"] = parse_json(item.pop("payload_json", ""))
+        return sanitize_display_payload(item) if display_safe else item
+
+    def record_task_output(
+        self,
+        *,
+        task_id: str,
+        output_type: str,
+        audience: str,
+        trace_id: str = "",
+        channel: str = "",
+        status: str,
+        summary: str = "",
+        payload: dict[str, Any] | None = None,
+        actor: str = "",
+    ) -> dict[str, Any]:
+        """Persist a standardized output packet for human or machine delivery."""
+        row_task_id = str(task_id or "").strip()
+        normalized_type = str(output_type or "").strip() or "task_report"
+        normalized_audience = str(audience or "").strip().lower() or "human"
+        normalized_status = str(status or "").strip().lower() or "prepared"
+        normalized_channel = str(channel or "").strip().lower()
+        normalized_summary = str(summary or "").strip()
+        if not row_task_id:
+            raise TaskCenterError("task_id cannot be empty")
+        if not self._task_exists(row_task_id):
+            raise TaskCenterError(f"task not found: {row_task_id}")
+        execution_context = self._lookup_task_execution_context(row_task_id)
+        normalized_trace_id = normalize_trace_id(
+            trace_id or execution_context.get("trace_id", ""),
+            task_id=row_task_id,
+        )
+        attempt_id = str(execution_context.get("attempt_id", "")).strip()
+        execution_envelope = normalize_json_object(execution_context.get("execution_envelope"))
+        if normalized_audience not in TASK_OUTPUT_AUDIENCES:
+            raise TaskCenterError(f"invalid task output audience: {normalized_audience}")
+        if normalized_status not in TASK_OUTPUT_STATUSES:
+            raise TaskCenterError(f"invalid task output status: {normalized_status}")
+        payload_object = normalize_json_object(payload)
+        payload_object.setdefault("trace_id", normalized_trace_id)
+        payload_object.setdefault("attempt_id", attempt_id)
+        if execution_envelope:
+            payload_object.setdefault("execution_envelope", execution_envelope)
+
+        def write_op() -> int:
+            with self.conn:
+                cursor = self.conn.execute(
+                    """
+                    INSERT INTO task_outputs (
+                        task_id, ts, trace_id, output_type, audience, channel, status, summary, payload_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_task_id,
+                        utc_now_iso(),
+                        normalized_trace_id,
+                        normalized_type,
+                        normalized_audience,
+                        normalized_channel,
+                        normalized_status,
+                        normalized_summary,
+                        ensure_json(payload_object),
+                    ),
+                )
+                output_id = int(cursor.lastrowid)
+                self.add_event(
+                    task_id=row_task_id,
+                    actor=(str(actor or "").strip() or normalized_audience),
+                    event_type="task_output_recorded",
+                    stage="delivery",
+                    details={
+                        "output_type": normalized_type,
+                        "audience": normalized_audience,
+                        "channel": normalized_channel,
+                        "status": normalized_status,
+                        "summary": normalized_summary,
+                        "trace_id": normalized_trace_id,
+                    },
+                )
+            return output_id
+
+        output_id = int(self._run_write_with_retry(write_op))
+        return self.get_task_output(output_id)
+
+    def list_task_outputs(self, task_id: str, limit: int = 200, display_safe: bool = True) -> list[dict[str, Any]]:
+        """List standardized output packets for a task."""
+        limit = max(1, min(int(limit or 200), 2000))
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM task_outputs
+            WHERE task_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (task_id, limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["payload"] = parse_json(item.pop("payload_json", ""))
+            out.append(item)
+        out.reverse()
+        return sanitize_display_payload(out) if display_safe else out
+
+    def get_task_incident(self, incident_id: int, display_safe: bool = True) -> dict[str, Any]:
+        """Return a single task incident record."""
+        row = self.conn.execute("SELECT * FROM task_incidents WHERE id = ?", (int(incident_id),)).fetchone()
+        if not row:
+            raise TaskCenterError(f"task_incident not found: {incident_id}")
+        item = dict(row)
+        item["details"] = parse_json(item.pop("details_json", ""))
+        return sanitize_display_payload(item) if display_safe else item
+
+    def record_task_incident(
+        self,
+        *,
+        task_id: str,
+        incident_type: str,
+        severity: str,
+        trace_id: str = "",
+        status: str = "open",
+        reason: str = "",
+        summary: str = "",
+        owner: str = "",
+        details: dict[str, Any] | None = None,
+        actor: str = "",
+    ) -> dict[str, Any]:
+        """Persist a normalized incident or escalation record for a task."""
+        row_task_id = str(task_id or "").strip()
+        normalized_type = str(incident_type or "").strip() or "runtime_issue"
+        normalized_severity = str(severity or "").strip().lower() or "warning"
+        normalized_status = str(status or "").strip().lower() or "open"
+        normalized_reason = str(reason or "").strip()
+        normalized_summary = str(summary or "").strip()
+        normalized_owner = str(owner or "").strip()
+        if not row_task_id:
+            raise TaskCenterError("task_id cannot be empty")
+        if not self._task_exists(row_task_id):
+            raise TaskCenterError(f"task not found: {row_task_id}")
+        execution_context = self._lookup_task_execution_context(row_task_id)
+        normalized_trace_id = normalize_trace_id(
+            trace_id or execution_context.get("trace_id", ""),
+            task_id=row_task_id,
+        )
+        attempt_id = str(execution_context.get("attempt_id", "")).strip()
+        execution_envelope = normalize_json_object(execution_context.get("execution_envelope"))
+        if normalized_severity not in INCIDENT_SEVERITIES:
+            raise TaskCenterError(f"invalid incident severity: {normalized_severity}")
+        if normalized_status not in INCIDENT_STATUSES:
+            raise TaskCenterError(f"invalid incident status: {normalized_status}")
+        details_object = normalize_json_object(details)
+        details_object.setdefault("trace_id", normalized_trace_id)
+        details_object.setdefault("attempt_id", attempt_id)
+        if execution_envelope:
+            details_object.setdefault("execution_envelope", execution_envelope)
+
+        def write_op() -> int:
+            with self.conn:
+                cursor = self.conn.execute(
+                    """
+                    INSERT INTO task_incidents (
+                        task_id, ts, trace_id, incident_type, severity, status, reason, summary, owner, details_json
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        row_task_id,
+                        utc_now_iso(),
+                        normalized_trace_id,
+                        normalized_type,
+                        normalized_severity,
+                        normalized_status,
+                        normalized_reason,
+                        normalized_summary,
+                        normalized_owner,
+                        ensure_json(details_object),
+                    ),
+                )
+                incident_id = int(cursor.lastrowid)
+                self.add_event(
+                    task_id=row_task_id,
+                    actor=(str(actor or "").strip() or normalized_owner or normalized_type),
+                    event_type="task_incident_recorded",
+                    stage="incident",
+                    details={
+                        "incident_type": normalized_type,
+                        "severity": normalized_severity,
+                        "status": normalized_status,
+                        "reason": normalized_reason,
+                        "summary": normalized_summary,
+                        "owner": normalized_owner,
+                        "trace_id": normalized_trace_id,
+                    },
+                )
+            return incident_id
+
+        incident_id = int(self._run_write_with_retry(write_op))
+        return self.get_task_incident(incident_id)
+
+    def list_task_incidents(self, task_id: str, limit: int = 200, display_safe: bool = True) -> list[dict[str, Any]]:
+        """List task incidents in chronological order."""
+        limit = max(1, min(int(limit or 200), 2000))
+        rows = self.conn.execute(
+            """
+            SELECT *
+            FROM task_incidents
+            WHERE task_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (task_id, limit),
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["details"] = parse_json(item.pop("details_json", ""))
+            out.append(item)
+        out.reverse()
+        return sanitize_display_payload(out) if display_safe else out
+
+    def update_task_incident(
+        self,
+        incident_id: int,
+        *,
+        status: str = "",
+        reason: str | None = None,
+        summary: str | None = None,
+        owner: str | None = None,
+        details: dict[str, Any] | None = None,
+        actor: str = "",
+    ) -> dict[str, Any]:
+        """Update one incident lifecycle record and append an audit event."""
+        existing = self.get_task_incident(int(incident_id), display_safe=False)
+        normalized_status = str(status or "").strip().lower()
+        if normalized_status and normalized_status not in INCIDENT_STATUSES:
+            raise TaskCenterError(f"invalid incident status: {normalized_status}")
+
+        updates: dict[str, Any] = {}
+        event_details: dict[str, Any] = {"incident_id": int(incident_id)}
+        if normalized_status:
+            updates["status"] = normalized_status
+            event_details["status"] = normalized_status
+        if reason is not None:
+            updates["reason"] = str(reason or "").strip()
+            event_details["reason"] = updates["reason"]
+        if summary is not None:
+            updates["summary"] = str(summary or "").strip()
+            event_details["summary"] = updates["summary"]
+        if owner is not None:
+            updates["owner"] = str(owner or "").strip()
+            event_details["owner"] = updates["owner"]
+        if details is not None:
+            merged_details = dict(existing.get("details", {}))
+            merged_details.update(details)
+            merged_details["last_status_updated_at"] = utc_now_iso()
+            merged_details["last_status_updated_by"] = str(actor or "").strip()
+            updates["details_json"] = ensure_json(merged_details)
+            event_details["details_keys"] = sorted(merged_details.keys())
+        elif updates:
+            existing_details = dict(existing.get("details", {}))
+            existing_details["last_status_updated_at"] = utc_now_iso()
+            existing_details["last_status_updated_by"] = str(actor or "").strip()
+            updates["details_json"] = ensure_json(existing_details)
+
+        if not updates:
+            raise TaskCenterError("incident update requires at least one field")
+
+        updates["ts"] = utc_now_iso()
+        assignments = ", ".join(f"{field} = :{field}" for field in updates.keys())
+        payload = dict(updates)
+        payload["incident_id"] = int(incident_id)
+
+        def write_op() -> None:
+            with self.conn:
+                self.conn.execute(
+                    f"""
+                    UPDATE task_incidents
+                    SET {assignments}
+                    WHERE id = :incident_id
+                    """,
+                    payload,
+                )
+                self.add_event(
+                    task_id=str(existing.get("task_id", "")).strip(),
+                    actor=(str(actor or "").strip() or str(existing.get("owner", "")).strip() or "incident-manager"),
+                    event_type="task_incident_updated",
+                    stage="incident",
+                    details=event_details,
+                )
+
+        self._run_transaction_with_retry(write_op)
+        return self.get_task_incident(int(incident_id))
+
+    def get_benchmark_run(self, benchmark_run_id: str, display_safe: bool = True) -> dict[str, Any]:
+        """Return one persisted benchmark run record by its stable benchmark_run_id."""
+        row = self.conn.execute(
+            "SELECT * FROM benchmark_runs WHERE benchmark_run_id = ?",
+            (str(benchmark_run_id or "").strip(),),
+        ).fetchone()
+        if not row:
+            raise TaskCenterError(f"benchmark_run not found: {benchmark_run_id}")
+        item = dict(row)
+        item["baseline_run_ids"] = parse_json_list(item.pop("baseline_run_ids", ""))
+        item["candidate_run_ids"] = parse_json_list(item.pop("candidate_run_ids", ""))
+        item["decision"] = parse_json(item.pop("decision_json", ""))
+        item["details"] = parse_json(item.pop("details_json", ""))
+        return sanitize_display_payload(item) if display_safe else item
+
+    def record_benchmark_run(
+        self,
+        *,
+        benchmark_run_id: str,
+        benchmark_suite_id: str,
+        trace_id: str = "",
+        workflow_profile_id: str = "",
+        workflow_channel: str = "",
+        target_kind: str,
+        target_id: str,
+        baseline_run_ids: list[str] | tuple[str, ...] | str = (),
+        candidate_run_ids: list[str] | tuple[str, ...] | str = (),
+        summary_file: str = "",
+        scorecard_file: str = "",
+        decision: dict[str, Any] | None = None,
+        details: dict[str, Any] | None = None,
+        task_id: str = "",
+        actor: str = "",
+    ) -> dict[str, Any]:
+        """Persist one benchmark suite execution result for later promotion/audit use."""
+        benchmark_id = str(benchmark_run_id or "").strip()
+        suite_id = str(benchmark_suite_id or "").strip()
+        target_kind_norm = str(target_kind or "").strip().lower()
+        target_name = str(target_id or "").strip()
+        task_id_norm = str(task_id or "").strip() or None
+        if not benchmark_id:
+            raise TaskCenterError("benchmark_run_id cannot be empty")
+        if not suite_id:
+            raise TaskCenterError("benchmark_suite_id cannot be empty")
+        if target_kind_norm not in BINDING_TARGET_KINDS:
+            raise TaskCenterError(f"invalid benchmark target_kind: {target_kind_norm}")
+        if not target_name:
+            raise TaskCenterError("target_id cannot be empty")
+        if task_id_norm and (not self._task_exists(task_id_norm)):
+            raise TaskCenterError(f"task not found: {task_id_norm}")
+        execution_context: dict[str, Any] = {}
+        if task_id_norm:
+            execution_context = self._lookup_task_execution_context(task_id_norm)
+        normalized_trace_id = normalize_trace_id(
+            trace_id or execution_context.get("trace_id", ""),
+            task_id=task_id_norm or "",
+        )
+        attempt_id = str(execution_context.get("attempt_id", "")).strip()
+        execution_envelope = normalize_json_object(execution_context.get("execution_envelope"))
+
+        if isinstance(baseline_run_ids, str):
+            baseline_ids = [item.strip() for item in baseline_run_ids.split(",") if item.strip()]
+        else:
+            baseline_ids = [str(item).strip() for item in baseline_run_ids if str(item).strip()]
+        if isinstance(candidate_run_ids, str):
+            candidate_ids = [item.strip() for item in candidate_run_ids.split(",") if item.strip()]
+        else:
+            candidate_ids = [str(item).strip() for item in candidate_run_ids if str(item).strip()]
+
+        details_object = normalize_json_object(details)
+        details_object.setdefault("trace_id", normalized_trace_id)
+        details_object.setdefault("attempt_id", attempt_id)
+        if execution_envelope:
+            details_object.setdefault("execution_envelope", execution_envelope)
+
+        payload = {
+            "benchmark_run_id": benchmark_id,
+            "task_id": task_id_norm,
+            "ts": utc_now_iso(),
+            "trace_id": normalized_trace_id,
+            "benchmark_suite_id": suite_id,
+            "workflow_profile_id": str(workflow_profile_id or "").strip(),
+            "workflow_channel": str(workflow_channel or "").strip(),
+            "target_kind": target_kind_norm,
+            "target_id": target_name,
+            "baseline_run_ids": ensure_json_list(baseline_ids),
+            "candidate_run_ids": ensure_json_list(candidate_ids),
+            "summary_file": str(summary_file or "").strip(),
+            "scorecard_file": str(scorecard_file or "").strip(),
+            "decision_json": ensure_json(decision),
+            "details_json": ensure_json(details_object),
+        }
+
+        def write_op() -> None:
+            with self.conn:
+                self.conn.execute(
+                    """
+                    INSERT INTO benchmark_runs (
+                        benchmark_run_id, task_id, ts, trace_id, benchmark_suite_id,
+                        workflow_profile_id, workflow_channel, target_kind, target_id,
+                        baseline_run_ids, candidate_run_ids, summary_file, scorecard_file,
+                        decision_json, details_json
+                    ) VALUES (
+                        :benchmark_run_id, :task_id, :ts, :trace_id, :benchmark_suite_id,
+                        :workflow_profile_id, :workflow_channel, :target_kind, :target_id,
+                        :baseline_run_ids, :candidate_run_ids, :summary_file, :scorecard_file,
+                        :decision_json, :details_json
+                    )
+                    ON CONFLICT(benchmark_run_id) DO UPDATE SET
+                        task_id = excluded.task_id,
+                        ts = excluded.ts,
+                        trace_id = excluded.trace_id,
+                        benchmark_suite_id = excluded.benchmark_suite_id,
+                        workflow_profile_id = excluded.workflow_profile_id,
+                        workflow_channel = excluded.workflow_channel,
+                        target_kind = excluded.target_kind,
+                        target_id = excluded.target_id,
+                        baseline_run_ids = excluded.baseline_run_ids,
+                        candidate_run_ids = excluded.candidate_run_ids,
+                        summary_file = excluded.summary_file,
+                        scorecard_file = excluded.scorecard_file,
+                        decision_json = excluded.decision_json,
+                        details_json = excluded.details_json
+                    """,
+                    payload,
+                )
+                if task_id_norm:
+                    self.add_event(
+                        task_id=task_id_norm,
+                        actor=(str(actor or "").strip() or "benchmark-runner"),
+                        event_type="benchmark_run_recorded",
+                        stage="benchmark",
+                        details={
+                            "benchmark_run_id": benchmark_id,
+                            "benchmark_suite_id": suite_id,
+                            "target_kind": target_kind_norm,
+                            "target_id": target_name,
+                            "trace_id": normalized_trace_id,
+                        },
+                    )
+
+        self._run_write_with_retry(write_op)
+        return self.get_benchmark_run(benchmark_id)
+
+    def list_benchmark_runs(
+        self,
+        task_id: str = "",
+        *,
+        benchmark_suite_id: str = "",
+        limit: int = 200,
+        display_safe: bool = True,
+    ) -> list[dict[str, Any]]:
+        """List benchmark runs filtered by task or suite."""
+        limit = max(1, min(int(limit or 200), 2000))
+        clauses: list[str] = []
+        params: list[Any] = []
+        if str(task_id or "").strip():
+            clauses.append("task_id = ?")
+            params.append(str(task_id).strip())
+        if str(benchmark_suite_id or "").strip():
+            clauses.append("benchmark_suite_id = ?")
+            params.append(str(benchmark_suite_id).strip())
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        rows = self.conn.execute(
+            f"""
+            SELECT *
+            FROM benchmark_runs
+            {where_sql}
+            ORDER BY ts DESC, id DESC
+            LIMIT ?
+            """,
+            [*params, limit],
+        ).fetchall()
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["baseline_run_ids"] = parse_json_list(item.pop("baseline_run_ids", ""))
+            item["candidate_run_ids"] = parse_json_list(item.pop("candidate_run_ids", ""))
+            item["decision"] = parse_json(item.pop("decision_json", ""))
+            item["details"] = parse_json(item.pop("details_json", ""))
+            out.append(item)
+        out.reverse()
+        return sanitize_display_payload(out) if display_safe else out
+
+    def list_benchmark_runs_by_suite(
+        self,
+        benchmark_suite_id: str,
+        *,
+        limit: int = 200,
+        display_safe: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Convenience wrapper for suite-scoped benchmark run queries."""
+        return self.list_benchmark_runs(
+            benchmark_suite_id=benchmark_suite_id,
+            limit=limit,
+            display_safe=display_safe,
+        )
 
     def get_agent_task_report(self, report_id: int, display_safe: bool = True) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM agent_task_reports WHERE id = ?", (int(report_id),)).fetchone()
@@ -2210,6 +3302,9 @@ class TaskCenter:
         timing = self.task_timing_summary(task)
         points = self.task_points_summary(task_id, display_safe=False)
         stage_runs = self.list_stage_runs(task_id, display_safe=False)
+        task_outputs = self.list_task_outputs(task_id, limit=min(max(20, event_limit), 500), display_safe=False)
+        task_incidents = self.list_task_incidents(task_id, limit=min(max(20, event_limit), 500), display_safe=False)
+        benchmark_runs = self.list_benchmark_runs(task_id, limit=min(max(20, event_limit), 500), display_safe=False)
         module_logs = self.list_module_logs(task_id, limit=min(max(50, event_limit), 1000), display_safe=False)
         communications = self.list_module_communications(
             task_id,
@@ -2243,7 +3338,25 @@ class TaskCenter:
             row for row in communications if str(row.get("status", "")).lower() in {"failed", "timeout"}
         ]
         stage_failures = [row for row in stage_runs if str(row.get("status", "")).lower() in {"failed"}]
+        open_incidents = [
+            row
+            for row in task_incidents
+            if str(row.get("status", "")).strip().lower() not in {"resolved", "suppressed"}
+        ]
+        critical_open_incidents = [
+            row for row in open_incidents if str(row.get("severity", "")).strip().lower() == "critical"
+        ]
+        latest_output = task_outputs[-1] if task_outputs else {}
+        latest_incident = task_incidents[-1] if task_incidents else {}
+        latest_benchmark_run = benchmark_runs[-1] if benchmark_runs else {}
+        latest_human_gate = latest_output.get("payload", {}).get("human_gate", {}) if isinstance(latest_output, dict) else {}
+        if not isinstance(latest_human_gate, dict):
+            latest_human_gate = {}
+        execution_envelope = self._build_execution_envelope_snapshot(task)
         report = {
+            "trace_id": str(task.get("trace_id", "")).strip(),
+            "attempt_id": str(task.get("attempt_id", "")).strip(),
+            "execution_envelope": execution_envelope,
             "task": task,
             "timing": timing,
             "token_usage": token_usage,
@@ -2251,14 +3364,41 @@ class TaskCenter:
             "token_usage_effective": effective_token_usage,
             "agent_points": points,
             "stage_runs": stage_runs,
+            "task_outputs": task_outputs,
+            "task_incidents": task_incidents,
+            "benchmark_runs": benchmark_runs,
             "module_logs": module_logs,
             "module_communications": communications,
             "agent_reports": agent_reports,
             "events": self.list_task_events(task_id, limit=event_limit, display_safe=False),
+            "control_plane": {
+                "latest_output": latest_output,
+                "latest_incident": latest_incident,
+                "latest_benchmark_run": latest_benchmark_run,
+                "open_incidents": open_incidents[:20],
+                "open_incident_count": len(open_incidents),
+                "critical_open_incident_count": len(critical_open_incidents),
+                "requires_human_assistance": bool(latest_human_gate.get("requires_human_assistance", False)),
+                "waiting_human_confirm": bool(latest_human_gate.get("need_human_confirm", False))
+                and not bool(latest_human_gate.get("human_confirmed", False)),
+                "needs_clarification": bool(latest_human_gate.get("needs_clarification", False)),
+                "benchmark_suite_ids": sorted(
+                    {
+                        str(item.get("benchmark_suite_id", "")).strip()
+                        for item in benchmark_runs
+                        if str(item.get("benchmark_suite_id", "")).strip()
+                    }
+                ),
+            },
             "diagnostics": {
                 "module_failure_count": len(module_failures),
                 "communication_failure_count": len(communication_failures),
                 "flow_failure_count": len(stage_failures),
+                "task_output_count": len(task_outputs),
+                "incident_count": len(task_incidents),
+                "open_incident_count": len(open_incidents),
+                "critical_open_incident_count": len(critical_open_incidents),
+                "benchmark_run_count": len(benchmark_runs),
                 "module_failures": module_failures[:20],
                 "communication_failures": communication_failures[:20],
                 "flow_failures": stage_failures[:20],
@@ -2282,8 +3422,80 @@ class TaskCenter:
             """,
             (utc_now_iso(),),
         ).fetchall()
-        tasks = [dict(row) for row in rows]
+        tasks = [self._deserialize_task_row(row) for row in rows]
         return sanitize_display_payload(tasks) if display_safe else tasks
+
+    def recent_control_plane_task_ids(
+        self,
+        *,
+        since: str = "",
+        limit: int = 50,
+        display_safe: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Return recent task ids that had control-plane activity since the given UTC timestamp.
+
+        Args:
+            since: UTC ISO timestamp. Empty means "now - 24 hours".
+            limit: Max number of task ids to return. Must be >= 1.
+            display_safe: When true, sanitize the returned payload for human display.
+
+        Returns:
+            A list of dicts containing `task_id`, `latest_ts`, and `sources`.
+
+        Raises:
+            TaskCenterError: If `since` is not a valid UTC ISO timestamp.
+        """
+
+        normalized_since = str(since or "").strip()
+        if normalized_since:
+            parsed_since = parse_utc_iso(normalized_since)
+            if parsed_since is None:
+                raise TaskCenterError(f"invalid since datetime: {normalized_since}")
+            normalized_since = parsed_since.isoformat()
+        else:
+            normalized_since = (datetime.now(tz=UTC) - timedelta(hours=24)).replace(microsecond=0).isoformat()
+
+        normalized_limit = max(1, min(int(limit or 50), 1000))
+        rows = self.conn.execute(
+            """
+            WITH recent_control_plane AS (
+                SELECT task_id, updated_at AS ts, 'task' AS source
+                FROM tasks
+                WHERE updated_at >= ?
+                UNION ALL
+                SELECT task_id, ts, 'output' AS source
+                FROM task_outputs
+                WHERE ts >= ?
+                UNION ALL
+                SELECT task_id, ts, 'incident' AS source
+                FROM task_incidents
+                WHERE ts >= ?
+                UNION ALL
+                SELECT task_id, ts, 'benchmark' AS source
+                FROM benchmark_runs
+                WHERE task_id IS NOT NULL AND TRIM(task_id) != '' AND ts >= ?
+            )
+            SELECT
+                task_id,
+                MAX(ts) AS latest_ts,
+                GROUP_CONCAT(DISTINCT source) AS sources
+            FROM recent_control_plane
+            GROUP BY task_id
+            ORDER BY latest_ts DESC, task_id DESC
+            LIMIT ?
+            """,
+            (normalized_since, normalized_since, normalized_since, normalized_since, normalized_limit),
+        ).fetchall()
+        out = [
+            {
+                "task_id": str(row["task_id"]).strip(),
+                "latest_ts": str(row["latest_ts"]).strip(),
+                "sources": [item.strip() for item in str(row["sources"] or "").split(",") if item.strip()],
+            }
+            for row in rows
+            if str(row["task_id"] or "").strip()
+        ]
+        return sanitize_display_payload(out) if display_safe else out
 
     def planner_summary(
         self,

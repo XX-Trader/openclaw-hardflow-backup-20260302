@@ -17,10 +17,17 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+REPO_ROOT = ROOT.parent.parent
 
 from utf8_runtime import configure_process_utf8_stdio
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic
-from task_capability_binding import infer_task_capability_constraints
+from task_capability_binding import (
+    DEFAULT_CAPABILITY_REGISTRY,
+    infer_task_capability_constraints,
+    normalize_capability_registry,
+    resolve_task_capability_binding,
+    validate_task_capability_constraints,
+)
 from task_center import (
     TASK_STATUSES,
     TaskCenter,
@@ -179,6 +186,23 @@ DEFAULT_POLICY: dict[str, Any] = {
             "架构",
         ],
     },
+    "requirement_package_policy": {
+        "enabled": True,
+        "task_types": ["workflow"],
+        "request_sources": ["human"],
+        "project_requirement_only": True,
+        "required_fields": [
+            "goal",
+            "success_criteria",
+            "scope.in_scope",
+            "scope.out_of_scope",
+        ],
+        "recommended_fields": [
+            "constraints",
+            "context_payload.repo_path",
+        ],
+        "clarification_assignee": "project-agent",
+    },
     "high_risk_requires_human_confirm": True,
     "require_token_usage_before_done": True,
     "max_failure_before_escalate": 3,
@@ -248,6 +272,64 @@ DEFAULT_POLICY: dict[str, Any] = {
     "agent_output_policy": {
         "default_language": "zh-CN",
         "require_chinese_output": True,
+    },
+    "workflow_selection_policy": {
+        "default_profile_id": "coding-default",
+        "default_channel": "stable",
+        "default_selection_reason": "default_coding_workflow_for_execution",
+        "apply_task_types": ["workflow", "clarification_required"],
+        "skip_task_types": ["ops_runtime_cron"],
+        "keyword_group_priority": [
+            "research_task",
+            "docs_task",
+            "ops_task",
+            "coding_task",
+            "clarification_required",
+        ],
+        "keyword_group_profile_map": {
+            "research_task": {
+                "profile_id": "research-default",
+                "channel": "stable",
+                "selection_reason": "keyword_group_workflow_selection:research_task",
+            },
+            "docs_task": {
+                "profile_id": "docs-default",
+                "channel": "stable",
+                "selection_reason": "keyword_group_workflow_selection:docs_task",
+            },
+            "ops_task": {
+                "profile_id": "ops-default",
+                "channel": "stable",
+                "selection_reason": "keyword_group_workflow_selection:ops_task",
+            }
+        },
+    },
+    "workflow_selector_policy": {
+        "selector_version": "2026-03-22",
+        "prefer_default_on_unknown": True,
+        "coding_task_types": ["workflow", "clarification_required"],
+        "coding_task_keywords": [
+            "code",
+            "coding",
+            "implement",
+            "fix",
+            "bug",
+            "refactor",
+            "test",
+            "tests",
+            "api",
+            "config",
+            "workflow",
+            "代码",
+            "修复",
+            "实现",
+            "重构",
+            "测试",
+            "配置",
+        ],
+        "research_task_keywords": ["research", "investigate", "analyze", "调研", "研究", "分析"],
+        "ops_task_keywords": ["ops", "infra", "cron", "service", "monitor", "运维", "监控", "服务"],
+        "docs_task_keywords": ["docs", "documentation", "readme", "adr", "文档", "说明"],
     },
     "status_flow": {
         "pending": ["running", "cancelled", "escalated"],
@@ -337,6 +419,579 @@ DEFAULT_TOKEN_PRICING: dict[str, Any] = {
         "volcengine/kimi-k2.5": {"input": 0, "output": 0},
     },
 }
+DEFAULT_WORKFLOW_PROFILE_REGISTRY: dict[str, Any] = {
+    "schema_version": "2026-03-22",
+    "default_profile_id": "coding-default",
+    "default_channel": "stable",
+    "profiles": [
+        {
+            "profile_id": "coding-default",
+            "channel": "stable",
+            "enabled": True,
+            "display_name": "默认编码工作流",
+            "description": "默认编码执行工作流稳定通道。",
+            "entry_task_types": ["workflow", "clarification_required"],
+            "promotion_target_channel": "candidate",
+            "score_policy_ref": "scripts/hardflow/score-policy.json",
+            "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+            "default_stage_id": "implement",
+            "task_type_stage_map": {
+                "workflow": "implement",
+                "clarification_required": "clarify",
+            },
+            "stages": [
+                {
+                    "stage_id": "clarify",
+                    "display_name": "需求澄清",
+                    "score_gate": "requirements",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["clarified_requirement", "context_payload"],
+                        "observable_outputs": ["clarification summary", "missing fields list"],
+                    },
+                    "verification_contract": {
+                        "checks": ["context_complete_or_escalated"],
+                    },
+                    "required_capabilities": ["project_context", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "implement",
+                    "display_name": "实现与验证",
+                    "score_gate": "backend",
+                    "min_evidence_count": 3,
+                    "output_contract": {
+                        "deliverables": ["code_changes", "verification_result"],
+                        "observable_outputs": ["diff summary", "test evidence"],
+                    },
+                    "verification_contract": {
+                        "checks": ["tests_or_validation_recorded"],
+                    },
+                    "required_capabilities": ["task_execution", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "review",
+                    "display_name": "评审与验收",
+                    "score_gate": "final",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["review_decision", "acceptance_summary"],
+                        "observable_outputs": ["review notes", "remaining risks"],
+                    },
+                    "verification_contract": {
+                        "checks": ["review_completed"],
+                    },
+                    "required_capabilities": ["skill_backed"],
+                    "required_skills": ["requesting-code-review"],
+                },
+            ],
+        },
+        {
+            "profile_id": "coding-default",
+            "channel": "candidate",
+            "enabled": True,
+            "display_name": "默认编码工作流候选通道",
+            "description": "默认编码执行工作流候选通道。",
+            "entry_task_types": ["workflow", "clarification_required"],
+            "promotion_target_channel": "stable",
+            "score_policy_ref": "scripts/hardflow/score-policy.json",
+            "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+            "default_stage_id": "implement",
+            "task_type_stage_map": {
+                "workflow": "implement",
+                "clarification_required": "clarify",
+            },
+            "stages": [
+                {
+                    "stage_id": "clarify",
+                    "display_name": "需求澄清",
+                    "score_gate": "requirements",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["clarified_requirement", "context_payload"],
+                        "observable_outputs": ["clarification summary", "missing fields list"],
+                    },
+                    "verification_contract": {
+                        "checks": ["context_complete_or_escalated"],
+                    },
+                    "required_capabilities": ["project_context", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "implement",
+                    "display_name": "实现与验证",
+                    "score_gate": "backend",
+                    "min_evidence_count": 3,
+                    "output_contract": {
+                        "deliverables": ["code_changes", "verification_result"],
+                        "observable_outputs": ["diff summary", "test evidence"],
+                    },
+                    "verification_contract": {
+                        "checks": ["tests_or_validation_recorded"],
+                    },
+                    "required_capabilities": ["task_execution", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "review",
+                    "display_name": "评审与验收",
+                    "score_gate": "final",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["review_decision", "acceptance_summary"],
+                        "observable_outputs": ["review notes", "remaining risks"],
+                    },
+                    "verification_contract": {
+                        "checks": ["review_completed"],
+                    },
+                    "required_capabilities": ["skill_backed"],
+                    "required_skills": ["requesting-code-review"],
+                },
+            ],
+        },
+        {
+            "profile_id": "research-default",
+            "channel": "stable",
+            "enabled": True,
+            "display_name": "默认研究工作流",
+            "description": "默认研究工作流的稳定通道。",
+            "entry_task_types": ["workflow", "clarification_required"],
+            "promotion_target_channel": "candidate",
+            "score_policy_ref": "scripts/hardflow/score-policy.json",
+            "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+            "default_stage_id": "investigate",
+            "task_type_stage_map": {
+                "workflow": "investigate",
+                "clarification_required": "clarify",
+            },
+            "stages": [
+                {
+                    "stage_id": "clarify",
+                    "display_name": "需求澄清",
+                    "score_gate": "requirements",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["clarified_research_goal", "context_payload"],
+                        "observable_outputs": ["research brief", "missing fields list"],
+                    },
+                    "verification_contract": {
+                        "checks": ["context_complete_or_escalated"],
+                    },
+                    "required_capabilities": ["project_context", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "investigate",
+                    "display_name": "资料调研",
+                    "score_gate": "solution",
+                    "min_evidence_count": 3,
+                    "output_contract": {
+                        "deliverables": ["research_findings", "source_summary"],
+                        "observable_outputs": ["evidence notes", "comparison summary"],
+                    },
+                    "verification_contract": {
+                        "checks": ["sources_or_findings_recorded"],
+                    },
+                    "required_capabilities": ["project_context", "skill_backed", "routing"],
+                    "required_skills": ["content-research-writer"],
+                },
+                {
+                    "stage_id": "synthesize",
+                    "display_name": "综合结论",
+                    "score_gate": "final",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["recommendation", "risk_summary"],
+                        "observable_outputs": ["decision summary", "follow-up suggestions"],
+                    },
+                    "verification_contract": {
+                        "checks": ["recommendation_completed"],
+                    },
+                    "required_capabilities": ["skill_backed", "routing"],
+                    "required_skills": ["writing-plans"],
+                },
+            ],
+        },
+        {
+            "profile_id": "research-default",
+            "channel": "candidate",
+            "enabled": True,
+            "display_name": "默认研究工作流候选通道",
+            "description": "默认研究工作流的候选升级通道。",
+            "entry_task_types": ["workflow", "clarification_required"],
+            "promotion_target_channel": "stable",
+            "score_policy_ref": "scripts/hardflow/score-policy.json",
+            "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+            "default_stage_id": "investigate",
+            "task_type_stage_map": {
+                "workflow": "investigate",
+                "clarification_required": "clarify",
+            },
+            "stages": [
+                {
+                    "stage_id": "clarify",
+                    "display_name": "需求澄清",
+                    "score_gate": "requirements",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["clarified_research_goal", "context_payload"],
+                        "observable_outputs": ["research brief", "missing fields list"],
+                    },
+                    "verification_contract": {
+                        "checks": ["context_complete_or_escalated"],
+                    },
+                    "required_capabilities": ["project_context", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "investigate",
+                    "display_name": "资料调研",
+                    "score_gate": "solution",
+                    "min_evidence_count": 3,
+                    "output_contract": {
+                        "deliverables": ["research_findings", "source_summary"],
+                        "observable_outputs": ["evidence notes", "comparison summary"],
+                    },
+                    "verification_contract": {
+                        "checks": ["sources_or_findings_recorded"],
+                    },
+                    "required_capabilities": ["project_context", "skill_backed", "routing"],
+                    "required_skills": ["content-research-writer"],
+                },
+                {
+                    "stage_id": "synthesize",
+                    "display_name": "综合结论",
+                    "score_gate": "final",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["recommendation", "risk_summary"],
+                        "observable_outputs": ["decision summary", "follow-up suggestions"],
+                    },
+                    "verification_contract": {
+                        "checks": ["recommendation_completed"],
+                    },
+                    "required_capabilities": ["skill_backed", "routing"],
+                    "required_skills": ["writing-plans"],
+                },
+            ],
+        },
+        {
+            "profile_id": "docs-default",
+            "channel": "stable",
+            "enabled": True,
+            "display_name": "默认文档工作流",
+            "description": "默认文档工作流的稳定通道。",
+            "entry_task_types": ["workflow", "clarification_required"],
+            "promotion_target_channel": "candidate",
+            "score_policy_ref": "scripts/hardflow/score-policy.json",
+            "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+            "default_stage_id": "draft",
+            "task_type_stage_map": {
+                "workflow": "draft",
+                "clarification_required": "clarify",
+            },
+            "stages": [
+                {
+                    "stage_id": "clarify",
+                    "display_name": "需求澄清",
+                    "score_gate": "requirements",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["clarified_doc_goal", "context_payload"],
+                        "observable_outputs": ["doc brief", "missing fields list"],
+                    },
+                    "verification_contract": {
+                        "checks": ["context_complete_or_escalated"],
+                    },
+                    "required_capabilities": ["project_context", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "draft",
+                    "display_name": "文档起草",
+                    "score_gate": "solution",
+                    "min_evidence_count": 3,
+                    "output_contract": {
+                        "deliverables": ["draft_document", "change_summary"],
+                        "observable_outputs": ["doc outline", "updated sections summary"],
+                    },
+                    "verification_contract": {
+                        "checks": ["draft_completed"],
+                    },
+                    "required_capabilities": ["project_context", "skill_backed", "routing"],
+                    "required_skills": ["writing-plans"],
+                },
+                {
+                    "stage_id": "review",
+                    "display_name": "文档评审",
+                    "score_gate": "final",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["review_decision", "doc_publish_summary"],
+                        "observable_outputs": ["review notes", "remaining doc risks"],
+                    },
+                    "verification_contract": {
+                        "checks": ["review_completed"],
+                    },
+                    "required_capabilities": ["skill_backed"],
+                    "required_skills": ["requesting-code-review"],
+                },
+            ],
+        },
+        {
+            "profile_id": "docs-default",
+            "channel": "candidate",
+            "enabled": True,
+            "display_name": "默认文档工作流候选通道",
+            "description": "默认文档工作流的候选升级通道。",
+            "entry_task_types": ["workflow", "clarification_required"],
+            "promotion_target_channel": "stable",
+            "score_policy_ref": "scripts/hardflow/score-policy.json",
+            "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+            "default_stage_id": "draft",
+            "task_type_stage_map": {
+                "workflow": "draft",
+                "clarification_required": "clarify",
+            },
+            "stages": [
+                {
+                    "stage_id": "clarify",
+                    "display_name": "需求澄清",
+                    "score_gate": "requirements",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["clarified_doc_goal", "context_payload"],
+                        "observable_outputs": ["doc brief", "missing fields list"],
+                    },
+                    "verification_contract": {
+                        "checks": ["context_complete_or_escalated"],
+                    },
+                    "required_capabilities": ["project_context", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "draft",
+                    "display_name": "文档起草",
+                    "score_gate": "solution",
+                    "min_evidence_count": 3,
+                    "output_contract": {
+                        "deliverables": ["draft_document", "change_summary"],
+                        "observable_outputs": ["doc outline", "updated sections summary"],
+                    },
+                    "verification_contract": {
+                        "checks": ["draft_completed"],
+                    },
+                    "required_capabilities": ["project_context", "skill_backed", "routing"],
+                    "required_skills": ["writing-plans"],
+                },
+                {
+                    "stage_id": "review",
+                    "display_name": "文档评审",
+                    "score_gate": "final",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["review_decision", "doc_publish_summary"],
+                        "observable_outputs": ["review notes", "remaining doc risks"],
+                    },
+                    "verification_contract": {
+                        "checks": ["review_completed"],
+                    },
+                    "required_capabilities": ["skill_backed"],
+                    "required_skills": ["requesting-code-review"],
+                },
+            ],
+        },
+        {
+            "profile_id": "ops-default",
+            "channel": "stable",
+            "enabled": True,
+            "display_name": "默认运维工作流",
+            "description": "默认运维工作流的稳定通道。",
+            "entry_task_types": ["workflow", "clarification_required"],
+            "promotion_target_channel": "candidate",
+            "score_policy_ref": "scripts/hardflow/score-policy.json",
+            "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+            "default_stage_id": "stabilize",
+            "task_type_stage_map": {
+                "workflow": "stabilize",
+                "clarification_required": "clarify",
+            },
+            "stages": [
+                {
+                    "stage_id": "clarify",
+                    "display_name": "需求澄清",
+                    "score_gate": "requirements",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["clarified_ops_goal", "context_payload"],
+                        "observable_outputs": ["ops brief", "missing fields list"],
+                    },
+                    "verification_contract": {
+                        "checks": ["context_complete_or_escalated"],
+                    },
+                    "required_capabilities": ["project_context", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "stabilize",
+                    "display_name": "运行稳定化",
+                    "score_gate": "release",
+                    "min_evidence_count": 3,
+                    "output_contract": {
+                        "deliverables": ["ops_change", "service_health_evidence"],
+                        "observable_outputs": ["command summary", "health check summary"],
+                    },
+                    "verification_contract": {
+                        "checks": ["service_state_recorded"],
+                    },
+                    "required_capabilities": ["task_execution", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "verify",
+                    "display_name": "验证与回退准备",
+                    "score_gate": "final",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["verification_summary", "rollback_readiness"],
+                        "observable_outputs": ["verification notes", "remaining ops risks"],
+                    },
+                    "verification_contract": {
+                        "checks": ["verification_completed"],
+                    },
+                    "required_capabilities": ["skill_backed"],
+                    "required_skills": ["deployment-test"],
+                },
+            ],
+        },
+        {
+            "profile_id": "ops-default",
+            "channel": "candidate",
+            "enabled": True,
+            "display_name": "默认运维工作流候选通道",
+            "description": "默认运维工作流的候选升级通道。",
+            "entry_task_types": ["workflow", "clarification_required"],
+            "promotion_target_channel": "stable",
+            "score_policy_ref": "scripts/hardflow/score-policy.json",
+            "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
+            "default_stage_id": "stabilize",
+            "task_type_stage_map": {
+                "workflow": "stabilize",
+                "clarification_required": "clarify",
+            },
+            "stages": [
+                {
+                    "stage_id": "clarify",
+                    "display_name": "需求澄清",
+                    "score_gate": "requirements",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["clarified_ops_goal", "context_payload"],
+                        "observable_outputs": ["ops brief", "missing fields list"],
+                    },
+                    "verification_contract": {
+                        "checks": ["context_complete_or_escalated"],
+                    },
+                    "required_capabilities": ["project_context", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "stabilize",
+                    "display_name": "运行稳定化",
+                    "score_gate": "release",
+                    "min_evidence_count": 3,
+                    "output_contract": {
+                        "deliverables": ["ops_change", "service_health_evidence"],
+                        "observable_outputs": ["command summary", "health check summary"],
+                    },
+                    "verification_contract": {
+                        "checks": ["service_state_recorded"],
+                    },
+                    "required_capabilities": ["task_execution", "routing"],
+                    "required_skills": [],
+                },
+                {
+                    "stage_id": "verify",
+                    "display_name": "验证与回退准备",
+                    "score_gate": "final",
+                    "min_evidence_count": 2,
+                    "output_contract": {
+                        "deliverables": ["verification_summary", "rollback_readiness"],
+                        "observable_outputs": ["verification notes", "remaining ops risks"],
+                    },
+                    "verification_contract": {
+                        "checks": ["verification_completed"],
+                    },
+                    "required_capabilities": ["skill_backed"],
+                    "required_skills": ["deployment-test"],
+                },
+            ],
+        },
+    ],
+}
+DEFAULT_BENCHMARK_SUITE_REGISTRY: dict[str, Any] = {
+    "schema_version": "2026-03-22",
+    "default_suite_id": "coding-default-core",
+    "suites": [
+        {
+            "suite_id": "coding-default-core",
+            "display_name": "默认编码工作流核心基准集",
+            "workflow_profile_id": "coding-default",
+            "baseline_channel": "stable",
+            "candidate_channel": "candidate",
+            "workflow_target": "task_executor_10m",
+            "skill_name": "openclaw-evolution-upgrader",
+            "skill_assignee": "optimization-agent",
+            "baseline_count": 3,
+            "candidate_count": 3,
+            "target_kind": "workflow",
+            "target_id": "coding-default",
+        },
+        {
+            "suite_id": "research-default-core",
+            "display_name": "默认研究工作流核心基准集",
+            "workflow_profile_id": "research-default",
+            "baseline_channel": "stable",
+            "candidate_channel": "candidate",
+            "workflow_target": "task_executor_10m",
+            "skill_name": "openclaw-evolution-upgrader",
+            "skill_assignee": "optimization-agent",
+            "baseline_count": 3,
+            "candidate_count": 3,
+            "target_kind": "workflow",
+            "target_id": "research-default",
+        },
+        {
+            "suite_id": "docs-default-core",
+            "display_name": "默认文档工作流核心基准集",
+            "workflow_profile_id": "docs-default",
+            "baseline_channel": "stable",
+            "candidate_channel": "candidate",
+            "workflow_target": "task_executor_10m",
+            "skill_name": "openclaw-evolution-upgrader",
+            "skill_assignee": "optimization-agent",
+            "baseline_count": 3,
+            "candidate_count": 3,
+            "target_kind": "workflow",
+            "target_id": "docs-default",
+        },
+        {
+            "suite_id": "ops-default-core",
+            "display_name": "默认运维工作流核心基准集",
+            "workflow_profile_id": "ops-default",
+            "baseline_channel": "stable",
+            "candidate_channel": "candidate",
+            "workflow_target": "task_executor_10m",
+            "skill_name": "openclaw-evolution-upgrader",
+            "skill_assignee": "optimization-agent",
+            "baseline_count": 3,
+            "candidate_count": 3,
+            "target_kind": "workflow",
+            "target_id": "ops-default",
+        }
+    ],
+}
 
 
 class PolicyError(RuntimeError):
@@ -376,6 +1031,23 @@ def has_context_value(value: Any) -> bool:
     if lowered in {"none", "n/a", "na", "unknown", "-", "未提供", "待补充"}:
         return False
     return True
+
+
+def get_context_field_value(payload: dict[str, Any], field_path: str) -> Any:
+    if not isinstance(payload, dict):
+        return None
+    normalized_path = str(field_path or "").strip()
+    if not normalized_path:
+        return None
+    if normalized_path in payload:
+        return payload.get(normalized_path)
+    current: Any = payload
+    for segment in normalized_path.split("."):
+        key = str(segment or "").strip()
+        if not key or not isinstance(current, dict) or key not in current:
+            return None
+        current = current.get(key)
+    return current
 
 
 def emit_json(payload: dict[str, Any]) -> None:
@@ -457,6 +1129,7 @@ class PolicyEnforcer:
         self.paths = paths
         self.db = TaskCenter(paths.db)
         self.db.init_schema()
+        self._score_policy_cache: dict[str, dict[str, Any]] = {}
         self.policy = merge_missing_keys(
             read_json(paths.policy_file, DEFAULT_POLICY, write_if_missing=False),
             DEFAULT_POLICY,
@@ -465,6 +1138,8 @@ class PolicyEnforcer:
             read_json(paths.routing_file, DEFAULT_ROUTING_RULES, write_if_missing=False),
             DEFAULT_ROUTING_RULES,
         )
+        self.capability_registry = self.load_capability_registry()
+        self.workflow_profile_registry = self.load_workflow_profile_registry()
 
     def close(self) -> None:
         self.db.close()
@@ -501,7 +1176,7 @@ class PolicyEnforcer:
         if not isinstance(raw, list):
             return []
         out = [str(x).strip() for x in raw if str(x).strip()]
-        return out or ["浜у搧缁忕悊", "椤圭洰缁忕悊", "pm", "PM"]
+        return out or ["产品经理", "项目经理", "pm", "PM"]
 
     def dispatcher_fallback_self_execute(self) -> bool:
         return parse_bool(self.policy.get("dispatcher_fallback_self_execute", True), True)
@@ -764,6 +1439,15 @@ class PolicyEnforcer:
             defaults = {}
         return merge_missing_keys(raw, defaults)
 
+    def requirement_package_policy(self) -> dict[str, Any]:
+        raw = self.policy.get("requirement_package_policy", {})
+        if not isinstance(raw, dict):
+            raw = {}
+        defaults = DEFAULT_POLICY.get("requirement_package_policy", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+        return merge_missing_keys(raw, defaults)
+
     def normalize_request_source(self, request_source: str | None, source_hint: str | None = None) -> str:
         raw = str(request_source or "").strip().lower()
         if raw in {"human", "user", "manual", "chat"}:
@@ -792,6 +1476,132 @@ class PolicyEnforcer:
         if not normalized_prefix:
             normalized_prefix = "task"
         return f"{normalized_prefix}-{datetime.now(tz=UTC).strftime('%Y%m%d%H%M%S')}-{uuid.uuid4().hex[:8]}"
+
+    def _normalize_trace_id(self, value: Any, *, task_id: str = "") -> str:
+        text = str(value or "").strip()
+        if text:
+            return text
+        normalized_task_id = str(task_id or "").strip()
+        if normalized_task_id:
+            return f"trace-{normalized_task_id}"
+        return self.suggest_task_id("trace")
+
+    def _normalize_attempt_id(self, value: Any, *, retry_count: Any = 0) -> str:
+        text = str(value or "").strip()
+        if text:
+            return text
+        try:
+            normalized_retry_count = max(0, int(retry_count or 0))
+        except (TypeError, ValueError):
+            normalized_retry_count = 0
+        return f"attempt-{normalized_retry_count + 1:03d}"
+
+    def _build_execution_envelope(
+        self,
+        *,
+        base: dict[str, Any] | None = None,
+        trace_id: str,
+        attempt_id: str,
+        task_id: str,
+        task_type: str,
+        request_source: str,
+        reason: str,
+        requirement: str,
+        acceptance: str,
+        observable_outputs: str,
+        assignee: str,
+        workflow_profile_id: str,
+        workflow_channel: str,
+        stage_id: str,
+        selection_reason: str,
+        required_capabilities: list[str],
+        required_skills: list[str],
+        required_runtime: list[str],
+        tool_requirements: list[str],
+        allowed_agents: list[str],
+        capability_binding_snapshot: dict[str, Any] | None = None,
+        stage_output_contract: dict[str, Any] | None = None,
+        stage_verification_contract: dict[str, Any] | None = None,
+        stage_context_gate: dict[str, Any] | None = None,
+        context_contract: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        envelope = dict(base or {})
+        workflow_payload = envelope.get("workflow", {})
+        if not isinstance(workflow_payload, dict):
+            workflow_payload = {}
+        workflow_payload.update(
+            {
+                "profile_id": str(workflow_profile_id or "").strip(),
+                "channel": str(workflow_channel or "").strip().lower(),
+                "stage_id": str(stage_id or "").strip(),
+                "selection_reason": str(selection_reason or "").strip(),
+            }
+        )
+
+        task_payload = envelope.get("task", {})
+        if not isinstance(task_payload, dict):
+            task_payload = {}
+        task_payload.update(
+            {
+                "task_type": str(task_type or "").strip(),
+                "request_source": str(request_source or "").strip(),
+                "reason": str(reason or "").strip(),
+                "requirement": str(requirement or "").strip(),
+                "acceptance": str(acceptance or "").strip(),
+                "observable_outputs": str(observable_outputs or "").strip(),
+            }
+        )
+
+        routing_payload = envelope.get("routing", {})
+        if not isinstance(routing_payload, dict):
+            routing_payload = {}
+        routing_payload.update(
+            {
+                "assignee": str(assignee or "").strip(),
+                "allowed_agents": list(allowed_agents or []),
+            }
+        )
+
+        capability_payload = envelope.get("capability_binding", {})
+        if not isinstance(capability_payload, dict):
+            capability_payload = {}
+        if isinstance(capability_binding_snapshot, dict):
+            capability_payload.update(capability_binding_snapshot)
+        capability_payload.update(
+            {
+                "required_capabilities": list(required_capabilities or []),
+                "required_skills": list(required_skills or []),
+                "required_runtime": list(required_runtime or []),
+                "tool_requirements": list(tool_requirements or []),
+            }
+        )
+
+        contracts_payload = envelope.get("contracts", {})
+        if not isinstance(contracts_payload, dict):
+            contracts_payload = {}
+        contracts_payload.update(
+            {
+                "output_contract": dict(stage_output_contract or {}),
+                "verification_contract": dict(stage_verification_contract or {}),
+                "stage_context_gate": dict(stage_context_gate or {}),
+                "context_contract": dict(context_contract or {}),
+            }
+        )
+
+        envelope.update(
+            {
+                "schema_version": "2026-03-23",
+                "trace_id": str(trace_id or "").strip(),
+                "attempt_id": str(attempt_id or "").strip(),
+                "task_id": str(task_id or "").strip(),
+                "workflow": workflow_payload,
+                "task": task_payload,
+                "routing": routing_payload,
+                "capability_binding": capability_payload,
+                "contracts": contracts_payload,
+            }
+        )
+        return envelope
 
     def default_need_human_confirm(self, *, request_source: str, risk_level: str) -> bool:
         if str(request_source or "").strip().lower() == "human":
@@ -948,6 +1758,816 @@ class PolicyEnforcer:
             out.append(value)
         return out
 
+    @staticmethod
+    def _merge_text_lists(*groups: Any) -> list[str]:
+        merged: list[str] = []
+        seen: set[str] = set()
+        for group in groups:
+            if isinstance(group, (list, tuple, set)):
+                values = group
+            else:
+                values = [group]
+            for item in values:
+                text = str(item or "").strip()
+                if not text:
+                    continue
+                lowered = text.lower()
+                if lowered in seen:
+                    continue
+                seen.add(lowered)
+                merged.append(text)
+        return merged
+
+    def workflow_selection_policy(self) -> dict[str, Any]:
+        cfg = self.policy.get("workflow_selection_policy", {})
+        if not isinstance(cfg, dict):
+            raise PolicyError("policy.workflow_selection_policy must be a JSON object")
+        return cfg
+
+    def workflow_selector_policy(self) -> dict[str, Any]:
+        """Return the workflow selector policy with defaults backfilled.
+
+        Returns:
+            dict[str, Any]: Selector policy used to classify tasks before workflow entry.
+
+        Raises:
+            PolicyError: Raised when policy.workflow_selector_policy is not a JSON object.
+        """
+        cfg = self.policy.get("workflow_selector_policy", {})
+        if not isinstance(cfg, dict):
+            raise PolicyError("policy.workflow_selector_policy must be a JSON object")
+        defaults = DEFAULT_POLICY.get("workflow_selector_policy", {})
+        if not isinstance(defaults, dict):
+            defaults = {}
+        return merge_missing_keys(cfg, defaults)
+
+    @staticmethod
+    def _selector_excerpt(text: str, limit: int = 160) -> str:
+        collapsed = re.sub(r"\s+", " ", str(text or "").strip())
+        if len(collapsed) <= limit:
+            return collapsed
+        return collapsed[: max(0, limit - 3)].rstrip() + "..."
+
+    def capability_registry_file(self) -> Path:
+        """Return the runtime capability registry path."""
+        return self.paths.policy_file.parent / "capability-registry.json"
+
+    @staticmethod
+    def _normalize_json_contract(value: Any, *, field_name: str) -> dict[str, Any]:
+        """Normalize a contract field and require a JSON object."""
+        if isinstance(value, dict):
+            return json.loads(json.dumps(value))
+        raise PolicyError(f"{field_name} must be a JSON object")
+
+    @staticmethod
+    def _resolve_repo_ref_path(path_text: str) -> Path:
+        """Resolve a repo-relative or absolute file path."""
+        raw = str(path_text or "").strip()
+        if not raw:
+            return Path()
+        candidate = Path(raw).expanduser()
+        if candidate.is_absolute():
+            return candidate
+        return (REPO_ROOT / candidate).resolve()
+
+    def load_score_policy_gates(self, score_policy_ref: str) -> dict[str, Any]:
+        """Load gates from a score policy JSON file."""
+        normalized_ref = str(score_policy_ref or "").strip()
+        if not normalized_ref:
+            raise PolicyError("score_policy_ref must not be empty")
+        if normalized_ref in self._score_policy_cache:
+            return self._score_policy_cache[normalized_ref]
+        score_policy_path = self._resolve_repo_ref_path(normalized_ref)
+        if not score_policy_path.exists():
+            raise PolicyError(f"score policy file not found: {score_policy_path}")
+        try:
+            payload = json.loads(score_policy_path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            raise PolicyError(f"score policy file is not valid JSON: {score_policy_path}: {exc}") from exc
+        gates = payload.get("gates", {}) if isinstance(payload, dict) else {}
+        if not isinstance(gates, dict) or not gates:
+            raise PolicyError(f"score policy gates missing or invalid: {score_policy_path}")
+        self._score_policy_cache[normalized_ref] = gates
+        return gates
+
+    def load_capability_registry(self) -> dict[str, Any]:
+        """Load, backfill defaults, and validate the runtime capability registry.
+
+        Returns:
+            dict[str, Any]: Normalized capability registry payload.
+
+        Raises:
+            PolicyError: Raised when the registry shape is invalid.
+        """
+        registry_path = self.capability_registry_file()
+        registry_raw = read_json(
+            registry_path,
+            DEFAULT_CAPABILITY_REGISTRY,
+            write_if_missing=True,
+        )
+        try:
+            return normalize_capability_registry(registry_raw)
+        except ValueError as exc:
+            raise PolicyError(str(exc)) from exc
+
+    def workflow_profile_registry_file(self) -> Path:
+        """Return the runtime workflow profile registry path.
+
+        Returns:
+            Path: Runtime directory file path for workflow profile registry JSON.
+        """
+        return self.paths.policy_file.parent / "workflow-profile-registry.json"
+
+    def _normalize_workflow_profile_entry(self, entry_raw: Any, *, index: int) -> dict[str, Any]:
+        """Validate and normalize one workflow profile registry entry."""
+        if not isinstance(entry_raw, dict):
+            raise PolicyError(f"workflow profile registry entry #{index} must be a JSON object")
+
+        merged_entry = dict(entry_raw)
+        profile_id = str(merged_entry.get("profile_id", "") or "").strip()
+        channel = str(merged_entry.get("channel", "") or "").strip().lower()
+        for item in DEFAULT_WORKFLOW_PROFILE_REGISTRY.get("profiles", []):
+            if (
+                str(item.get("profile_id", "")).strip().lower() == profile_id.lower()
+                and str(item.get("channel", "")).strip().lower() == channel
+            ):
+                merged_entry = merge_missing_keys(merged_entry, item)
+                break
+
+        profile_id = str(merged_entry.get("profile_id", "") or "").strip()
+        if not profile_id:
+            raise PolicyError(f"workflow profile registry entry #{index} missing profile_id")
+
+        channel = str(merged_entry.get("channel", "") or "").strip().lower()
+        if not channel:
+            raise PolicyError(f"workflow profile registry entry #{index} missing channel")
+
+        entry_task_types_raw = merged_entry.get("entry_task_types", [])
+        if not isinstance(entry_task_types_raw, list):
+            raise PolicyError(f"workflow profile registry entry #{index} entry_task_types must be a list")
+        entry_task_types: list[str] = []
+        seen_task_types: set[str] = set()
+        for item in entry_task_types_raw:
+            task_type = str(item or "").strip().lower()
+            if not task_type or task_type in seen_task_types:
+                continue
+            seen_task_types.add(task_type)
+            entry_task_types.append(task_type)
+
+        score_policy_ref = str(merged_entry.get("score_policy_ref", "") or "").strip()
+        if not score_policy_ref:
+            raise PolicyError(f"workflow profile registry entry #{index} missing score_policy_ref")
+        score_policy_gates = self.load_score_policy_gates(score_policy_ref)
+
+        runtime_entry = str(merged_entry.get("runtime_entry", "") or "").strip()
+        if not runtime_entry:
+            raise PolicyError(f"workflow profile registry entry #{index} missing runtime_entry")
+
+        stages_raw = merged_entry.get("stages", [])
+        if not isinstance(stages_raw, list) or not stages_raw:
+            raise PolicyError(f"workflow profile registry entry #{index} stages must be a non-empty list")
+        stages: list[dict[str, Any]] = []
+        seen_stage_ids: set[str] = set()
+        for stage_index, stage_raw in enumerate(stages_raw):
+            if not isinstance(stage_raw, dict):
+                raise PolicyError(
+                    f"workflow profile registry entry #{index} stage #{stage_index} must be a JSON object"
+                )
+            stage_id = str(stage_raw.get("stage_id", "") or "").strip()
+            if not stage_id:
+                raise PolicyError(
+                    f"workflow profile registry entry #{index} stage #{stage_index} missing stage_id"
+                )
+            lowered_stage_id = stage_id.lower()
+            if lowered_stage_id in seen_stage_ids:
+                raise PolicyError(
+                    f"workflow profile registry entry #{index} duplicate stage_id: {stage_id}"
+                )
+            seen_stage_ids.add(lowered_stage_id)
+            try:
+                normalized_constraints = validate_task_capability_constraints(
+                    stage_raw.get("required_capabilities", []),
+                    stage_raw.get("required_skills", []),
+                    [],
+                    registry=self.capability_registry,
+                )
+            except ValueError as exc:
+                raise PolicyError(
+                    f"workflow profile registry entry #{index} stage '{stage_id}' invalid: {exc}"
+                ) from exc
+            stages.append(
+                {
+                    "stage_id": stage_id,
+                    "display_name": str(stage_raw.get("display_name", stage_id) or stage_id).strip() or stage_id,
+                    "score_gate": "",
+                    "min_evidence_count": 0,
+                    "output_contract": {},
+                    "verification_contract": {},
+                    "clarification_required_fields": [],
+                    "parallel_execution": {},
+                    "simplification_hint": {},
+                    "optimization_hints": {},
+                    "required_capabilities": normalized_constraints["required_capabilities"],
+                    "required_skills": normalized_constraints["required_skills"],
+                }
+            )
+            score_gate = str(stage_raw.get("score_gate", "") or "").strip().lower()
+            if not score_gate:
+                raise PolicyError(
+                    f"workflow profile registry entry #{index} stage '{stage_id}' missing score_gate"
+                )
+            if score_gate not in score_policy_gates:
+                raise PolicyError(
+                    f"workflow profile registry entry #{index} stage '{stage_id}' references unknown score_gate: "
+                    f"{score_gate}"
+                )
+            gate_defaults = score_policy_gates.get(score_gate, {})
+            gate_min_evidence = int(gate_defaults.get("minEvidenceCount", 0) or 0)
+            try:
+                min_evidence_count = int(stage_raw.get("min_evidence_count", gate_min_evidence) or gate_min_evidence)
+            except (TypeError, ValueError) as exc:
+                raise PolicyError(
+                    f"workflow profile registry entry #{index} stage '{stage_id}' invalid min_evidence_count"
+                ) from exc
+            min_evidence_count = max(0, min_evidence_count)
+            output_contract = self._normalize_json_contract(
+                stage_raw.get("output_contract", {}),
+                field_name=f"workflow profile registry entry #{index} stage '{stage_id}' output_contract",
+            )
+            verification_contract = self._normalize_json_contract(
+                stage_raw.get("verification_contract", {}),
+                field_name=(
+                    f"workflow profile registry entry #{index} stage '{stage_id}' verification_contract"
+                ),
+            )
+            stages[-1]["score_gate"] = score_gate
+            stages[-1]["min_evidence_count"] = max(gate_min_evidence, min_evidence_count)
+            stages[-1]["output_contract"] = output_contract
+            stages[-1]["verification_contract"] = verification_contract
+            stages[-1]["clarification_required_fields"] = self._merge_text_lists(
+                stage_raw.get("clarification_required_fields", [])
+            )
+            parallel_execution = stage_raw.get("parallel_execution", {})
+            if parallel_execution:
+                stages[-1]["parallel_execution"] = self._normalize_json_contract(
+                    parallel_execution,
+                    field_name=(
+                        f"workflow profile registry entry #{index} stage '{stage_id}' parallel_execution"
+                    ),
+                )
+            simplification_hint = stage_raw.get("simplification_hint", {})
+            if simplification_hint:
+                stages[-1]["simplification_hint"] = self._normalize_json_contract(
+                    simplification_hint,
+                    field_name=(
+                        f"workflow profile registry entry #{index} stage '{stage_id}' simplification_hint"
+                    ),
+                )
+            optimization_hints = stage_raw.get("optimization_hints", {})
+            if optimization_hints:
+                stages[-1]["optimization_hints"] = self._normalize_json_contract(
+                    optimization_hints,
+                    field_name=(
+                        f"workflow profile registry entry #{index} stage '{stage_id}' optimization_hints"
+                    ),
+                )
+
+        default_stage_id = str(merged_entry.get("default_stage_id", "") or "").strip()
+        if not default_stage_id:
+            raise PolicyError(f"workflow profile registry entry #{index} missing default_stage_id")
+        if default_stage_id.lower() not in seen_stage_ids:
+            raise PolicyError(
+                f"workflow profile registry entry #{index} default_stage_id not found in stages: {default_stage_id}"
+            )
+
+        task_type_stage_map_raw = merged_entry.get("task_type_stage_map", {})
+        if not isinstance(task_type_stage_map_raw, dict):
+            raise PolicyError(f"workflow profile registry entry #{index} task_type_stage_map must be an object")
+        task_type_stage_map: dict[str, str] = {}
+        for raw_task_type, raw_stage_id in task_type_stage_map_raw.items():
+            task_type = str(raw_task_type or "").strip().lower()
+            stage_id = str(raw_stage_id or "").strip()
+            if not task_type or not stage_id:
+                continue
+            if stage_id.lower() not in seen_stage_ids:
+                raise PolicyError(
+                    f"workflow profile registry entry #{index} task_type_stage_map references unknown stage_id: {stage_id}"
+                )
+            task_type_stage_map[task_type] = stage_id
+
+        return {
+            "profile_id": profile_id,
+            "channel": channel,
+            "enabled": parse_bool(merged_entry.get("enabled", True), True),
+            "display_name": str(merged_entry.get("display_name", profile_id) or profile_id).strip() or profile_id,
+            "description": str(merged_entry.get("description", "") or "").strip(),
+            "entry_task_types": entry_task_types,
+            "promotion_target_channel": str(merged_entry.get("promotion_target_channel", "") or "").strip().lower(),
+            "score_policy_ref": score_policy_ref,
+            "runtime_entry": runtime_entry,
+            "default_stage_id": default_stage_id,
+            "task_type_stage_map": task_type_stage_map,
+            "stages": stages,
+        }
+
+    def load_workflow_profile_registry(self) -> dict[str, Any]:
+        """Load, backfill defaults, and validate the runtime workflow profile registry.
+
+        Returns:
+            dict[str, Any]: Normalized workflow registry payload with validated profile entries.
+
+        Raises:
+            PolicyError: Raised when registry format is invalid or default entry is missing.
+        """
+        registry_path = self.workflow_profile_registry_file()
+        registry_raw = read_json(
+            registry_path,
+            DEFAULT_WORKFLOW_PROFILE_REGISTRY,
+            write_if_missing=True,
+        )
+        if not isinstance(registry_raw, dict):
+            raise PolicyError("workflow profile registry must be a JSON object")
+
+        registry = merge_missing_keys(registry_raw, DEFAULT_WORKFLOW_PROFILE_REGISTRY)
+        default_profile_id = str(
+            registry.get("default_profile_id", DEFAULT_WORKFLOW_PROFILE_REGISTRY["default_profile_id"]) or ""
+        ).strip()
+        if not default_profile_id:
+            raise PolicyError("workflow profile registry default_profile_id must not be empty")
+
+        default_channel = str(
+            registry.get("default_channel", DEFAULT_WORKFLOW_PROFILE_REGISTRY["default_channel"]) or ""
+        ).strip().lower()
+        if not default_channel:
+            raise PolicyError("workflow profile registry default_channel must not be empty")
+
+        profiles_raw = registry.get("profiles", [])
+        if not isinstance(profiles_raw, list) or not profiles_raw:
+            raise PolicyError("workflow profile registry profiles must be a non-empty list")
+
+        profiles: list[dict[str, Any]] = []
+        seen_keys: set[tuple[str, str]] = set()
+        for index, item in enumerate(profiles_raw):
+            profile = self._normalize_workflow_profile_entry(item, index=index)
+            key = (profile["profile_id"].lower(), profile["channel"])
+            if key in seen_keys:
+                raise PolicyError(
+                    "duplicate workflow profile registry entry: "
+                    f"{profile['profile_id']}@{profile['channel']}"
+                )
+            seen_keys.add(key)
+            profiles.append(profile)
+
+        if (default_profile_id.lower(), default_channel) not in seen_keys:
+            raise PolicyError(
+                "workflow profile registry default entry missing: "
+                f"{default_profile_id}@{default_channel}"
+            )
+
+        return {
+            "schema_version": str(registry.get("schema_version", DEFAULT_WORKFLOW_PROFILE_REGISTRY["schema_version"])),
+            "default_profile_id": default_profile_id,
+            "default_channel": default_channel,
+            "profiles": profiles,
+        }
+
+    def resolve_workflow_profile_entry(self, profile_id: str, channel: str) -> dict[str, Any]:
+        """Resolve a workflow profile entry by profile id and channel.
+
+        Args:
+            profile_id: Workflow profile id, must not be empty.
+            channel: Workflow channel, must not be empty.
+
+        Returns:
+            dict[str, Any]: Normalized workflow profile registry entry.
+
+        Raises:
+            PolicyError: Raised when profile id or channel is empty, unknown, or mismatched.
+        """
+        normalized_profile_id = str(profile_id or "").strip()
+        normalized_channel = str(channel or "").strip().lower()
+        if not normalized_profile_id:
+            raise PolicyError("workflow profile id must not be empty")
+        if not normalized_channel:
+            raise PolicyError("workflow profile channel must not be empty")
+
+        profiles = self.workflow_profile_registry.get("profiles", [])
+        for entry in profiles:
+            if (
+                str(entry.get("profile_id", "")).strip().lower() == normalized_profile_id.lower()
+                and str(entry.get("channel", "")).strip().lower() == normalized_channel
+            ):
+                return entry
+
+        available_channels = sorted(
+            {
+                str(entry.get("channel", "")).strip().lower()
+                for entry in profiles
+                if str(entry.get("profile_id", "")).strip().lower() == normalized_profile_id.lower()
+            }
+        )
+        if available_channels:
+            raise PolicyError(
+                f"workflow profile '{normalized_profile_id}' has no channel '{normalized_channel}', "
+                f"available channels: {', '.join(available_channels)}"
+            )
+        raise PolicyError(f"unknown workflow profile: {normalized_profile_id}")
+
+    def resolve_workflow_stage_entry(
+        self,
+        *,
+        profile_id: str,
+        channel: str,
+        task_type: str,
+        stage_id: str = "",
+    ) -> dict[str, Any]:
+        """Resolve a workflow stage entry for a profile and task type."""
+        profile_entry = self.resolve_workflow_profile_entry(profile_id, channel)
+        stages = profile_entry.get("stages", [])
+        if not isinstance(stages, list) or not stages:
+            raise PolicyError(f"workflow profile '{profile_id}@{channel}' has no stages configured")
+
+        normalized_stage_id = str(stage_id or "").strip()
+        normalized_task_type = str(task_type or "").strip().lower()
+        if normalized_stage_id:
+            target_stage_id = normalized_stage_id
+        else:
+            task_type_stage_map = profile_entry.get("task_type_stage_map", {})
+            target_stage_id = str(task_type_stage_map.get(normalized_task_type, "") or "").strip()
+            if not target_stage_id:
+                target_stage_id = str(profile_entry.get("default_stage_id", "") or "").strip()
+
+        for entry in stages:
+            if str(entry.get("stage_id", "")).strip().lower() == target_stage_id.lower():
+                return entry
+
+        raise PolicyError(
+            f"workflow profile '{profile_id}@{channel}' has no stage '{target_stage_id}'"
+        )
+
+    def parse_workflow_selection_inputs(self, selection_json: str = "", selection_file: str = "") -> dict[str, Any]:
+        payload: dict[str, Any] = {}
+        path_text = str(selection_file or "").strip()
+        if path_text:
+            path = Path(path_text).expanduser()
+            if not path.exists():
+                raise PolicyError(f"workflow-selection-inputs-file not found: {path}")
+            try:
+                file_data = json.loads(path.read_text(encoding="utf-8-sig"))
+            except json.JSONDecodeError as exc:
+                raise PolicyError(f"workflow-selection-inputs-file is not valid JSON: {exc}") from exc
+            if not isinstance(file_data, dict):
+                raise PolicyError("workflow-selection-inputs-file must be a JSON object")
+            payload.update(file_data)
+        payload.update(self.parse_optional_json_arg(selection_json, "workflow-selection-inputs-json"))
+        return payload
+
+    def resolve_keyword_group_workflow_override(
+        self,
+        matched_keyword_groups: list[str],
+        *,
+        selection_policy: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Resolve workflow override metadata from selector keyword groups."""
+        matched_group_set = {
+            str(item or "").strip()
+            for item in matched_keyword_groups
+            if str(item or "").strip()
+        }
+        priority: list[str] = []
+        for item in selection_policy.get("keyword_group_priority", []):
+            group = str(item or "").strip()
+            if group and group in matched_group_set and group not in priority:
+                priority.append(group)
+        for item in matched_keyword_groups:
+            group = str(item or "").strip()
+            if group and group not in priority:
+                priority.append(group)
+
+        mapping_raw = selection_policy.get("keyword_group_profile_map", {})
+        if not isinstance(mapping_raw, dict) or not priority:
+            return {
+                "workflow_profile_id": "",
+                "workflow_channel": "",
+                "selection_reason": "",
+                "matched_group": "",
+                "fallback_profile_ids": [],
+            }
+
+        default_channel = (
+            str(selection_policy.get("default_channel", DEFAULT_WORKFLOW_PROFILE_REGISTRY["default_channel"]) or "")
+            .strip()
+            .lower()
+            or DEFAULT_WORKFLOW_PROFILE_REGISTRY["default_channel"]
+        )
+        fallback_profile_ids: list[str] = []
+        for group in priority:
+            mapping_entry = mapping_raw.get(group)
+            if not mapping_entry:
+                continue
+            if isinstance(mapping_entry, str):
+                profile_id = str(mapping_entry or "").strip()
+                channel = default_channel
+                selection_reason = ""
+            elif isinstance(mapping_entry, dict):
+                profile_id = str(mapping_entry.get("profile_id", "") or "").strip()
+                channel = str(mapping_entry.get("channel", "") or "").strip().lower() or default_channel
+                selection_reason = str(mapping_entry.get("selection_reason", "") or "").strip()
+            else:
+                continue
+            if not profile_id:
+                continue
+            try:
+                profile_entry = self.resolve_workflow_profile_entry(profile_id, channel)
+            except PolicyError:
+                fallback_profile_ids.append(profile_id)
+                continue
+            if not parse_bool(profile_entry.get("enabled", True), True):
+                fallback_profile_ids.append(profile_id)
+                continue
+            return {
+                "workflow_profile_id": profile_entry["profile_id"],
+                "workflow_channel": profile_entry["channel"],
+                "selection_reason": selection_reason or f"keyword_group_workflow_selection:{group}",
+                "matched_group": group,
+                "fallback_profile_ids": fallback_profile_ids,
+            }
+        return {
+            "workflow_profile_id": "",
+            "workflow_channel": "",
+            "selection_reason": "",
+            "matched_group": "",
+            "fallback_profile_ids": fallback_profile_ids,
+        }
+
+    def select_workflow_for_request(
+        self,
+        *,
+        description: str,
+        task_type: str,
+        request_source: str,
+        source: str,
+        assignee: str,
+        needs_clarification: bool,
+        context_payload: dict[str, Any] | None = None,
+        workflow_profile_id: str = "",
+        workflow_channel: str = "",
+        selection_reason: str = "",
+        selection_inputs: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Select a workflow profile for a request using the current selector policy.
+
+        Args:
+            description: Human-readable task description or requirement summary.
+            task_type: Current task type, such as workflow or clarification_required.
+            request_source: Original request source, such as human or ai.
+            source: Source system hint.
+            assignee: Current assignee chosen by routing.
+            needs_clarification: Whether the task is waiting for clarification.
+            context_payload: Optional structured context already extracted for the request.
+            workflow_profile_id: Explicit workflow profile override when provided.
+            workflow_channel: Explicit workflow channel override when provided.
+            selection_reason: Explicit selection reason override when provided.
+            selection_inputs: Additional selector inputs supplied by caller.
+
+        Returns:
+            dict[str, Any]: Normalized workflow selection result.
+        """
+        context_payload = context_payload if isinstance(context_payload, dict) else {}
+        explicit_inputs = selection_inputs if isinstance(selection_inputs, dict) else {}
+        normalized_task_type = str(task_type or "").strip().lower()
+        selector_policy = self.workflow_selector_policy()
+        selection_policy = self.workflow_selection_policy()
+        default_reason = str(
+            selection_policy.get("default_selection_reason", "default_coding_workflow_for_execution") or ""
+        ).strip() or "default_coding_workflow_for_execution"
+
+        if normalized_task_type in {
+            str(item).strip().lower()
+            for item in (selection_policy.get("skip_task_types", []) or [])
+            if str(item).strip()
+        }:
+            return {
+                "workflow_profile_id": "",
+                "workflow_channel": "",
+                "selection_reason": "",
+                "selection_inputs": {},
+            }
+
+        description_text = str(description or "").strip()
+        description_norm = description_text.lower()
+        coding_hits = self._keyword_hits(description_norm, selector_policy.get("coding_task_keywords", []))
+        research_hits = self._keyword_hits(description_norm, selector_policy.get("research_task_keywords", []))
+        ops_hits = self._keyword_hits(description_norm, selector_policy.get("ops_task_keywords", []))
+        docs_hits = self._keyword_hits(description_norm, selector_policy.get("docs_task_keywords", []))
+
+        matched_keyword_groups: list[str] = []
+        if normalized_task_type in {
+            str(item).strip().lower()
+            for item in (selector_policy.get("coding_task_types", []) or [])
+            if str(item).strip()
+        }:
+            matched_keyword_groups.append("coding_task")
+        if coding_hits and "coding_task" not in matched_keyword_groups:
+            matched_keyword_groups.append("coding_task")
+        if research_hits:
+            matched_keyword_groups.append("research_task")
+        if ops_hits:
+            matched_keyword_groups.append("ops_task")
+        if docs_hits:
+            matched_keyword_groups.append("docs_task")
+        if needs_clarification and "clarification_required" not in matched_keyword_groups:
+            matched_keyword_groups.append("clarification_required")
+
+        selector_inputs = {
+            "selector_version": str(selector_policy.get("selector_version", "2026-03-22") or "2026-03-22"),
+            "selector_state": "selected",
+            "description_excerpt": self._selector_excerpt(description_text),
+            "matched_keyword_groups": matched_keyword_groups or ["default_fallback"],
+            "matched_keywords": {
+                "coding_task": coding_hits,
+                "research_task": research_hits,
+                "ops_task": ops_hits,
+                "docs_task": docs_hits,
+            },
+            "fallback_profile_ids": [],
+            "context_fields": sorted(
+                key for key, value in context_payload.items() if has_context_value(value)
+            ),
+        }
+        selector_inputs.update(explicit_inputs)
+
+        reason = str(selection_reason or "").strip() or default_reason
+        selected_profile_id = str(workflow_profile_id or "").strip()
+        selected_channel = str(workflow_channel or "").strip().lower()
+        if not selected_profile_id:
+            keyword_group_override = self.resolve_keyword_group_workflow_override(
+                matched_keyword_groups,
+                selection_policy=selection_policy,
+            )
+            fallback_profile_ids = keyword_group_override.get("fallback_profile_ids", [])
+            if fallback_profile_ids:
+                selector_inputs["fallback_profile_ids"] = fallback_profile_ids
+            matched_group = str(keyword_group_override.get("matched_group", "") or "").strip()
+            if matched_group:
+                selector_inputs["selector_state"] = "keyword_group_override"
+                selector_inputs["selected_keyword_group"] = matched_group
+                selected_profile_id = str(keyword_group_override.get("workflow_profile_id", "") or "").strip()
+                selected_channel = str(keyword_group_override.get("workflow_channel", "") or "").strip().lower()
+                reason = str(keyword_group_override.get("selection_reason", "") or "").strip() or reason
+        if not coding_hits and not matched_keyword_groups and parse_bool(
+            selector_policy.get("prefer_default_on_unknown", True), True
+        ):
+            selector_inputs["matched_keyword_groups"] = ["default_fallback"]
+
+        return self.resolve_workflow_selection(
+            task_type=normalized_task_type,
+            request_source=request_source,
+            source=source,
+            assignee=assignee,
+            needs_clarification=needs_clarification,
+            workflow_profile_id=selected_profile_id,
+            workflow_channel=selected_channel,
+            selection_reason=reason,
+            selection_inputs=selector_inputs,
+        )
+
+    def select_workflow(self, args: argparse.Namespace) -> dict[str, Any]:
+        """Select a workflow profile from CLI-style arguments.
+
+        Args:
+            args: Parsed CLI arguments or a namespace carrying selector inputs.
+
+        Returns:
+            dict[str, Any]: Normalized workflow selection result.
+        """
+        context_payload = self.parse_context_payload(
+            getattr(args, "context_json", ""),
+            getattr(args, "context_file", ""),
+        )
+        selection_inputs = self.parse_workflow_selection_inputs(
+            getattr(args, "workflow_selection_inputs_json", ""),
+            getattr(args, "workflow_selection_inputs_file", ""),
+        )
+        request_source = self.normalize_request_source(
+            getattr(args, "request_source", ""),
+            getattr(args, "source", ""),
+        )
+        return self.select_workflow_for_request(
+            description=str(getattr(args, "description", "") or "").strip(),
+            task_type=str(getattr(args, "task_type", "workflow") or "workflow").strip() or "workflow",
+            request_source=request_source,
+            source=str(getattr(args, "source", "") or "").strip(),
+            assignee=str(getattr(args, "assignee", "") or "").strip(),
+            needs_clarification=parse_bool(getattr(args, "needs_clarification", ""), False),
+            context_payload=context_payload,
+            workflow_profile_id=str(getattr(args, "workflow_profile_id", "") or "").strip(),
+            workflow_channel=str(getattr(args, "workflow_channel", "") or "").strip(),
+            selection_reason=str(getattr(args, "workflow_selection_reason", "") or "").strip(),
+            selection_inputs=selection_inputs,
+        )
+
+    def resolve_workflow_selection(
+        self,
+        *,
+        task_type: str,
+        request_source: str,
+        source: str,
+        assignee: str,
+        needs_clarification: bool,
+        workflow_profile_id: str = "",
+        workflow_channel: str = "",
+        selection_reason: str = "",
+        selection_inputs: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        policy = self.workflow_selection_policy()
+        registry_default_profile = str(
+            self.workflow_profile_registry.get("default_profile_id", DEFAULT_WORKFLOW_PROFILE_REGISTRY["default_profile_id"])
+            or ""
+        ).strip()
+        registry_default_channel = str(
+            self.workflow_profile_registry.get("default_channel", DEFAULT_WORKFLOW_PROFILE_REGISTRY["default_channel"])
+            or ""
+        ).strip().lower() or DEFAULT_WORKFLOW_PROFILE_REGISTRY["default_channel"]
+        normalized_task_type = str(task_type or "").strip().lower()
+        explicit_profile = str(workflow_profile_id or "").strip()
+        explicit_channel = str(workflow_channel or "").strip().lower()
+        explicit_reason = str(selection_reason or "").strip()
+        explicit_inputs = selection_inputs if isinstance(selection_inputs, dict) else {}
+        default_profile = str(policy.get("default_profile_id", registry_default_profile) or "").strip() or registry_default_profile
+        default_channel = (
+            str(policy.get("default_channel", registry_default_channel) or registry_default_channel).strip().lower()
+            or registry_default_channel
+        )
+        default_reason = str(
+            policy.get("default_selection_reason", "default_coding_workflow_for_execution") or ""
+        ).strip() or "default_coding_workflow_for_execution"
+        apply_task_types = {
+            str(item).strip().lower()
+            for item in (policy.get("apply_task_types", ["workflow", "clarification_required"]) or [])
+            if str(item).strip()
+        }
+        skip_task_types = {
+            str(item).strip().lower()
+            for item in (policy.get("skip_task_types", ["ops_runtime_cron"]) or [])
+            if str(item).strip()
+        }
+
+        if explicit_profile:
+            profile_id = explicit_profile
+            channel = explicit_channel or default_channel
+            reason = explicit_reason or "explicit_workflow_selection"
+        elif normalized_task_type in skip_task_types:
+            return {
+                "workflow_profile_id": "",
+                "workflow_channel": "",
+                "selection_reason": "",
+                "selection_inputs": {},
+            }
+        elif (not apply_task_types) or normalized_task_type in apply_task_types:
+            profile_id = default_profile
+            channel = explicit_channel or default_channel
+            reason = explicit_reason or default_reason
+        else:
+            return {
+                "workflow_profile_id": "",
+                "workflow_channel": "",
+                "selection_reason": "",
+                "selection_inputs": {},
+            }
+
+        profile_entry = self.resolve_workflow_profile_entry(profile_id, channel)
+        if not parse_bool(profile_entry.get("enabled", True), True):
+            raise PolicyError(f"workflow profile is disabled: {profile_id}@{channel}")
+
+        entry_task_types = {
+            str(item).strip().lower()
+            for item in (profile_entry.get("entry_task_types", []) or [])
+            if str(item).strip()
+        }
+        if entry_task_types and normalized_task_type not in entry_task_types:
+            raise PolicyError(
+                f"workflow profile '{profile_entry['profile_id']}@{profile_entry['channel']}' "
+                f"does not accept task_type '{normalized_task_type}'"
+            )
+
+        merged_inputs = {
+            "task_type": normalized_task_type,
+            "request_source": str(request_source or "").strip(),
+            "source": str(source or "").strip(),
+            "assignee": str(assignee or "").strip(),
+            "needs_clarification": bool(needs_clarification),
+            "workflow_profile_id": profile_entry["profile_id"],
+            "workflow_channel": profile_entry["channel"],
+        }
+        merged_inputs.update(explicit_inputs)
+        return {
+            "workflow_profile_id": profile_entry["profile_id"],
+            "workflow_channel": profile_entry["channel"],
+            "selection_reason": reason,
+            "selection_inputs": merged_inputs,
+        }
+
     def extract_context_from_text(self, text: str) -> dict[str, str]:
         raw = str(text or "").strip()
         location = ""
@@ -1079,6 +2699,215 @@ class PolicyEnforcer:
             "recommended_fields": recommended_fields,
         }
 
+    def evaluate_requirement_package_gate(
+        self,
+        *,
+        request_source: str,
+        task_type: str,
+        context_payload: dict[str, Any],
+        project_requirement: bool = False,
+    ) -> dict[str, Any]:
+        cfg = self.requirement_package_policy()
+        if not parse_bool(cfg.get("enabled", True), True):
+            return {
+                "required": False,
+                "package_ready": True,
+                "needs_clarification": False,
+                "clarification_reason": "",
+                "required_fields": [],
+                "recommended_fields": [],
+                "missing_fields": [],
+                "missing_recommended_fields": [],
+                "triggered_by": "",
+            }
+
+        request_sources_raw = cfg.get("request_sources", [])
+        request_sources = [str(item).strip().lower() for item in request_sources_raw if str(item).strip()]
+        if request_sources and str(request_source or "").strip().lower() not in request_sources:
+            return {
+                "required": False,
+                "package_ready": True,
+                "needs_clarification": False,
+                "clarification_reason": "",
+                "required_fields": [],
+                "recommended_fields": [],
+                "missing_fields": [],
+                "missing_recommended_fields": [],
+                "triggered_by": "",
+            }
+
+        task_types_raw = cfg.get("task_types", [])
+        task_types = [str(item).strip().lower() for item in task_types_raw if str(item).strip()]
+        if task_types and str(task_type or "").strip().lower() not in task_types:
+            return {
+                "required": False,
+                "package_ready": True,
+                "needs_clarification": False,
+                "clarification_reason": "",
+                "required_fields": [],
+                "recommended_fields": [],
+                "missing_fields": [],
+                "missing_recommended_fields": [],
+                "triggered_by": "",
+            }
+
+        explicit_required = parse_bool(
+            context_payload.get("requirement_package_required")
+            or get_context_field_value(context_payload, "requirement_package.required"),
+            False,
+        )
+        project_requirement_only = parse_bool(cfg.get("project_requirement_only", True), True)
+        triggered_by = ""
+        requirement_required = False
+        if explicit_required:
+            requirement_required = True
+            triggered_by = "explicit_flag"
+        elif project_requirement:
+            requirement_required = True
+            triggered_by = "project_requirement"
+        elif not project_requirement_only:
+            requirement_required = True
+            triggered_by = "policy_default"
+
+        required_fields = [str(item).strip() for item in cfg.get("required_fields", []) if str(item).strip()]
+        recommended_fields = [str(item).strip() for item in cfg.get("recommended_fields", []) if str(item).strip()]
+        if not requirement_required:
+            return {
+                "required": False,
+                "package_ready": True,
+                "needs_clarification": False,
+                "clarification_reason": "",
+                "required_fields": required_fields,
+                "recommended_fields": recommended_fields,
+                "missing_fields": [],
+                "missing_recommended_fields": [],
+                "triggered_by": "",
+            }
+
+        missing_fields = [
+            field_path
+            for field_path in required_fields
+            if not has_context_value(get_context_field_value(context_payload, field_path))
+        ]
+        missing_recommended_fields = [
+            field_path
+            for field_path in recommended_fields
+            if not has_context_value(get_context_field_value(context_payload, field_path))
+        ]
+        package_ready = not missing_fields
+        clarification_reason = ""
+        if missing_fields:
+            clarification_reason = (
+                f"requirement_package_incomplete: triggered_by={triggered_by or 'unknown'}, "
+                f"missing={','.join(missing_fields)}"
+            )
+        return {
+            "required": True,
+            "package_ready": package_ready,
+            "needs_clarification": not package_ready,
+            "clarification_reason": clarification_reason,
+            "required_fields": required_fields,
+            "recommended_fields": recommended_fields,
+            "missing_fields": missing_fields,
+            "missing_recommended_fields": missing_recommended_fields,
+            "triggered_by": triggered_by,
+        }
+
+    def evaluate_stage_context_gate(
+        self,
+        context_payload: dict[str, Any],
+        workflow_stage_entry: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        """Evaluate one workflow stage for extra clarification and execution hints."""
+
+        stage_entry = workflow_stage_entry if isinstance(workflow_stage_entry, dict) else {}
+        stage_id = str(stage_entry.get("stage_id", "")).strip()
+        required_fields = self._merge_text_lists(stage_entry.get("clarification_required_fields", []))
+        missing_fields = [field for field in required_fields if not has_context_value(context_payload.get(field))]
+        clarification_reason = ""
+        if missing_fields:
+            clarification_reason = (
+                f"stage_context_incomplete: stage={stage_id or 'unknown'}, "
+                f"missing={','.join(missing_fields)}"
+            )
+        parallel_execution = stage_entry.get("parallel_execution", {})
+        if not isinstance(parallel_execution, dict):
+            parallel_execution = {}
+        simplification_hint = stage_entry.get("simplification_hint", {})
+        if not isinstance(simplification_hint, dict):
+            simplification_hint = {}
+        optimization_hints = stage_entry.get("optimization_hints", {})
+        if not isinstance(optimization_hints, dict):
+            optimization_hints = {}
+        return {
+            "evaluated_stage_id": stage_id,
+            "required_fields": required_fields,
+            "missing_fields": missing_fields,
+            "needs_clarification": bool(missing_fields),
+            "clarification_reason": clarification_reason,
+            "parallel_execution": dict(parallel_execution),
+            "simplification_hint": dict(simplification_hint),
+            "optimization_hints": dict(optimization_hints),
+        }
+
+    def apply_stage_selection_inputs(
+        self,
+        selection_inputs_payload: dict[str, Any],
+        workflow_stage_entry: dict[str, Any] | None,
+        stage_context_gate: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Attach resolved stage metadata and optimization hints into selector payload."""
+
+        payload = dict(selection_inputs_payload or {})
+        stage_entry = workflow_stage_entry if isinstance(workflow_stage_entry, dict) else {}
+        context_gate = stage_context_gate if isinstance(stage_context_gate, dict) else {}
+        if stage_entry:
+            payload["stage_id"] = str(stage_entry.get("stage_id", "")).strip()
+            payload["stage_display_name"] = str(stage_entry.get("display_name", "")).strip()
+            payload["stage_score_gate"] = str(stage_entry.get("score_gate", "")).strip().lower()
+            payload["stage_min_evidence_count"] = int(stage_entry.get("min_evidence_count", 0) or 0)
+            output_contract = stage_entry.get("output_contract", {})
+            payload["stage_output_contract"] = dict(output_contract) if isinstance(output_contract, dict) else {}
+            verification_contract = stage_entry.get("verification_contract", {})
+            payload["stage_verification_contract"] = (
+                dict(verification_contract) if isinstance(verification_contract, dict) else {}
+            )
+            parallel_execution = stage_entry.get("parallel_execution", {})
+            payload["stage_parallel_execution"] = (
+                dict(parallel_execution) if isinstance(parallel_execution, dict) else {}
+            )
+            simplification_hint = stage_entry.get("simplification_hint", {})
+            payload["stage_simplification_hint"] = (
+                dict(simplification_hint) if isinstance(simplification_hint, dict) else {}
+            )
+            optimization_hints = stage_entry.get("optimization_hints", {})
+            payload["stage_optimization_hints"] = (
+                dict(optimization_hints) if isinstance(optimization_hints, dict) else {}
+            )
+            payload["stage_execution_strategy"] = {
+                "parallel_execution": dict(payload["stage_parallel_execution"]),
+                "simplification_hint": dict(payload["stage_simplification_hint"]),
+                "optimization_hints": dict(payload["stage_optimization_hints"]),
+            }
+        if context_gate:
+            payload["stage_context_gate"] = {
+                "evaluated_stage_id": str(context_gate.get("evaluated_stage_id", "")).strip(),
+                "required_fields": list(context_gate.get("required_fields", []))
+                if isinstance(context_gate.get("required_fields", []), list)
+                else [],
+                "missing_fields": list(context_gate.get("missing_fields", []))
+                if isinstance(context_gate.get("missing_fields", []), list)
+                else [],
+                "needs_clarification": bool(context_gate.get("needs_clarification", False)),
+                "clarification_reason": str(context_gate.get("clarification_reason", "")).strip(),
+                "rerouted_task_type": str(context_gate.get("rerouted_task_type", "")).strip(),
+            }
+            payload["stage_clarification_required_fields"] = list(
+                payload["stage_context_gate"].get("required_fields", [])
+            )
+            payload["stage_missing_context_fields"] = list(payload["stage_context_gate"].get("missing_fields", []))
+        return payload
+
     def clarification_assignee(self) -> str:
         cfg = self.context_policy()
         value = str(cfg.get("clarification_assignee", "project-agent")).strip()
@@ -1089,9 +2918,46 @@ class PolicyEnforcer:
         keywords_raw = cfg.get("human_project_keywords", [])
         if not isinstance(keywords_raw, list):
             keywords_raw = []
-        norm = str(text or "").lower()
+        norm = re.sub(r"\s+", " ", str(text or "").strip().lower())
         hits = [str(x) for x in keywords_raw if str(x).strip() and str(x).lower() in norm]
-        return bool(hits), hits
+
+        # Treat generic nouns like "workflow" or "readme" as weak signals so
+        # ordinary docs/research/ops tasks are not misclassified as full project
+        # requirement intake. Automatic requirement-package gating should only
+        # trigger on stronger planning-oriented language.
+        strong_markers = [
+            "project requirement",
+            "product requirement",
+            "requirement package",
+            "requirements package",
+            "requirements doc",
+            "requirements document",
+            "prd",
+            "scope definition",
+            "project planning",
+            "roadmap",
+            "milestone",
+            "需求包",
+            "需求文档",
+            "项目需求",
+            "项目规划",
+            "产品需求",
+            "产品经理",
+            "项目经理",
+        ]
+        weak_markers = {
+            "workflow",
+            "readme",
+            "module",
+            "architecture",
+            "api docs",
+            "api document",
+        }
+        strong_hits = [marker for marker in strong_markers if marker in norm]
+        meaningful_hits = [hit for hit in hits if str(hit).strip().lower() not in weak_markers]
+        if strong_hits:
+            return True, self._merge_text_lists(strong_hits, hits)
+        return len(meaningful_hits) >= 2, hits
 
     def assert_required_fields(self, task: dict[str, Any]) -> None:
         for field in self.required_task_fields():
@@ -1342,8 +3208,29 @@ class PolicyEnforcer:
             getattr(args, "context_json", ""),
             getattr(args, "context_file", ""),
         )
+        workflow_selection_inputs = self.parse_workflow_selection_inputs(
+            getattr(args, "workflow_selection_inputs_json", ""),
+            getattr(args, "workflow_selection_inputs_file", ""),
+        )
+        task_id = str(args.task_id or "").strip()
+        trace_id = self._normalize_trace_id(
+            getattr(args, "trace_id", "")
+            or context_payload.get("trace_id", "")
+            or workflow_selection_inputs.get("trace_id", ""),
+            task_id=task_id,
+        )
+        attempt_id = self._normalize_attempt_id(
+            getattr(args, "attempt_id", "")
+            or context_payload.get("attempt_id", "")
+            or workflow_selection_inputs.get("attempt_id", ""),
+            retry_count=getattr(args, "retry_count", 0),
+        )
         if not context_payload:
             context_payload = self.extract_context_from_text(args.reason)
+        context_payload["trace_id"] = trace_id
+        context_payload["attempt_id"] = attempt_id
+        workflow_selection_inputs["trace_id"] = trace_id
+        workflow_selection_inputs["attempt_id"] = attempt_id
         if not str(context_payload.get("problem", "")).strip():
             context_payload["problem"] = str(args.reason).strip()
         if not str(context_payload.get("target_state", "")).strip():
@@ -1388,15 +3275,46 @@ class PolicyEnforcer:
         context_payload["owner"] = owner
         context_payload["change_id"] = change_id
         context_eval = self.evaluate_context_gate(request_source, context_payload)
-        context_payload["context_contract"] = {
-            "required_fields": list(context_eval.get("required_fields", [])),
-            "recommended_fields": list(context_eval.get("recommended_fields", [])),
+        workflow_description = "\n".join(
+            part
+            for part in [
+                str(args.reason or "").strip(),
+                str(args.requirement or "").strip(),
+                str(args.acceptance or "").strip(),
+                str(args.observable_outputs or "").strip(),
+            ]
+            if part
+        )
+        project_requirement = False
+        if request_source == "human":
+            project_requirement, _ = self.is_human_project_requirement(workflow_description)
+        requirement_package_gate = self.evaluate_requirement_package_gate(
+            request_source=request_source,
+            task_type=task_type,
+            context_payload=context_payload,
+            project_requirement=project_requirement,
+        )
+        context_payload["requirement_package_contract"] = {
+            "required": bool(requirement_package_gate.get("required")),
+            "required_fields": list(requirement_package_gate.get("required_fields", [])),
+            "recommended_fields": list(requirement_package_gate.get("recommended_fields", [])),
+            "missing_fields": list(requirement_package_gate.get("missing_fields", [])),
+            "missing_recommended_fields": list(requirement_package_gate.get("missing_recommended_fields", [])),
+            "triggered_by": str(requirement_package_gate.get("triggered_by", "")).strip(),
         }
         force_needs_clarification = parse_bool(getattr(args, "force_needs_clarification", ""), False)
         needs_clarification = force_needs_clarification or bool(context_eval["needs_clarification"])
+        if bool(requirement_package_gate.get("needs_clarification")):
+            needs_clarification = True
         clarification_reason = str(getattr(args, "clarification_reason", "") or "").strip()
         if not clarification_reason:
             clarification_reason = str(context_eval.get("clarification_reason", "")).strip()
+        clarification_reason = "; ".join(
+            self._merge_text_lists(
+                clarification_reason,
+                requirement_package_gate.get("clarification_reason", ""),
+            )
+        ).strip()
 
         default_need_confirm = self.default_need_human_confirm(
             request_source=request_source,
@@ -1407,7 +3325,8 @@ class PolicyEnforcer:
         if pool == "todo" and self.todo_require_scheduled_at() and not scheduled_at:
             scheduled_at = now_iso()
 
-        assignee = str(args.assignee or "").strip() or self.dispatcher_agent()
+        explicit_assignee = str(args.assignee or "").strip()
+        assignee = explicit_assignee or self.dispatcher_agent()
         if needs_clarification:
             assignee = self.clarification_assignee()
             pool = "todo"
@@ -1424,6 +3343,136 @@ class PolicyEnforcer:
             initial_status = "passed"
             initial_action = "runtime_binding"
             completed_at = runtime_binding_seen_at or now_iso()
+        workflow_selection = self.select_workflow_for_request(
+            description=workflow_description,
+            task_type=task_type,
+            request_source=request_source,
+            source=args.source,
+            assignee=assignee,
+            needs_clarification=needs_clarification,
+            context_payload=context_payload,
+            workflow_profile_id=getattr(args, "workflow_profile_id", ""),
+            workflow_channel=getattr(args, "workflow_channel", ""),
+            selection_reason=getattr(args, "workflow_selection_reason", ""),
+            selection_inputs=workflow_selection_inputs,
+        )
+        explicit_stage_id = str(getattr(args, "stage_id", "") or "").strip()
+        workflow_stage_entry: dict[str, Any] = {}
+        if workflow_selection["workflow_profile_id"]:
+            workflow_stage_entry = self.resolve_workflow_stage_entry(
+                profile_id=workflow_selection["workflow_profile_id"],
+                channel=workflow_selection["workflow_channel"],
+                task_type=task_type,
+                stage_id=explicit_stage_id,
+            )
+        elif explicit_stage_id:
+            raise PolicyError("stage_id requires a resolved workflow profile")
+
+        stage_context_gate = self.evaluate_stage_context_gate(context_payload, workflow_stage_entry)
+        if stage_context_gate["needs_clarification"] and not needs_clarification:
+            needs_clarification = True
+            assignee = self.clarification_assignee()
+            pool = "todo"
+            if priority == "low":
+                priority = "medium"
+            if task_type == "workflow":
+                task_type = "clarification_required"
+            stage_context_gate["rerouted_task_type"] = task_type
+            clarification_reason = "; ".join(
+                self._merge_text_lists(
+                    clarification_reason,
+                    stage_context_gate.get("clarification_reason", ""),
+                )
+            ).strip()
+            workflow_selection = self.select_workflow_for_request(
+                description=workflow_description,
+                task_type=task_type,
+                request_source=request_source,
+                source=args.source,
+                assignee=assignee,
+                needs_clarification=needs_clarification,
+                context_payload=context_payload,
+                workflow_profile_id=getattr(args, "workflow_profile_id", ""),
+                workflow_channel=getattr(args, "workflow_channel", ""),
+                selection_reason=getattr(args, "workflow_selection_reason", ""),
+                selection_inputs=workflow_selection_inputs,
+            )
+            workflow_stage_entry = {}
+            if workflow_selection["workflow_profile_id"]:
+                workflow_stage_entry = self.resolve_workflow_stage_entry(
+                    profile_id=workflow_selection["workflow_profile_id"],
+                    channel=workflow_selection["workflow_channel"],
+                    task_type=task_type,
+                    stage_id="",
+                )
+        selection_inputs_payload = self.apply_stage_selection_inputs(
+            dict(workflow_selection["selection_inputs"]),
+            workflow_stage_entry,
+            stage_context_gate,
+        )
+        selection_inputs_payload["trace_id"] = trace_id
+        selection_inputs_payload["attempt_id"] = attempt_id
+        selection_inputs_payload["requirement_package_gate"] = {
+            "required": bool(requirement_package_gate.get("required")),
+            "package_ready": bool(requirement_package_gate.get("package_ready", True)),
+            "triggered_by": str(requirement_package_gate.get("triggered_by", "")).strip(),
+            "required_fields": list(requirement_package_gate.get("required_fields", [])),
+            "recommended_fields": list(requirement_package_gate.get("recommended_fields", [])),
+            "missing_fields": list(requirement_package_gate.get("missing_fields", [])),
+            "missing_recommended_fields": list(requirement_package_gate.get("missing_recommended_fields", [])),
+            "clarification_reason": str(requirement_package_gate.get("clarification_reason", "")).strip(),
+        }
+        merged_context_missing_fields = self._merge_text_lists(
+            context_eval.get("missing_fields", []),
+            stage_context_gate.get("missing_fields", []),
+            requirement_package_gate.get("missing_fields", []),
+        )
+        context_payload["context_contract"] = {
+            "required_fields": list(context_eval.get("required_fields", [])),
+            "recommended_fields": list(context_eval.get("recommended_fields", [])),
+            "stage_required_fields": list(stage_context_gate.get("required_fields", [])),
+            "stage_missing_fields": list(stage_context_gate.get("missing_fields", [])),
+            "stage_gate_evaluated_stage_id": str(stage_context_gate.get("evaluated_stage_id", "")).strip(),
+        }
+
+        explicit_required_capabilities = self.parse_text_list_arg(getattr(args, "required_capabilities", ""))
+        explicit_required_skills = self.parse_text_list_arg(getattr(args, "required_skills", ""))
+        explicit_allowed_agents = self.parse_text_list_arg(getattr(args, "allowed_agents", ""))
+        stage_required_capabilities = list(workflow_stage_entry.get("required_capabilities", []))
+        stage_required_skills = list(workflow_stage_entry.get("required_skills", []))
+        requested_required_capabilities = self._merge_text_lists(
+            explicit_required_capabilities,
+            stage_required_capabilities,
+        )
+        requested_required_skills = self._merge_text_lists(
+            explicit_required_skills,
+            stage_required_skills,
+        )
+        capability_binding = resolve_task_capability_binding(
+            explicit_assignee if explicit_assignee or needs_clarification else "",
+            required_capabilities=requested_required_capabilities,
+            required_skills=requested_required_skills,
+            allowed_agents=explicit_allowed_agents,
+            registry=self.capability_registry,
+        )
+        if not explicit_assignee and not needs_clarification and capability_binding["assignee"]:
+            assignee = capability_binding["assignee"]
+        selection_inputs_payload["capability_binding"] = {
+            "resolved_assignee": capability_binding["assignee"],
+            "resolution_reason": capability_binding["resolution_reason"],
+            "requested_required_capabilities": requested_required_capabilities,
+            "requested_required_skills": requested_required_skills,
+            "required_capabilities": capability_binding["required_capabilities"],
+            "required_skills": capability_binding["required_skills"],
+            "allowed_agents": capability_binding["allowed_agents"],
+            "required_runtime": capability_binding["required_runtime"],
+            "tool_requirements": capability_binding["tool_requirements"],
+            "capability_default_agents": capability_binding["capability_default_agents"],
+            "skill_matched_agents": capability_binding["skill_matched_agents"],
+            "capability_declarations": capability_binding["capability_declarations"],
+            "capability_contracts": capability_binding["capability_contracts"],
+            "resolved_agent_profile": capability_binding["resolved_agent_profile"],
+        }
 
         payload = {
             "task_id": args.task_id,
@@ -1443,7 +3492,7 @@ class PolicyEnforcer:
             "need_human_confirm": need_human_confirm,
             "human_confirmed": parse_bool(args.human_confirmed, False),
             "context_completeness": float(context_eval.get("context_completeness", 0.0) or 0.0),
-            "context_fields_missing": context_eval.get("missing_fields", []),
+            "context_fields_missing": merged_context_missing_fields,
             "context_fields_recommended_missing": context_eval.get("missing_recommended_fields", []),
             "context_payload": context_payload,
             "requirement": args.requirement,
@@ -1451,20 +3500,79 @@ class PolicyEnforcer:
             "acceptance": args.acceptance,
             "observable_outputs": args.observable_outputs,
             "acceptance_thresholds": args.acceptance_thresholds,
-            "required_capabilities": getattr(args, "required_capabilities", ""),
-            "required_skills": getattr(args, "required_skills", ""),
-            "allowed_agents": getattr(args, "allowed_agents", ""),
+            "stage_id": str(workflow_stage_entry.get("stage_id", "") or explicit_stage_id).strip(),
+            "stage_score_gate": str(workflow_stage_entry.get("score_gate", "")).strip().lower(),
+            "stage_min_evidence_count": int(workflow_stage_entry.get("min_evidence_count", 0) or 0),
+            "stage_output_contract": dict(workflow_stage_entry.get("output_contract", {})),
+            "stage_verification_contract": dict(workflow_stage_entry.get("verification_contract", {})),
+            "required_capabilities": requested_required_capabilities,
+            "required_skills": requested_required_skills,
+            "allowed_agents": explicit_allowed_agents,
+            "workflow_profile_id": workflow_selection["workflow_profile_id"],
+            "workflow_channel": workflow_selection["workflow_channel"],
+            "selection_reason": workflow_selection["selection_reason"],
+            "selection_inputs": selection_inputs_payload,
             "action": initial_action,
             "scheduled_at": scheduled_at,
             "completed_at": completed_at,
         }
-        inferred_constraints = infer_task_capability_constraints(assignee)
-        if not str(payload["required_capabilities"] or "").strip():
-            payload["required_capabilities"] = inferred_constraints["required_capabilities"]
-        if not str(payload["required_skills"] or "").strip():
-            payload["required_skills"] = inferred_constraints["required_skills"]
-        if not str(payload["allowed_agents"] or "").strip():
-            payload["allowed_agents"] = inferred_constraints["allowed_agents"]
+        inferred_constraints = infer_task_capability_constraints(assignee, registry=self.capability_registry)
+        payload["required_capabilities"] = self._merge_text_lists(
+            capability_binding["required_capabilities"],
+            inferred_constraints["required_capabilities"],
+        )
+        payload["required_skills"] = self._merge_text_lists(
+            capability_binding["required_skills"],
+            inferred_constraints["required_skills"],
+        )
+        payload["allowed_agents"] = self._merge_text_lists(
+            explicit_allowed_agents or capability_binding["allowed_agents"],
+            inferred_constraints["allowed_agents"],
+        )
+        try:
+            normalized_constraints = validate_task_capability_constraints(
+                payload["required_capabilities"],
+                payload["required_skills"],
+                payload["allowed_agents"],
+                registry=self.capability_registry,
+            )
+        except ValueError as exc:
+            raise PolicyError(str(exc)) from exc
+        payload["required_capabilities"] = normalized_constraints["required_capabilities"]
+        payload["required_skills"] = normalized_constraints["required_skills"]
+        payload["allowed_agents"] = normalized_constraints["allowed_agents"]
+        selection_inputs_payload["execution_envelope"] = self._build_execution_envelope(
+            base=selection_inputs_payload.get("execution_envelope", {})
+            if isinstance(selection_inputs_payload.get("execution_envelope", {}), dict)
+            else {},
+            trace_id=trace_id,
+            attempt_id=attempt_id,
+            task_id=task_id,
+            task_type=task_type,
+            request_source=request_source,
+            reason=str(args.reason or "").strip(),
+            requirement=str(args.requirement or "").strip(),
+            acceptance=str(args.acceptance or "").strip(),
+            observable_outputs=str(args.observable_outputs or "").strip(),
+            assignee=assignee,
+            workflow_profile_id=payload["workflow_profile_id"],
+            workflow_channel=payload["workflow_channel"],
+            stage_id=payload["stage_id"],
+            selection_reason=payload["selection_reason"],
+            required_capabilities=payload["required_capabilities"],
+            required_skills=payload["required_skills"],
+            required_runtime=capability_binding["required_runtime"],
+            tool_requirements=capability_binding["tool_requirements"],
+            allowed_agents=payload["allowed_agents"],
+            capability_binding_snapshot=selection_inputs_payload["capability_binding"],
+            stage_output_contract=payload["stage_output_contract"],
+            stage_verification_contract=payload["stage_verification_contract"],
+            stage_context_gate=selection_inputs_payload.get("stage_context_gate", {}),
+            context_contract=context_payload.get("context_contract", {}),
+        )
+        payload["selection_inputs"] = selection_inputs_payload
+        payload["trace_id"] = trace_id
+        payload["attempt_id"] = attempt_id
 
         created = self.db.create_task(payload, actor=args.actor)
         self.assert_required_fields(created)
@@ -1481,6 +3589,11 @@ class PolicyEnforcer:
                 "missing_recommended_fields": created.get("context_fields_recommended_missing", []),
                 "owner": created.get("owner", ""),
                 "change_id": created.get("change_id", ""),
+                "workflow_profile_id": created.get("workflow_profile_id", ""),
+                "workflow_channel": created.get("workflow_channel", ""),
+                "selection_reason": created.get("selection_reason", ""),
+                "trace_id": created.get("trace_id", ""),
+                "attempt_id": created.get("attempt_id", ""),
             },
         )
         if entry_agent:
@@ -1657,6 +3770,10 @@ class PolicyEnforcer:
         exit_code = int(args.exit_code)
         output_ref = str(args.output_ref or "").strip()
         reason = str(args.reason or "").strip()
+        extra_details = self.parse_optional_json_arg(getattr(args, "details_json", ""), "details-json")
+        stage_details = {"reason": reason}
+        if extra_details:
+            stage_details.update(extra_details)
 
         if exit_code == 0:
             stage_run: dict[str, Any] | None = None
@@ -1667,7 +3784,7 @@ class PolicyEnforcer:
                     status="passed",
                     exit_code=exit_code,
                     output_ref=output_ref,
-                    details={"reason": reason},
+                    details=stage_details,
                 )
             except TaskCenterError as exc:
                 self.db.add_event(
@@ -1699,7 +3816,7 @@ class PolicyEnforcer:
                 exit_code=exit_code,
                 error_reason=reason or f"stage {args.stage} failed with exit_code={exit_code}",
                 output_ref=output_ref,
-                details={"reason": reason},
+                details=stage_details,
             )
         except TaskCenterError as exc:
             self.db.add_event(
@@ -1727,12 +3844,24 @@ class PolicyEnforcer:
 
         result_score = float(args.result_score)
         stability_score = float(args.stability_score)
-        critical_pass = parse_bool(args.critical_pass, True)
+        requested_critical_pass = parse_bool(args.critical_pass, True)
+        control_plane_gate = self.evaluate_completion_control_plane_gate(args.task_id)
+        critical_pass = requested_critical_pass and (not bool(control_plane_gate["hard_blocked"]))
 
         raw_score = result_score * 0.70 + stability_score * 0.30
         normalized_score = (raw_score / 100.0) * 100.0
 
-        if critical_pass and raw_score >= self.pass_line_raw():
+        if bool(control_plane_gate["hard_blocked"]):
+            if bool(control_plane_gate["should_escalate"]):
+                action = "escalate_human"
+                target_status = "escalated"
+            elif int(task["failure_count"]) >= self.max_failure_before_escalate():
+                action = "escalate_human"
+                target_status = "escalated"
+            else:
+                action = "retry"
+                target_status = "failed"
+        elif critical_pass and raw_score >= self.pass_line_raw():
             action = "pass"
             target_status = "passed"
         else:
@@ -1759,8 +3888,10 @@ class PolicyEnforcer:
                 "stability_weight": 0.30,
                 "raw_score": round(raw_score, 4),
                 "normalized_score": round(normalized_score, 4),
+                "critical_pass_requested": requested_critical_pass,
                 "critical_pass": critical_pass,
                 "action": action,
+                "control_plane_gate": control_plane_gate,
             },
         )
         updated = self.db.transition_status(
@@ -1773,12 +3904,62 @@ class PolicyEnforcer:
                 "stability_score": stability_score,
                 "raw_score": round(raw_score, 4),
                 "normalized_score": round(normalized_score, 4),
+                "critical_pass_requested": requested_critical_pass,
                 "critical_pass": critical_pass,
                 "action": action,
+                "control_plane_gate": control_plane_gate,
             },
             allowed_from={from_status},
         )
         return updated
+
+    def evaluate_completion_control_plane_gate(self, task_id: str) -> dict[str, Any]:
+        """Derive completion-time hard gates from unified outputs and incidents."""
+        task_outputs = self.db.list_task_outputs(task_id, limit=20, display_safe=False)
+        task_incidents = self.db.list_task_incidents(task_id, limit=20, display_safe=False)
+
+        latest_output_payload: dict[str, Any] = {}
+        for item in reversed(task_outputs):
+            if str(item.get("output_type", "")).strip() != "agent_report":
+                continue
+            payload = item.get("payload", {})
+            if isinstance(payload, dict):
+                latest_output_payload = payload
+                break
+
+        human_gate = latest_output_payload.get("human_gate", {}) if isinstance(latest_output_payload, dict) else {}
+        if not isinstance(human_gate, dict):
+            human_gate = {}
+
+        open_incidents = [
+            item
+            for item in task_incidents
+            if str(item.get("status", "")).strip().lower() not in {"resolved", "suppressed"}
+        ]
+        critical_open_incidents = [
+            item for item in open_incidents if str(item.get("severity", "")).strip().lower() == "critical"
+        ]
+        waiting_human_confirm = bool(human_gate.get("need_human_confirm", False)) and (not bool(human_gate.get("human_confirmed", False)))
+        needs_clarification = bool(human_gate.get("needs_clarification", False))
+        requires_human_assistance = bool(human_gate.get("requires_human_assistance", False))
+        hard_blocked = requires_human_assistance or bool(open_incidents)
+        should_escalate = bool(critical_open_incidents) or waiting_human_confirm or needs_clarification
+        return {
+            "hard_blocked": hard_blocked,
+            "requires_human_assistance": requires_human_assistance,
+            "need_human_confirm": bool(human_gate.get("need_human_confirm", False)),
+            "human_confirmed": bool(human_gate.get("human_confirmed", False)),
+            "needs_clarification": needs_clarification,
+            "waiting_human_confirm": waiting_human_confirm,
+            "open_incident_count": len(open_incidents),
+            "critical_open_incident_count": len(critical_open_incidents),
+            "open_incident_types": [
+                str(item.get("incident_type", "")).strip()
+                for item in open_incidents
+                if str(item.get("incident_type", "")).strip()
+            ],
+            "should_escalate": should_escalate,
+        }
 
     def record_token(self, args: argparse.Namespace) -> dict[str, Any]:
         self.assert_model_allowed(args.model)
@@ -1831,6 +4012,83 @@ class PolicyEnforcer:
             actor=str(args.actor or ""),
         )
 
+    def _normalize_detail_text_list(self, value: Any) -> list[str]:
+        if isinstance(value, list):
+            out: list[str] = []
+            seen: set[str] = set()
+            for item in value:
+                text = str(item or "").strip()
+                if not text:
+                    continue
+                lowered = text.lower()
+                if lowered in seen:
+                    continue
+                seen.add(lowered)
+                out.append(text)
+            return out
+        return self.parse_text_list_arg(str(value or ""))
+
+    def apply_stage_contract_gate(
+        self,
+        *,
+        report_status: str,
+        solved: bool,
+        failure_count: int,
+        failed_items: list[str],
+        quality_score: float | None,
+        details: dict[str, Any],
+    ) -> dict[str, Any]:
+        stage_contract = details.get("stage_contract", {})
+        if not isinstance(stage_contract, dict):
+            return {
+                "report_status": report_status,
+                "solved": solved,
+                "failure_count": failure_count,
+                "failed_items": failed_items,
+                "quality_score": quality_score,
+                "details": details,
+            }
+        if bool(stage_contract.get("contract_passed", True)):
+            return {
+                "report_status": report_status,
+                "solved": solved,
+                "failure_count": failure_count,
+                "failed_items": failed_items,
+                "quality_score": quality_score,
+                "details": details,
+            }
+
+        merged_failed_items = list(failed_items)
+        merged_failed_items.extend(
+            f"stage_contract_missing_deliverable:{item}"
+            for item in self._normalize_detail_text_list(stage_contract.get("missing_deliverables", []))
+        )
+        merged_failed_items.extend(
+            f"stage_contract_failed_check:{item}"
+            for item in self._normalize_detail_text_list(stage_contract.get("failed_checks", []))
+        )
+        if "stage_contract_failed" not in {item.lower() for item in merged_failed_items}:
+            merged_failed_items.append("stage_contract_failed")
+
+        merged_details = dict(details)
+        merged_details["stage_contract_gate"] = {
+            "enforced": True,
+            "normalized_report_status": "partial" if str(report_status or "").strip().lower() not in {"failed", "escalated"} else str(report_status or "").strip().lower(),
+            "reason": "stage_contract_failed",
+        }
+        normalized_status = str(report_status or "").strip().lower()
+        if normalized_status not in {"failed", "escalated"}:
+            normalized_status = "partial"
+        adjusted_quality = min(float(quality_score), 69.0) if quality_score is not None else quality_score
+        return {
+            "report_status": normalized_status,
+            "solved": False,
+            "failure_count": max(1, int(failure_count or 0)),
+            "failed_items": merged_failed_items,
+            "quality_score": adjusted_quality,
+            "details": merged_details,
+        }
+
     def report_agent_result(self, args: argparse.Namespace) -> dict[str, Any]:
         task_id = str(args.task_id or "").strip()
         if not task_id:
@@ -1851,16 +4109,31 @@ class PolicyEnforcer:
         failure_count = max(0, int(args.failure_count or 0))
 
         manual_notify_raw = str(getattr(args, "notify_chat", "") or "").strip().lower()
-        if manual_notify_raw in {"true", "false", "1", "0", "yes", "no"}:
-            notify_chat = parse_bool(manual_notify_raw, False)
-        else:
-            notify_chat = (status in {"failed", "escalated"}) or (not solved) or failure_count > 0
+        manual_notify_set = manual_notify_raw in {"true", "false", "1", "0", "yes", "no"}
+        notify_chat = parse_bool(manual_notify_raw, False) if manual_notify_set else False
 
         quality_score_raw = str(getattr(args, "quality_score", "") or "").strip()
         quality_score: float | None = None
         if quality_score_raw:
             quality_score = float(quality_score_raw)
             quality_score = max(0.0, min(100.0, quality_score))
+
+        stage_gate = self.apply_stage_contract_gate(
+            report_status=status,
+            solved=solved,
+            failure_count=failure_count,
+            failed_items=failed_items,
+            quality_score=quality_score,
+            details=details,
+        )
+        status = str(stage_gate.get("report_status", status)).strip().lower() or status
+        solved = bool(stage_gate.get("solved", solved))
+        failure_count = max(0, int(stage_gate.get("failure_count", failure_count) or 0))
+        failed_items = list(stage_gate.get("failed_items", failed_items))
+        quality_score = stage_gate.get("quality_score", quality_score)
+        details = stage_gate.get("details", details)
+        if not manual_notify_set:
+            notify_chat = (status in {"failed", "escalated"}) or (not solved) or failure_count > 0
 
         input_tokens = max(0, int(args.input_tokens or 0))
         output_tokens = max(0, int(args.output_tokens or 0))
@@ -2040,6 +4313,65 @@ class PolicyEnforcer:
                 lines.append(f"- failed_items: {', '.join(planner_payload['failed_items'])}")
             chat_output = "\n".join(lines)
 
+        standard_output = self.build_standard_output_packet(
+            task_before=task_before,
+            task_after=task_after,
+            planner_payload=planner_payload,
+            status_sync=status_sync,
+            chat_output=chat_output,
+            notify_chat=notify_chat,
+            details=details,
+        )
+        output_record = self.db.record_task_output(
+            task_id=task_id,
+            output_type="agent_report",
+            audience="human",
+            channel=str(standard_output.get("delivery", {}).get("channel", "")).strip(),
+            status=str(standard_output.get("delivery", {}).get("status", "")).strip() or "prepared",
+            summary=str(standard_output.get("delivery", {}).get("human_summary", "")).strip(),
+            payload=standard_output,
+            actor=task_actor,
+        )
+        incident_packet = self.build_task_incident_packet(
+            task_before=task_before,
+            task_after=task_after,
+            planner_payload=planner_payload,
+            status_sync=status_sync,
+            standard_output=standard_output,
+        )
+        incident_record = None
+        if incident_packet:
+            incident_record = self.db.record_task_incident(
+                task_id=task_id,
+                incident_type=str(incident_packet.get("incident_type", "")).strip(),
+                severity=str(incident_packet.get("severity", "")).strip(),
+                status=str(incident_packet.get("status", "")).strip() or "open",
+                reason=str(incident_packet.get("reason", "")).strip(),
+                summary=str(incident_packet.get("summary", "")).strip(),
+                owner=str(incident_packet.get("owner", "")).strip(),
+                details=dict(incident_packet.get("details", {})),
+                actor=task_actor,
+            )
+
+        planner_payload["delivery"] = {
+            "channel": standard_output["delivery"]["channel"],
+            "status": standard_output["delivery"]["status"],
+            "output_record_id": output_record.get("id"),
+        }
+        planner_payload["human_gate"] = dict(standard_output.get("human_gate", {}))
+        planner_payload["telemetry_snapshot"] = dict(standard_output.get("telemetry", {}))
+        planner_payload["incident"] = (
+            {
+                "recorded": True,
+                "incident_id": incident_record.get("id"),
+                "incident_type": incident_record.get("incident_type"),
+                "severity": incident_record.get("severity"),
+                "status": incident_record.get("status"),
+            }
+            if incident_record
+            else {"recorded": False}
+        )
+
         return {
             "report": report,
             "planner_payload": planner_payload,
@@ -2047,6 +4379,170 @@ class PolicyEnforcer:
             "points": points_result,
             "notify_chat": notify_chat,
             "chat_output": chat_output,
+            "standard_output": standard_output,
+            "output_record": output_record,
+            "incident": incident_record,
+        }
+
+    def build_standard_output_packet(
+        self,
+        *,
+        task_before: dict[str, Any],
+        task_after: dict[str, Any],
+        planner_payload: dict[str, Any],
+        status_sync: dict[str, Any],
+        chat_output: str,
+        notify_chat: bool,
+        details: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Build a normalized delivery packet for human and machine consumers."""
+        failed_items = [str(item).strip() for item in planner_payload.get("failed_items", []) if str(item).strip()]
+        failed_item_keys = {item.lower() for item in failed_items}
+        needs_clarification = bool(task_after.get("needs_clarification"))
+        need_human_confirm = bool(task_after.get("need_human_confirm"))
+        human_confirmed = bool(task_after.get("human_confirmed"))
+        task_status_after = str(status_sync.get("task_status_after", task_after.get("status", "")) or "").strip().lower()
+        requires_human_assistance = (
+            needs_clarification
+            or (need_human_confirm and not human_confirmed)
+            or task_status_after == "escalated"
+            or "stage_contract_failed" in failed_item_keys
+            or str(planner_payload.get("report_status", "")).strip().lower() in {"failed", "escalated"}
+        )
+        resolution_summary = str(planner_payload.get("resolution_summary", "")).strip()
+        human_summary = chat_output if notify_chat and chat_output != "NO_REPLY" else resolution_summary
+        if not human_summary:
+            human_summary = str(task_after.get("reason", "")).strip() or str(task_before.get("reason", "")).strip()
+        selection_inputs = task_after.get("selection_inputs", {})
+        if not isinstance(selection_inputs, dict):
+            selection_inputs = {}
+        execution_envelope = selection_inputs.get("execution_envelope", {})
+        if not isinstance(execution_envelope, dict):
+            execution_envelope = {}
+        trace_id = str(
+            task_after.get("trace_id", "")
+            or task_before.get("trace_id", "")
+            or execution_envelope.get("trace_id", "")
+        ).strip()
+        attempt_id = str(
+            task_after.get("attempt_id", "")
+            or task_before.get("attempt_id", "")
+            or execution_envelope.get("attempt_id", "")
+        ).strip()
+        return {
+            "schema_version": "2026-03-22",
+            "trace_id": trace_id,
+            "attempt_id": attempt_id,
+            "task_id": str(task_after.get("task_id", task_before.get("task_id", ""))).strip(),
+            "execution_envelope": dict(execution_envelope),
+            "workflow": {
+                "profile_id": str(task_after.get("workflow_profile_id", "")).strip(),
+                "channel": str(task_after.get("workflow_channel", "")).strip(),
+                "stage_id": str(task_after.get("stage_id", "")).strip(),
+                "score_gate": str(task_after.get("stage_score_gate", "")).strip(),
+            },
+            "outcome": {
+                "report_status": str(planner_payload.get("report_status", "")).strip(),
+                "task_status_before": str(status_sync.get("task_status_before", "")).strip(),
+                "task_status_after": task_status_after,
+                "task_action_after": str(status_sync.get("task_action_after", task_after.get("action", ""))).strip(),
+                "solved": bool(planner_payload.get("solved", False)),
+                "failure_count": max(0, int(planner_payload.get("failure_count", 0) or 0)),
+                "failed_items": failed_items,
+                "quality_score": planner_payload.get("quality_score"),
+                "quality_grade": str(planner_payload.get("quality_grade", "")).strip(),
+            },
+            "human_gate": {
+                "need_human_confirm": need_human_confirm,
+                "human_confirmed": human_confirmed,
+                "needs_clarification": needs_clarification,
+                "clarification_reason": str(task_after.get("clarification_reason", "")).strip(),
+                "requires_human_assistance": requires_human_assistance,
+                "notify_chat": bool(notify_chat),
+            },
+            "telemetry": {
+                "duration_ms": max(0, int(planner_payload.get("duration_ms", 0) or 0)),
+                "model_id": str(planner_payload.get("model_id", "")).strip(),
+                "input_tokens": max(0, int(planner_payload.get("input_tokens", 0) or 0)),
+                "output_tokens": max(0, int(planner_payload.get("output_tokens", 0) or 0)),
+                "total_tokens": max(0, int(planner_payload.get("total_tokens", 0) or 0)),
+                "cost_estimate": round(float(planner_payload.get("cost_estimate", 0.0) or 0.0), 6),
+                "task_token_usage": dict(planner_payload.get("task_token_usage", {})),
+                "task_timing": dict(planner_payload.get("task_timing", {})),
+            },
+            "contracts": {
+                "stage_output_contract": dict(task_after.get("stage_output_contract", {})),
+                "stage_verification_contract": dict(task_after.get("stage_verification_contract", {})),
+                "stage_contract": dict(details.get("stage_contract", {})) if isinstance(details, dict) else {},
+                "stage_contract_gate": dict(details.get("stage_contract_gate", {})) if isinstance(details, dict) else {},
+            },
+            "delivery": {
+                "channel": "chat" if notify_chat else "none",
+                "status": "prepared" if notify_chat else "suppressed",
+                "human_summary": human_summary,
+                "machine_summary": {
+                    "report_id": planner_payload.get("report_id"),
+                    "report_ts": planner_payload.get("report_ts"),
+                },
+            },
+        }
+
+    def build_task_incident_packet(
+        self,
+        *,
+        task_before: dict[str, Any],
+        task_after: dict[str, Any],
+        planner_payload: dict[str, Any],
+        status_sync: dict[str, Any],
+        standard_output: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        """Build a normalized incident packet when the task needs human follow-up."""
+        failed_items = [str(item).strip() for item in planner_payload.get("failed_items", []) if str(item).strip()]
+        failed_item_keys = {item.lower() for item in failed_items}
+        triggers: list[str] = []
+        task_status_after = str(status_sync.get("task_status_after", task_after.get("status", "")) or "").strip().lower()
+        report_status = str(planner_payload.get("report_status", "")).strip().lower()
+        if task_status_after == "escalated":
+            triggers.append("task_escalated")
+        if bool(task_after.get("needs_clarification")):
+            triggers.append("needs_clarification")
+        if bool(task_after.get("need_human_confirm")) and not bool(task_after.get("human_confirmed")):
+            triggers.append("waiting_human_confirm")
+        if "stage_contract_failed" in failed_item_keys:
+            triggers.append("stage_contract_failed")
+        if report_status == "failed":
+            triggers.append("agent_failed")
+        elif report_status == "partial" and bool(failed_items):
+            triggers.append("task_partial")
+        if not triggers:
+            return None
+
+        incident_type = triggers[0]
+        severity = "warning"
+        if incident_type in {"task_escalated", "agent_failed"}:
+            severity = "critical"
+        reason = str(status_sync.get("task_action_after", "")).strip() or incident_type
+        summary = str(standard_output.get("delivery", {}).get("human_summary", "")).strip()
+        if not summary:
+            summary = str(task_after.get("reason", "")).strip() or str(task_before.get("reason", "")).strip()
+        return {
+            "incident_type": incident_type,
+            "severity": severity,
+            "status": "open",
+            "reason": reason,
+            "summary": summary,
+            "owner": str(task_after.get("assignee", "")).strip(),
+            "details": {
+                "schema_version": "2026-03-22",
+                "triggers": triggers,
+                "task_status_after": task_status_after,
+                "report_status": report_status,
+                "workflow_profile_id": str(task_after.get("workflow_profile_id", "")).strip(),
+                "stage_id": str(task_after.get("stage_id", "")).strip(),
+                "failed_items": failed_items,
+                "human_gate": dict(standard_output.get("human_gate", {})),
+                "telemetry": dict(standard_output.get("telemetry", {})),
+            },
         }
 
     def reconcile_task_statuses(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -2244,6 +4740,21 @@ class PolicyEnforcer:
             )
         return report
 
+    def update_task_incident(self, args: argparse.Namespace) -> dict[str, Any]:
+        details: dict[str, Any] | None = None
+        raw_details = str(getattr(args, "details_json", "") or "").strip()
+        if raw_details:
+            details = self.parse_optional_json_arg(raw_details, "details-json")
+        return self.db.update_task_incident(
+            int(args.incident_id),
+            status=str(getattr(args, "status", "") or "").strip(),
+            reason=getattr(args, "reason", None),
+            summary=getattr(args, "summary", None),
+            owner=getattr(args, "owner", None),
+            details=details,
+            actor=str(getattr(args, "actor", "") or "").strip(),
+        )
+
     def assert_entry(self, args: argparse.Namespace) -> dict[str, Any]:
         entry_agent = str(args.entry_agent or "").strip()
         if not entry_agent:
@@ -2255,6 +4766,7 @@ class PolicyEnforcer:
         text = args.description.strip()
         if not text:
             raise PolicyError("description cannot be empty")
+        task_type = str(getattr(args, "task_type", "workflow") or "workflow").strip() or "workflow"
         request_source = self.normalize_request_source(
             getattr(args, "request_source", ""),
             getattr(args, "source", ""),
@@ -2380,10 +4892,23 @@ class PolicyEnforcer:
         )
         context_payload.update(context_patch)
         context_eval = self.evaluate_context_gate(request_source, context_payload)
+        requirement_package_gate = self.evaluate_requirement_package_gate(
+            request_source=request_source,
+            task_type=task_type,
+            context_payload=context_payload,
+            project_requirement=project_requirement,
+        )
         owner = str(context_payload.get("owner", "")).strip()
         change_id = str(context_payload.get("change_id", "")).strip()
         needs_clarification = bool(context_eval.get("needs_clarification"))
-        clarification_reason = str(context_eval.get("clarification_reason", "")).strip()
+        if bool(requirement_package_gate.get("needs_clarification")):
+            needs_clarification = True
+        clarification_reason = "; ".join(
+            self._merge_text_lists(
+                str(context_eval.get("clarification_reason", "")).strip(),
+                requirement_package_gate.get("clarification_reason", ""),
+            )
+        ).strip()
         code_task_hits: list[str] = []
         code_dispatch_forced = False
         code_dispatch_target = ""
@@ -2457,6 +4982,15 @@ class PolicyEnforcer:
         task_id_suggested = self.suggest_task_id(
             "human-task" if request_source == "human" else "ai-task"
         )
+        workflow_selection = self.select_workflow_for_request(
+            description=effective_text,
+            task_type=task_type,
+            request_source=request_source,
+            source=args.source,
+            assignee=assignee,
+            needs_clarification=needs_clarification,
+            context_payload=context_payload,
+        )
 
         return {
             "task_id_suggested": task_id_suggested,
@@ -2502,7 +5036,9 @@ class PolicyEnforcer:
             "context_completeness": float(context_eval.get("context_completeness", 100.0) or 100.0),
             "context_fields_missing": list(context_eval.get("missing_fields", [])),
             "context_fields_recommended_missing": list(context_eval.get("missing_recommended_fields", [])),
+            "requirement_package_gate": requirement_package_gate,
             "context_payload": context_payload,
+            "workflow_selection": workflow_selection,
             "hits": {
                 "high_risk": high_risk_hits,
                 "low_risk": low_risk_hits,
@@ -2734,7 +5270,15 @@ class PolicyEnforcer:
 
     def validate_runtime(self, args: argparse.Namespace) -> dict[str, Any]:
         missing = []
-        for path in [self.paths.policy_file, self.paths.routing_file, self.paths.pricing_file]:
+        capability_registry_file = self.capability_registry_file()
+        workflow_profile_registry_file = self.workflow_profile_registry_file()
+        for path in [
+            self.paths.policy_file,
+            self.paths.routing_file,
+            self.paths.pricing_file,
+            capability_registry_file,
+            workflow_profile_registry_file,
+        ]:
             if not path.exists():
                 missing.append(str(path))
         if missing:
@@ -2756,12 +5300,24 @@ class PolicyEnforcer:
             if model_id not in pricing_models:
                 raise PolicyError(f"pricing missing model: {model_id}")
 
+        registry = self.workflow_profile_registry
+        default_profile_id = str(registry.get("default_profile_id", "") or "").strip()
+        default_channel = str(registry.get("default_channel", "") or "").strip().lower()
+        _ = self.resolve_workflow_profile_entry(default_profile_id, default_channel)
+
+        for profile_entry in registry.get("profiles", []):
+            promotion_target_channel = str(profile_entry.get("promotion_target_channel", "") or "").strip().lower()
+            if promotion_target_channel:
+                _ = self.resolve_workflow_profile_entry(profile_entry["profile_id"], promotion_target_channel)
+
         return {
             "ok": True,
             "db": str(self.paths.db),
             "policy_file": str(self.paths.policy_file),
             "routing_file": str(self.paths.routing_file),
             "pricing_file": str(self.paths.pricing_file),
+            "capability_registry_file": str(capability_registry_file),
+            "workflow_profile_registry_file": str(workflow_profile_registry_file),
         }
 
     def check_config(self, args: argparse.Namespace) -> dict[str, Any]:
@@ -2987,6 +5543,12 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--required-capabilities", default="")
     create.add_argument("--required-skills", default="")
     create.add_argument("--allowed-agents", default="")
+    create.add_argument("--stage-id", default="")
+    create.add_argument("--workflow-profile-id", default="")
+    create.add_argument("--workflow-channel", default="")
+    create.add_argument("--workflow-selection-reason", default="")
+    create.add_argument("--workflow-selection-inputs-json", default="")
+    create.add_argument("--workflow-selection-inputs-file", default="")
     create.add_argument("--context-json", default="")
     create.add_argument("--context-file", default="")
     create.add_argument("--force-needs-clarification", default="false")
@@ -3116,11 +5678,36 @@ def build_parser() -> argparse.ArgumentParser:
     task_report.add_argument("--event-limit", default="200")
     task_report.add_argument("--output", default="")
 
+    update_incident = sub.add_parser("update-task-incident", help="update task incident lifecycle state")
+    update_incident.add_argument("--incident-id", required=True)
+    update_incident.add_argument("--status", default="")
+    update_incident.add_argument("--reason", default=None)
+    update_incident.add_argument("--summary", default=None)
+    update_incident.add_argument("--owner", default=None)
+    update_incident.add_argument("--details-json", default="")
+    update_incident.add_argument("--actor", default="")
+
     assert_entry = sub.add_parser("assert-entry", help="validate entry agent")
     assert_entry.add_argument("--entry-agent", required=True)
 
+    select_workflow = sub.add_parser("select-workflow", help="select workflow profile for a request")
+    select_workflow.add_argument("--description", required=True)
+    select_workflow.add_argument("--task-type", default="workflow")
+    select_workflow.add_argument("--source", default="openclaw")
+    select_workflow.add_argument("--request-source", default="")
+    select_workflow.add_argument("--assignee", default="")
+    select_workflow.add_argument("--needs-clarification", default="false")
+    select_workflow.add_argument("--workflow-profile-id", default="")
+    select_workflow.add_argument("--workflow-channel", default="")
+    select_workflow.add_argument("--workflow-selection-reason", default="")
+    select_workflow.add_argument("--workflow-selection-inputs-json", default="")
+    select_workflow.add_argument("--workflow-selection-inputs-file", default="")
+    select_workflow.add_argument("--context-json", default="")
+    select_workflow.add_argument("--context-file", default="")
+
     route = sub.add_parser("route-task", help="route task by routing rules")
     route.add_argument("--description", required=True)
+    route.add_argument("--task-type", default="workflow")
     route.add_argument("--source", default="openclaw")
     route.add_argument("--request-source", default="")
     route.add_argument("--context-json", default="")
@@ -3160,11 +5747,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def cmd_init(paths: RuntimePaths, force: bool) -> dict[str, Any]:
     paths.db.parent.mkdir(parents=True, exist_ok=True)
+    capability_registry_file = paths.policy_file.parent / "capability-registry.json"
+    workflow_profile_registry_file = paths.policy_file.parent / "workflow-profile-registry.json"
+    benchmark_suite_registry_file = paths.policy_file.parent / "benchmark-suite-registry.json"
 
     for file_path, defaults in [
         (paths.policy_file, DEFAULT_POLICY),
         (paths.routing_file, DEFAULT_ROUTING_RULES),
         (paths.pricing_file, DEFAULT_TOKEN_PRICING),
+        (capability_registry_file, DEFAULT_CAPABILITY_REGISTRY),
+        (workflow_profile_registry_file, DEFAULT_WORKFLOW_PROFILE_REGISTRY),
+        (benchmark_suite_registry_file, DEFAULT_BENCHMARK_SUITE_REGISTRY),
     ]:
         if force or not file_path.exists():
             write_json_atomic(
@@ -3186,6 +5779,9 @@ def cmd_init(paths: RuntimePaths, force: bool) -> dict[str, Any]:
         "policy_file": str(paths.policy_file),
         "routing_file": str(paths.routing_file),
         "pricing_file": str(paths.pricing_file),
+        "capability_registry_file": str(capability_registry_file),
+        "workflow_profile_registry_file": str(workflow_profile_registry_file),
+        "benchmark_suite_registry_file": str(benchmark_suite_registry_file),
     }
 
 
@@ -3239,6 +5835,10 @@ def main() -> int:
                 emit_json({"ok": True, "summary": enforcer.daily_summary(args)})
             elif args.command == "task-report":
                 emit_json({"ok": True, "report": enforcer.task_report(args)})
+            elif args.command == "update-task-incident":
+                emit_json({"ok": True, "incident": enforcer.update_task_incident(args)})
+            elif args.command == "select-workflow":
+                emit_json({"ok": True, "selection": enforcer.select_workflow(args)})
             elif args.command == "route-task":
                 emit_json({"ok": True, "route": enforcer.route_task(args)})
             elif args.command == "next-todo":
