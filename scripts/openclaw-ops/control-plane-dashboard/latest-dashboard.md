@@ -1,6 +1,6 @@
 # OpenClaw Control Plane Dashboard
 
-- 生成时间：2026-03-23T06:19:06+00:00
+- 生成时间：2026-03-25T08:40:44+00:00
 - 时间窗口：最近 24 小时
 - 扫描 task：4
 - 未关闭 incident：1（critical 1）
@@ -12,10 +12,10 @@
 - critical_incidents_present x1
 
 ## 重点任务
-- todo-control-plane-profile-update-20260323141906-5cd26f coding-default@stable / 评审
-- todo-control-plane-optimization-20260323141905-569e0c coding-default@stable / 评审
-- live-accept-stable-b331f782 docs-default@stable -> benchmark 允许晋升
-- live-accept-risk-b331f782 coding-default@candidate / 评审 -> open_incidents=1，critical=1，需要人工协助，benchmark 未通过
+- todo-control-plane-profile-update-20260325164044-54afb9 coding-default@stable / 评审
+- todo-control-plane-optimization-20260325164044-140bea coding-default@stable / 评审
+- live-accept-stable-1bfe0246 docs-default@stable -> benchmark 允许晋升
+- live-accept-risk-1bfe0246 coding-default@candidate / 评审 -> open_incidents=1，critical=1，需要人工协助，benchmark 未通过
 
 ## 最新 Benchmark Sweep
 - 当前暂无 benchmark sweep 摘要
@@ -24,13 +24,13 @@
 - 观察窗口：最近 7 天
 - 累计 benchmark 2 次，允许晋升 1 次，阻断 1 次
 - 累计 incident 1 条（critical 1），人工协助 1 次
-- 2026-03-17: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0
-- 2026-03-18: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0
 - 2026-03-19: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0
 - 2026-03-20: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0
 - 2026-03-21: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0
 - 2026-03-22: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0
-- 2026-03-23: benchmark 2 / 晋升 1 / 阻断 1 / incident 1 / critical 1 / 人工协助 1
+- 2026-03-23: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0
+- 2026-03-24: benchmark 0 / 晋升 0 / 阻断 0 / incident 0 / critical 0 / 人工协助 0
+- 2026-03-25: benchmark 2 / 晋升 1 / 阻断 1 / incident 1 / critical 1 / 人工协助 1
 
 ## Workflow 分布
 - coding-default: benchmark 1 / 晋升 0 / 阻断 1 / incident 1 / critical 1 / 人工协助 1

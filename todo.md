@@ -24,6 +24,8 @@
 - 为 `coding-default` 之外的第二个 workflow profile 准备最小样板，但不先接入默认入口。
 - 让 capability manifest、skill binding、hook policy 共享同一份机器可读导出产物。
 - 为核心registry配置文件新增JSON Schema强校验，非法配置直接fail-fast。
+- MetaClaw 式跨次学习闭环：`iterative_refine` 修复成功后自动提炼经验为 SKILL.md（`lesson_to_skill.py`）。
+- ~~Score Gate 交叉评审基建：中间阶段（clarify/implement/refine）改为由 reviewer Agent 而非执行 Agent 自评打分，消除自评虚高问题。~~ ✅ 已完成（`score_evaluator` 配置 + `check-score-gate.mjs` 运行时强制校验）
 
 ## P2
 
@@ -34,6 +36,9 @@
 - 提供本地开发环境一键启动脚本，降低新开发者上手门槛。
 - 默认编码工作流稳定后，再评估多 workflow 负载均衡与环节裁剪策略。
 - 默认编码工作流稳定后，再评估外部 workflow / skill 下载与安装市场。
+- `algo_micro_optimizer` 扩展为方案 B：Workflow Scorecard 综合分驱动（`upgrade_feedback_runner.py` 输出的 `composite_score` 作为评估指标），实现工作流级别的自动优化。
+- 启用第二批进化 Jobs（`benchmark_sweep_12h`、`optimize 治理巡检`、`control_plane_optimization_advisor_12h`）。
+- 拆分 `policy_enforcer.py`（270KB 巨型单体）为独立模块。
 
 ---
 ## 参考文档

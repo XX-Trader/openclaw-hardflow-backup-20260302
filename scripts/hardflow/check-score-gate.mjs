@@ -10,6 +10,8 @@ function parseArgs(argv) {
     output: "",
     runId: "",
     auditLog: "",
+    evaluatorAgent: "",
+    evaluatorMode: "self",
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -49,6 +51,16 @@ function parseArgs(argv) {
     if (key === "--audit-log") {
       args.auditLog = val;
       i += 1;
+      continue;
+    }
+    if (key === "--evaluator-agent") {
+      args.evaluatorAgent = val;
+      i += 1;
+      continue;
+    }
+    if (key === "--evaluator-mode") {
+      args.evaluatorMode = val;
+      i += 1;
     }
   }
 
@@ -59,10 +71,11 @@ function usage() {
   return [
     "Usage:",
     "  node check-score-gate.mjs \\",
-    "    --gate <requirements|solution|frontend|backend|security|release|final> \\",
+    "    --gate <requirements|solution|frontend|backend|refine|security|release|final> \\",
     "    --scorecard <path> \\",
     "    --output <path> \\",
     "    [--policy <path>] [--run-id <id>] [--audit-log <ndjson>]",
+    "    [--evaluator-agent <agent-id>] [--evaluator-mode <self|cross_review|independent>]",
   ].join("\n");
 }
 
@@ -279,6 +292,25 @@ async function main() {
   result.run_id = args.runId || "";
   result.scorecard_path = path.resolve(args.scorecard);
 
+  // 交叉评审强制检查：cross_review 模式下，scorecard.reviewer 必须匹配指定的 evaluator_agent
+  if (args.evaluatorMode === "cross_review" && args.evaluatorAgent) {
+    const actualReviewer = normalize(scorecard.reviewer || "");
+    const expectedReviewer = normalize(args.evaluatorAgent);
+    result.cross_review = {
+      mode: args.evaluatorMode,
+      expected_evaluator: args.evaluatorAgent,
+      actual_reviewer: scorecard.reviewer || "",
+      enforced: true,
+    };
+    if (!actualReviewer || actualReviewer !== expectedReviewer) {
+      result.passed = false;
+      const crossReviewReason = `cross_review_violation: scorecard.reviewer="${scorecard.reviewer || ""}" does not match required evaluator="${args.evaluatorAgent}". This stage requires independent cross-review scoring, not self-assessment.`;
+      result.reason = result.reason === "score gate passed"
+        ? crossReviewReason
+        : `${result.reason} | ${crossReviewReason}`;
+    }
+  }
+
   await writeResult(args.output, result);
   await appendAudit(args.auditLog, {
     ts: result.updated_at,
@@ -289,6 +321,7 @@ async function main() {
     overall_score: result.overall_score,
     overall_deduction_from_100: result.overall_deduction_from_100,
     deduction_notes: result.deduction_notes,
+    cross_review: result.cross_review || null,
     reason: result.reason,
     scorecard_path: result.scorecard_path,
   });

@@ -1,7 +1,7 @@
 # OpenClaw Control Plane Acceptance
 
-- 生成时间：2026-03-23T06:19:08+00:00
-- jobs 文件：C:\Users\superma\AppData\Local\Temp\tmp0rs_myls\live-acceptance\cron\jobs.json
+- 生成时间：2026-03-25T08:40:46+00:00
+- jobs 文件：C:\Users\ADMINI~1\AppData\Local\Temp\tmph1xhdrkw\live-acceptance\cron\jobs.json
 - 检查结果：通过 11/11
 
 ## Job Checks

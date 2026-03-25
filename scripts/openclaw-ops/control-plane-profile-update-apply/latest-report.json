@@ -1,29 +1,43 @@
 {
   "result": {
-    "generated_at": "2026-03-23T06:19:07+00:00",
-    "task_db": "C:\\Users\\superma\\AppData\\Local\\Temp\\tmp0rs_myls\\live-acceptance\\task-center\\task_center.db",
-    "registry_file": "D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\policy\\workflow-profile-registry.json",
+    "generated_at": "2026-03-25T08:40:46+00:00",
+    "task_db": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\tmph1xhdrkw\\live-acceptance\\task-center\\task_center.db",
+    "registry_file": "H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\policy\\workflow-profile-registry.json",
     "lookback_hours": 72,
     "target_channel": "candidate",
-    "applied_count": 0,
-    "skipped_count": 2,
-    "applied": [],
+    "applied_count": 1,
+    "skipped_count": 1,
+    "applied": [
+      {
+        "task_id": "todo-control-plane-profile-update-20260325164044-54afb9",
+        "change_id": "control-plane-profile-update:control-plane-optimization:2f181c2c6d80",
+        "target_profile_id": "coding-default",
+        "target_stage_id": "review",
+        "target_stage_label": "评审",
+        "target_channel": "candidate",
+        "recommendation_type": "strengthen_stage_gate",
+        "patch_summary": {
+          "min_evidence_count_before": 3,
+          "min_evidence_count_after": 4,
+          "deliverables": [
+            "review_decision",
+            "acceptance_summary"
+          ],
+          "checks": [
+            "review_completed"
+          ]
+        }
+      }
+    ],
     "skipped": [
       {
-        "task_id": "todo-control-plane-profile-update-20260323141907-8f5702",
-        "change_id": "control-plane-profile-update:control-plane-optimization:2ac4dc496487",
+        "task_id": "todo-control-plane-profile-update-20260325164045-38b1d9",
+        "change_id": "control-plane-profile-update:control-plane-optimization:2f181c2c6d80",
         "target_profile_id": "coding-default",
         "target_stage_id": "review",
         "reason": "task_not_passed"
-      },
-      {
-        "task_id": "todo-control-plane-profile-update-20260323141906-5cd26f",
-        "change_id": "control-plane-profile-update:control-plane-optimization:2ac4dc496487",
-        "target_profile_id": "coding-default",
-        "target_stage_id": "review",
-        "reason": "duplicate_applied_change_id"
       }
     ],
-    "markdown": "# OpenClaw Control Plane Profile Update Apply\n\n- 生成时间：2026-03-23T06:19:07+00:00\n- 目标 registry：D:\\学习资料\\量化交易\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\policy\\workflow-profile-registry.json\n- 目标 channel：candidate\n- 已应用：0\n- 已跳过：2\n\n## 已应用任务\n- 当前窗口内没有可应用的 profile update 任务\n\n## 已跳过任务\n- todo-control-plane-profile-update-20260323141907-8f5702: coding-default/review / task_not_passed\n- todo-control-plane-profile-update-20260323141906-5cd26f: coding-default/review / duplicate_applied_change_id\n"
+    "markdown": "# OpenClaw Control Plane Profile Update Apply\n\n- 生成时间：2026-03-25T08:40:46+00:00\n- 目标 registry：H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\policy\\workflow-profile-registry.json\n- 目标 channel：candidate\n- 已应用：1\n- 已跳过：1\n\n## 已应用任务\n- todo-control-plane-profile-update-20260325164044-54afb9: strengthen_stage_gate -> coding-default/review@candidate\n\n## 已跳过任务\n- todo-control-plane-profile-update-20260325164045-38b1d9: coding-default/review / task_not_passed\n"
   }
 }

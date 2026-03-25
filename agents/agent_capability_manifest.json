@@ -368,11 +368,21 @@
         "optimization-agent",
         "project-agent"
       ],
-      "declared_skills": [],
+      "declared_skills": [
+        "deployment-test",
+        "openclaw-security-audit",
+        "openclaw-remote-safe-update",
+        "systematic-debugging"
+      ],
       "missing_skills": [],
-      "soul_skills": [],
+      "soul_skills": [
+        "deployment-test",
+        "openclaw-security-audit",
+        "openclaw-remote-safe-update",
+        "systematic-debugging"
+      ],
       "runtime_skill_overrides": [],
-      "capability_mode": "role_only",
+      "capability_mode": "skill_backed",
       "hook_events_affected": [
         "agent:bootstrap",
         "command",
@@ -394,11 +404,21 @@
         "project-agent",
         "web-agent"
       ],
-      "declared_skills": [],
+      "declared_skills": [
+        "systematic-debugging",
+        "auto-fix",
+        "verification-before-completion",
+        "openclaw-evolution-upgrader"
+      ],
       "missing_skills": [],
-      "soul_skills": [],
+      "soul_skills": [
+        "systematic-debugging",
+        "auto-fix",
+        "verification-before-completion",
+        "openclaw-evolution-upgrader"
+      ],
       "runtime_skill_overrides": [],
-      "capability_mode": "role_only",
+      "capability_mode": "skill_backed",
       "hook_events_affected": [
         "agent:bootstrap",
         "command",

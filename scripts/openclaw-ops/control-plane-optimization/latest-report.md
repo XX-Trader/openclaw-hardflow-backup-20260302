@@ -1,6 +1,6 @@
 # OpenClaw Control Plane Optimization Advisor
 
-- 生成时间：2026-03-23T06:19:07+00:00
+- 生成时间：2026-03-25T08:40:45+00:00
 - 时间窗口：最近 24 小时
 - 扫描 task：4
 - 未闭环 incident：1（critical 1）
@@ -8,8 +8,8 @@
 
 ## 优化建议
 - [high] strengthen_stage_gate: coding-default / 评审
-  - 原因：最近 3 个 task 中，critical incident=1，benchmark 阻断=1
-  - 动作：保留并加强当前阶段门禁，优先补证据约束、验收标准和回流检查。
+  - 原因：?? 3 ? task ??critical incident=1?benchmark ??=1
+  - 动作：???????????????????????????????
   - ROI：task 3 / benchmark 1 / 阻断 1 / incident_task 1 / 人工协助 1 / 单 task 成本 0.0
 
 ## ROI 摘要
