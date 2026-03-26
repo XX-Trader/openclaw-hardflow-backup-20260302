@@ -153,7 +153,35 @@
             "rationale": "终审阶段自身就是 reviewer，无需二次交叉"
           }
         }
-      ]
+      ],
+      "promotion_rules": {
+        "min_baseline_runs": 3,
+        "min_candidate_runs": 3,
+        "pass_rate_threshold": 0.8,
+        "quality_score_delta_min": -5.0,
+        "quality_score_delta_max_regression": -10.0,
+        "auto_promote_if": {
+          "candidate_pass_rate_gte": 0.85,
+          "candidate_quality_avg_gte": 75.0,
+          "delta_quality_gte": 0.0,
+          "no_critical_incidents": true,
+          "benchmark_validation_passed": true
+        },
+        "auto_rollback_if": {
+          "candidate_pass_rate_lt": 0.5,
+          "candidate_quality_avg_lt": 55.0,
+          "critical_incident_count_gte": 2
+        },
+        "manual_review_otherwise": true,
+        "promotion_channel_path": ["candidate", "stable"],
+        "rollback_target_channel": "stable"
+      },
+      "preflight": {
+        "require_workflow_profile_id": true,
+        "require_capabilities_check": true,
+        "fail_on_missing_skills": false,
+        "log_missing_skills": true
+      }
     },
     {
       "profile_id": "research-default",

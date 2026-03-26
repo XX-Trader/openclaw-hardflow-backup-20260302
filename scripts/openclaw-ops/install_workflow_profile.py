@@ -1968,7 +1968,10 @@ def main() -> None:
             ),
         )
         for item in multi_project_targets
-        if str(item.get("git_sync_enabled", "true")).strip().lower() != "false"
+        if (
+            str(item.get("git_sync_enabled", "true")).strip().lower() != "false"
+            and not bool(item.get("external_readonly", False))
+        )
     ]
 
     auto_update_template = str(args.multi_project_auto_update_install_cmd_template).strip()
