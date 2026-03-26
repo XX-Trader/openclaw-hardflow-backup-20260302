@@ -5483,6 +5483,100 @@ class PolicyEnforcer:
         }
 
 
+    def resolve_entry_route(self, args: argparse.Namespace) -> dict[str, Any]:
+        """根据消息长度和关键字判断入口路由层级，输出 guidance 和技能列表。
+
+        读取 routing-rules.json 的 entry_routing 配置，将请求分为
+        light/medium/major 三级，返回对应的起始阶段、所需技能和指引文本。
+
+        Args:
+            args: 需包含 --message-hint (请求文本片段, 最多200字)
+                  和 --entry-agent (入口 Agent ID)。
+
+        Returns:
+            dict 包含 tier, start_stage, required_skills, guidance 等字段。
+
+        Raises:
+            PolicyError: 当 entry_routing 未配置或 enabled=false 时。
+        """
+        entry_routing = self.routing.get("entry_routing", {})
+        if not entry_routing or not parse_bool(entry_routing.get("enabled", False), False):
+            return {
+                "tier": "disabled",
+                "guidance": "",
+                "required_skills": [],
+                "start_stage": "execute",
+                "workflow_profile_id": str(entry_routing.get("default_workflow_profile_id", "coding-default")),
+            }
+
+        message_hint = str(getattr(args, "message_hint", "") or "").strip()
+        entry_agent = str(getattr(args, "entry_agent", "") or "").strip() or "coordinator"
+        msg_len = len(message_hint)
+
+        tiers_cfg = entry_routing.get("tiers", {})
+        stages_cfg = entry_routing.get("stages", [])
+        default_profile = str(entry_routing.get("default_workflow_profile_id", "coding-default"))
+
+        # tier 判定：major > light > medium（优先匹配强制关键字）
+        resolved_tier = "medium"
+        major_cfg = tiers_cfg.get("major", {})
+        light_cfg = tiers_cfg.get("light", {})
+        medium_cfg = tiers_cfg.get("medium", {})
+
+        major_keywords = [str(k).lower() for k in major_cfg.get("force_keywords", [])]
+        light_keywords = [str(k).lower() for k in light_cfg.get("match_keywords", [])]
+        msg_lower = message_hint.lower()
+
+        if any(kw in msg_lower for kw in major_keywords):
+            resolved_tier = "major"
+        elif msg_len <= int(light_cfg.get("max_message_length", 30)) and any(kw in msg_lower for kw in light_keywords):
+            resolved_tier = "light"
+        elif msg_len <= int(light_cfg.get("max_message_length", 30)):
+            resolved_tier = "light"
+        elif msg_len <= int(medium_cfg.get("max_message_length", 100)):
+            resolved_tier = "medium"
+        else:
+            resolved_tier = "major"
+
+        tier_cfg = tiers_cfg.get(resolved_tier, {})
+        skip_stages = set(str(s).strip() for s in tier_cfg.get("skip_stages", []))
+        required_skills = [str(s).strip() for s in tier_cfg.get("required_skills", []) if str(s).strip()]
+        alt_skill = str(tier_cfg.get("alternative_skill", "")).strip()
+
+        active_stages = [s for s in stages_cfg if str(s.get("id", "")) not in skip_stages]
+        start_stage = str(active_stages[0]["id"]) if active_stages else "execute"
+
+        # 构建 guidance 文本
+        guidance_lines = [f"[Entry Router] tier={resolved_tier}"]
+        if resolved_tier == "light":
+            guidance_lines.append("快速任务，跳过澄清直接执行。")
+        elif resolved_tier == "medium":
+            guidance_lines.append("建议拆分后执行：")
+        else:
+            guidance_lines.append("强制完整流程：")
+
+        for idx, stage in enumerate(active_stages, 1):
+            skill_name = str(stage.get("skill", ""))
+            display = str(stage.get("display", ""))
+            guidance_lines.append(f"{idx}. [{skill_name}] {display}")
+
+        if alt_skill:
+            guidance_lines.append(f"或: 直接触发 [{alt_skill}] 一站式编排")
+        guidance_lines.append(f"workflow: {default_profile}@stable")
+
+        return {
+            "tier": resolved_tier,
+            "start_stage": start_stage,
+            "required_skills": required_skills,
+            "active_stages": [str(s.get("id", "")) for s in active_stages],
+            "alternative_skill": alt_skill,
+            "workflow_profile_id": default_profile,
+            "entry_agent": entry_agent,
+            "message_length": msg_len,
+            "guidance": "\n".join(guidance_lines),
+        }
+
+
 def build_parser() -> argparse.ArgumentParser:
     defaults = runtime_defaults()
     parser = argparse.ArgumentParser(
@@ -5742,6 +5836,11 @@ def build_parser() -> argparse.ArgumentParser:
     check_config.add_argument("--strict", action="store_true", help="return non-zero when any check fails")
     _ = check_config
 
+    entry_route = sub.add_parser("resolve-entry-route", help="classify entry tier and output routing guidance")
+    entry_route.add_argument("--entry-agent", default="coordinator")
+    entry_route.add_argument("--message-hint", default="")
+    _ = entry_route
+
     return parser
 
 
@@ -5855,6 +5954,8 @@ def main() -> int:
                 emit_json(enforcer.validate_runtime(args))
             elif args.command == "check-config":
                 emit_json(enforcer.check_config(args))
+            elif args.command == "resolve-entry-route":
+                emit_json({"ok": True, "route": enforcer.resolve_entry_route(args)})
             else:
                 raise PolicyError(f"unsupported command: {args.command}")
             return 0

@@ -1,5 +1,34 @@
 {
-    "version":  "2026-03-03",
+    "version":  "2026-03-26",
+    "entry_routing": {
+        "enabled": true,
+        "default_workflow_profile_id": "coding-default",
+        "tiers": {
+            "light": {
+                "max_message_length": 30,
+                "match_keywords": ["修复", "bugfix", "hotfix", "紧急修复", "fix", "typo"],
+                "skip_stages": ["clarify", "decompose"],
+                "required_skills": ["intelligent-router"]
+            },
+            "medium": {
+                "max_message_length": 100,
+                "skip_stages": ["clarify"],
+                "required_skills": ["task-decomposer", "intelligent-router"]
+            },
+            "major": {
+                "force_keywords": ["需求", "功能", "新建", "重构", "设计", "架构", "新增功能", "全新"],
+                "skip_stages": [],
+                "required_skills": ["requirements-clarity", "task-decomposer", "intelligent-router", "executing-plans"],
+                "alternative_skill": "smart-workflow"
+            }
+        },
+        "stages": [
+            {"id": "clarify",   "display": "需求澄清",   "skill": "requirements-clarity", "pre_skill": "brainstorming"},
+            {"id": "decompose", "display": "任务拆分",   "skill": "task-decomposer"},
+            {"id": "select",    "display": "工作流选择", "skill": "intelligent-router"},
+            {"id": "execute",   "display": "分发执行",   "skill": "executing-plans"}
+        ]
+    },
     "high_risk_keywords":  [
                                "生产",
                                "部署",

@@ -13,7 +13,7 @@
 - nofx 日志验证：按运行日志做服务器侧基础验证，确认所有核心 cron job 正常
 - 调整 Lobster 仓库配置为 `external_readonly`，关闭 `auto_pr_enabled` 与 `auto_update_install_cmd`
 - 落地只读仓库保护逻辑，禁止对 `external_readonly` 标记的仓库发起任何写操作
-- 把平台总入口正式落地为：`需求澄清 -> 任务拆分 -> workflow 选择 -> 执行`
+- ~~把平台总入口正式落地为：`需求澄清 -> 任务拆分 -> workflow 选择 -> 执行`~~ ✅（技能映射：requirements-clarity → task-decomposer → intelligent-router → executing-plans）
 - 把默认 `coding-default` workflow profile 的 manifest、安装入口和 `stable/candidate` 配置正式落地
 - 为 `upgrade feedback` 补齐晋升/回滚规则（`baseline / candidate / delta / promotion_decision`）
 - 任务层补齐 `workflow_profile_id` 与 `required_capabilities`，preflight 约束生效

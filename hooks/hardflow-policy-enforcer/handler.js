@@ -134,6 +134,26 @@ export default async function hardflowPolicyEnforcer(event) {
       const entryAgent = resolveEntryAgent(event);
       runPolicy(workspaceDir, runtime, ["assert-entry", "--entry-agent", entryAgent]);
       messages.push(`[Policy Enforcer] entry_agent=${entryAgent} passed`);
+
+      // --- Entry Routing: 注入分级路由指引 ---
+      try {
+        const firstUserMsg = (event?.input?.text || event?.context?.inputText || "").trim();
+        const messageHint = firstUserMsg.slice(0, 200);
+        const routeRaw = runPolicy(workspaceDir, runtime, [
+          "resolve-entry-route",
+          "--entry-agent", entryAgent,
+          "--message-hint", messageHint,
+        ]);
+        const routeResult = JSON.parse(routeRaw);
+        if (routeResult?.ok && routeResult?.route?.tier !== "disabled") {
+          const guidance = routeResult.route.guidance || "";
+          if (guidance) {
+            messages.push(guidance);
+          }
+        }
+      } catch {
+        // 路由指引是增强功能，失败不阻塞主流程
+      }
     }
 
     if (action === "stop") {
