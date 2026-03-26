@@ -75,6 +75,15 @@
         "command:reset"
       ],
       "has_doc": false
+    },
+    {
+      "name": "hardflow-failure-detector",
+      "enabled": true,
+      "classification": "custom",
+      "events": [
+        "tool:result"
+      ],
+      "has_doc": true
     }
   ],
   "events": {
@@ -101,6 +110,9 @@
     ],
     "gateway:startup": [
       "boot-md"
+    ],
+    "tool:result": [
+      "hardflow-failure-detector"
     ]
   }
 }

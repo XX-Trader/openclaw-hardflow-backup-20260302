@@ -156,7 +156,8 @@
         "auto-fix",
         "playwright-interactive",
         "webapp-testing",
-        "using-git-worktrees"
+        "using-git-worktrees",
+        "pua-methodology"
       ],
       "missing_skills": [],
       "soul_skills": [
@@ -167,7 +168,8 @@
         "auto-fix",
         "playwright-interactive",
         "webapp-testing",
-        "using-git-worktrees"
+        "using-git-worktrees",
+        "pua-methodology"
       ],
       "runtime_skill_overrides": [
         {
@@ -202,7 +204,8 @@
         "auto-fix",
         "verification-before-completion",
         "mcp-builder",
-        "using-git-worktrees"
+        "using-git-worktrees",
+        "pua-methodology"
       ],
       "missing_skills": [],
       "soul_skills": [
@@ -211,7 +214,8 @@
         "auto-fix",
         "verification-before-completion",
         "mcp-builder",
-        "using-git-worktrees"
+        "using-git-worktrees",
+        "pua-methodology"
       ],
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
@@ -238,7 +242,8 @@
         "receiving-code-review",
         "systematic-debugging",
         "verification-before-completion",
-        "openclaw-security-audit"
+        "openclaw-security-audit",
+        "pua-methodology"
       ],
       "missing_skills": [],
       "soul_skills": [
@@ -246,7 +251,8 @@
         "receiving-code-review",
         "systematic-debugging",
         "verification-before-completion",
-        "openclaw-security-audit"
+        "openclaw-security-audit",
+        "pua-methodology"
       ],
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
@@ -273,7 +279,8 @@
         "webapp-testing",
         "auto-fix",
         "deployment-test",
-        "systematic-debugging"
+        "systematic-debugging",
+        "pua-methodology"
       ],
       "missing_skills": [],
       "soul_skills": [
@@ -281,7 +288,8 @@
         "webapp-testing",
         "auto-fix",
         "deployment-test",
-        "systematic-debugging"
+        "systematic-debugging",
+        "pua-methodology"
       ],
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
@@ -308,7 +316,8 @@
         "deployment-test",
         "github-actions-runner",
         "windows-fullstack-deploy",
-        "openclaw-security-audit"
+        "openclaw-security-audit",
+        "pua-methodology"
       ],
       "missing_skills": [],
       "soul_skills": [
@@ -316,7 +325,8 @@
         "deployment-test",
         "github-actions-runner",
         "windows-fullstack-deploy",
-        "openclaw-security-audit"
+        "openclaw-security-audit",
+        "pua-methodology"
       ],
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",
@@ -408,14 +418,16 @@
         "systematic-debugging",
         "auto-fix",
         "verification-before-completion",
-        "openclaw-evolution-upgrader"
+        "openclaw-evolution-upgrader",
+        "pua-methodology"
       ],
       "missing_skills": [],
       "soul_skills": [
         "systematic-debugging",
         "auto-fix",
         "verification-before-completion",
-        "openclaw-evolution-upgrader"
+        "openclaw-evolution-upgrader",
+        "pua-methodology"
       ],
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",

@@ -220,5 +220,52 @@
                                             ]
                            }
                        ],
+    "methodology_router": {
+        "_comment": "PUA 方法论路由 — 按任务类型自动分配排障策略（来源: tanweai/pua v3）",
+        "enabled": true,
+        "skill": "pua-methodology",
+        "routes": {
+            "debug_fix": {
+                "signal_keywords": ["error", "bug", "fix", "crash", "报错", "修复", "异常", "失败", "不工作"],
+                "methodology": "根因分析 5-Why + 逐字读错误 + 反转假设验证",
+                "escalation": "失败2次→换思路 / 3次→搜索+读源码 / 4次→7项清单"
+            },
+            "build_new": {
+                "signal_keywords": ["add", "create", "build", "implement", "新增", "开发", "功能", "新建"],
+                "methodology": "先质疑需求→删减不必要→简化→加速→自动化",
+                "escalation": "卡壳→先验证需求是否正确，再换技术方案"
+            },
+            "code_review": {
+                "signal_keywords": ["review", "refactor", "质量", "重构", "审核", "code review"],
+                "methodology": "减法思维 + DRI + 安全/性能/架构三维审核",
+                "escalation": "审核不通过→必须给出可执行修复方案"
+            },
+            "testing": {
+                "signal_keywords": ["test", "verify", "验证", "测试", "回归", "qa"],
+                "methodology": "端到端闭环 + 边界场景覆盖 + 证据优先",
+                "escalation": "测试失败→最小复现 + 根因定位，不是重跑"
+            },
+            "deploy_ops": {
+                "signal_keywords": ["deploy", "config", "部署", "上线", "发布", "运维"],
+                "methodology": "前置检查→执行留痕→验证闭环→回滚预案",
+                "escalation": "部署失败→先查日志不猜测，验证每个前置条件"
+            },
+            "research": {
+                "signal_keywords": ["research", "search", "find", "调研", "分析", "对比"],
+                "methodology": "穷尽搜索再下判断，不靠猜测",
+                "escalation": "信息不足→扩大搜索范围，不是直接下结论"
+            },
+            "architecture": {
+                "signal_keywords": ["design", "architecture", "架构", "方案", "技术选型"],
+                "methodology": "逆向工作法（从期望结果倒推）+ 严谨逻辑推演",
+                "escalation": "方案争议→列出各方案优劣的量化对比"
+            },
+            "performance": {
+                "signal_keywords": ["performance", "slow", "optimize", "性能", "慢", "优化"],
+                "methodology": "A/B 测试一切，数据驱动，不靠直觉",
+                "escalation": "优化无效→先做 profiling，定位瓶颈再动手"
+            }
+        }
+    },
     "default_assignee":  "coordinator"
 }

@@ -110,8 +110,22 @@
           ],
           "required_skills": [
             "systematic-debugging",
-            "auto-fix"
+            "auto-fix",
+            "pua-methodology"
           ],
+          "pua_pressure_config": {
+            "enabled": true,
+            "max_retries_before_l3": 4,
+            "force_checklist_at_l3": true,
+            "structured_failure_report_at_l4": true,
+            "methodology_switch_at_l2": true,
+            "pressure_messages": {
+              "L1": "切换本质不同的方案，不是微调参数",
+              "L2": "强制执行：搜索+读源码+3个假设+反转假设",
+              "L3": "完成7项检查清单后再继续",
+              "L4": "输出结构化失败报告并移交"
+            }
+          },
           "score_evaluator": {
             "mode": "cross_review",
             "evaluator_agent": "reviewer",
@@ -254,7 +268,8 @@
             "routing"
           ],
           "required_skills": [
-            "content-research-writer"
+            "content-research-writer",
+            "pua-methodology"
           ]
         },
         {
