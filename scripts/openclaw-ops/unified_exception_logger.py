@@ -20,9 +20,12 @@ unified_exception_logger.py — 统一异常日志收集与分类巡检
 """
 
 import argparse
+import gzip
 import hashlib
 import json
+import os
 import re
+import shutil
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
@@ -86,6 +89,16 @@ EXCEPTION_CATEGORIES = {
             re.compile(r"(?:segfault|segmentation fault|SIGSEGV|SIGKILL)", re.IGNORECASE),
             re.compile(r"(?:process|worker)\s*(?:crashed|killed|terminated)", re.IGNORECASE),
             re.compile(r"(?:Traceback|stack trace|panic)", re.IGNORECASE),
+        ],
+    },
+    "path_validation_error": {
+        "label": "路径校验错误",
+        "patterns": [
+            re.compile(r"(?:invalid|illegal|bad)\s*(?:path|directory|file\s*name)", re.IGNORECASE),
+            re.compile(r"path\s*(?:traversal|injection|escape)", re.IGNORECASE),
+            re.compile(r"(?:\.\.[\\/]|~[\\/]|\$\{|\$HOME)", re.IGNORECASE),
+            re.compile(r"(?:symlink|hardlink)\s*(?:attack|loop|refused)", re.IGNORECASE),
+            re.compile(r"路径[\s]*(?:非法|无效|越权|注入)", re.UNICODE),
         ],
     },
     "generic_error": {
@@ -172,7 +185,8 @@ def extract_exceptions_from_file(file_path, scan_since=None):
 # ──────────────────────────────────────────────
 
 def run_exception_scan(log_dirs, output_dir=None, scan_since_hours=24,
-                       dry_run=False, task_id=None):
+                       dry_run=False, task_id=None,
+                       abnormal_dir=None, cleanup=False):
     """
     执行统一异常扫描的主流程。
 
@@ -264,8 +278,23 @@ def run_exception_scan(log_dirs, output_dir=None, scan_since_hours=24,
         print(f"✅ 异常报告已写入:")
         print(f"   JSON: {json_path}")
         print(f"   Markdown: {md_path}")
+
+        # 归档到统一异常日志目录
+        if abnormal_dir:
+            archive_to_abnormal(
+                abnormal_dir=Path(abnormal_dir),
+                json_path=json_path,
+                md_path=md_path,
+                task_id=task_id,
+            )
     else:
         print(markdown_report)
+
+    # 自动清理旧报告
+    if cleanup and output_dir:
+        cleanup_old_reports(Path(output_dir))
+    if cleanup and abnormal_dir:
+        cleanup_old_reports(Path(abnormal_dir))
 
     return summary
 
@@ -332,6 +361,75 @@ def _exc_to_serializable(exc):
     return dict(exc)
 
 
+def archive_to_abnormal(abnormal_dir, json_path, md_path, task_id=None):
+    """将巡检报告归档到统一异常日志目录。
+
+    Args:
+        abnormal_dir: 归档目标目录（如 /root/.openclaw/logs/abnormal/）。
+        json_path: JSON 报告路径。
+        md_path: Markdown 报告路径。
+        task_id: 任务 ID（用于归档文件名前缀）。
+    """
+    abnormal_dir.mkdir(parents=True, exist_ok=True)
+    prefix = task_id.replace(":", "_") if task_id else "exception"
+    date_str = datetime.now().strftime("%Y%m%d")
+    for src in (json_path, md_path):
+        if src.exists():
+            dest = abnormal_dir / f"{date_str}-{prefix}-{src.name}"
+            try:
+                shutil.copy2(str(src), str(dest))
+            except OSError as exc:
+                print(f"⚠️ 归档失败: {src} → {dest}: {exc}", file=sys.stderr)
+    print(f"✅ 已归档到: {abnormal_dir}")
+
+
+def cleanup_old_reports(report_dir, compress_days=7, delete_days=30):
+    """自动清理旧报告：7天以上压缩为 .gz，30天以上删除。
+
+    Args:
+        report_dir: 报告所在目录。
+        compress_days: 超过此天数的文件压缩（默认 7 天）。
+        delete_days: 超过此天数的文件删除（默认 30 天）。
+    """
+    if not report_dir.exists():
+        return
+    now_ts = datetime.now().timestamp()
+    compress_cutoff = now_ts - (compress_days * 86400)
+    delete_cutoff = now_ts - (delete_days * 86400)
+    compressed = 0
+    deleted = 0
+    for fpath in report_dir.iterdir():
+        if not fpath.is_file():
+            continue
+        try:
+            mtime = fpath.stat().st_mtime
+        except OSError:
+            continue
+        # 超过 30 天：直接删除（含 .gz）
+        if mtime < delete_cutoff:
+            try:
+                fpath.unlink()
+                deleted += 1
+            except OSError:
+                pass
+            continue
+        # 超过 7 天且未压缩：gzip 压缩
+        if mtime < compress_cutoff and fpath.suffix not in (".gz",):
+            gz_path = fpath.with_suffix(fpath.suffix + ".gz")
+            try:
+                with open(str(fpath), "rb") as f_in:
+                    with gzip.open(str(gz_path), "wb") as f_out:
+                        shutil.copyfileobj(f_in, f_out)
+                # 保留原始修改时间
+                os.utime(str(gz_path), (mtime, mtime))
+                fpath.unlink()
+                compressed += 1
+            except OSError:
+                pass
+    if compressed or deleted:
+        print(f"🧹 清理完成: 压缩 {compressed} / 删除 {deleted} 个文件 ({report_dir})")
+
+
 # ──────────────────────────────────────────────
 # CLI 入口
 # ──────────────────────────────────────────────
@@ -355,8 +453,10 @@ def build_cli_parser():
     )
     parser.add_argument("--log-dirs", nargs="+", required=True, help="日志目录列表")
     parser.add_argument("--output-dir", default=None, help="报告输出目录")
+    parser.add_argument("--abnormal-dir", default=None, help="统一异常日志归档目录（如 ~/.openclaw/logs/abnormal/）")
     parser.add_argument("--scan-since-hours", type=int, default=24, help="扫描最近 N 小时（默认 24）")
     parser.add_argument("--dry-run", action="store_true", help="只输出不写文件")
+    parser.add_argument("--cleanup", action="store_true", help="自动清理旧报告（7天压缩/30天删除）")
     parser.add_argument("--task-id", default=None, help="任务 ID（cron 集成）")
     return parser
 
@@ -373,6 +473,8 @@ def main():
         scan_since_hours=args.scan_since_hours,
         dry_run=args.dry_run,
         task_id=args.task_id,
+        abnormal_dir=args.abnormal_dir,
+        cleanup=args.cleanup,
     )
 
     if result.get("alert_level") == "critical":

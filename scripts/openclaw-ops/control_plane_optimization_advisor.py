@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from copy import deepcopy
@@ -438,6 +439,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--limit", default="20")
     parser.add_argument("--json-output", default="")
     parser.add_argument("--markdown-output", default="")
+    parser.add_argument("--todo-file", default="", help="将建议自动追加到 TODO.md（含去重+风险标记）")
     parser.add_argument("--emit-json", action="store_true")
     return parser
 
@@ -471,11 +473,70 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
             file_mode=0o644,
             dir_mode=0o755,
         )
+    # advisor→TODO 自动写入
+    todo_file = str(args.todo_file or "").strip()
+    if todo_file and report.get("recommendations"):
+        appended = append_recommendations_to_todo(
+            Path(todo_file).expanduser(),
+            report["recommendations"],
+        )
+        payload["todo_appended"] = appended
     if bool(args.emit_json):
         print(json.dumps(payload, ensure_ascii=False))
     else:
         print(report["markdown"])
     return payload
+
+
+def append_recommendations_to_todo(
+    todo_path: Path,
+    recommendations: list[dict[str, Any]],
+) -> int:
+    """将优化建议自动追加到 TODO.md，含指纹去重 + 风险标记。
+
+    Args:
+        todo_path: TODO.md 文件路径。
+        recommendations: advisor 生成的建议列表。
+
+    Returns:
+        int: 实际追加的新建议数量。
+    """
+    existing_content = ""
+    if todo_path.exists():
+        existing_content = todo_path.read_text(encoding="utf-8", errors="replace")
+    # 提取已有指纹进行去重
+    existing_fingerprints: set[str] = set()
+    for line in existing_content.splitlines():
+        # 匹配 [advisor:xxxx] 格式的指纹
+        if "[advisor:" in line:
+            start = line.index("[advisor:") + 9
+            end = line.index("]", start) if "]" in line[start:] else len(line)
+            existing_fingerprints.add(line[start:start + (end - start)].strip())
+    new_lines: list[str] = []
+    severity_icon = {"high": "🔴", "medium": "🟡", "low": "🟢"}
+    date_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+    for rec in recommendations:
+        rec_type = str(rec.get("rec_type", "")).strip()
+        severity = str(rec.get("severity", "low")).strip().lower()
+        reason = str(rec.get("reason", "")).strip()[:120]
+        action = str(rec.get("action", "")).strip()[:120]
+        # 生成指纹
+        fp_raw = f"{rec_type}:{rec.get('workflow_profile_id','')}:{rec.get('stage_id','')}"
+        fingerprint = hashlib.md5(fp_raw.encode()).hexdigest()[:8]
+        if fingerprint in existing_fingerprints:
+            continue
+        icon = severity_icon.get(severity, "⚪")
+        risk_tag = "🚨需人工审核" if severity == "high" else ""
+        line = f"- [ ] {icon} [{date_str}] {reason} — {action} {risk_tag} [advisor:{fingerprint}]"
+        new_lines.append(line)
+    if not new_lines:
+        return 0
+    # 追加到文件末尾
+    separator = "\n## 🤖 Advisor 自动建议\n\n" if "Advisor 自动建议" not in existing_content else "\n"
+    todo_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(str(todo_path), "a", encoding="utf-8") as fh:
+        fh.write(separator + "\n".join(new_lines) + "\n")
+    return len(new_lines)
 
 
 if __name__ == "__main__":

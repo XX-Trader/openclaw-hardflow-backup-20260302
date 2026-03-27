@@ -1,88 +1,121 @@
-# OpenClaw 定时任务索引（Core / All）
-本文档作为项目定时任务总索引，按 `core` / `all` 两个安装档位组织。
+# OpenClaw Cron 定时任务索引
 
-## 1. 档位定义
-- `core`：安装核心链路任务（`1,2,3,4,5,7,8,9`）。
-- `all`：在 `core` 基础上额外安装任务 `6`（互联网进化）与任务 `10`（web-agent 采集与审核链路）。
+> 最后更新：2026-03-28
+> 数据源：`cron/jobs.json`
 
-## 2. 一键安装命令
-```bash
-# 核心档位
-python3 scripts/openclaw-ops/install_workflow_profile.py \
-  --profile core \
-  --workflow-repo-path ~/openclaw-hardflow-backup-20260302
+## 任务总览
 
-# 全量档位（含互联网进化 + web-agent）
-python3 scripts/openclaw-ops/install_workflow_profile.py \
-  --profile all \
-  --workflow-repo-path ~/openclaw-hardflow-backup-20260302
-```
+- **总计**：22 个定时任务
+- **启用**：19 个
+- **禁用**：3 个
+- **执行 Agent**：ops-agent(8) / optimization-agent(7) / reviewer(4) / coordinator(3)
 
-可选：显式指定消息投递目标
-```bash
---channel telegram --to "<chat_id>"
-```
+## 一、核心运维任务
 
-## 3. 任务映射（核心 + 全量）
-| # | 任务目标 | 档位 | 对应 Job（name） | 安装入口 | 默认频率 |
-|---|---|---|---|---|---|
-| 1 | 运维 agent 定期把到期 TODO 发给规划者执行 | core/all | `todo_patrol_15m` | `install_todo_patrol_job.py` | 每 15 分钟 |
-| 2 | 运维 agent 监控日志问题并去重报警；失败工作流自动派生给优化 agent 的修复任务 | core/all | `ops_incremental_monitor` + `ops_full_calibration` + `ops_daily_summary` | `cron_setup.py`（由 profile 安装器调用） | 15 分钟 + 6 小时 + 每日 |
-| 3 | 项目 agent 同步项目 git 与索引（含本地 `~/.openclaw` 备份链路） | core/all | `project_index_maintainer_4h` + `ops_git_sync_push` + `ops_local_openclaw_git_backup` | `install_project_index_job.py` + `cron_setup.py` + `install_local_openclaw_backup_job.py` | Git 更新触发 / 4 小时兜底 + 6 小时 + 1 小时 |
-| 4 | 优化 agent 基于本地 openclaw/git 更新优化工作流项目，并可选创建/更新 PR | core/all | `ops_governance_evolution_incremental` | `cron_setup.py` | 6 小时 |
-| 5 | 优化 agent 做周度自我复盘并生成 TODO 任务包 | core/all | `ops_self_evolution_weekly_todo` | `cron_setup.py` | 每周 |
-| 6 | 优化 agent 从互联网搜进化技能并反哺工作流项目 | all | `ops_github_web_evolution_incremental` | `cron_setup.py`（仅 `--profile all`，按需启用） | 12 小时 |
+### 1.1 TODO 巡检（ops-agent）
+- **频率**：每 15 分钟
+- **脚本**：`todo_patrol.py`
+- **功能**：巡检 TODO.md，去重播报，检测任务执行状态，自动请求 coordinator 分配未指派任务
 
-补充说明：
+### 1.2 每日 TODO 摘要（ops-agent）
+- **频率**：每日 00:00 UTC
+- **脚本**：`daily_todo_digest_runner.py`
+- **功能**：生成每日 TODO 汇总，通过 Telegram 发送
 
-- `ops_conversation_evolution_incremental` 已不再由默认安装链路自动安装。
-- `project_index_maintainer_4h` 默认会附带 `--disable-memory-index-on-change` 与 `--skip-unchanged-git-projects`，避免在第三方记忆模式下主动刷新官方 memory index，也避免在 git HEAD 未变化时重复重建索引。
-- `ops_governance_evolution_incremental` 已支持可选 `auto-pr`，适合和 reviewer 的 PR gate 组合使用。
-- `reviewer_git_update_hourly` 不再推荐作为运行节点上的“全仓高频扫描器”；若启用，更推荐使用 `--pr-gate-only` 收口为 open PR 审查与自动合并 gate。
-| 7 | 每日工作总结（todo/done）并发送钉钉 | core/all | `ops_daily_work_report_dingtalk` | `cron_setup.py` | 每日 00:15 |
-| 8 | reviewer agent 技术债审查 / PR 审查 gate（按安装参数选择） | core/all | `reviewer_incremental_daily_4am` + `reviewer_weekly_structure_review` + 可选 `reviewer_git_update_hourly` | `install_reviewer_scan_jobs.py`（`techdebt` / `pr-gate`） | 每日 04:00 + 每周一 04:40 + 可选每小时 |
-| 9 | 自动拉取工作流仓库并自动安装（失败仅记录日志） | core/all | `ops_auto_update_install_hourly` | `cron_setup.py` | 每 1 小时 |
-| 10 | web-agent 采集互联网 + optimization/project 审核与改造建议 | all（core 可手动开启） | `web_intel_collect_hourly` + `web_intel_review_optimization_4h` + `web_intel_review_project_docs_6h` | `install_web_intel_jobs.py` | 1 小时 + 4 小时 + 6 小时 |
+### 1.3 系统异常巡检（ops-agent）
+- **频率**：每 6 小时
+- **脚本**：`unified_exception_logger.py`
+- **功能**：扫描 Agent 工作流日志，按 7 类异常分类（API/文件系统/配置/Agent通信/系统/路径校验/通用），MD5 指纹去重，增量扫描
 
-## 4. Web-Agent 链路说明（任务 #10）
-- 采集脚本：`web_intel_collect_runner.py`
-  - HTTP/API 优先，遇到反爬或失败时可尝试浏览器兜底。
-  - 数据落盘到 `~/.openclaw/web/raw|parsed|summary`。
-- 审核脚本：`web_intel_review_runner.py`
-  - `optimization` 模式：产出流程优化建议。
-  - `project-doc` 模式：产出面向代码改造的官方文档建议。
-- 安装器：`install_web_intel_jobs.py`
-  - 一次写入 3 个 job，并自动复用已有消息投递配置。
+## 二、自进化闭环
 
-## 5. Git 链路定义
-- `~/.openclaw`：仅本地 git 备份（`init/add/commit`），不配置远程，不做 push。
-- 工作流仓库 `~/openclaw-hardflow-backup-20260302`：走远程同步（`pull + push`），用于共享最新工作流改动。
+### 2.1 目录树快照 + 变更增量扫描（optimization-agent）
+- **频率**：每日 04:00
+- **脚本**：`reviewer_cron_runner.py --mode daily_snapshot`
+- **功能**：扫描工作流/Skills/Hooks 目录结构变更
 
-## 6. 模型说明
-- 定时脚本本身不硬编码具体模型；实际模型由 OpenClaw 运行时 agent 配置决定。
-- 默认分工：
-  - `main` / `coordinator` / `reviewer` -> `openai-codex/gpt-5.4`
-  - `optimization-agent` / `backend-dev` / `frontend-dev` / `project-agent` / `agent-factory` -> `openai-codex/gpt-5.3-codex`
-  - `ops-agent` / `web-agent` / `tester` / `deployer` / `doc-writer` -> `glmcode/glm-4.7`
-- 思考强度规则：
-  - Codex 模型默认 `xhigh`
-  - 非 Codex 模型默认 `high`
-- 统一切换模型档位可用：
-  - `scripts/openclaw-ops/model_tier_profiles.json`
-  - `scripts/openclaw-ops/switch_model_tier.py`
+### 2.2 自我进化总结（optimization-agent）
+- **频率**：每日 04:37
+- **脚本**：`reviewer_cron_runner.py --mode daily_self_evolution`
+- **功能**：蒸馏每日记忆中的最佳实践，更新 Agent 行为约束配置
 
-## 7. 安装后快速核对
-```bash
-python3 - <<'PY'
-import json, os, pathlib
-p = pathlib.Path(os.path.expanduser("~/.openclaw/cron/jobs.json"))
-data = json.loads(p.read_text(encoding="utf-8-sig"))
-for j in data.get("jobs", []):
-    if not j.get("enabled", True):
-        continue
-    s = j.get("schedule", {})
-    kind = s.get("kind")
-    expr = s.get("expr") if kind == "cron" else s.get("everyMs")
-    print(f"{j.get('name')} | {kind} | {expr} | agent={j.get('agentId')}")
-PY
-```
+### 2.3 Hook 沙盒自测（optimization-agent）
+- **频率**：每日（24h 间隔）
+- **脚本**：`algo_micro_optimizer_runner.py`
+- **功能**：运行 hook-selftest 检测 hook 健康度
+
+### 2.4 Git 同步推送（optimization-agent）
+- **频率**：每 6 小时
+- **脚本**：`git_sync_push_runner.py`
+- **功能**：自动同步审核通过的优化到远程仓库，内置密钥内容检测拦截
+
+### 2.5 配置变更审核（optimization-agent）
+- **频率**：每 6 小时
+- **脚本**：`config_diff_review_runner.py`
+- **功能**：监控 `.openclaw` 本地 git 变更，触发 optimization-agent 审核
+
+### 2.6 Agent 自进化评估（ops-agent）
+- **频率**：每周一 04:00
+- **脚本**：`agent_self_evolution.py`
+- **功能**：基于 task_center.db 历史数据多维度评分，生成优化建议报告
+
+## 三、外部进化通道
+
+### 3.1 上游社区进化（ops-agent）
+- **频率**：每日 03:00
+- **脚本**：`auto_update_install_runner.py`
+- **功能**：拉取上游仓库最新代码并运行安装脚本，保持系统同步
+
+### 3.2 网页情报采集（ops-agent）
+- **频率**：每日 03:30
+- **脚本**：`web_intel_collect_runner.py`
+- **功能**：采集关注的网页情报源，存档变更，自动建单修复失败来源
+
+### 3.3 开源项目进化（optimization-agent）
+- **频率**：每日 04:00
+- **脚本**：`github_web_evolution_runner.py`
+- **功能**：扫描 GitHub 高信号仓库和 Skill4Agent 技能库，发现新工具/方法论
+
+## 四、代码评审
+
+### 4.1 每日增量评审（reviewer）
+- **频率**：每日 04:00
+- **脚本**：`reviewer_cron_runner.py --mode incremental_daily`
+- **功能**：全量增量评审：代码质量/安全/架构，自动落地优化
+
+### 4.2 每周结构扫描（reviewer）
+- **频率**：每周日 04:30
+- **脚本**：`reviewer_cron_runner.py --mode weekly_structure`
+- **功能**：文件组织/依赖/冗余/一致性检查
+
+### 4.3 每周安全审计（reviewer）
+- **频率**：每周日 05:00
+- **脚本**：`reviewer_cron_runner.py --mode weekly_security`
+- **功能**：密钥泄漏/权限/XSS/注入扫描
+
+### 4.4 每周文档新鲜度（reviewer）
+- **频率**：每周日 05:30
+- **脚本**：`reviewer_cron_runner.py --mode weekly_doc_freshness`
+- **功能**：文档与代码的同步性检查
+
+## 五、协调管理
+
+### 5.1 心跳检测（coordinator）
+- **频率**：每 5 分钟
+- **功能**：coordinator 存活检测
+
+### 5.2 每日工作规划（coordinator）
+- **频率**：每日 04:00
+- **功能**：生成每日工作规划
+
+### 5.3 每周回顾（coordinator）
+- **频率**：每周日 05:00
+- **功能**：每周工作回顾总结
+
+## ⏸️ 已禁用任务
+
+| 任务名称 | Agent | 禁用原因 |
+|----------|-------|----------|
+| TODO 巡检-hardflow | ops-agent | 备份仓库巡检，当前不需要 |
+| ops_governance_evolution_incremental | ops-agent | 治理巡检，先观察手动效果 |
+| optimize 目录树快照-hardflow | optimization-agent | 备份仓库快照，当前不需要 |

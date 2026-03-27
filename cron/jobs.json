@@ -160,52 +160,11 @@
       }
     },
     {
-      "id": "57acbf75-0b04-461d-a888-ca02c70fc5d1",
-      "agentId": "agent-factory",
-      "name": "agent-factory 自动创建(P1/P2)",
-      "description": "扫描agent缺口并对P1/P2自动创建，P3保留手动",
-      "enabled": false,
-      "createdAtMs": 1772348726747,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "every",
-        "everyMs": 1800000,
-        "anchorMs": 1772348726747
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 agent-factory 自动模式。每次运行：1) 执行 python3 $HOME/.openclaw/workflows/openclaw-ops/agent_gap_queue.py --window-days 7 --ops-dir $HOME/.openclaw/workspace-agent-factory/ops --queue-file $HOME/.openclaw/workspace-agent-factory/ops/agent-gap-queue.json --report-file $HOME/.openclaw/workspace-agent-factory/ops/agent-gap-report.md。2) 先做 plan：python3 $HOME/.openclaw/workflows/openclaw-ops/create_agent_from_gap.py --mode plan --queue-file $HOME/.openclaw/workspace-agent-factory/ops/agent-gap-queue.json --config-file $HOME/.openclaw/openclaw.json --output-dir $HOME/.openclaw/workspace-agent-factory/ops/agent-factory --emit-json。3) 仅当 plan 结果 selectedAgentIds 非空且队列存在 open+P1/P2 时，才执行 apply：bash $HOME/.openclaw/workflows/openclaw-ops/run_agent_gap_workflow.sh apply 5 --review-ok --test-ok。4) 若 selectedAgentIds 为空（含“手动已创建过/已存在”场景）或只有P3/空队列，则 NO_REPLY，且不执行 apply。5) 若本次创建/更新了agent，按统一字段汇报：发送人=agent-factory；发现者=agent-gap-scan；任务=cron:57acbf75-0b04-461d-a888-ca02c70fc5d1；来源类别=agent/workflow；位置=...；时间区间=...（UTC+8）；次数=...；根因=...；方案=...；状态=已修复/待确认/观察中；证据=$HOME/.openclaw/workspace-agent-factory/ops/agent-factory/workflow-runs/...。6) 不做高风险操作。"
-      },
-      "delivery": {
-        "mode": "none",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "lastRunAtMs": 1772440575795,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 72768,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0,
-        "nextRunAtMs": 1772442375795
-      },
-      "failureAlert": {
-        "after": 1,
-        "cooldownMs": 1800000,
-        "channel": "telegram",
-        "to": "-1003333097130"
-      }
-    },
-    {
       "id": "2ce5fe63-8316-4503-95e4-48515042b453",
       "agentId": "ops-agent",
       "name": "daily_todo_digest_daily",
       "description": "Daily TODO digest (script sends Telegram directly)",
-      "enabled": false,
+      "enabled": true,
       "createdAtMs": 1772438672175,
       "updatedAtMs": 1772642376140,
       "schedule": {
@@ -227,146 +186,6 @@
       },
       "state": {
         "nextRunAtMs": 1772467200000
-      }
-    },
-    {
-      "id": "fd8ae471-69f7-4bb5-9d2e-46aa26b092f1",
-      "agentId": "ops-agent",
-      "name": "log-watcher agent（双项目）",
-      "description": "隔离agent巡检日志；异常告警；简单问题自动修复",
-      "enabled": false,
-      "createdAtMs": 1772343772109,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "every",
-        "everyMs": 900000,
-        "anchorMs": 1772343772109
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "You are scheduled runner. Run command only:\nbash -lc 'mkdir -p $HOME/.openclaw/workspace-ops-agent/ops && LOCK=$HOME/.openclaw/workspace-ops-agent/ops/alert-dedupe-state.lock && flock -xn -E 75 \\\"$LOCK\\\" python3 $HOME/.openclaw/workspace-ops-agent/ops/log-watcher.py; rc=$?; if [ \\\"$rc\\\" -eq 75 ]; then echo NO_REPLY; exit 0; fi; exit \\\"$rc\\\"'\nDo not write, edit, create, move, or delete any file. Do not execute any other command.\nReturn EXACTLY raw stdout/stderr text from the command. Do not add explanation, greeting, or prefix text. If output is empty, reply NO_REPLY.",
-        "timeoutSeconds": 1800
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "lastRunAtMs": 1772440852884,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 215052,
-        "lastDelivered": false,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0,
-        "nextRunAtMs": 1772441752884
-      }
-    },
-    {
-      "id": "8752680b-17d4-4a95-8f04-1360fc346fa9",
-      "agentId": "ops-agent",
-      "name": "ops 汇总（cron+todo+done）",
-      "description": "运维统一汇总：异常才汇报；无异常NO_REPLY；本地留档",
-      "enabled": false,
-      "createdAtMs": 1772349866459,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "every",
-        "everyMs": 1800000,
-        "anchorMs": 1772349866459
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 ops-agent 汇总任务。仅用命令执行：bash $HOME/.openclaw/ops/ops_summary_pipeline.sh。将命令标准输出原样作为唯一回复；如果输出是 NO_REPLY，就只回复 NO_REPLY，不要加任何解释。"
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "lastRunAtMs": 1772440648578,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 13171,
-        "lastDeliveryStatus": "not-delivered",
-        "consecutiveErrors": 0,
-        "lastDelivered": false,
-        "nextRunAtMs": 1772442448578
-      }
-    },
-    {
-      "id": "948d7307-6941-44ee-a8aa-57da767a31b7",
-      "agentId": "optimization-agent",
-      "name": "optimization-agent 治理巡检",
-      "description": "定期优化 workflow/hooks/skills/agents；仅有建议或异常时汇报",
-      "enabled": false,
-      "createdAtMs": 1772349963088,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "11 2,8,14,20 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 optimization-agent 治理巡检。仅用命令执行：python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_incremental_scan.py --mode governance --task cron:optimize-governance --actor optimization-agent。要求：读取脚本输出原样回复；若输出 NO_REPLY，则只回复 NO_REPLY。禁止全量扫描历史记录，按脚本的增量清单（mtime/size/md5）执行。"
-      },
-      "delivery": {
-        "mode": "none",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "nextRunAtMs": 1772453460000,
-        "lastRunAtMs": 1772431874259,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 43057,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
-      },
-      "failureAlert": {
-        "after": 1,
-        "cooldownMs": 1800000,
-        "channel": "telegram",
-        "to": "-1003333097130"
-      }
-    },
-    {
-      "id": "7e12c6d4-adb0-4ad4-83a6-58bffec8eb53",
-      "agentId": "optimization-agent",
-      "name": "optimize 全量校准",
-      "description": "默认2天全量校准（workflow/skills/hooks），仅发现增量漏报时告警",
-      "enabled": false,
-      "createdAtMs": 1772352613540,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "23 3 */14 * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 optimization-agent 全量校准+修复任务。严格按命令执行并闭环：\n1) 运行：python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_full_calibration.py --task cron:optimize-full-calibration --actor optimization-agent\n2) 若输出为 NO_REPLY：仅回复 NO_REPLY。\n3) 若检测到 missed_by_incremental=true（增量漏报）：立即进入修复流程，不要只告警：\n   a. 执行增量重建：\n      - python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_incremental_scan.py --mode governance --task repair:incremental-governance --actor optimization-agent\n      - python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_incremental_scan.py --mode evolution --task repair:incremental-evolution --actor optimization-agent\n   b. 立即复验：\n      - python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_full_calibration.py --task verify:post-repair-full --actor optimization-agent\n   c. 读取 $HOME/.openclaw/workspace-optimization-agent/ops/optimize-full-state.json：\n      - 若 missed_by_incremental=false：输出“已修复”汇报（附证据路径）。\n      - 若仍为 true：输出“待确认”并给最小修复建议，且把待办追加到 $HOME/.openclaw/workspace-coordinator/TODO.md（标题含“增量漏报修复”）。\n4) 汇报字段必须包含：发送人、发现者、任务、来源类别、位置、时间区间(UTC+8)、次数、根因、方案、状态、证据。"
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "nextRunAtMs": 1773516180000
       }
     },
     {
@@ -411,70 +230,6 @@
       }
     },
     {
-      "id": "8f9102f4-d62c-4a01-85ef-1d393e2244de",
-      "agentId": "optimization-agent",
-      "name": "optimize 频率策略管理",
-      "description": "默认2天全量；workflow/skills/hooks 连续14天无变化则切14天",
-      "enabled": false,
-      "createdAtMs": 1772353374195,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "11 4 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 optimization-agent 频率策略任务。仅用命令执行：python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_frequency_manager.py --task cron:optimize-frequency-manager --actor optimization-agent。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。"
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {
-        "nextRunAtMs": 1772482260000,
-        "lastRunAtMs": 1772395967148,
-        "lastRunStatus": "ok",
-        "lastStatus": "ok",
-        "lastDurationMs": 90469,
-        "lastDelivered": true,
-        "lastDeliveryStatus": "delivered",
-        "consecutiveErrors": 0
-      }
-    },
-    {
-      "id": "d3859fd5-3ea2-4ee5-ab1d-7fd526f26722",
-      "agentId": "reviewer",
-      "name": "reviewer_git_update_hourly",
-      "description": "Hourly git incremental scan (branch sync, PR check, optional approved merge)",
-      "enabled": false,
-      "createdAtMs": 1772473929944,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "every",
-        "everyMs": 3600000,
-        "anchorMs": 1772502889338
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode hourly_git --task-id cron:reviewer-hourly-git --git-fetch --check-pr\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
-        "timeoutSeconds": 1200
-      },
-      "state": {
-        "nextRunAtMs": 1772506489342
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      }
-    },
-    {
       "id": "0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a",
       "agentId": "reviewer",
       "name": "reviewer_incremental_daily_4am",
@@ -492,33 +247,6 @@
       "payload": {
         "kind": "agentTurn",
         "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode daily_incremental --task-id cron:reviewer-daily-incremental --fix --fix-command \"python3 $HOME/.openclaw/ops/policy/policy_enforcer.py next-todo --limit 5\"\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
-        "timeoutSeconds": 1800
-      },
-      "state": {},
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      }
-    },
-    {
-      "id": "a9c4a133-bf5b-4b91-8d89-ec97995f95f9",
-      "agentId": "reviewer",
-      "name": "reviewer_recurring_bi_daily",
-      "description": "Every 2 days recurring issue scan with dedupe",
-      "enabled": false,
-      "createdAtMs": 1772473929944,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "20 4 */2 * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode bi_daily_recurring --task-id cron:reviewer-bi-daily-recurring\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
         "timeoutSeconds": 1800
       },
       "state": {},
@@ -556,60 +284,6 @@
       }
     },
     {
-      "id": "c1a2b3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
-      "agentId": "optimization-agent",
-      "name": "control_plane_summary_daily",
-      "description": "每日聚合任务/事件/benchmark 信号，输出控制面汇总快照",
-      "enabled": false,
-      "createdAtMs": 1772642376140,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 2 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 scheduled runner。仅用命令执行以下脚本：\npython3 $HOME/.openclaw/ops/control_plane_summary_runner.py --task-db $HOME/.openclaw/ops/task-center/task_center.db --output-dir $HOME/.openclaw/ops/control-plane/summary --emit-json\n将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 1200
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {}
-    },
-    {
-      "id": "d2b3c4e5-f6a7-4b8c-9d0e-1f2a3b4c5d6e",
-      "agentId": "optimization-agent",
-      "name": "control_plane_dashboard_daily",
-      "description": "每日生成控制面看板快照（JSON+MD+HTML）",
-      "enabled": false,
-      "createdAtMs": 1772642376140,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "30 2 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 scheduled runner。仅用命令执行以下脚本：\npython3 $HOME/.openclaw/ops/control_plane_dashboard.py --task-db $HOME/.openclaw/ops/task-center/task_center.db --output-dir $HOME/.openclaw/ops/control-plane/dashboard --emit-json\n将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 1200
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {}
-    },
-    {
       "id": "e3c4d5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
       "agentId": "optimization-agent",
       "name": "upgrade_feedback_daily",
@@ -637,68 +311,14 @@
       "state": {}
     },
     {
-      "id": "f4d5e6a7-b8c9-4d0e-1f2a-3b4c5d6e7f80",
-      "agentId": "optimization-agent",
-      "name": "benchmark_sweep_12h",
-      "description": "每 12 小时运行基准测试 sweep，覆盖所有注册的 benchmark suite",
-      "enabled": false,
-      "createdAtMs": 1772642376140,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 6,18 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 scheduled runner。仅用命令执行以下脚本：\npython3 $HOME/.openclaw/ops/benchmark_orchestrator.py sweep --executor-run-dir $HOME/.openclaw/ops/task-center/executor-runs --output-dir $HOME/.openclaw/ops/benchmark/reports --state-dir $HOME/.openclaw/ops/benchmark/state --task-db $HOME/.openclaw/ops/task-center/task_center.db --auto-create-tasks --continue-on-error --emit-json\n将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 2400
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {}
-    },
-    {
-      "id": "a5e6f7b8-c9d0-4e1f-2a3b-4c5d6e7f8091",
-      "agentId": "optimization-agent",
-      "name": "control_plane_optimization_advisor_12h",
-      "description": "每 12 小时生成控制面优化建议，派发优化任务",
-      "enabled": false,
-      "createdAtMs": 1772642376140,
-      "updatedAtMs": 1772642376140,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 8,20 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 scheduled runner。仅用命令执行以下脚本：\npython3 $HOME/.openclaw/ops/control_plane_optimization_advisor.py --task-db $HOME/.openclaw/ops/task-center/task_center.db --workflow-profile-registry $HOME/.openclaw/ops/policy/workflow-profile-registry.json --output-dir $HOME/.openclaw/ops/control-plane/optimization --emit-json\n将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 1200
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
-      },
-      "state": {}
-    },
-    {
       "id": "b8b9c1a2-d3e4-4f51-a6b7-c8d9e0f1a2b3",
       "agentId": "optimization-agent",
-      "name": "algo_micro_optimizer_4h",
-      "description": "每4小时沙盒进化任务，运行 hook-selftest 检测 hook 健康度。",
+      "name": "algo_micro_optimizer_daily",
+      "description": "每日沙盒进化任务，运行 hook-selftest 检测 hook 健康度。",
       "enabled": true,
       "schedule": {
         "kind": "every",
-        "everyMs": 14400000,
+        "everyMs": 86400000,
         "anchorMs": 1772642376140
       },
       "sessionTarget": "isolated",
@@ -811,8 +431,8 @@
     {
       "id": "d4e5f6a7-exception-logger-hardflow-0004",
       "agentId": "ops-agent",
-      "name": "unified_exception_logger（异常巡检）",
-      "description": "每6小时扫描Agent工作流日志中的异常记录，按6类异常自动分类统计（API/文件系统/配置/Agent通信/系统/通用），去重后生成巡检报告",
+      "name": "system_exception_patrol（系统异常巡检）",
+      "description": "每6小时扫描Agent工作流日志，按7类异常自动分类（API/文件系统/配置/Agent通信/系统/路径校验/通用），MD5指纹去重，增量扫描（仅近24h），生成分类巡检报告",
       "enabled": true,
       "createdAtMs": 1772643600000,
       "updatedAtMs": 1772643600000,
@@ -825,7 +445,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 exception-scanner 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/unified_exception_logger.py --log-dirs $HOME/.openclaw/ops/workflow-logs/ $HOME/.openclaw/sessions/ --output-dir $HOME/.openclaw/ops/exception-reports/ --scan-since-hours 6。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 exception-scanner 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/unified_exception_logger.py --log-dirs $HOME/.openclaw/ops/workflow-logs/ $HOME/.openclaw/sessions/ --output-dir $HOME/.openclaw/ops/exception-reports/ --abnormal-dir $HOME/.openclaw/logs/abnormal/ --cleanup --scan-since-hours 6。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 120
       },
       "delivery": {
@@ -856,6 +476,136 @@
       },
       "delivery": {
         "mode": "always",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "f1a2b3c4-auto-update-daily-0001",
+      "agentId": "ops-agent",
+      "name": "auto_update_daily（上游社区进化）",
+      "description": "每日拉取上游仓库最新代码并运行安装脚本，保持系统与社区版本同步",
+      "enabled": true,
+      "createdAtMs": 1772729600000,
+      "updatedAtMs": 1772729600000,
+      "schedule": {
+        "kind": "cron",
+        "cron": "0 3 * * *"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/auto_update_install_runner.py --repo-path $HOME/openclaw-hardflow-backup-20260302 --task-id cron:auto-update-daily --normal-log-mode silent --notify-on error --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 300
+      },
+      "delivery": {
+        "mode": "onError",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "f2b3c4d5-web-intel-collect-daily-0002",
+      "agentId": "ops-agent",
+      "name": "web_intel_collect_daily（情报采集）",
+      "description": "每日采集关注的网页情报源，存档变更并自动建单修复失败源",
+      "enabled": true,
+      "createdAtMs": 1772729600000,
+      "updatedAtMs": 1772729600000,
+      "schedule": {
+        "kind": "cron",
+        "cron": "30 3 * * *"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/web_intel_collect_runner.py --openclaw-home $HOME/.openclaw --task-id cron:web-intel-collect-daily --normal-log-mode silent --notify-on change --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 600
+      },
+      "delivery": {
+        "mode": "onError",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "f3c4d5e6-github-evolution-daily-0003",
+      "agentId": "optimization-agent",
+      "name": "github_web_evolution_daily（开源项目进化）",
+      "description": "每日扫描 GitHub 高信号仓库和 Skill4Agent 技能库，发现新工具/方法论并自动创建评估任务",
+      "enabled": true,
+      "createdAtMs": 1772729600000,
+      "updatedAtMs": 1772729600000,
+      "schedule": {
+        "kind": "cron",
+        "cron": "0 4 * * *"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/github_web_evolution_runner.py --openclaw-home $HOME/.openclaw --task-id cron:github-web-evolution-daily --normal-log-mode silent --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 600
+      },
+      "delivery": {
+        "mode": "onError",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "f4d5e6f7-advisor-todo-daily-0004",
+      "agentId": "optimization-agent",
+      "name": "advisor_todo_daily（自动派发优化建议）",
+      "description": "每日分析控制面运行数据，生成优化建议并自动写入 TODO.md（含去重和风险标记）",
+      "enabled": true,
+      "createdAtMs": 1772729600000,
+      "updatedAtMs": 1772729600000,
+      "schedule": {
+        "kind": "cron",
+        "cron": "15 4 * * *"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/control_plane_optimization_advisor.py --db $HOME/.openclaw/ops/task_center.db --lookback-hours 24 --todo-file $HOME/openclaw-hardflow-backup-20260302/todo.md --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "onError",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "f5e6f7a8-deadline-checker-daily-0005",
+      "agentId": "ops-agent",
+      "name": "todo_deadline_checker_daily（截止时间检测）",
+      "description": "每日检测 TODO.md 中的截止时间，标记超期和即将到期任务",
+      "enabled": true,
+      "createdAtMs": 1772729600000,
+      "updatedAtMs": 1772729600000,
+      "schedule": {
+        "kind": "cron",
+        "cron": "0 0 * * *"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/todo_deadline_checker.py --todo-file $HOME/openclaw-hardflow-backup-20260302/todo.md --task-id cron:deadline-checker-daily。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 60
+      },
+      "delivery": {
+        "mode": "onError",
         "channel": "telegram",
         "to": "-1003333097130"
       },

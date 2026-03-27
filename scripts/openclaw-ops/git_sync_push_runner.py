@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +31,76 @@ DEFAULT_EXCLUDE_PREFIXES = (
     "openclaw-memory/",
     "memory/",
 )
+
+# ── 第二层审核：敏感信息内容正则 ──────────────────────────────────────────
+# 匹配到任何 pattern 的文件会被自动移出 eligible 列表，阻止 push。
+SENSITIVE_CONTENT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
+    ("api_key",     re.compile(r"(?:api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{16,}", re.IGNORECASE)),
+    ("private_key", re.compile(r"-----BEGIN\s+(?:RSA|EC|DSA|OPENSSH)\s+PRIVATE\s+KEY-----")),
+    ("openai_key",  re.compile(r"sk-[A-Za-z0-9]{20,}")),
+    ("password",    re.compile(r"(?:password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{8,}", re.IGNORECASE)),
+    ("bearer_token",re.compile(r"Bearer\s+[A-Za-z0-9_\-\.]{20,}", re.IGNORECASE)),
+    ("generic_token",re.compile(r"(?:token|access_token|auth_token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{20,}", re.IGNORECASE)),
+]
+
+# 二进制/大文件扩展名跳过扫描（避免误报和性能问题）
+SKIP_SCAN_EXTENSIONS = {".pyc", ".pyo", ".so", ".dll", ".exe", ".bin", ".gz", ".zip", ".tar", ".png", ".jpg", ".jpeg", ".gif", ".woff", ".woff2", ".ttf", ".eot", ".ico", ".db", ".sqlite"}
+
+
+def scan_sensitive_content(
+    repo: Path,
+    files: list[str],
+) -> tuple[list[str], list[dict[str, str]]]:
+    """扫描 eligible 文件内容，检测敏感信息。
+
+    Args:
+        repo: 仓库根目录。
+        files: 待检测的相对路径列表。
+
+    Returns:
+        (clean_files, alerts): clean_files 为通过检测的文件列表；
+        alerts 为检测到敏感信息的告警记录列表，每条含 file/pattern/line_num。
+    """
+    clean: list[str] = []
+    alerts: list[dict[str, str]] = []
+    for rel_path in files:
+        full_path = repo / rel_path
+        if not full_path.is_file():
+            clean.append(rel_path)
+            continue
+        suffix = full_path.suffix.lower()
+        if suffix in SKIP_SCAN_EXTENSIONS:
+            clean.append(rel_path)
+            continue
+        # 限制扫描文件大小（超过 512KB 跳过，避免卡住）
+        try:
+            file_size = full_path.stat().st_size
+        except OSError:
+            clean.append(rel_path)
+            continue
+        if file_size > 512 * 1024:
+            clean.append(rel_path)
+            continue
+        found = False
+        try:
+            content = full_path.read_text(encoding="utf-8", errors="replace")
+            for line_num, line in enumerate(content.splitlines(), start=1):
+                for pattern_name, pattern_re in SENSITIVE_CONTENT_PATTERNS:
+                    if pattern_re.search(line):
+                        alerts.append({
+                            "file": rel_path,
+                            "pattern": pattern_name,
+                            "line_num": str(line_num),
+                        })
+                        found = True
+                        break
+                if found:
+                    break
+        except Exception:
+            pass
+        if not found:
+            clean.append(rel_path)
+    return clean, alerts
 
 
 def now_iso() -> str:
@@ -436,6 +507,47 @@ def main() -> int:
                 eligible = eligible[:max_files]
             result["eligible_files"] = sorted(set(eligible))
             result["skipped_files"] = sorted(set(skipped))
+
+    # ── 第二层审核：敏感信息内容扫描 ──────────────────────────────────
+    if not result["errors"] and result["eligible_files"]:
+        clean_files, sensitive_alerts = scan_sensitive_content(
+            repo, list(result["eligible_files"])
+        )
+        if sensitive_alerts:
+            result["sensitive_alerts"] = sensitive_alerts
+            blocked_files = sorted({a["file"] for a in sensitive_alerts})
+            result["sensitive_blocked_files"] = blocked_files
+            result["eligible_files"] = sorted(set(clean_files))
+            result["skipped_files"] = sorted(
+                set(result.get("skipped_files", []) + blocked_files)
+            )
+            result["errors"].append(
+                f"sensitive_content_detected:{len(blocked_files)}_files_blocked"
+            )
+
+    # ── 第三层审核：Agent 审核摘要（异步复查凭据） ─────────────────────
+    if not result["errors"] and result["eligible_files"]:
+        review_summary = {
+            "review_time": now_iso(),
+            "task_id": result.get("task_id", ""),
+            "eligible_count": len(result["eligible_files"]),
+            "eligible_files": result["eligible_files"][:50],
+            "skipped_count": len(result.get("skipped_files", [])),
+            "sensitive_alerts": result.get("sensitive_alerts", []),
+            "review_status": "auto_approved",
+            "review_note": "第二层密钥检测通过，自动放行。optimization-agent 可异步复查本摘要。",
+        }
+        review_dir = repo / ".workflow" / "sync-reviews"
+        review_dir.mkdir(parents=True, exist_ok=True)
+        review_file = review_dir / f"review-{datetime.now(tz=UTC).strftime('%Y%m%d_%H%M%S')}.json"
+        try:
+            review_file.write_text(
+                json.dumps(review_summary, ensure_ascii=False, indent=2, default=str),
+                encoding="utf-8",
+            )
+            result["agent_review_file"] = str(review_file)
+        except OSError:
+            pass  # 审核摘要写入失败不阻断主流程
 
     if not result["errors"] and result["eligible_files"]:
         for group in chunked(list(result["eligible_files"]), 80):

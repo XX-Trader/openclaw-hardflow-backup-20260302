@@ -1,19 +1,46 @@
-# OpenClaw Cron -> Agent Mapping
+# Cron Job Agent 映射表
 
-- fd8ae471-69f7-4bb5-9d2e-46aa26b092f1 | log-watcher agent（双项目） | agent=ops-agent | exists=True | schedule=900000
-- 57acbf75-0b04-461d-a888-ca02c70fc5d1 | agent-factory 自动创建(P1/P2) | agent=agent-factory | exists=True | schedule=1800000
-- 8752680b-17d4-4a95-8f04-1360fc346fa9 | ops 汇总（cron+todo+done） | agent=ops-agent | exists=True | schedule=1800000
-- 948d7307-6941-44ee-a8aa-57da767a31b7 | optimization-agent 治理巡检 | agent=optimization-agent | exists=True | schedule=11 2,8,14,20 * * *
-- 22b1712a-ff4a-4502-bce6-4e39c44cbe9f | optimize 自我进化总结 | agent=optimization-agent | exists=True | schedule=37 4 * * *
-- 7e12c6d4-adb0-4ad4-83a6-58bffec8eb53 | optimize 全量校准 | agent=optimization-agent | exists=True | schedule=23 3 */14 * *
-- 8f9102f4-d62c-4a01-85ef-1d393e2244de | optimize 频率策略管理 | agent=optimization-agent | exists=True | schedule=11 4 * * *
-- 16cb8d03-beb9-4697-927d-35952353bf8e | TODO 巡检（15分钟） | agent=ops-agent | exists=True | schedule=900000
-- 2ce5fe63-8316-4503-95e4-48515042b453 | daily_todo_digest_daily | agent=ops-agent | exists=True | schedule=0 0 * * *
-- e943eaf3-9049-4429-b71d-12b2dbe29178 | experience_maintain_daily | agent=optimization-agent | exists=True | schedule=15 1 * * *
-- a5057f0a-3734-44c7-8844-f82d72aacd12 | experience_maintain_weekly | agent=optimization-agent | exists=True | schedule=30 1 * * 1
-- 270256a7-d119-41d0-b923-42f8dd4faf73 | experience_maintain_monthly | agent=optimization-agent | exists=True | schedule=45 1 1 * *
-- 5797cd5b-5539-4e95-8d58-dc65a4633ec5 | project_index_maintainer_4h | agent=project-agent | exists=True | schedule=14400000
-- d3859fd5-3ea2-4ee5-ab1d-7fd526f26722 | reviewer_git_update_hourly | agent=reviewer | exists=True | schedule=3600000
-- 0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a | reviewer_incremental_daily_4am | agent=reviewer | exists=True | schedule=0 4 * * *
-- a9c4a133-bf5b-4b91-8d89-ec97995f95f9 | reviewer_recurring_bi_daily | agent=reviewer | exists=True | schedule=20 4 */2 * *
-- 771fda88-c8ff-49dc-a4da-6f57167c1d26 | reviewer_weekly_structure_review | agent=reviewer | exists=True | schedule=40 4 * * 1
+> 最后更新：2026-03-28
+> 总计：22 个定时任务（✅ 启用 19 个 / ⏸️ 禁用 3 个）
+
+## ops-agent（8 个）
+
+| 状态 | 任务名称 | 频率 | 功能简述 |
+|------|----------|------|----------|
+| ✅ | TODO 巡检（15分钟） | 每15分钟 | 巡检 TODO.md，去重播报，检测执行状态，未分配项请求 coordinator 分配 |
+| ✅ | daily_todo_digest_daily | 每日 00:00 | 每日 TODO 摘要，通过 Telegram 发送 |
+| ✅ | system_exception_patrol（系统异常巡检） | 每6小时 | 扫描 Agent 工作流日志，按7类异常分类，MD5指纹去重，增量扫描 |
+| ✅ | agent_self_evolution（Agent 自进化评估） | 每周一 04:00 | 基于 task_center.db 历史数据多维度评分，生成优化建议 |
+| ✅ | auto_update_daily（上游社区进化） | 每日 03:00 | 拉取上游仓库最新代码并运行安装脚本 |
+| ✅ | web_intel_collect_daily（情报采集） | 每日 03:30 | 采集网页情报源，存档变更，自动建单修复失败源 |
+| ⏸️ | TODO 巡检-hardflow | 每15分钟 | hardflow 备份仓库的 TODO 巡检（当前禁用） |
+| ⏸️ | ops_governance_evolution_incremental | 每6小时 | 治理巡检与进化提取（当前禁用） |
+
+## optimization-agent（7 个）
+
+| 状态 | 任务名称 | 频率 | 功能简述 |
+|------|----------|------|----------|
+| ✅ | optimize 目录树快照+变更增量扫描 | 每日 04:00 | 扫描工作流/Skills/Hooks 目录变更 |
+| ✅ | optimize 自我进化总结 | 每日 04:37 | 蒸馏记忆中的最佳实践，更新 Agent 行为约束配置 |
+| ✅ | algo_micro_optimizer_daily | 每日（24h） | Hook 沙盒自测，检测 hook 健康度 |
+| ✅ | ops_git_sync_push | 每6小时 | 自动同步审核通过的优化到远程仓库（含密钥检测） |
+| ✅ | config_diff_review | 每6小时 | 监控 .openclaw 本地 git 变更，触发 optimization-agent 审核 |
+| ✅ | github_web_evolution_daily（开源项目进化） | 每日 04:00 | 扫描 GitHub 高信号仓库和技能库，创建评估任务 |
+| ⏸️ | optimize 目录树快照-hardflow | 每日 04:00 | hardflow 备份仓库的目录树快照（当前禁用） |
+
+## reviewer（4 个）
+
+| 状态 | 任务名称 | 频率 | 功能简述 |
+|------|----------|------|----------|
+| ✅ | reviewer_incremental_daily_4am | 每日 04:00 | 全量增量评审：代码质量/安全/架构，自动落地优化 |
+| ✅ | reviewer_weekly_structure_scan | 每周日 04:30 | 结构化扫描：文件组织/依赖/冗余/一致性 |
+| ✅ | reviewer_weekly_security_audit | 每周日 05:00 | 安全审计：密钥泄漏/权限/XSS/注入 |
+| ✅ | reviewer_weekly_doc_freshness | 每周日 05:30 | 文档新鲜度检查：文档与代码的同步性 |
+
+## coordinator（3 个）
+
+| 状态 | 任务名称 | 频率 | 功能简述 |
+|------|----------|------|----------|
+| ✅ | coordinator 心跳 | 每5分钟 | 存活检测 |
+| ✅ | coordinator_daily_plan | 每日 04:00 | 每日工作规划 |
+| ✅ | coordinator_weekly_retrospective | 每周日 05:00 | 每周回顾总结 |
