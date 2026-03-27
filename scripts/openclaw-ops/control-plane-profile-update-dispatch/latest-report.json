@@ -1,30 +1,30 @@
 {
   "dispatch": {
-    "generated_at": "2026-03-25T08:40:45+00:00",
+    "generated_at": "2026-03-27T11:42:04+00:00",
     "review_file": "H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\control-plane-optimization-review\\latest-report.json",
-    "task_db": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\tmph1xhdrkw\\live-acceptance\\task-center\\task_center.db",
+    "task_db": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\tmpv2i04xm2\\live-acceptance\\task-center\\task_center.db",
     "execution_workflow_profile": "coding-default",
     "execution_workflow_channel": "stable",
     "created_count": 1,
     "skipped_count": 1,
     "created": [
       {
-        "task_id": "todo-control-plane-profile-update-20260325164045-38b1d9",
+        "task_id": "todo-control-plane-profile-update-20260327194204-b95dc2",
         "task_type": "workflow_profile_update",
         "change_id": "control-plane-profile-update:control-plane-optimization:2f181c2c6d80",
-        "origin_task_id": "todo-control-plane-optimization-20260325164044-140bea",
+        "origin_task_id": "todo-control-plane-optimization-20260327194203-388515",
         "origin_change_id": "control-plane-optimization:2f181c2c6d80",
         "recommendation_type": "strengthen_stage_gate",
         "target_workflow_profile_id": "coding-default",
         "target_stage_id": "review",
         "assignee": "reviewer",
         "stage_id": "review",
-        "scheduled_at": "2026-03-25T08:40:45+00:00"
+        "scheduled_at": "2026-03-27T11:42:04+00:00"
       }
     ],
     "skipped": [
       {
-        "origin_task_id": "todo-control-plane-optimization-20260325164045-b85916",
+        "origin_task_id": "todo-control-plane-optimization-20260327194204-c3350b",
         "recommendation_type": "strengthen_stage_gate",
         "target_workflow_profile_id": "coding-default",
         "target_stage_id": "review",
@@ -37,6 +37,6 @@
       "blocked_count": 0,
       "pending_count": 1
     },
-    "markdown": "# OpenClaw Control Plane Profile Update Dispatcher\n\n- 生成时间：2026-03-25T08:40:45+00:00\n- 输入评审报告：H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\control-plane-optimization-review\\latest-report.json\n- 执行 workflow：coding-default@stable\n- 新建任务：1\n- 跳过任务：1\n\n## 已创建任务\n- todo-control-plane-profile-update-20260325164045-38b1d9: strengthen_stage_gate -> coding-default/review @ reviewer\n\n## 已跳过任务\n- todo-control-plane-optimization-20260325164045-b85916: strengthen_stage_gate -> coding-default/review / not_ready_for_profile_update\n"
+    "markdown": "# OpenClaw Control Plane Profile Update Dispatcher\n\n- 生成时间：2026-03-27T11:42:04+00:00\n- 输入评审报告：H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\control-plane-optimization-review\\latest-report.json\n- 执行 workflow：coding-default@stable\n- 新建任务：1\n- 跳过任务：1\n\n## 已创建任务\n- todo-control-plane-profile-update-20260327194204-b95dc2: strengthen_stage_gate -> coding-default/review @ reviewer\n\n## 已跳过任务\n- todo-control-plane-optimization-20260327194204-c3350b: strengthen_stage_gate -> coding-default/review / not_ready_for_profile_update\n"
   }
 }

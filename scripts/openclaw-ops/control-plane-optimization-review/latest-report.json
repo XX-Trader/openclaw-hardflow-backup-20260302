@@ -1,7 +1,7 @@
 {
   "report": {
-    "generated_at": "2026-03-25T08:40:45+00:00",
-    "task_db": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\tmph1xhdrkw\\live-acceptance\\task-center\\task_center.db",
+    "generated_at": "2026-03-27T11:42:04+00:00",
+    "task_db": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\tmpv2i04xm2\\live-acceptance\\task-center\\task_center.db",
     "lookback_hours": 72,
     "summary": {
       "task_count": 2,
@@ -22,11 +22,11 @@
     },
     "items": [
       {
-        "task_id": "todo-control-plane-optimization-20260325164045-b85916",
+        "task_id": "todo-control-plane-optimization-20260327194204-c3350b",
         "change_id": "control-plane-optimization:60c5838dbb2c",
         "status": "pending",
         "assignee": "reviewer",
-        "updated_at": "2026-03-25T08:40:45+00:00",
+        "updated_at": "2026-03-27T11:42:04+00:00",
         "execution_workflow_profile_id": "coding-default",
         "execution_workflow_channel": "stable",
         "execution_stage_id": "review",
@@ -53,11 +53,11 @@
         "latest_agent_report_summary": ""
       },
       {
-        "task_id": "todo-control-plane-optimization-20260325164044-140bea",
+        "task_id": "todo-control-plane-optimization-20260327194203-388515",
         "change_id": "control-plane-optimization:2f181c2c6d80",
         "status": "passed",
         "assignee": "reviewer",
-        "updated_at": "2026-03-25T08:40:44+00:00",
+        "updated_at": "2026-03-27T11:42:03+00:00",
         "execution_workflow_profile_id": "coding-default",
         "execution_workflow_channel": "stable",
         "execution_stage_id": "review",
@@ -82,6 +82,6 @@
         "latest_agent_report_summary": ""
       }
     ],
-    "markdown": "# OpenClaw Control Plane Optimization Review\n\n- 生成时间：2026-03-25T08:40:45+00:00\n- 时间窗口：最近 72 小时\n- 扫描优化任务：2\n- 已完成：1，待执行：1，阻塞：0\n- 可进入 profile 更新评审：1\n\n## 重点结果\n- todo-control-plane-optimization-20260325164045-b85916: strengthen_stage_gate -> coding-default / review / status=pending\n  - 阻塞原因：pending_execution\n- todo-control-plane-optimization-20260325164044-140bea: strengthen_stage_gate -> coding-default / review / status=passed / ready_for_profile_update\n"
+    "markdown": "# OpenClaw Control Plane Optimization Review\n\n- 生成时间：2026-03-27T11:42:04+00:00\n- 时间窗口：最近 72 小时\n- 扫描优化任务：2\n- 已完成：1，待执行：1，阻塞：0\n- 可进入 profile 更新评审：1\n\n## 重点结果\n- todo-control-plane-optimization-20260327194204-c3350b: strengthen_stage_gate -> coding-default / review / status=pending\n  - 阻塞原因：pending_execution\n- todo-control-plane-optimization-20260327194203-388515: strengthen_stage_gate -> coding-default / review / status=passed / ready_for_profile_update\n"
   }
 }

@@ -1,35 +1,25 @@
 {
   "result": {
-    "generated_at": "2026-03-25T08:40:46+00:00",
+    "generated_at": "2026-03-27T11:42:05+00:00",
     "apply_file": "H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\control-plane-profile-update-apply\\latest-report.json",
     "benchmark_suite_file": "H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\policy\\benchmark-suite-registry.json",
     "executor_run_dir": "H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\task-center\\executor-runs",
     "output_root": "H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\control-plane-profile-update-validation",
     "state_file": "H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\control-plane-profile-update-validation\\state.json",
     "workflow_profile_registry": "H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\policy\\workflow-profile-registry.json",
-    "task_db": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\tmph1xhdrkw\\live-acceptance\\task-center\\task_center.db",
+    "task_db": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\tmpv2i04xm2\\live-acceptance\\task-center\\task_center.db",
     "executed_suite_count": 0,
     "validated_change_count": 0,
     "skipped_count": 0,
-    "failed_count": 1,
+    "failed_count": 0,
     "validated": [],
     "skipped": [],
-    "failed": [
-      {
-        "task_id": "todo-control-plane-profile-update-20260325164044-54afb9",
-        "change_id": "control-plane-profile-update:control-plane-optimization:2f181c2c6d80",
-        "target_profile_id": "coding-default",
-        "target_stage_id": "review",
-        "reason": "benchmark_validation_failed",
-        "error_type": "FileNotFoundError",
-        "error": "Executor run dir does not exist: H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\task-center\\executor-runs"
-      }
-    ],
+    "failed": [],
     "executed_suites": [],
     "state": {
       "validated_change_ids": [],
-      "updated_at": "2026-03-25T08:40:46+00:00"
+      "updated_at": "2026-03-27T11:42:05+00:00"
     },
-    "markdown": "# OpenClaw Control Plane Profile Update Validation\n\n- 生成时间：2026-03-25T08:40:46+00:00\n- apply 报告：H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\control-plane-profile-update-apply\\latest-report.json\n- benchmark registry：H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\policy\\benchmark-suite-registry.json\n- 已执行 suite：0\n- 已验证 change_id：0\n- 跳过项：0\n- 失败项：1\n\n## 已验证变更\n- 本次没有新增验证通过的 profile update 变更\n\n## 跳过项\n- 本次没有跳过项\n\n## 失败项\n- control-plane-profile-update:control-plane-optimization:2f181c2c6d80: coding-default/review / benchmark_validation_failed\n"
+    "markdown": "# OpenClaw Control Plane Profile Update Validation\n\n- 生成时间：2026-03-27T11:42:05+00:00\n- apply 报告：H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\control-plane-profile-update-apply\\latest-report.json\n- benchmark registry：H:\\GitHub\\openclaw-hardflow-backup-20260302\\scripts\\openclaw-ops\\policy\\benchmark-suite-registry.json\n- 已执行 suite：0\n- 已验证 change_id：0\n- 跳过项：0\n- 失败项：0\n\n## 已验证变更\n- 本次没有新增验证通过的 profile update 变更\n\n## 跳过项\n- 本次没有跳过项\n\n## 失败项\n- 本次没有失败项\n"
   }
 }

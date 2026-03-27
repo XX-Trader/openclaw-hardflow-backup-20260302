@@ -13,7 +13,6 @@
         "workflow",
         "clarification_required"
       ],
-
       "score_policy_ref": "scripts/hardflow/score-policy.json",
       "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
       "default_stage_id": "implement",
@@ -187,7 +186,10 @@
           "critical_incident_count_gte": 2
         },
         "manual_review_otherwise": true,
-        "promotion_channel_path": ["candidate", "stable"],
+        "promotion_channel_path": [
+          "candidate",
+          "stable"
+        ],
         "rollback_target_channel": "stable"
       },
       "preflight": {
@@ -207,7 +209,6 @@
         "workflow",
         "clarification_required"
       ],
-
       "score_policy_ref": "scripts/hardflow/score-policy.json",
       "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
       "default_stage_id": "investigate",
@@ -312,7 +313,6 @@
         "workflow",
         "clarification_required"
       ],
-
       "score_policy_ref": "scripts/hardflow/score-policy.json",
       "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
       "default_stage_id": "draft",
@@ -415,7 +415,6 @@
         "workflow",
         "clarification_required"
       ],
-
       "score_policy_ref": "scripts/hardflow/score-policy.json",
       "runtime_entry": "scripts/hardflow/hardflow-run.sh workflow",
       "default_stage_id": "stabilize",

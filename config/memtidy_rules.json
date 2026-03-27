@@ -1,0 +1,66 @@
+{
+  "version": "1.0.0",
+  "description": "MemTidy 记忆整理规则配置",
+
+  "scan_directories": [
+    "~/.openclaw/memory/",
+    "~/.openclaw/workspace/memory/"
+  ],
+
+  "backup": {
+    "enabled": true,
+    "dir": "~/.openclaw/ops/memtidy-backups/",
+    "max_backups": 7,
+    "compress": false
+  },
+
+  "hot_memory": {
+    "days": 30,
+    "description": "最近30天内修改的记忆文件视为热记忆，保持原样"
+  },
+
+  "warm_memory": {
+    "days_min": 31,
+    "days_max": 180,
+    "description": "31-180天的记忆文件视为温记忆，执行压缩/合并",
+    "compact_threshold_lines": 200,
+    "compact_target_lines": 80
+  },
+
+  "cold_memory": {
+    "days": 181,
+    "description": "超过180天的记忆文件移入归档目录",
+    "archive_dir": "~/.openclaw/memory-archive/"
+  },
+
+  "prune": {
+    "keywords": [
+      "测试对话", "调试日志", "临时笔记", "test_session",
+      "debug_log", "tmp_", "scratch_", "草稿"
+    ],
+    "max_file_size_bytes": 102400,
+    "empty_file_action": "delete"
+  },
+
+  "merge": {
+    "similarity_threshold": 0.8,
+    "same_topic_indicators": [
+      "同一项目", "同一模块", "相同主题"
+    ]
+  },
+
+  "protected_patterns": [
+    "MEMORY.md",
+    "core-identity",
+    "偏好",
+    "system-prompt",
+    "soul",
+    "INDEX.md",
+    "agent.md"
+  ],
+
+  "report": {
+    "output_dir": "~/.openclaw/ops/memtidy-reports/",
+    "format": ["json", "markdown"]
+  }
+}

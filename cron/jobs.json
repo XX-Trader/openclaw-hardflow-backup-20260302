@@ -716,6 +716,150 @@
       "createdAtMs": 1772642376500,
       "updatedAtMs": 1772642376500,
       "state": {}
+    },
+    {
+      "id": "a1b2c3d4-claim-audit-hardflow-0001",
+      "agentId": "ops-agent",
+      "name": "claim_verification_audit（每日诚信审计）",
+      "description": "每日凌晨5:00扫描Agent会话日志，提取事实声明并交叉验证，检测虚假进度/伪造数据/虚报操作，生成诚信度报告",
+      "enabled": true,
+      "createdAtMs": 1772643600000,
+      "updatedAtMs": 1772643600000,
+      "schedule": {
+        "kind": "cron",
+        "cron": "0 5 * * *"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 claim-auditor 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/claim_verification_auditor.py --session-log-dir $HOME/.openclaw/ops/workflow-logs/ --output-dir $HOME/.openclaw/ops/claim-audit/ --task-db $HOME/.openclaw/ops/task_center.db --scan-since-hours 24。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "onError",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 3600000,
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "b2c3d4e5-memtidy-runner-hardflow-0002",
+      "agentId": "ops-agent",
+      "name": "memtidy_runner（每日记忆整理）",
+      "description": "每日凌晨3:00执行记忆文件三层管理：热保持/温压缩/冷归档/废弃修剪，自动备份后执行",
+      "enabled": true,
+      "createdAtMs": 1772643600000,
+      "updatedAtMs": 1772643600000,
+      "schedule": {
+        "kind": "cron",
+        "cron": "0 3 * * *"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 memtidy 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/memtidy_runner.py --memory-dirs $HOME/.openclaw/memory/ $HOME/.openclaw/workspace/memory/ --rules-file $HOME/.openclaw/config/memtidy_rules.json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "onError",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "c3d4e5f6-config-watchdog-hardflow-0003",
+      "agentId": "ops-agent",
+      "name": "config_watchdog（配置安全巡检）",
+      "description": "每4小时对配置文件取快照并与上次快照对比，检测未授权变更。首次运行自动创建基线快照",
+      "enabled": true,
+      "createdAtMs": 1772643600000,
+      "updatedAtMs": 1772643600000,
+      "schedule": {
+        "kind": "every",
+        "everyMs": 14400000,
+        "anchorMs": 1772643600000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 config-watchdog 子agent。按顺序执行：1) python3 $HOME/.openclaw/ops/config_watchdog.py --config-dir $HOME/.openclaw/ --verify; 2) 若上一步返回 no_snapshot 则执行 python3 $HOME/.openclaw/ops/config_watchdog.py --config-dir $HOME/.openclaw/ --snapshot。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "onError",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "failureAlert": {
+        "after": 2,
+        "cooldownMs": 7200000,
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "d4e5f6a7-exception-logger-hardflow-0004",
+      "agentId": "ops-agent",
+      "name": "unified_exception_logger（异常巡检）",
+      "description": "每6小时扫描Agent工作流日志中的异常记录，按6类异常自动分类统计（API/文件系统/配置/Agent通信/系统/通用），去重后生成巡检报告",
+      "enabled": true,
+      "createdAtMs": 1772643600000,
+      "updatedAtMs": 1772643600000,
+      "schedule": {
+        "kind": "every",
+        "everyMs": 21600000,
+        "anchorMs": 1772643600000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 exception-scanner 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/unified_exception_logger.py --log-dirs $HOME/.openclaw/ops/workflow-logs/ $HOME/.openclaw/sessions/ --output-dir $HOME/.openclaw/ops/exception-reports/ --scan-since-hours 6。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "onError",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
+    },
+    {
+      "id": "e5f6a7b8-self-evolution-hardflow-0005",
+      "agentId": "ops-agent",
+      "name": "agent_self_evolution（Agent 自进化评估）",
+      "description": "每周一凌晨4:00基于task_center.db历史数据对Agent进行多维度评分（成功率/效率/质量/可靠性），生成优化建议报告",
+      "enabled": true,
+      "createdAtMs": 1772643600000,
+      "updatedAtMs": 1772643600000,
+      "schedule": {
+        "kind": "cron",
+        "cron": "0 4 * * 1"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 evolution-evaluator 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/agent_self_evolution.py --db-path $HOME/.openclaw/ops/task_center.db --output-dir $HOME/.openclaw/ops/evolution-reports/ --lookback-days 30。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 180
+      },
+      "delivery": {
+        "mode": "always",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {}
     }
   ]
 }

@@ -1,6 +1,6 @@
 # OpenClaw Control Plane Optimization Advisor
 
-- 生成时间：2026-03-25T08:40:45+00:00
+- 生成时间：2026-03-27T11:42:03+00:00
 - 时间窗口：最近 24 小时
 - 扫描 task：4
 - 未闭环 incident：1（critical 1）
