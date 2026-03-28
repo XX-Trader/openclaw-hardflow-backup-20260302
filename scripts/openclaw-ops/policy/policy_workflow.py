@@ -20,7 +20,6 @@ UTC = timezone.utc
 
 from policy_defaults import (
     DEFAULT_POLICY,
-    DEFAULT_CAPABILITY_REGISTRY,
     DEFAULT_WORKFLOW_PROFILE_REGISTRY,
 )
 from policy_utils import (
@@ -31,6 +30,7 @@ from policy_utils import (
     has_context_value,
 )
 from task_capability_binding import (
+    DEFAULT_CAPABILITY_REGISTRY,
     normalize_capability_registry,
     validate_task_capability_constraints,
 )
