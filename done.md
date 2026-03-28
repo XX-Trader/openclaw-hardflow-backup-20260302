@@ -5,6 +5,61 @@
 
 ---
 
+## 2026-03-28 已完成
+
+### 阶段一～五：自进化系统全面优化（部署完成）
+
+- [x] [2026-03-28] **Cron Job 清理**：删除 12 个冗余/禁用 Job（原 33 → 21）
+  - 删除 9 个冗余 Job + 3 个禁用 Job（agent-factory 自动、治理巡检、全量校准）
+  - 删除废弃脚本：`benchmark_orchestrator.py` + `benchmark_output_consumer.py`
+  - 启用 `daily_todo_digest_daily`，降频 `algo_micro_optimizer` → 24h
+
+- [x] [2026-03-28] **安全加固**：`git_sync_push_runner.py` 三层审核
+  - 第一层：路径过滤（已有）
+  - 第二层：6 类敏感信息内容正则扫描（API Key / Token / Private Key / Password / Bearer / Generic Token）
+  - 第三层：Agent 审核摘要（`.workflow/sync-reviews/` 异步复查）
+
+- [x] [2026-03-28] **外部进化通道**：注册 3 个每日 Cron Job
+  - `auto_update_daily`（上游社区，03:00）
+  - `web_intel_collect_daily`（情报采集，03:30）  
+  - `github_web_evolution_daily`（开源项目，04:00）
+
+- [x] [2026-03-28] **异常巡检增强**：`unified_exception_logger.py`
+  - 新增第 7 类异常分类：`path_validation_error`（路径校验错误）
+  - `--abnormal-dir`：统一归档到 `/root/.openclaw/logs/abnormal/`
+  - `--cleanup`：7 天 gzip 压缩 / 30 天自动删除
+
+- [x] [2026-03-28] **advisor→TODO 自动写入**：`control_plane_optimization_advisor.py`
+  - `--todo-file` 参数：自动追加建议到 TODO.md
+  - MD5 指纹去重（重复建议不重复写入）
+  - 风险标记：🔴高/🟡中/🟢低 + `🚨需人工审核`
+
+- [x] [2026-03-28] **新增脚本**
+  - `memory_to_skill_extractor.py`：记忆→Skill/Hook 自动封装（draft 模式，需人工激活）
+  - `todo_deadline_checker.py`：截止时间解析 + 超期自动标记（`[截止:YYYY-MM-DD]` 格式）
+
+- [x] [2026-03-28] **新增 Cron Job**
+  - `advisor_todo_daily`（每日 04:15，自动派发优化建议→TODO）
+  - `todo_deadline_checker_daily`（每日 00:00，截止时间检测）
+
+- [x] [2026-03-28] **协议文档化**
+  - `docs/trace_id_protocol.md`：trace_id 全链路注入协议
+  - `docs/task_dispatch_protocol.md`：任务派发 5 要素确认协议
+  - `docs/error_driven_evolution.md`：错误驱动进化协议 + fault_kb 结构
+  - `docs/execution-roadmap.md`：6 阶段执行路线图
+
+- [x] [2026-03-28] **索引重建**
+  - `CRON_TASK_INDEX.md`：5 功能大类完整索引
+  - `jobs_agent_mapping.md`：4 Agent 分组映射
+
+- [x] [2026-03-28] **Agent 模型配置更新**
+  - coordinator：`gpt-5.4-mini` → `gpt-5.4`
+  - tester：`gpt-5.4-mini` → `Doubao-Seed-2.0-pro`
+  - doc-writer：`gpt-5.4-mini` → `Doubao-Seed-2.0-pro`
+  - explorer：新增 `gpt-5.4-mini`
+
+---
+
 ## 2026-03 已完成
 
 ### 核心自进化闭环（4 层循环）
@@ -12,107 +67,53 @@
 - [x] [2026-03-25] **`ops_governance_evolution_incremental`** — 经验提取引擎
   - 每 6 小时自动扫描运行日志 / 记忆 / 错误记录
   - 提取可优化的通用流程、BUG、最佳实践
-  - 生成优化任务输入到下游环节
   - 脚本：`governance_evolution_runner.py`（69KB）
 
 - [x] [2026-03-25] **`optimize_self_evolution_summary`** — 行为蒸馏器
   - 每天凌晨 4:37 自动执行
-  - 蒸馏每日记忆中的最佳实践和做事流程
-  - 更新到 Agent 的行为约束配置
   - 仅有新增优化项时才产出通知（NO_REPLY 机制）
 
 - [x] [2026-03-25] **`reviewer_incremental_daily_4am`** — 评审落地器
-  - 每天凌晨 4:00 自动执行
-  - 审核优化内容质量与合规性
-  - 落地到 Agent 配置 / Skill / Hook
 
 - [x] [2026-03-25] **`ops_git_sync_push`** — 仓库同步器
-  - 每 6 小时 自动同步审核通过的优化到远程仓库
   - 路径过滤（第一层审核）：排除 sessions/experience/memory/runtime 等目录
-  - 仅有实际变更时才产出通知
 
 ### 任务管理系统
 
 - [x] [2026-03-25] **`todo_patrol`** — TODO 巡检与自动派发
-  - 定期扫描 TODO.md 中的未完成任务
-  - 自动路由分配给对应 Agent（基于关键词匹配 + 代码类型检测）
-  - 风险分级：P0/P1 或高危关键词 → `risk_level=high` → 需人工确认
-  - 低风险任务自动执行，高风险任务等待人工审核
-  - 截止时间自动计算：high=4h, medium=24h, low=72h
-  - AI 来源任务自动检测上下文完整度，不足则转 clarification
-
-- [x] [2026-03-25] **`task_center`** — 任务中心数据库
-  - SQLite 持久化，4 张核心表均含 trace_id 字段
-  - 支持任务创建 / 分配 / 执行 / 结果上报 / 审计日志全流程
-  - trace_id 生成器 `build_trace_id()` 已就绪
+- [x] [2026-03-25] **`task_center`** — 任务中心数据库（SQLite，4 张核心表含 trace_id）
 
 ### 异常巡检
 
-- [x] [2026-03-25] **`unified_exception_logger`** — 系统异常分类巡检
-  - 6 类异常正则分类（Python traceback / OOM / 权限 / 超时 / 配置 / 网络）
-  - 增量扫描（仅最近 24h 日志）
-  - MD5 指纹去重（忽略时间戳/内存地址等变量部分）
-  - 输出分类报告到 `exception-reports/`
+- [x] [2026-03-25] **`unified_exception_logger`** — 系统异常分类巡检（6 类分类 + MD5 指纹去重）
 
 ### HardFlow 多角色工作流
 
 - [x] [2026-03-25] **多角色 Agent 体系** — 13 个专业 Agent
-  - coordinator / optimization-agent / ops-agent / project-agent / reviewer
-  - web-agent / backend-dev / frontend-dev / tester / doc-writer / security-agent / architect
-  - 每个 Agent 独立 SOUL.md 角色定义 + 模型配置
-
 - [x] [2026-03-25] **HardFlow 门禁系统** — G0-G6 七道门禁
-  - 每道门禁独立评分标准，不达标自动回流整改
-  - 审计追踪全程留痕
-
 - [x] [2026-03-25] **PUA 行为执行器** — Pressure/Urgency/Agency 机制
-  - `hardflow-failure-detector` hook 检测产出质量
-  - 低分环节自动触发 PUA 压力文案
-  - 与 HardFlow 门禁系统联动
 
 ### 可观测性基础设施
 
-- [x] [2026-03-25] **`chat_output` 通知框架** — 统一消息输出
-  - `render_chat_notice()` 标准化通知格式
-  - `build_trace_id()` 留痕编号生成
-  - NO_REPLY 机制：无变更/无异常时不打扰
-
+- [x] [2026-03-25] **`chat_output` 通知框架** — 统一消息输出 + NO_REPLY 机制
 - [x] [2026-03-25] **`workflow_views`** — 工作流可视化视图
-  - 运行状态 / 任务进度 / 异常报告 多维度视图
-  - 支持 trace_id 关联查询
 
 ### 安全与治理
 
-- [x] [2026-03-25] **仓库隔离架构**
-  - `/root/.openclaw`（本地运行时）：移除远程仓库绑定，仅本地 git 快照
-  - `/root/openclaw-hardflow-backup-20260302`（同步仓库）：经路径过滤后推送 GitHub
-  - 敏感数据（sessions/experience/memory）严格排除
-
+- [x] [2026-03-25] **仓库隔离架构** — `.openclaw`（本地）与 backup（同步）严格分离
 - [x] [2026-03-25] **`claim_verification_auditor`** — 反幻觉审计器
-  - 验证 Bot 声明的功能是否有代码实现
-  - 分类：verified / needs_human_review / unverified
-  - 防止 Bot 虚报功能（本次审计就用到了这个思路）
 
 ### 反馈与进化
 
 - [x] [2026-03-25] **`upgrade_feedback_runner`** — 升级反馈收集器
-  - 风险级别推断 `_infer_risk_level(root_cause_type, score_average)`
-  - 收集运行时反馈用于持续优化
-
 - [x] [2026-03-27] **`fault_knowledge_base`** — 故障知识库
-  - 结构化故障-修复方案映射
-  - 支持根因分类 + 修复步骤 + 验证命令
-  - 待与 unified_exception_logger 集成实现自动修复闭环
-
 - [x] [2026-03-27] **`workflow_builder`** — 工作流模板生成器
-  - 自动化生成标准工作流模板
 
-### 外部进化（脚本已就绪，Cron Job 待注册）
+### 外部进化
 
 - [x] [2026-03-25] **`auto_update_install_runner.py`** — 上游社区更新检测脚本
 - [x] [2026-03-25] **`web_intel_collect_runner.py`** — 情报采集脚本
 - [x] [2026-03-25] **`github_web_evolution_runner.py`** — 开源项目进化脚本
-  - ⚠️ 以上 3 个脚本已开发完成，但未注册 Cron Job（在 todo.md P1 中待执行）
 
 ---
 
@@ -121,3 +122,4 @@
 - 待办事项 → [todo.md](todo.md)
 - 定时任务索引 → [scripts/openclaw-ops/CRON_TASK_INDEX.md](scripts/openclaw-ops/CRON_TASK_INDEX.md)
 - Agent 映射 → [cron/jobs_agent_mapping.md](cron/jobs_agent_mapping.md)
+- 执行路线图 → [docs/execution-roadmap.md](docs/execution-roadmap.md)
