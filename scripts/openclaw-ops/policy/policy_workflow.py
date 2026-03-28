@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
+import sys
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+REPO_ROOT = ROOT.parent.parent
+
 UTC = timezone.utc
 
 from policy_defaults import (
     DEFAULT_POLICY,
-    DEFAULT_CAPABILITY_REGISTRY as _DEFAULT_CAP_REG,
+    DEFAULT_CAPABILITY_REGISTRY,
     DEFAULT_WORKFLOW_PROFILE_REGISTRY,
 )
 from policy_utils import (
