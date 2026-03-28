@@ -1,14 +1,14 @@
 # OpenClaw Cron 定时任务索引
 
-> 最后更新：2026-03-28
+> 最后更新：2026-03-29
 > 数据源：`cron/jobs.json`
 
 ## 任务总览
 
-- **总计**：22 个定时任务
-- **启用**：19 个
+- **总计**：23 个定时任务
+- **启用**：20 个
 - **禁用**：3 个
-- **执行 Agent**：ops-agent(8) / optimization-agent(7) / reviewer(4) / coordinator(3)
+- **执行 Agent**：ops-agent(8) / optimization-agent(8) / reviewer(4) / coordinator(3)
 
 ## 一、核心运维任务
 
@@ -54,7 +54,12 @@
 - **脚本**：`config_diff_review_runner.py`
 - **功能**：监控 `.openclaw` 本地 git 变更，触发 optimization-agent 审核
 
-### 2.6 Agent 自进化评估（ops-agent）
+### 2.6 本地配置快照（optimization-agent）🆕
+- **频率**：每 1 小时
+- **脚本**：`local_snapshot_runner.py`
+- **功能**：同步 `.openclaw/` 核心配置（openclaw.json/hooks/skills/agents/cron/ops）到 B 层 clone，仅内容变化时复制
+
+### 2.7 Agent 自进化评估（ops-agent）
 - **频率**：每周一 04:00
 - **脚本**：`agent_self_evolution.py`
 - **功能**：基于 task_center.db 历史数据多维度评分，生成优化建议报告
@@ -64,7 +69,7 @@
 ### 3.1 上游社区进化（ops-agent）
 - **频率**：每日 03:00
 - **脚本**：`auto_update_install_runner.py`
-- **功能**：拉取上游仓库最新代码并运行安装脚本，保持系统同步
+- **功能**：拉取上游仓库最新代码 + `setup.py --yes` 自动安装到 `.openclaw/`
 
 ### 3.2 网页情报采集（ops-agent）
 - **频率**：每日 03:30

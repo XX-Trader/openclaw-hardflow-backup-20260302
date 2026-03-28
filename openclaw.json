@@ -187,7 +187,7 @@
         "id": "coordinator",
         "name": "coordinator",
         "workspace": "/root/.openclaw/workspace-coordinator",
-        "model": "openai-codex/gpt-5.4-mini",
+        "model": "openai-codex/gpt-5.4",
         "subagents": {
           "allowAgents": [
             "agent-factory",
@@ -210,7 +210,7 @@
         "id": "doc-writer",
         "name": "doc-writer",
         "workspace": "/root/.openclaw/workspace-doc-writer",
-        "model": "openai-codex/gpt-5.4-mini"
+        "model": "kimicode/doubao-seed-2.0-pro"
       },
       {
         "id": "frontend-dev",
@@ -234,7 +234,7 @@
         "id": "tester",
         "name": "测试验收",
         "workspace": "/root/.openclaw/workspace-tester",
-        "model": "openai-codex/gpt-5.4-mini"
+        "model": "kimicode/doubao-seed-2.0-pro"
       },
       {
         "id": "deployer",
@@ -299,6 +299,11 @@
         "workspace": "/root/.openclaw/workspace-web-agent",
         "agentDir": "/root/.openclaw/agents/web-agent/agent",
         "model": "glmcode/glm-4.7"
+      },
+      {
+        "id": "explorer",
+        "name": "Explorer",
+        "model": "openai-codex/gpt-5.4-mini"
       }
     ]
   },

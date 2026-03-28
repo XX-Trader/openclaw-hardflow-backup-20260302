@@ -5,6 +5,64 @@
 
 ---
 
+## 2026-03-29 已完成
+
+### 配置自动进化体系搭建（阶段四 4.2/4.3）
+
+- [x] [2026-03-29] **B 层 Clone 修复**
+  - 服务器 `git clone` 创建 `/root/openclaw-hardflow-backup-20260302/`
+  - 验证 hooks/skills 目录可达，GitHub SSH 认证正常
+
+- [x] [2026-03-29] **C 层同步通道确认**
+  - 确认 `ops_git_sync_push`、`governance_evolution`、`auto_update_daily` 三个 cron 的 `repo-path` 均已指向 B 层
+  - C 层 `.gitignore` 已有基础排除规则
+
+- [x] [2026-03-29] **每小时本地快照** — `local_snapshot_runner.py`（新建）
+  - 白名单同步：`openclaw.json`、`hooks/`、`skills/`、`agents/`、`cron/`、`ops/`
+  - 排除列表：`sessions/`、`auth-profiles`、`.bak`、`skills/library/`、`exception-reports/`
+  - 仅内容变化时复制，支持 dry-run 和 JSON 输出
+  - 注册 `local_config_snapshot` cron（每小时，id=`70a5f20a`）
+  - 脚本路径：`scripts/openclaw-ops/local_snapshot_runner.py`
+
+- [x] [2026-03-29] **auto_update_daily 安装修复**
+  - 发现 cron 只执行 `git pull` 但缺少 `--install-cmd`，pull 后不安装
+  - 确认 `workflow_setup.py` 已支持 `--yes` 非交互模式（第 1382 行）
+  - Patch cron：添加 `--install-cmd "python3 setup.py --yes ..."` 参数
+  - 现在 pull 后自动执行 `setup.py --yes` 安装到 `.openclaw/`
+
+### Cron 任务批量修复
+
+- [x] [2026-03-29] **Telegram 群 ID 批量替换**
+  - 25 处旧群 ID (`-1003333097130`) → 新 ID (`-1003758974925`)
+  - 清除 5 条过期 `lastError` 记录
+
+### Agent 模型配置同步
+
+- [x] [2026-03-29] **模型绑定更新**（同步 `openclaw.json` 和 `openclaw/openclaw.json`）
+  - coordinator → `gpt-5.4`
+  - tester → `Doubao-Seed-2.0-pro`
+  - doc-writer → `Doubao-Seed-2.0-pro`
+  - explorer → 新增 `gpt-5.4-mini`
+
+### 文档体系重构
+
+- [x] [2026-03-29] **多层级文档目录结构**
+  - 建立 `docs/INDEX.md` 顶层功能索引
+  - 创建 `docs/自动进化/` 父级目录 + `配置自动进化/` 子功能目录
+  - 功能文件夹标准三件套：`README.md` + `architecture.md` + `implementation-plan.md`
+  - 固化文档编写规范（每个功能一个文件夹，索引只写目录引用）
+
+- [x] [2026-03-29] **Telegram 输出规范文档化**
+  - `docs/telegram-output-format-spec.md`：多列表格格式标准
+
+### OpenClaw 启动修复
+
+- [x] [2026-03-29] **Gateway 守护进程排查**
+  - 确认正确启动命令为 `openclaw gateway`（而非 `openclaw daemon`）
+  - 通过 tmux 会话在 nofx 服务器正常运行
+
+---
+
 ## 2026-03-28 已完成
 
 ### 阶段 6.5：PolicyEnforcer 二次深度拆分（Mixin 架构）

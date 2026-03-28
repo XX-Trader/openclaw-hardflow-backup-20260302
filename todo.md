@@ -1,7 +1,7 @@
 # TODO
 
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
-> 更新时间：2026-03-28
+> 更新时间：2026-03-29
 
 ## P2 — 推广与治理
 
@@ -23,7 +23,7 @@
 
 ## Agent 模型配置
 
-> ✅ 2026-03-28 已全部更新
+> ✅ 2026-03-29 已全部更新
 
 | Agent | 配置 | 状态 |
 |-------|------|------|
@@ -34,4 +34,6 @@
 
 ---
 ## 参考文档
-完整执行计划与细节见：[docs/execution-roadmap.md](docs/execution-roadmap.md)
+- 完整执行计划与细节见：[docs/execution-roadmap.md](docs/execution-roadmap.md)
+- 功能文档索引见：[docs/INDEX.md](docs/INDEX.md)
+- 已完成清单见：[done.md](done.md)
