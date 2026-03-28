@@ -9,7 +9,7 @@
 - [⏰ 2026-05-01] [🟡 P2] 调整 Lobster 仓库配置为 `external_readonly`
 - [⏰ 2026-05-05] [🟡 P2] 把默认 `coding-default` workflow profile 的 manifest、安装入口正式落地
 - [⏰ 2026-05-05] [🟡 P2] 为 `upgrade feedback` 补齐晋升/回滚规则
-- [⏰ 2026-05-10] [🟡 P2] 拆分 `policy_enforcer.py`（5970行巨型单体）为独立模块
+- [⏰ 2026-05-10] [✅ 完成] ~~拆分 `policy_enforcer.py`（5970行巨型单体）为独立模块~~ → 2026-03-28 已完成
 
 ## P3 — 长期优化
 

@@ -58,6 +58,14 @@
   - doc-writer：`gpt-5.4-mini` → `Doubao-Seed-2.0-pro`
   - explorer：新增 `gpt-5.4-mini`
 
+- [x] [2026-03-28] **policy_enforcer.py 模块拆分**（阶段 6.4）
+  - 5970 行巨型单体 → 4 个独立模块（总计减少 24%）
+  - `policy_defaults.py`（946行）：DEFAULT_* 配置常量
+  - `policy_utils.py`（129行）：工具函数和数据类
+  - `policy_cli.py`（429行）：CLI 解析器和 main() 入口
+  - `policy_enforcer.py`（4526行）：PolicyEnforcer 类核心逻辑
+  - 零功能变更，完全向后兼容
+
 ---
 
 ## 2026-03 已完成
