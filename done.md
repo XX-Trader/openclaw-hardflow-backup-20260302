@@ -7,6 +7,19 @@
 
 ## 2026-03-28 已完成
 
+### 阶段 6.5：PolicyEnforcer 二次深度拆分（Mixin 架构）
+
+- **目标**: 将 4,526 行单体 `PolicyEnforcer` 拆分为 5 个 Mixin + 1 个组合类
+- **结果**:
+  - `policy_scoring.py` (ScoringMixin, 234行/8方法)
+  - `policy_workflow.py` (WorkflowMixin, 848行/14方法)
+  - `policy_context.py` (ContextMixin, 514行/11方法)
+  - `policy_task.py` (TaskLifecycleMixin, 2029行/35方法)
+  - `policy_observe.py` (ObservabilityMixin, 951行/21方法)
+  - `policy_enforcer.py` (组合类, 180行/24属性)
+- **验证**: 9/9 语法通过 + CLI 28 子命令 + validate-runtime 正常执行
+- **提交**: `13887bc9` → `02ed03e1` → `28d66869` → `10f6af92`
+
 ### 阶段一～五：自进化系统全面优化（部署完成）
 
 - [x] [2026-03-28] **Cron Job 清理**：删除 12 个冗余/禁用 Job（原 33 → 21）
