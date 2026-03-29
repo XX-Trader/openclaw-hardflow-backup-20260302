@@ -168,7 +168,23 @@ def humanize_executor_reason(item: dict[str, Any]) -> tuple[str, str]:
         return "任务仅部分完成", humanize_executor_detail(raw or "仅部分完成")
     if status == "passed":
         return "任务已完成", humanize_executor_detail(raw)
-    return "任务执行失败", humanize_executor_detail(raw)
+    # ── fallback: 当 reason 无信息时，回退读取 resolution_summary ──
+    resolution = str(item.get("resolution_summary", "")).strip()
+    detail_source = resolution or raw
+    if resolution:
+        res_lower = resolution.lower()
+        if "gateway" in res_lower and (
+            "closed" in res_lower
+            or "connect" in res_lower
+            or "failed" in res_lower
+        ):
+            return "Gateway 连接失败", humanize_executor_detail(resolution)
+        signal = _classify_failure_signal(resolution)
+        if signal == "timeout":
+            return "执行超时", humanize_executor_detail(resolution)
+        if signal == "network_error":
+            return "网络错误", humanize_executor_detail(resolution)
+    return "任务执行失败", humanize_executor_detail(detail_source)
 
 
 def _make_event(kind: str, facts: dict[str, Any], human_view: dict[str, Any]) -> dict[str, Any]:

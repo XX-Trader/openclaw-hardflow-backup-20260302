@@ -26,7 +26,9 @@ if str(ROOT) not in sys.path:
 from utf8_runtime import configure_process_utf8_stdio
 from chat_output import format_beijing_time
 from workflow_views import build_task_executor_event, render_human_view
-from policy_enforcer import PolicyEnforcer, RuntimePaths, cmd_init, runtime_defaults  # type: ignore
+from policy_enforcer import PolicyEnforcer, RuntimePaths  # type: ignore
+from policy_cli import cmd_init  # type: ignore
+from policy_utils import runtime_defaults  # type: ignore
 from alert_dedupe import (
     WORKFLOW_FAILURE_BUCKET,
     build_workflow_failure_signature,

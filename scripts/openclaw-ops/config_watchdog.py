@@ -286,9 +286,15 @@ def validate_openclaw_config(file_path):
     agent_list = agents_config.get("list", [])
     for agent in agent_list:
         agent_name = agent.get("name", "unknown")
-        soul_path = config_dir / "agents" / agent_name / "SOUL.md"
+        # 优先使用 id / agent_id 作为目录名，回退到 name
+        agent_dir = (
+            str(agent.get("id", "") or "").strip()
+            or str(agent.get("agent_id", "") or "").strip()
+            or agent_name
+        )
+        soul_path = config_dir / "agents" / agent_dir / "SOUL.md"
         if not soul_path.exists():
-            errors.append(f"Agent '{agent_name}' 的 SOUL.md 不存在: {soul_path}")
+            errors.append(f"Agent '{agent_name}' (dir={agent_dir}) 的 SOUL.md 不存在: {soul_path}")
 
     # 检查 hooks — 兼容 list[dict] 和 dict 两种配置格式
     hooks_config = content.get("hooks", [])

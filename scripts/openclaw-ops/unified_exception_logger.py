@@ -15,6 +15,8 @@ unified_exception_logger.py — 统一异常日志收集与分类巡检
 
 用法:
     python unified_exception_logger.py --help
+    python unified_exception_logger.py --auto-discover --dry-run
+    python unified_exception_logger.py --auto-discover --output-dir /root/.openclaw/ops/exception-reports/
     python unified_exception_logger.py --log-dirs /root/.openclaw/ops/workflow-logs/ --dry-run
     python unified_exception_logger.py --log-dirs /dir1 /dir2 --output-dir /root/.openclaw/ops/exception-reports/
 """
@@ -38,6 +40,41 @@ def configure_process_utf8_stdio():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     if hasattr(sys.stderr, "reconfigure"):
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+
+# ──────────────────────────────────────────────
+# Auto-discover: 自动发现 ~/.openclaw/ 下的日志目录
+# ──────────────────────────────────────────────
+
+AUTO_DISCOVER_PATTERNS: list[str] = [
+    "agents/*/sessions",
+    "ops/task-center/executor-runs",
+    "ops/exception-reports",
+    "ops/workflow-logs",
+    "logs",
+    "workspace-*/sessions",
+    "subagents/*/sessions",
+]
+
+
+def discover_log_dirs(openclaw_home: str) -> list[str]:
+    """自动发现 openclaw_home 下所有存在的日志目录。
+
+    Args:
+        openclaw_home: OpenClaw 根目录路径（如 ~/.openclaw）。
+
+    Returns:
+        list[str]: 已存在的日志目录绝对路径列表。
+    """
+    home = Path(openclaw_home).expanduser().resolve()
+    if not home.is_dir():
+        return []
+    found: list[str] = []
+    for pattern in AUTO_DISCOVER_PATTERNS:
+        for match in sorted(home.glob(pattern)):
+            if match.is_dir() and str(match) not in found:
+                found.append(str(match))
+    return found
 
 
 # ──────────────────────────────────────────────
@@ -451,7 +488,11 @@ def build_cli_parser():
   %(prog)s --log-dirs ./logs/ --scan-since-hours 48
         """,
     )
-    parser.add_argument("--log-dirs", nargs="+", required=True, help="日志目录列表")
+    parser.add_argument("--log-dirs", nargs="+", default=None, help="日志目录列表（与 --auto-discover 二选一）")
+    parser.add_argument("--auto-discover", action="store_true",
+                        help="自动发现 ~/.openclaw/ 下的日志目录（agent sessions、executor runs 等）")
+    parser.add_argument("--openclaw-home", default=os.path.expanduser("~/.openclaw"),
+                        help="OpenClaw 根目录，供 --auto-discover 使用（默认 ~/.openclaw）")
     parser.add_argument("--output-dir", default=None, help="报告输出目录")
     parser.add_argument("--abnormal-dir", default=None, help="统一异常日志归档目录（如 ~/.openclaw/logs/abnormal/）")
     parser.add_argument("--scan-since-hours", type=int, default=24, help="扫描最近 N 小时（默认 24）")
@@ -467,8 +508,28 @@ def main():
     parser = build_cli_parser()
     args = parser.parse_args()
 
+    # 确定日志目录：--auto-discover 自动发现，或 --log-dirs 手动指定
+    log_dirs = args.log_dirs
+    if args.auto_discover:
+        discovered = discover_log_dirs(args.openclaw_home)
+        if log_dirs:
+            # 合并手动指定 + 自动发现，去重
+            merged = list(log_dirs)
+            for d in discovered:
+                if d not in merged:
+                    merged.append(d)
+            log_dirs = merged
+        else:
+            log_dirs = discovered
+        if not log_dirs:
+            print(f"⚠️ --auto-discover 未发现任何日志目录 (openclaw_home={args.openclaw_home})", file=sys.stderr)
+            return
+    if not log_dirs:
+        print("错误: 必须指定 --log-dirs 或 --auto-discover", file=sys.stderr)
+        sys.exit(1)
+
     result = run_exception_scan(
-        log_dirs=args.log_dirs,
+        log_dirs=log_dirs,
         output_dir=args.output_dir,
         scan_since_hours=args.scan_since_hours,
         dry_run=args.dry_run,

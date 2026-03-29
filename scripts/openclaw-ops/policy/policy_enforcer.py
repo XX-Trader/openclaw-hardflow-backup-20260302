@@ -15,7 +15,7 @@ if str(ROOT) not in sys.path:
 REPO_ROOT = ROOT.parent.parent
 
 from utf8_runtime import configure_process_utf8_stdio
-from task_center import TaskCenter
+from task_center import TaskCenter, TASK_STATUSES
 
 configure_process_utf8_stdio()
 
