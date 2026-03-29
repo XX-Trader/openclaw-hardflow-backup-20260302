@@ -19,8 +19,10 @@ Default location per gate:
 1. `findings` (array[object]): generic findings list
 2. `security_findings` (array[object]): security findings list
 3. `criticalRisks` (array[object]): security finding alias
-4. `planVersion` (string)
-5. `notes` (string)
+4. `deduction_reasons` (object): dimension-level deduction reasons, each value is array[string]
+5. `evidence_sources` (object): deterministic check results + LLM evaluator metadata
+6. `planVersion` (string)
+7. `notes` (string)
 
 For security veto, each finding object should include:
 

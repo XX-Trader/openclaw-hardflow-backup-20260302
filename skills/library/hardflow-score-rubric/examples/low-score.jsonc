@@ -1,0 +1,59 @@
+{
+  // 低分示例：overall = 72，未通过 G2 frontend（阈值 ≥ 92）
+  // 注意 deduction_reasons 中每个低分维度都有详细扣分原因
+  "gate": "frontend",
+  "dimensions": {
+    "visual_design": 65,
+    "information_architecture": 78,
+    "interaction_quality": 68,
+    "responsive_accessibility": 75,
+    "code_structure": 72
+  },
+  "deduction_reasons": {
+    "visual_design": [
+      "无统一色板，至少使用了 8 种不同颜色",
+      "间距从 8px 到 24px 无规律",
+      "字体混用了 4 种（Arial, Helvetica, PingFang, SimSun）"
+    ],
+    "information_architecture": [
+      "核心功能'订单管理'需要 5 步才能到达",
+      "页面信息无明确分组，表格和图表混杂"
+    ],
+    "interaction_quality": [
+      "按钮无 hover 状态反馈",
+      "表单提交无 loading 状态，用户无法判断是否成功",
+      "错误提示仅显示 '操作失败'，缺少具体原因"
+    ],
+    "responsive_accessibility": [
+      "移动端下表格直接溢出屏幕，无水平滚动",
+      "色彩对比度仅 2.8:1，未达 WCAG AA 标准（≥ 4.5:1）"
+    ],
+    "code_structure": [
+      "App.vue 超过 800 行，职责不清",
+      "多处重复的 API 调用逻辑（fetchList 在 5 个组件中复制粘贴）",
+      "命名不语义化（handleClick1, handleClick2）"
+    ]
+  },
+  "summary": "前端缺乏设计系统，交互反馈不完善，代码结构臃肿，需全面整改",
+  "findings": [
+    {
+      "id": "FE-11",
+      "severity": "medium",
+      "status": "open",
+      "title": "No design system or color palette defined"
+    },
+    {
+      "id": "FE-12",
+      "severity": "medium",
+      "status": "open",
+      "title": "Form validation messages are not descriptive"
+    },
+    {
+      "id": "FE-13",
+      "severity": "low",
+      "status": "open",
+      "title": "App.vue exceeds 800 lines"
+    }
+  ],
+  "security_findings": []
+}

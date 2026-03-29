@@ -1,0 +1,25 @@
+{
+  // 高分示例：overall = 93，通过 G2 frontend（阈值 ≥ 92）
+  "gate": "frontend",
+  "dimensions": {
+    "visual_design": 92,
+    "information_architecture": 94,
+    "interaction_quality": 91,
+    "responsive_accessibility": 95,
+    "code_structure": 93
+  },
+  "deduction_reasons": {
+    "visual_design": ["按钮圆角不完全统一（部分 4px，部分 8px）"],
+    "interaction_quality": ["下拉菜单关闭动画稍显突兀（320ms，建议 ≤ 300ms）"]
+  },
+  "summary": "前端视觉和交互质量良好，仅有小的一致性问题",
+  "findings": [
+    {
+      "id": "FE-01",
+      "severity": "low",
+      "status": "resolved",
+      "title": "Button border-radius inconsistency between 4px and 8px"
+    }
+  ],
+  "security_findings": []
+}

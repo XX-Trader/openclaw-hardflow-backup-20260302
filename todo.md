@@ -3,6 +3,18 @@
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
 > 更新时间：2026-03-29
 
+## P0 — 评分系统升级（解封 HardFlow 门禁管道）
+
+> 详细文档：[docs/核心主工作流/ACP全链路编码工作流/评分系统升级/](docs/核心主工作流/ACP全链路编码工作流/评分系统升级/README.md)
+
+- [x] [🔴 P0] 替换 `score-gate.sh` → 真实评分聚合器 `score-aggregator.sh`
+- [x] [🔴 P0] scorecard 输出含 findings + deduction_reasons + evidence_sources
+- [ ] [🔴 P0] 验证 `score-gate-audit.ndjson` 正常产出（需部署后验证）
+- [x] [🟡 P1] 新建 `hardflow-score-rubric` Skill（G0-G6 共 7 个 rubric + few-shot 示例）
+- [x] [🟡 P1] 绑定 Skill 到 reviewer Agent（5→6 skills）
+- [x] [🟡 P1] 替换 `improve-gate.sh` 空壳 → 真实改进引擎 `improve-evaluator.sh`
+- [x] [🟡 P1] 接通 HardFlow 评分 → evolution-upgrader 闭环 (`hardflow_score_adapter.py`)
+
 ## P2 — 推广与治理
 
 - [⏰ 2026-05-01] [🟡 P2] nofx 验证通过后，推广到其余 4 台服务器

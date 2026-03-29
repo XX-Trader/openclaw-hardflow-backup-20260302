@@ -21,6 +21,7 @@ OpenClaw 的核心编码工作流引擎（HardFlow Core），实现从需求拆�
 | 文档 | 内容 |
 |------|------|
 | [架构设计](architecture.md) | 阶段流程图、门禁阈值、产物目录 |
+| [评分系统升级](评分系统升级/README.md) | 评分数据源修复、评分标准 Skill、进化闭环接通 |
 | HardFlow 详细文档 | [`scripts/hardflow/README.md`](../../../scripts/hardflow/README.md)（305行完整文档） |
 
 ## 主流程（23个阶段）
