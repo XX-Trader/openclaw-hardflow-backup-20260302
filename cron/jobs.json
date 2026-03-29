@@ -21,7 +21,7 @@
         "message": "你是 todo-patrol 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/todo_patrol.py --task cron:todo-patrol。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。"
       },
       "delivery": {
-        "mode": "none",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -127,7 +127,7 @@
       "id": "5797cd5b-5539-4e95-8d58-dc65a4633ec5",
       "agentId": "project-agent",
       "name": "project_index_maintainer_4h",
-      "description": "Project index maintainer (git HEAD change driven, every 4h fallback)",
+      "description": "项目索引维护（基于 git HEAD 变更驱动，4小时兜底全量扫描，维护项目注册表与文档索引）",
       "enabled": true,
       "createdAtMs": 1772438672175,
       "updatedAtMs": 1772642376140,
@@ -163,7 +163,7 @@
       "id": "2ce5fe63-8316-4503-95e4-48515042b453",
       "agentId": "ops-agent",
       "name": "daily_todo_digest_daily",
-      "description": "Daily TODO digest (script sends Telegram directly)",
+      "description": "每日 TODO 摘要日报（汇总当日待办状态，直接发送到 Telegram）",
       "enabled": true,
       "createdAtMs": 1772438672175,
       "updatedAtMs": 1772642376140,
@@ -208,7 +208,7 @@
         "message": "你是 optimization-agent 自我进化总结。仅用命令执行：python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_incremental_scan.py --mode evolution --task cron:self-evolution --actor optimization-agent。要求：读取脚本输出原样回复；若输出 NO_REPLY，则只回复 NO_REPLY。禁止全量扫描历史记录，按脚本的增量清单（mtime/size/md5）执行。"
       },
       "delivery": {
-        "mode": "none",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -233,7 +233,7 @@
       "id": "0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a",
       "agentId": "reviewer",
       "name": "reviewer_incremental_daily_4am",
-      "description": "Daily 04:00 incremental review with optional fix command",
+      "description": "每日凌晨4:00 增量代码审查（检查新增变更质量，可选自动修复）",
       "enabled": true,
       "createdAtMs": 1772473929944,
       "updatedAtMs": 1772642376140,
@@ -260,7 +260,7 @@
       "id": "771fda88-c8ff-49dc-a4da-6f57167c1d26",
       "agentId": "reviewer",
       "name": "reviewer_weekly_structure_review",
-      "description": "Weekly structure review: coupling, duplication, config dispersion, boundary clarity",
+      "description": "每周一结构审查（检测耦合度、代码重复、配置分散、模块边界清晰度）",
       "enabled": true,
       "createdAtMs": 1772473929944,
       "updatedAtMs": 1772642376140,
@@ -329,7 +329,7 @@
         "timeoutSeconds": 240
       },
       "delivery": {
-        "mode": "none",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -357,7 +357,7 @@
         "timeoutSeconds": 120
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -389,7 +389,7 @@
         "timeoutSeconds": 180
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -416,7 +416,7 @@
         "timeoutSeconds": 120
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -449,7 +449,7 @@
         "timeoutSeconds": 120
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -501,7 +501,7 @@
         "timeoutSeconds": 300
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -527,7 +527,7 @@
         "timeoutSeconds": 600
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -553,7 +553,7 @@
         "timeoutSeconds": 600
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -579,7 +579,7 @@
         "timeoutSeconds": 180
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -605,7 +605,7 @@
         "timeoutSeconds": 60
       },
       "delivery": {
-        "mode": "onError",
+        "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
       },
