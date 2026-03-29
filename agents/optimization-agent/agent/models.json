@@ -1,5 +1,27 @@
 {
   "providers": {
+    "openai-codex": {
+      "baseUrl": "https://api.openai.com/v1",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "gpt-5.4",
+          "name": "GPT-5.4"
+        },
+        {
+          "id": "gpt-5.4-mini",
+          "name": "GPT-5.4 Mini"
+        },
+        {
+          "id": "gpt-5.3-codex",
+          "name": "GPT-5.3 Codex"
+        },
+        {
+          "id": "gpt-5.3-codex-spark",
+          "name": "GPT-5.3 Spark"
+        }
+      ]
+    },
     "glmcode": {
       "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
       "apiKey": "85d7fd33030d4925a6aae6e31a450e88.mrKxCoSOwRj7jsHo",
@@ -31,28 +53,6 @@
         {
           "id": "Doubao-Seed-2.0-pro",
           "name": "Doubao-Seed-2.0-pro"
-        }
-      ]
-    },
-    "openai-codex": {
-      "baseUrl": "https://api.openai.com/v1",
-      "api": "openai-completions",
-      "models": [
-        {
-          "id": "gpt-5.4",
-          "name": "GPT-5.4"
-        },
-        {
-          "id": "gpt-5.4-mini",
-          "name": "GPT-5.4 Mini"
-        },
-        {
-          "id": "gpt-5.3-codex",
-          "name": "GPT-5.3 Codex"
-        },
-        {
-          "id": "gpt-5.3-codex-spark",
-          "name": "GPT-5.3 Spark"
         }
       ]
     }
