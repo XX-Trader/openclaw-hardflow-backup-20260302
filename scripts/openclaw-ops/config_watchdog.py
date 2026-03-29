@@ -290,9 +290,18 @@ def validate_openclaw_config(file_path):
         if not soul_path.exists():
             errors.append(f"Agent '{agent_name}' 的 SOUL.md 不存在: {soul_path}")
 
-    # 检查 hooks
+    # 检查 hooks — 兼容 list[dict] 和 dict 两种配置格式
     hooks_config = content.get("hooks", [])
-    for hook in hooks_config:
+    hooks_list: list[dict] = []
+    if isinstance(hooks_config, list):
+        hooks_list = [h for h in hooks_config if isinstance(h, dict)]
+    elif isinstance(hooks_config, dict):
+        # dict 格式 (如 {"internal": {"enabled": true, "load": {...}}})
+        # 不包含顶层 handler 路径，遍历子项中的 handler
+        for hook_name, hook_value in hooks_config.items():
+            if isinstance(hook_value, dict):
+                hooks_list.append(hook_value)
+    for hook in hooks_list:
         handler_path_str = hook.get("handler", "")
         if handler_path_str:
             handler_path = config_dir / handler_path_str
