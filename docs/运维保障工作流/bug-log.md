@@ -22,6 +22,14 @@
   - `scripts/openclaw-ops/unified_exception_logger.py` (第247行)
   - `scripts/openclaw-ops/memtidy_runner.py` (第337行)
 
+### BUG-003: 配置文件 Windows 路径在 Linux 上无效
+- **严重级**: 🟡 P1
+- **根因**: 部署时 `cron-monitor-config.json` 从 Windows 本地直接复制到 NOFX Linux 服务器，其中所有路径均为 `C:\Users\superma\.openclaw\...`，在 Linux 上无法解析
+- **受影响字段**: `task_center_db`, `routing_file`, `scan_dirs`, `log_patterns` 等
+- **表现**: 日志中出现 `task_center_db_missing:C:\Users\superma.openclaw\ops\task-center\task_center.db`
+- **修复**: Python 脚本批量替换 `C:\Users\superma\` → `/root/`，修复了 `cron-monitor-config.json` 和 `cron-monitor-state.json`
+- **防止复发**: 部署脚本应做路径适配（`Path.home()` 动态生成或部署时 sed 替换）
+
 ---
 
 ## 需人工确认 (无法远程自动修复)
