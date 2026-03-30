@@ -27,8 +27,9 @@
 - **根因**: 部署时 `cron-monitor-config.json` 从 Windows 本地直接复制到 NOFX Linux 服务器，其中所有路径均为 `C:\Users\superma\.openclaw\...`，在 Linux 上无法解析
 - **受影响字段**: `task_center_db`, `routing_file`, `scan_dirs`, `log_patterns` 等
 - **表现**: 日志中出现 `task_center_db_missing:C:\Users\superma.openclaw\ops\task-center\task_center.db`
-- **修复**: Python 脚本批量替换 `C:\Users\superma\` → `/root/`，修复了 `cron-monitor-config.json` 和 `cron-monitor-state.json`
-- **防止复发**: 部署脚本应做路径适配（`Path.home()` 动态生成或部署时 sed 替换）
+- **修复**: Python 脚本将所有绝对 home 路径（`/root/`、`/home/xxx/`、`C:\Users\xxx\`）统一替换为 `~/`；`disk_paths` 的 `C:/` 改为 `/`
+- **原理**: 代码中已有 `Path.expanduser()` 调用，`~` 会自动解析为当前用户 home 目录（CentOS `/root/`、Ubuntu `/home/user/` 等）
+- **防止复发**: 部署到不同服务器时，配置文件中的路径必须使用 `~/.openclaw/...` 格式，禁止写死绝对路径
 
 ---
 
