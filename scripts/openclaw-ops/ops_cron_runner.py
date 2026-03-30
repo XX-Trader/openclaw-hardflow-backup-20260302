@@ -75,6 +75,7 @@ VOLATILE_PATTERNS = (
 )
 DEFAULT_SENDER_PREFIX = "ops-agent/ops-cron-runner"
 DEFAULT_WORKFLOW_MONITOR_IGNORED_JOB_NAMES = {
+    "agent_self_evolution",
     "todo_patrol_15m",
     "project_index_maintainer_4h",
     "project_index_maintainer_30m",
