@@ -103,7 +103,6 @@
     "max_report_jobs": 8,
     "stale_error_minutes": 30,
     "ignore_job_names": [
-      "agent_self_evolution",
       "ops_auto_update_install_hourly",
       "ops_conversation_evolution_incremental",
       "ops_git_sync_push",
