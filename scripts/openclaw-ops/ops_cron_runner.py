@@ -220,6 +220,56 @@ def save_json(path: Path, payload: Any) -> None:
         raise RuntimeError(f"save_json_failed:{exc.code}:{path}:{exc.detail or exc}") from exc
 
 
+def _normalize_config_paths(cfg: dict[str, Any], home: Path) -> dict[str, Any]:
+    """Recursively replace foreign-OS home directory paths with the current $HOME.
+
+    When config files are synced across Windows/Linux via git, paths like
+    ``C:\\Users\\superma\\.openclaw\\...`` end up on Linux where they are invalid.
+    This function detects such cross-platform path fragments and rewrites them
+    to ``$HOME/.openclaw/...`` for the current system.
+
+    Args:
+        cfg: Loaded configuration dictionary.
+        home: Current system home directory (``Path.home()``).
+
+    Returns:
+        dict[str, Any]: Config dict with all path-like string values normalized.
+    """
+    home_str = str(home).replace("\\", "/")
+    # Patterns that indicate a foreign home directory followed by .openclaw
+    _FOREIGN_HOME_RE = re.compile(
+        r"(?:[A-Z]:[/\\]+(?:Users|Documents and Settings)[/\\]+[^/\\]+|/(?:home|root)/[^/\\]+)"
+    )
+
+    def _rewrite(value: str) -> str:
+        """Rewrite a single string value if it contains a foreign home path."""
+        # Only rewrite paths that contain .openclaw to avoid false positives
+        if ".openclaw" not in value and "openclaw-hardflow" not in value:
+            return value
+        normalized = value.replace("\\\\", "/").replace("\\", "/")
+        match = _FOREIGN_HOME_RE.search(normalized)
+        if not match:
+            return value
+        foreign_home = match.group(0)
+        # Replace the foreign home with current home
+        result = normalized.replace(foreign_home, home_str)
+        # On Windows keep backslashes, on Linux keep forward slashes
+        if os.name == "nt":
+            result = result.replace("/", "\\")
+        return result
+
+    def _walk(obj: Any) -> Any:
+        if isinstance(obj, dict):
+            return {k: _walk(v) for k, v in obj.items()}
+        if isinstance(obj, list):
+            return [_walk(item) for item in obj]
+        if isinstance(obj, str):
+            return _rewrite(obj)
+        return obj
+
+    return _walk(cfg)
+
+
 def default_config() -> dict[str, Any]:
     home = Path(os.path.expanduser("~"))
     disk_paths = ["C:\\"] if os.name == "nt" else ["/", str(home / ".openclaw")]
@@ -2757,6 +2807,7 @@ def main() -> int:
     if not isinstance(cfg, dict):
         cfg = default_config()
         save_json(cfg_path, cfg)
+    cfg = _normalize_config_paths(cfg, home)
 
     state = load_json(state_path, None)
     if not isinstance(state, dict):
