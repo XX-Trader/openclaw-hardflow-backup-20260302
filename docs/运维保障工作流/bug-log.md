@@ -26,29 +26,20 @@
 
 ## 需人工确认 (无法远程自动修复)
 
-### MANUAL-001: 🔴 Gateway 连接失败
-- **现象**: `Gateway call failed: Error: gateway closed (1000)`，出现 5+ 次
-- **影响**: `optimization-agent` 和 `project-agent` 全部执行失败，整个任务执行链瘫痪
-- **待确认**:
-  1. SSH 到 NOFX 服务器检查 Gateway 进程是否存活
-  2. 查看 Gateway 异常日志
-  3. 必要时重启 Gateway
-- **备注**: 本次 SSH 连接也超时，可能服务器本身有问题
+### MANUAL-001: ~~待确认~~已确认 — Gateway 正常运行
+- **原现象**: `Gateway call failed: Error: gateway closed (1000)`
+- **实际状态**: SSH 确认 Gateway 正常运行 (PID 2483467, 30.8% 内存, 已运行超过 17 小时)
+- **结论**: 上次报错可能是瞬时故障，已自行恢复
 
-### MANUAL-002: 🟡 Git 同步冲突
-- **现象**: `本地有未处理改动且落后远端，需人工处理后再 pull`
-- **待确认**:
-  ```bash
-  cd ~/openclaw-hardflow-backup-20260302
-  git status
-  git stash
-  git pull --ff-only origin main
-  git stash pop  # 按需
-  ```
+### MANUAL-002: ~~待确认~~已修复 — Git 同步流程重构
+- **原现象**: `本地有未处理改动且落后远端，需人工处理后再 pull`
+- **根因**: 旧流程先 pull 再 commit，遇本地改动就死锁
+- **修复**: 重构为 commit-first → pull --rebase → push，rebase 冲突时自动 abort + 通知人工
 
-### MANUAL-003: 🟡 派单能力不匹配（3个任务）
-- **现象**: `optimization-agent` 能力绑定不覆盖部分任务类型（周度复盘/reviewer context）
-- **待确认**: 检查 `task_capability_binding.py` 或 `runtime-binding.json` 中的 agent 能力映射
+### MANUAL-003: ~~待确认~~已修复 — 派单能力不匹配
+- **原现象**: `optimization-agent` 能力绑定不覆盖部分任务类型
+- **根因**: `ops-agent` 和 `optimization-agent` 在 `task_capability_binding.py` 中只有 `role_only`，缺少 `task_execution`
+- **修复**: 给两个 agent 添加 `task_execution` capability (commit `4286d2dc`)
 
 ### MANUAL-004: 🟢 审查上下文门禁阻塞
 - **现象**: `project-agent` 无法产出上下文包，日增量审查和周结构审查被跳过
