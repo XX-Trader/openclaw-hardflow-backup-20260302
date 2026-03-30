@@ -143,6 +143,7 @@ def collect_control_plane_summary(
 
     task_center = TaskCenter(db_path)
     try:
+        task_center.init_schema()
         candidates = task_center.recent_control_plane_task_ids(
             since=since,
             limit=max(1, int(limit or 20)),

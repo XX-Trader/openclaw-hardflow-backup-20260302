@@ -774,7 +774,25 @@ def main() -> int:
     if args.emit_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        print(json.dumps({"status": result["status"], "candidate_run_ids": result.get("candidate_run_ids", [])}, ensure_ascii=False))
+        # 精简人类可读摘要（用于 Telegram 通知）
+        status = str(result.get("status", "unknown"))
+        promo = result.get("promotion_bundle", {})
+        decision = promo.get("promotion_decision", {}) if isinstance(promo, dict) else {}
+        baseline_avg = decision.get("baseline_average", 0) if isinstance(decision, dict) else 0
+        candidate_avg = decision.get("candidate_average", 0) if isinstance(decision, dict) else 0
+        promoted = bool(decision.get("promote_to_new_baseline", False)) if isinstance(decision, dict) else False
+        veto = decision.get("veto_reasons", []) if isinstance(decision, dict) else []
+        lines = [
+            f"升级反馈：{status}",
+            f"基线均分：{baseline_avg:.1f} | 候选均分：{candidate_avg:.1f}",
+            f"晋升决策：{'✅ 已晋升' if promoted else '❌ 未晋升'}",
+        ]
+        if veto and isinstance(veto, list):
+            lines.append(f"否决原因：{', '.join(str(v) for v in veto[:3])}")
+        reg_status = str(result.get("workflow_registry_promotion", {}).get("status", "")).strip()
+        if reg_status:
+            lines.append(f"注册表：{reg_status}")
+        print("\n".join(lines))
     return 0
 
 

@@ -335,7 +335,7 @@ def run_memtidy(memory_dirs, rules, dry_run=False, task_id=None):
     for memory_dir_str in memory_dirs:
         memory_dir = expand_path(memory_dir_str)
         if not memory_dir.exists():
-            print(f"⚠️ 目录不存在，跳过: {memory_dir}")
+            # 静默跳过不存在的目录（部分节点可能未启用 memory 功能）
             continue
 
         md_files = list(memory_dir.rglob("*.md"))

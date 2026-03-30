@@ -245,7 +245,7 @@ def run_exception_scan(log_dirs, output_dir=None, scan_since_hours=24,
     for log_dir_str in log_dirs:
         log_dir = Path(log_dir_str)
         if not log_dir.exists():
-            print(f"⚠️ 目录不存在，跳过: {log_dir_str}", file=sys.stderr)
+            # 静默跳过不存在的目录（cron 环境下部分目录可能未创建）
             continue
 
         for extension in ("*.log", "*.jsonl", "*.txt", "*.md"):

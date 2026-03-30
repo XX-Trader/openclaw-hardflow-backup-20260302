@@ -322,6 +322,8 @@ def humanize_error(err: str) -> str:
         return f"git fetch 失败：{text.split(':', 1)[1]}"
     if text == "behind_with_local_changes_requires_manual_rebase":
         return "本地有未处理改动且落后远端，需人工处理后再 pull"
+    if text.startswith("git_pull_rebase_conflict:"):
+        return f"pull --rebase 冲突（已自动 abort 回滚），需人工解决：{text.split(':', 1)[1]}"
     if text.startswith("git_pull_ff_only_failed:"):
         return f"git pull --ff-only 失败：{text.split(':', 1)[1]}"
     if text.startswith("git_status_failed:"):
@@ -466,32 +468,7 @@ def main() -> int:
         result["ahead"] = ahead
         result["behind"] = behind
 
-    if not result["errors"] and bool(args.auto_pull) and int(result.get("behind", 0)) > 0:
-        rc, status_out, status_err = run_git(repo, ["status", "--porcelain", "-z", "--untracked-files=all"], timeout=20)
-        if rc != 0:
-            result["errors"].append(f"git_status_failed:{status_err or rc}")
-        else:
-            changes_before_pull = parse_status_porcelain(status_out)
-            blockers, ignored_untracked = classify_pull_blockers(
-                changes_before_pull,
-                include_prefixes=include_prefixes,
-                exclude_prefixes=exclude_prefixes,
-            )
-            result["pull_blocking_files"] = blockers
-            result["pull_ignored_untracked"] = ignored_untracked
-            if blockers:
-                result["errors"].append("behind_with_local_changes_requires_manual_rebase")
-            else:
-                rc, _out, err = run_git(repo, ["pull", "--ff-only", remote, branch], timeout=240)
-                result["pull_ok"] = rc == 0
-                result["pulled"] = rc == 0
-                if rc != 0:
-                    result["errors"].append(f"git_pull_ff_only_failed:{err or rc}")
-                else:
-                    ahead, behind = ahead_behind(repo, upstream or f"{remote}/{branch}")
-                    result["ahead"] = ahead
-                    result["behind"] = behind
-
+    # ── 阶段 1：收集本地变更、筛选 eligible 文件 ────────────────────────
     if not result["errors"]:
         rc, status_out, err = run_git(repo, ["status", "--porcelain", "-z", "--untracked-files=all"], timeout=30)
         if rc != 0:
@@ -513,7 +490,7 @@ def main() -> int:
             result["eligible_files"] = sorted(set(eligible))
             result["skipped_files"] = sorted(set(skipped))
 
-    # ── 第二层审核：敏感信息内容扫描 ──────────────────────────────────
+    # ── 阶段 2：敏感信息内容扫描 ──────────────────────────────────────
     if not result["errors"] and result["eligible_files"]:
         clean_files, sensitive_alerts = scan_sensitive_content(
             repo, list(result["eligible_files"])
@@ -530,7 +507,7 @@ def main() -> int:
                 f"sensitive_content_detected:{len(blocked_files)}_files_blocked"
             )
 
-    # ── 第三层审核：Agent 审核摘要（异步复查凭据） ─────────────────────
+    # ── 阶段 3：Agent 审核摘要（异步复查凭据） ────────────────────────
     if not result["errors"] and result["eligible_files"]:
         review_summary = {
             "review_time": now_iso(),
@@ -540,7 +517,7 @@ def main() -> int:
             "skipped_count": len(result.get("skipped_files", [])),
             "sensitive_alerts": result.get("sensitive_alerts", []),
             "review_status": "auto_approved",
-            "review_note": "第二层密钥检测通过，自动放行。optimization-agent 可异步复查本摘要。",
+            "review_note": "第二层密钥检测通过，自动放行。ops-agent 可异步复查本摘要。",
         }
         review_dir = repo / ".workflow" / "sync-reviews"
         review_dir.mkdir(parents=True, exist_ok=True)
@@ -554,6 +531,7 @@ def main() -> int:
         except OSError:
             pass  # 审核摘要写入失败不阻断主流程
 
+    # ── 阶段 4：git add + commit（先提交本地 eligible 改动）────────────
     if not result["errors"] and result["eligible_files"]:
         for group in chunked(list(result["eligible_files"]), 80):
             rc, _out, err = run_git(repo, ["add", "--", *group], timeout=60)
@@ -583,6 +561,8 @@ def main() -> int:
                 if rc2 == 0 and str(sha).strip():
                     result["commit_sha"] = str(sha).strip()
 
+    # ── 阶段 5：pull --rebase（commit 后再同步远端）───────────────────
+    # 先刷新 ahead/behind 状态（commit 后 ahead 可能变化）
     if not result["errors"]:
         upstream_after = resolve_upstream(repo, remote=remote, branch=branch)
         result["upstream"] = upstream_after or result["upstream"]
@@ -590,6 +570,22 @@ def main() -> int:
         result["ahead"] = ahead
         result["behind"] = behind
 
+    if not result["errors"] and bool(args.auto_pull) and int(result.get("behind", 0)) > 0:
+        # commit-first 策略：本地改动已提交，可以安全 rebase
+        rc, _out, err = run_git(repo, ["pull", "--rebase", remote, branch], timeout=240)
+        if rc == 0:
+            result["pull_ok"] = True
+            result["pulled"] = True
+            upstream_ref = upstream or f"{remote}/{branch}"
+            ahead, behind = ahead_behind(repo, upstream_ref)
+            result["ahead"] = ahead
+            result["behind"] = behind
+        else:
+            # rebase 冲突：自动 abort 回滚，不丢代码，通知人工处理
+            run_git(repo, ["rebase", "--abort"], timeout=30)
+            result["errors"].append(f"git_pull_rebase_conflict:{err or rc}")
+
+    # ── 阶段 6：push ─────────────────────────────────────────────────
     should_push = bool(args.push)
     if not result["errors"] and should_push and int(result.get("ahead", 0)) > 0:
         rc, _out, err = run_git(repo, ["push", "-u", remote, branch], timeout=240)

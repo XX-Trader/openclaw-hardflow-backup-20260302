@@ -2240,7 +2240,7 @@ def build_git_sync_job(
             cmd += f" --require-remote-url \"{quote_arg(text)}\""
     return {
         "id": "5dd96c0a-5cd2-4b31-b9a6-75f6ef4f3339",
-        "agentId": "optimization-agent",
+        "agentId": "ops-agent",
         "name": "ops_git_sync_push",
         "description": "Auto sync local repo and push self-evolution changes to remote git",
         "enabled": True,
