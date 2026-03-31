@@ -118,5 +118,5 @@
 
 经 2026-03-29 代码审计，以下工作流由用户规划标注的"开发中"修正为"已上线"：
 - 🚀 **配置变更安全兜底**：`config_watchdog.py`（530行）+ Cron 每4小时
-- 🚀 **统一异常日志巡检**：`unified_exception_logger.py`（18KB）+ Cron 每6小时
+- 🚀 **统一异常日志巡检**：`unified_exception_logger.py`（21KB）+ Cron 每6小时 + `--auto-discover` 自动目录发现
 - 🚀 **MemTidy记忆整理**：`memtidy_runner.py`（518行）+ Cron 每日03:00

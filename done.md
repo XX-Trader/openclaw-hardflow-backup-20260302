@@ -61,6 +61,23 @@
   - 确认正确启动命令为 `openclaw gateway`（而非 `openclaw daemon`）
   - 通过 tmux 会话在 nofx 服务器正常运行
 
+### 任务执行器 Bugfix（3项）
+
+- [x] [2026-03-29] **失败原因输出修复** — `workflow_views.py`
+  - 问题：`humanize_executor_reason()` 在 `reason` 为空时，兜底返回泛化的"任务执行失败"，丢失真实错误
+  - 修复：增加 `resolution_summary` 回退读取，自动识别 Gateway 连接失败、执行超时、网络错误
+  - 效果：NOFX-bot 通知现在展示 `Gateway 连接失败` 而非 `任务执行失败`
+
+- [x] [2026-03-29] **异常日志巡检 Auto-Discover** — `unified_exception_logger.py`
+  - 问题：ops-agent 调用时自行推理 `--log-dirs /root/.openclaw/sessions/`，该目录不存在
+  - 修复：新增 `--auto-discover` 参数 + `discover_log_dirs()` 函数
+  - 自动扫描 7 类目录：`agents/*/sessions`、`ops/task-center/executor-runs`、`logs` 等
+  - Agent 只需传 `--auto-discover`，不需要猜测路径
+
+- [x] [2026-03-29] **TASK_STATUSES 未定义** — `policy_enforcer.py`
+  - 问题：`from task_center import TASK_STATUSES` 在 gateway 异常时 import 失败
+  - 状态：gateway 重启后自愈，已确认最近 4 轮执行均正常
+
 ---
 
 ## 2026-03-28 已完成
