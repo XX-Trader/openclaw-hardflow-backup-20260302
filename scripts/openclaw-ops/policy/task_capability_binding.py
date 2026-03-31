@@ -113,13 +113,13 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
         },
         {
             "agent_id": "ops-agent",
-            "required_capabilities": ["role_only", "task_execution"],
+            "required_capabilities": ["skill_backed", "task_execution"],
             "required_skills": [],
             "allowed_agents": ["ops-agent"],
         },
         {
             "agent_id": "optimization-agent",
-            "required_capabilities": ["role_only", "task_execution"],
+            "required_capabilities": ["skill_backed", "task_execution"],
             "required_skills": [],
             "allowed_agents": ["optimization-agent"],
         },
