@@ -1,7 +1,7 @@
 # frontend-dev
 
-- skills_count: 8
-- source.matrix_count: 8
+- skills_count: 9
+- source.matrix_count: 9
 - source.soul_count: 8
 
 ## Skills
@@ -14,3 +14,4 @@
 - playwright-interactive (present)
 - webapp-testing (present)
 - using-git-worktrees (present)
+- pretext-text-layout (present)

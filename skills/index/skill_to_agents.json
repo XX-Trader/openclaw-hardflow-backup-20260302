@@ -135,5 +135,10 @@
   ],
   "xlsx": [
     "doc-writer"
+  ],
+  "pretext-text-layout": [
+    "web-agent",
+    "tester",
+    "frontend-dev"
   ]
 }

@@ -10,3 +10,4 @@
 - ui-ux-pro-max (present) | agents: frontend-dev
 - using-git-worktrees (present) | agents: backend-dev, frontend-dev
 - webapp-testing (present) | agents: frontend-dev, tester
+- pretext-text-layout (present) | agents: web-agent, tester, frontend-dev
