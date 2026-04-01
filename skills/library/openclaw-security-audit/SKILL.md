@@ -1,7 +1,10 @@
 ---
 name: openclaw-security-audit
-description: "Audit OpenClaw/Clawdbot deployments for misconfigurations and attack vectors. Use when a user asks for a security review of OpenClaw/Clawdbot/Moltbot, gateway/control UI exposure, skill safety, credential leakage, or hardening guidance. Produces a terminal report with OK/VULNERABLE findings and fixes."
-description_zh: "openclaw-security-audit技能，详见 SKILL.md"
+description: >
+  Audit OpenClaw/Clawdbot deployments for misconfigurations and attack vectors.
+  Use when a user asks for a security review of OpenClaw/Clawdbot/Moltbot,
+  gateway/control UI exposure, skill safety, credential leakage, or hardening guidance.
+  Produces a terminal report with OK/VULNERABLE findings and fixes.
 ---
 
 # OpenClaw Security Audit Skill

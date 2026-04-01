@@ -1,20 +1,10 @@
 ---
 name: openclaw-workflow-manager
-description: Use when someone needs an OpenClaw workflow map, runbook, drift check, install or reinstall guidance, feature enable or disable guidance, daily health review, or external workflow intake for cron jobs, task executor, evolution chains, and git sync.
-description_zh: "openclaw-workflow-manager 技能，用于解释、巡检和管理 OpenClaw 工作流。"
-version: "1.0.0"
-triggers:
-  keywords:
-    - "工作流地图"
-    - "工作流管理"
-    - "workflow manager"
-    - "workflow map"
-    - "定时任务说明"
-    - "workflow drift"
-    - "工作流巡检"
-    - "启停工作流"
-  auto_trigger: true
-  confidence_threshold: 0.7
+description: >
+  Use when someone needs an OpenClaw workflow map, runbook, drift check,
+  install or reinstall guidance, feature enable or disable guidance,
+  daily health review, or external workflow intake for cron jobs,
+  task executor, evolution chains, and git sync.
 ---
 
 # OpenClaw Workflow Manager
