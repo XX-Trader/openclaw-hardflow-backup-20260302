@@ -417,11 +417,10 @@ def main() -> int:
             result["skipped_files"] = sorted(set(skipped))
 
     if not result["errors"] and result["eligible_files"]:
-        for group in chunked(list(result["eligible_files"]), 20):
-            rc, _out, err = run_git(repo, ["add", "--", *group], timeout=120)
-            if rc != 0:
-                result["errors"].append(f"git_add_failed:{err or rc}")
-                break
+        # 使用 git add -u 只更新已跟踪文件，避免逐个 add 导致的性能问题
+        rc, _out, err = run_git(repo, ["add", "-u"], timeout=120)
+        if rc != 0:
+            result["errors"].append(f"git_add_failed:{err or rc}")
 
 
     if not result["errors"] and result["eligible_files"]:

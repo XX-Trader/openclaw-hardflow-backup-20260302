@@ -98,6 +98,15 @@
 
 ---
 
+## 🔬 研究参考
+
+| 文档 | 日期 | 主题 |
+|------|------|------|
+| [Claude Code 源码还原研究](研究参考/claude-code-源码还原研究.md) | 2026-04-01 | 53 个工具、Coordinator 多 Agent 编排、KAIROS 持久助手、隐藏命令与环境变量、9 大 OpenClaw 改进项分析 |
+| [Harness 工程实战难点与借鉴](研究参考/harness-engineering-实战难点与借鉴.md) | — | Harness 平台工程经验 |
+
+---
+
 ## 📁 归档 (Archive)
 
 `docs/archive/` — 18 篇历史文档（2026-03-04 ~ 2026-03-19），已归档不再活跃维护。

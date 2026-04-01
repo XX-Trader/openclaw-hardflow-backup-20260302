@@ -58,15 +58,15 @@
     },
     "refine": {
       "gateId": "G3.5",
-      "displayName": "Iterative Refine Quality",
+      "displayName": "Iterative Refinement Quality",
       "threshold": 90,
       "minEvidenceCount": 2,
       "dimensionThresholds": {
-        "error_diagnosis_accuracy": 90,
-        "fix_effectiveness": 91,
-        "regression_prevention": 90,
-        "experience_capture": 88,
-        "retry_efficiency": 88
+        "error_analysis_accuracy": 90,
+        "fix_effectiveness": 92,
+        "regression_coverage": 91,
+        "root_cause_depth": 90,
+        "methodology_rigor": 89
       }
     },
     "security": {
