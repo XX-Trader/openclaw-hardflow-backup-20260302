@@ -19,19 +19,8 @@ UTC = timezone.utc
 LOG_MODES = {"silent", "chat"}
 NOTIFY_MODES = {"errors-only", "on-change", "always"}
 
-DEFAULT_INCLUDE_PREFIXES = (
-    "openclaw.json",
-    ".gitignore",
-    ".workflow/",
-    "agents/",
-    "cron/",
-    "ops/",
-    "hooks/",
-    "workflows/",
-    ".skill-index.json",
-    ".skill-master-index.json",
-    ".skill-aliases.json",
-)
+# NOTE: 不再使用白名单（include prefix），改为纯黑名单模式。
+# 所有不在 DEFAULT_EXCLUDE_GLOBS 中的文件都会自动纳入备份。
 
 DEFAULT_EXCLUDE_GLOBS = (
     "**/.git/**",
@@ -128,8 +117,19 @@ def run_git(repo: Path, args: list[str], *, timeout: int = 60) -> tuple[int, str
 
 
 def parse_status_porcelain_z(raw: str) -> list[dict[str, str]]:
+    """Parse git status --porcelain=v1 -z output into [{status, path}].
+
+    FIX: run_git() 对 stdout 做了 .strip()，会吃掉 porcelain v1 格式
+    的前导空格（' M path' → 'M path'），导致 token[3:] 截断路径首字符。
+    这里检测并恢复被 strip 掉的前导空格。
+    """
     out: list[dict[str, str]] = []
-    items = str(raw or "").split("\0")
+    text = str(raw or "")
+    # porcelain v1 每项格式: 'XY path'，X/Y 各一字符，第3字符为空格。
+    # 如果 .strip() 移除了前导空格（即 X 为空格时），需要恢复。
+    if text and len(text) >= 3 and text[0] in "MADRCU?!" and text[1] == " ":
+        text = " " + text
+    items = text.split("\0")
     idx = 0
     while idx < len(items):
         token = items[idx]
@@ -179,6 +179,18 @@ def should_include(
     include_globs: list[str],
     exclude_globs: list[str],
 ) -> bool:
+    """纯黑名单模式：只要不在排除列表中，就纳入备份。
+
+    Args:
+        path: 相对路径
+        include_prefixes: 保留参数兼容性，当前不影响排除逻辑
+        exclude_prefixes: 按前缀排除的列表
+        include_globs: 保留参数兼容性，当前不影响排除逻辑
+        exclude_globs: 按 glob 模式排除的列表
+
+    Returns:
+        True 表示应该纳入备份
+    """
     rel = normalize_rel(path)
     if not rel:
         return False
@@ -186,14 +198,7 @@ def should_include(
         return False
     if matches_any_glob(rel, exclude_globs):
         return False
-    include_limited = bool(include_prefixes) or bool(include_globs)
-    if not include_limited:
-        return True
-    if startswith_any(rel, include_prefixes):
-        return True
-    if matches_any_glob(rel, include_globs):
-        return True
-    return False
+    return True
 
 
 def chunked(values: list[str], size: int) -> list[list[str]]:
@@ -353,8 +358,7 @@ def main() -> int:
     exclude_prefixes = [normalize_rel(x) for x in args.exclude_prefix if str(x).strip()]
     include_globs = [normalize_rel(x) for x in args.include_glob if str(x).strip()]
     exclude_globs = [normalize_rel(x) for x in args.exclude_glob if str(x).strip()]
-    if not include_prefixes and not include_globs:
-        include_prefixes = [normalize_rel(x) for x in DEFAULT_INCLUDE_PREFIXES]
+    # 纯黑名单模式：include_prefixes / include_globs 保留 CLI 兼容性但不再有默认值
     if not exclude_globs:
         exclude_globs = [normalize_rel(x) for x in DEFAULT_EXCLUDE_GLOBS]
 
@@ -386,7 +390,7 @@ def main() -> int:
         result["gitignore_updated"] = ensure_gitignore(repo)
 
     if not result["errors"]:
-        rc, status_out, err = run_git(repo, ["status", "--porcelain=v1", "-z", "--untracked-files=all"], timeout=30)
+        rc, status_out, err = run_git(repo, ["status", "--porcelain=v1", "-z", "--untracked-files=normal"], timeout=30)
         if rc != 0:
             result["errors"].append(f"git_status_failed:{err or rc}")
         else:
@@ -413,11 +417,12 @@ def main() -> int:
             result["skipped_files"] = sorted(set(skipped))
 
     if not result["errors"] and result["eligible_files"]:
-        for group in chunked(list(result["eligible_files"]), 80):
-            rc, _out, err = run_git(repo, ["add", "--", *group], timeout=60)
+        for group in chunked(list(result["eligible_files"]), 20):
+            rc, _out, err = run_git(repo, ["add", "--", *group], timeout=120)
             if rc != 0:
                 result["errors"].append(f"git_add_failed:{err or rc}")
                 break
+
 
     if not result["errors"] and result["eligible_files"]:
         rc, staged_out, err = run_git(repo, ["diff", "--cached", "--name-only"], timeout=20)
