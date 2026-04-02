@@ -40,7 +40,8 @@
         "cooldownMs": 1800000,
         "channel": "telegram",
         "to": "-1003333097130"
-      }
+      },
+      "skill_ref": "todo-patrol"
     },
     {
       "id": "5dd96c0a-5cd2-4b31-b9a6-75f6ef4f3339",
@@ -67,7 +68,8 @@
       },
       "createdAtMs": 1772642376140,
       "updatedAtMs": 1772642376140,
-      "state": {}
+      "state": {},
+      "skill_ref": "git-sync"
     },
     {
       "id": "4f53f7b7-2c3e-4bb1-9aab-6a62f34d4b71",
@@ -94,7 +96,8 @@
       },
       "createdAtMs": 1772642376140,
       "updatedAtMs": 1772642376140,
-      "state": {}
+      "state": {},
+      "skill_ref": "openclaw-evolution-upgrader"
     },
     {
       "id": "9cf2677f-0ea1-4f07-a8cb-7dff4ff7c52b",
@@ -121,7 +124,8 @@
       },
       "createdAtMs": 1772642376140,
       "updatedAtMs": 1772642376140,
-      "state": {}
+      "state": {},
+      "skill_ref": "openclaw-evolution-upgrader"
     },
     {
       "id": "5797cd5b-5539-4e95-8d58-dc65a4633ec5",
@@ -157,7 +161,8 @@
         "lastDelivered": false,
         "lastDeliveryStatus": "not-delivered",
         "consecutiveErrors": 0
-      }
+      },
+      "skill_ref": "control-plane-ops"
     },
     {
       "id": "2ce5fe63-8316-4503-95e4-48515042b453",
@@ -186,7 +191,8 @@
       },
       "state": {
         "nextRunAtMs": 1772467200000
-      }
+      },
+      "skill_ref": "todo-patrol"
     },
     {
       "id": "22b1712a-ff4a-4502-bce6-4e39c44cbe9f",
@@ -227,7 +233,8 @@
         "cooldownMs": 1800000,
         "channel": "telegram",
         "to": "-1003333097130"
-      }
+      },
+      "skill_ref": "openclaw-evolution-upgrader"
     },
     {
       "id": "0f3ba2df-1af7-4dd7-9b90-a4c9114d8f6a",
@@ -254,7 +261,8 @@
         "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
-      }
+      },
+      "skill_ref": "receiving-code-review"
     },
     {
       "id": "771fda88-c8ff-49dc-a4da-6f57167c1d26",
@@ -281,7 +289,8 @@
         "mode": "announce",
         "channel": "telegram",
         "to": "-1003333097130"
-      }
+      },
+      "skill_ref": "receiving-code-review"
     },
     {
       "id": "e3c4d5f6-a7b8-4c9d-0e1f-2a3b4c5d6e7f",
@@ -308,7 +317,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "openclaw-evolution-upgrader"
     },
     {
       "id": "b8b9c1a2-d3e4-4f51-a6b7-c8d9e0f1a2b3",
@@ -335,7 +345,8 @@
       },
       "createdAtMs": 1772642376500,
       "updatedAtMs": 1772642376500,
-      "state": {}
+      "state": {},
+      "skill_ref": "openclaw-evolution-upgrader"
     },
     {
       "id": "a1b2c3d4-claim-audit-hardflow-0001",
@@ -367,7 +378,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "openclaw-security-audit"
     },
     {
       "id": "b2c3d4e5-memtidy-runner-hardflow-0002",
@@ -393,7 +405,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "memtidy"
     },
     {
       "id": "c3d4e5f6-config-watchdog-hardflow-0003",
@@ -426,7 +439,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "config-watchdog"
     },
     {
       "id": "d4e5f6a7-exception-logger-hardflow-0004",
@@ -453,7 +467,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "log-monitor"
     },
     {
       "id": "e5f6a7b8-self-evolution-hardflow-0005",
@@ -479,7 +494,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "openclaw-evolution-upgrader"
     },
     {
       "id": "f1a2b3c4-auto-update-daily-0001",
@@ -505,7 +521,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "web-intelligence"
     },
     {
       "id": "f2b3c4d5-web-intel-collect-daily-0002",
@@ -531,7 +548,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "web-intelligence"
     },
     {
       "id": "f3c4d5e6-github-evolution-daily-0003",
@@ -557,7 +575,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "web-intelligence"
     },
     {
       "id": "f4d5e6f7-advisor-todo-daily-0004",
@@ -583,7 +602,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "control-plane-ops"
     },
     {
       "id": "f5e6f7a8-deadline-checker-daily-0005",
@@ -609,7 +629,8 @@
         "channel": "telegram",
         "to": "-1003333097130"
       },
-      "state": {}
+      "state": {},
+      "skill_ref": "todo-patrol"
     }
   ]
 }
