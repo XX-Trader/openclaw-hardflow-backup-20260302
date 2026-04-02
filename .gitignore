@@ -21,3 +21,6 @@ scripts/openclaw-ops/policy/runtime/
 /.codex_tmp_openclaw_upgrade
 /af39077
 /foo
+
+scripts/hardflow/
+

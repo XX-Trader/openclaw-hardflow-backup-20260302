@@ -1,7 +1,7 @@
 # TODO
 
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
-> 更新时间：2026-03-29
+> 更新时间：2026-04-02
 
 ## P0 — 评分系统升级（解封 HardFlow 门禁管道）
 
@@ -14,6 +14,19 @@
 - [x] [🟡 P1] 绑定 Skill 到 reviewer Agent（5→6 skills）
 - [x] [🟡 P1] 替换 `improve-gate.sh` 空壳 → 真实改进引擎 `improve-evaluator.sh`
 - [x] [🟡 P1] 接通 HardFlow 评分 → evolution-upgrader 闭环 (`hardflow_score_adapter.py`)
+
+## P0 — 技能化架构迁移（Phase 1-2 已完成）
+
+> 详细文档：[docs/基础设施/技能化架构/](docs/基础设施/技能化架构/README.md)
+
+- [x] [🔴 P0] SKILL.md 对标官方 frontmatter 规范（name/description/allowed-tools）
+- [x] [🔴 P0] HardFlow SKILL.md 重写（54行→269行操作手册）
+- [x] [🔴 P0] 新建 score-aggregator.sh（确定性聚合，替代硬编码空壳）
+- [x] [🔴 P0] coordinator + reviewer 绑定 hardflow Skill
+- [x] [🔴 P0] 7 个核心脚本写入仓库 skills/ 目录
+- [x] [🔴 P0] docs 三件套 v2.0 + INDEX.md 同步
+- [ ] [🟡 P1] 旧 Bash 编排脚本移入 .deprecated/（文件被锁，待手动）
+- [ ] [🟡 P1] 端到端验证三条调用路径
 
 ## P2 — 推广与治理
 

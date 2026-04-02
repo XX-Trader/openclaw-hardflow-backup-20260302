@@ -81,7 +81,8 @@
         "dispatching-parallel-agents",
         "parallel-executor",
         "agent-manager",
-        "requirements-clarity"
+        "requirements-clarity",
+        "openclaw-hardflow-automation"
       ],
       "missing_skills": [],
       "soul_skills": [],
@@ -243,7 +244,8 @@
         "systematic-debugging",
         "verification-before-completion",
         "openclaw-security-audit",
-        "pua-methodology"
+        "pua-methodology",
+        "openclaw-hardflow-automation"
       ],
       "missing_skills": [],
       "soul_skills": [
@@ -382,7 +384,13 @@
         "deployment-test",
         "openclaw-security-audit",
         "openclaw-remote-safe-update",
-        "systematic-debugging"
+        "systematic-debugging",
+        "control-plane-ops",
+        "log-monitor",
+        "config-watchdog",
+        "memtidy",
+        "fleet-sync",
+        "todo-patrol"
       ],
       "missing_skills": [],
       "soul_skills": [

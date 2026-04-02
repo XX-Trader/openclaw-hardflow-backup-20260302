@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-03-29 | 代码审计同步
+> 最后更新：2026-04-02 | 技能化架构同步
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -29,6 +29,7 @@
 | [部署与运维](基础设施/部署与运维/README.md) | Linux/Windows部署、Gateway守护、排障 | 7篇 |
 | [多Agent体系](基础设施/多Agent体系/README.md) | 14 Agent 角色绑定、能力 manifest | 1篇 |
 | [协议与规范](基础设施/协议与规范/README.md) | trace_id、任务派发、错误进化、TG输出 | 4篇 |
+| [技能化架构](基础设施/技能化架构/README.md) | Skill 标准化、HardFlow 迁移、评分三步流水线 | 3篇 |
 | [治理与审核](治理与审核/README.md) | Cron治理、升级方案、优化backlog | 5篇 |
 
 ---
@@ -75,7 +76,9 @@
 
 | 文档 | 说明 |
 |------|------|
-| [`scripts/hardflow/README.md`](../scripts/hardflow/README.md) | HardFlow 完整文档（305行） |
+| [`skills/openclaw-hardflow-automation/SKILL.md`](../skills/openclaw-hardflow-automation/SKILL.md) | **HardFlow Skill 操作手册（269行，v2.0）** |
+| [`skills/.../scripts/`](../skills/openclaw-hardflow-automation/scripts/) | 7 个核心脚本（评分引擎/聚合器/策略/报告/门禁） |
+| [`scripts/hardflow/README.md`](../scripts/hardflow/README.md) | HardFlow 旧版完整文档（305行） |
 | [`scripts/hardflow/SCORECARD_SCHEMA.md`](../scripts/hardflow/SCORECARD_SCHEMA.md) | 评分卡 Schema |
 | [`scripts/hardflow/ISSUE_SCHEMA.md`](../scripts/hardflow/ISSUE_SCHEMA.md) | Issue Schema |
 | [`scripts/hardflow/PROCESS_OPTIMIZATION.md`](../scripts/hardflow/PROCESS_OPTIMIZATION.md) | 流程优化记录 |
@@ -103,6 +106,7 @@
 | 文档 | 日期 | 主题 |
 |------|------|------|
 | [Claude Code 源码还原研究](研究参考/claude-code-源码还原研究.md) | 2026-04-01 | 53 个工具、Coordinator 多 Agent 编排、KAIROS 持久助手、隐藏命令与环境变量、9 大 OpenClaw 改进项分析 |
+| [4 项改进实施方案](研究参考/openclaw-4项改进实施方案.md) | 2026-04-01 | Dream 记忆蒸馏(含 Codex) + Gate 工具集限制 + Worker 自包含 Prompt + VerifyPlanExecution |
 | [Harness 工程实战难点与借鉴](研究参考/harness-engineering-实战难点与借鉴.md) | — | Harness 平台工程经验 |
 
 ---
