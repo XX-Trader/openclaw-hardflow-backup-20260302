@@ -1,6 +1,6 @@
 # OpenClaw 技能化架构
 
-> 状态：🔧 Phase 1-2 已完成 | 创建时间：2026-04-01 | 更新：2026-04-02 | v2.0 对标官方规范修正
+> 状态：✅ Phase 1-5 全部完成 | 创建时间：2026-04-01 | 更新：2026-04-02 | v3.0 脚本归并完成
 > 父级：[INDEX.md](../../INDEX.md) | 分类：基础设施
 
 ## 一、需求背景
@@ -43,13 +43,14 @@
 |---|--------|--------|---------|------|
 | 1 | Skill 标准结构规范 | P0 | frontmatter 对标官方（name/description/allowed-tools） | [x] |
 | 2 | Agent-Skill 绑定 | P0 | `declared_skills` 声明 Skill，Agent 执行时自动加载 | [x] |
-| 3 | Cron-Skill 绑定 | P0 | `jobs.json` 的 `skill_ref` 引用 Skill，支持 direct/llm 模式 | [ ] 无 hardflow Cron |
+| 3 | Cron-Skill 绑定 | P0 | `jobs.json` 21 个 Job 全部添加 `skill_ref` | [x] |
 | 4 | HardFlow 技能化迁移 | P0 | 工作流编排从 Bash 迁移到 SKILL.md 操作手册 | [x] |
-| 5 | 控制面运维技能化 | P1 | 控制面 10 个脚本整合为 `control-plane-ops` Skill | [x] |
-| 6 | Git 同步技能化 | P1 | 同步/备份 5 个脚本整合为 `git-sync` Skill | [x] |
-| 7 | 多服务器同步技能化 | P1 | 9 个同步脚本整合为 `fleet-sync` Skill | [x] |
+| 5 | 控制面运维技能化 | P1 | 控制面 19 个脚本 + 10 子目录整合为 `control-plane-ops` Skill | [x] |
+| 6 | Git 同步技能化 | P1 | 同步/备份 3 个脚本整合为 `git-sync` Skill | [x] |
+| 7 | 多服务器同步技能化 | P1 | 13 个同步脚本整合为 `fleet-sync` Skill | [x] |
 | 8 | 全量 ops 脚本迁移 | P2 | 16 个能力域全部完成技能化 | [x] |
-| 9 | Cron 统一治理引擎 | P2 | 统一管理所有 skill_ref 引用 | [ ] |
+| 9 | Cron 统一治理引擎 | P2 | 21 个 Job 全部 skill_ref 绑定 | [x] |
+| 10 | 脚本归并到 Skill | P0 | 98 个脚本 + 13 目录归并为自包含 Skill | [x] |
 
 ## 五、约束与边界
 
