@@ -4,7 +4,7 @@ description: >
   统一异常日志巡检技能。用于扫描多进程日志目录、分类异常、
   增量去重、生成巡检报告。当需要检查系统日志健康状态、
   定位异常模式时使用。
-allowed-tools: Bash, Read, Grep
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # 统一异常日志巡检操作手册

@@ -18,7 +18,12 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 todo-patrol 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/todo_patrol.py --task cron:todo-patrol。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。"
+        "message": "你是 todo-patrol 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/todo_patrol.py --task cron:todo-patrol。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -59,7 +64,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行以下脚本：\npython3 $HOME/.openclaw/ops/git_sync_push_runner.py --repo-path ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302} --task-id cron:ops-git-sync-push --normal-log-mode silent --remote origin --auto-pull --push --max-files 200 --include-prefix scripts/openclaw-ops/ --include-prefix hooks/ --include-prefix skills/ --include-prefix agents/ --exclude-prefix .workflow/project-index/ --exclude-prefix .workflow/experience/ --exclude-prefix .workflow/sessions/ --exclude-prefix openclaw-memory/ --exclude-prefix memory/ --require-remote-url https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git --require-remote-url https://github.com/XX-Trader/openclaw-hardflow-backup-20260302\n将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 2400
+        "timeoutSeconds": 2400,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -87,7 +97,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行以下脚本：\npython3 $HOME/.openclaw/ops/governance_evolution_runner.py --db $HOME/.openclaw/ops/task-center/task_center.db --state-file $HOME/.openclaw/ops/governance-evolution/state.json --report-dir $HOME/.openclaw/ops/governance-evolution/reports --mode incremental --task-id cron:ops-governance-evolution --normal-log-mode silent --max-files 120 --min-interval-minutes 180 --task-clarity ambiguous --git-update-strategy pull-ff-only --git-fetch-timeout 120 --repo-path ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302} --auto-git-update --watch-prefix scripts/openclaw-ops/ --watch-prefix hooks/ --watch-prefix skills/ --watch-prefix agents/ --exclude-prefix .workflow/project-index/ --exclude-prefix .workflow/experience/ --exclude-prefix .workflow/sessions/ --exclude-prefix openclaw-memory/ --exclude-prefix memory/ --project-context-gate --project-context-assignee project-agent --create-review-task --auto-pr --pr-base main --push-before-pr\n将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 2400
+        "timeoutSeconds": 2400,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -115,7 +130,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行以下脚本：\npython3 $HOME/.openclaw/ops/self_evolution_todo.py --db $HOME/.openclaw/ops/task-center/task_center.db --state-file $HOME/.openclaw/ops/self-evolution/state.json --report-dir $HOME/.openclaw/ops/self-evolution/reports --task-id cron:ops-self-evolution --normal-log-mode silent --min-review-interval-days 7 --max-tasks-per-run 3\n将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 1800
+        "timeoutSeconds": 1800,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -145,7 +165,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "You are scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/policy/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --task-db $HOME/.openclaw/ops/task-center/task_center.db --task-id cron:project-index-maintainer-4h --actor project-agent --doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change\nReply only command output; if output is empty, reply NO_REPLY.",
-        "timeoutSeconds": 1800
+        "timeoutSeconds": 1800,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -182,7 +207,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "你是 ops-agent 日报任务。仅用命令执行：python3 $HOME/.openclaw/workspace/scripts/daily_todo_digest.py。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
-        "timeoutSeconds": 1200
+        "timeoutSeconds": 1200,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -211,7 +241,12 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 optimization-agent 自我进化总结。仅用命令执行：python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_incremental_scan.py --mode evolution --task cron:self-evolution --actor optimization-agent。要求：读取脚本输出原样回复；若输出 NO_REPLY，则只回复 NO_REPLY。禁止全量扫描历史记录，按脚本的增量清单（mtime/size/md5）执行。"
+        "message": "你是 optimization-agent 自我进化总结。仅用命令执行：python3 $HOME/.openclaw/workspace-optimization-agent/ops/optimize_incremental_scan.py --mode evolution --task cron:self-evolution --actor optimization-agent。要求：读取脚本输出原样回复；若输出 NO_REPLY，则只回复 NO_REPLY。禁止全量扫描历史记录，按脚本的增量清单（mtime/size/md5）执行。",
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -254,7 +289,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode daily_incremental --task-id cron:reviewer-daily-incremental --fix --fix-command \"python3 $HOME/.openclaw/ops/policy/policy_enforcer.py next-todo --limit 5\"\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
-        "timeoutSeconds": 1800
+        "timeoutSeconds": 1800,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "state": {},
       "delivery": {
@@ -282,7 +322,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "You are reviewer scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/reviewer_cron_runner.py --workspace $HOME/.openclaw/workspace --state-file $HOME/.openclaw/ops/reviewer-scan-state.json --history-dir $HOME/.openclaw/ops/reviewer-scan-runs --normal-log-mode silent --mode weekly_structure --task-id cron:reviewer-weekly-structure\nReply only command output; if output is NO_REPLY, reply NO_REPLY.",
-        "timeoutSeconds": 1800
+        "timeoutSeconds": 1800,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "state": {},
       "delivery": {
@@ -310,7 +355,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行以下脚本：\npython3 $HOME/.openclaw/ops/upgrade_feedback_runner.py --executor-run-dir $HOME/.openclaw/ops/task-center/executor-runs --output-dir $HOME/.openclaw/ops/upgrade-feedback/reports --state-file $HOME/.openclaw/ops/upgrade-feedback/state.json --task-db $HOME/.openclaw/ops/task-center/task_center.db --auto-create-tasks --emit-json\n将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 1800
+        "timeoutSeconds": 1800,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -336,7 +386,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/algo_micro_optimizer.py。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY，不要加任何解释。",
-        "timeoutSeconds": 240
+        "timeoutSeconds": 240,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -358,14 +413,20 @@
       "updatedAtMs": 1772643600000,
       "schedule": {
         "kind": "cron",
-        "cron": "0 5 * * *"
+        "expr": "0 5 * * *",
+        "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
         "message": "你是 claim-auditor 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/claim_verification_auditor.py --session-log-dir $HOME/.openclaw/ops/workflow-logs/ --output-dir $HOME/.openclaw/ops/claim-audit/ --task-db $HOME/.openclaw/ops/task_center.db --scan-since-hours 24。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 120
+        "timeoutSeconds": 120,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -391,14 +452,20 @@
       "updatedAtMs": 1772643600000,
       "schedule": {
         "kind": "cron",
-        "cron": "0 3 * * *"
+        "expr": "0 3 * * *",
+        "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
         "message": "你是 memtidy 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/memtidy_runner.py --memory-dirs $HOME/.openclaw/memory/ $HOME/.openclaw/workspace/memory/ --rules-file $HOME/.openclaw/config/memtidy_rules.json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 180
+        "timeoutSeconds": 180,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -426,7 +493,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "你是 config-watchdog 子agent。按顺序执行：1) python3 $HOME/.openclaw/ops/config_watchdog.py --config-dir $HOME/.openclaw/ --verify; 2) 若上一步返回 no_snapshot 则执行 python3 $HOME/.openclaw/ops/config_watchdog.py --config-dir $HOME/.openclaw/ --snapshot。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 120
+        "timeoutSeconds": 120,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -460,7 +532,12 @@
       "payload": {
         "kind": "agentTurn",
         "message": "你是 exception-scanner 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/unified_exception_logger.py --log-dirs $HOME/.openclaw/ops/workflow-logs/ $HOME/.openclaw/sessions/ --output-dir $HOME/.openclaw/ops/exception-reports/ --abnormal-dir $HOME/.openclaw/logs/abnormal/ --cleanup --scan-since-hours 6。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 120
+        "timeoutSeconds": 120,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -480,14 +557,20 @@
       "updatedAtMs": 1772643600000,
       "schedule": {
         "kind": "cron",
-        "cron": "0 4 * * 1"
+        "expr": "0 4 * * 1",
+        "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
         "message": "你是 evolution-evaluator 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/agent_self_evolution.py --db-path $HOME/.openclaw/ops/task_center.db --output-dir $HOME/.openclaw/ops/evolution-reports/ --lookback-days 30。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 180
+        "timeoutSeconds": 180,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "always",
@@ -507,14 +590,20 @@
       "updatedAtMs": 1772729600000,
       "schedule": {
         "kind": "cron",
-        "cron": "0 3 * * *"
+        "expr": "0 3 * * *",
+        "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/auto_update_install_runner.py --repo-path $HOME/openclaw-hardflow-backup-20260302 --task-id cron:auto-update-daily --normal-log-mode silent --notify-on error --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 300
+        "timeoutSeconds": 300,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -534,14 +623,20 @@
       "updatedAtMs": 1772729600000,
       "schedule": {
         "kind": "cron",
-        "cron": "30 3 * * *"
+        "expr": "30 3 * * *",
+        "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/web_intel_collect_runner.py --openclaw-home $HOME/.openclaw --task-id cron:web-intel-collect-daily --normal-log-mode silent --notify-on change --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 600
+        "timeoutSeconds": 600,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -561,14 +656,20 @@
       "updatedAtMs": 1772729600000,
       "schedule": {
         "kind": "cron",
-        "cron": "0 4 * * *"
+        "expr": "0 4 * * *",
+        "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/github_web_evolution_runner.py --openclaw-home $HOME/.openclaw --task-id cron:github-web-evolution-daily --normal-log-mode silent --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 600
+        "timeoutSeconds": 600,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -588,14 +689,20 @@
       "updatedAtMs": 1772729600000,
       "schedule": {
         "kind": "cron",
-        "cron": "15 4 * * *"
+        "expr": "15 4 * * *",
+        "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/control_plane_optimization_advisor.py --db $HOME/.openclaw/ops/task_center.db --lookback-hours 24 --todo-file $HOME/openclaw-hardflow-backup-20260302/todo.md --emit-json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 180
+        "timeoutSeconds": 180,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",
@@ -615,14 +722,20 @@
       "updatedAtMs": 1772729600000,
       "schedule": {
         "kind": "cron",
-        "cron": "0 0 * * *"
+        "expr": "0 0 * * *",
+        "tz": "Asia/Shanghai"
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
         "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/todo_deadline_checker.py --todo-file $HOME/openclaw-hardflow-backup-20260302/todo.md --task-id cron:deadline-checker-daily。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 60
+        "timeoutSeconds": 60,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
       },
       "delivery": {
         "mode": "announce",

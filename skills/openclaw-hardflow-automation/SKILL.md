@@ -5,7 +5,7 @@ description: >
   包含需求分析、方案设计、编码实现、安全审查、发布验收。
   当需要执行编码任务并确保质量时使用此技能。
   支持低分回流整改、安全一票否决、评分三步流水线。
-allowed-tools: Bash, Read, Write, Grep, WebBrowser
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # HardFlow 多门禁工作流 — 操作手册

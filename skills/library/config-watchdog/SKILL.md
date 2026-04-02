@@ -4,7 +4,7 @@ description: >
   配置变更安全兜底技能。用于定期快照 OpenClaw 配置文件、
   检测意外变更、JSON 格式校验、必要时自动回滚。
   当怀疑配置被意外修改或 JSON 损坏时使用。
-allowed-tools: Bash, Read, Grep
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # 配置变更安全兜底操作手册
@@ -53,7 +53,6 @@ python3 ~/scripts/openclaw-ops/config_watchdog.py --rollback <snapshot_id>
 | `~/.openclaw/openclaw.json` | 🔴 关键 | 系统主配置 |
 | `~/.openclaw/cron/jobs.json` | 🔴 关键 | 定时任务注册 |
 | `~/.openclaw/ops/policy/policy-config.json` | 🟡 重要 | 策略配置 |
-| `~/agents/agent_capability_manifest.json` | 🟡 重要 | Agent 能力声明 |
 
 ## 核心脚本
 

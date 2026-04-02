@@ -4,7 +4,7 @@ description: >
   MemTidy 记忆自动整理技能。用于 OpenClaw 记忆系统的
   热/温/冷三层管理、自动备份、过期修剪、容量监控。
   当需要整理记忆存储或诊断记忆膨胀问题时使用。
-allowed-tools: Bash, Read, Grep
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # MemTidy 记忆整理操作手册

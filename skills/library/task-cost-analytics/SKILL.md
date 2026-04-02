@@ -3,7 +3,7 @@ name: task-cost-analytics
 description: >
   任务成本统计技能。用于统计 Token 消耗、分析任务执行成本、
   生成成本报告。当需要了解 LLM 调用成本或优化 Token 使用时使用。
-allowed-tools: Bash, Read, Grep
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # 任务成本统计操作手册

@@ -4,7 +4,7 @@ description: >
   Web 情报采集分析技能。用于上游信息同步、网页内容爬取、
   GitHub 仓库扫描、外部模式评估。
   当需要采集外部信息或评估新技术方案时使用。
-allowed-tools: Bash, Read, Grep, WebBrowser
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # Web 情报采集分析操作手册

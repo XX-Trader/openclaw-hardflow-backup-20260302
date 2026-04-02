@@ -4,7 +4,7 @@ description: >
   多服务器同步技能。用于跨服务器配置分发、Skill 部署、
   Cron Job 同步、状态对比。当需要在多台远程服务器间
   保持配置一致性时使用。
-allowed-tools: Bash, Read, Grep
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # 多服务器同步操作手册

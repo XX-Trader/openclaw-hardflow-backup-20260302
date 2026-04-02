@@ -4,7 +4,7 @@ description: >
   OpenClaw 控制面运维技能。用于系统状态巡检、Agent manifest 审查、
   调度注册表导出、Cron 卡住恢复、运行时绑定检查、配置快照对比。
   当需要查看系统健康状态、诊断 Agent/Cron 问题时使用。
-allowed-tools: Bash, Read, Grep
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # 控制面运维操作手册

@@ -4,7 +4,7 @@ description: >
   Git 同步与备份技能。用于本地 Git 备份、远程仓库同步、
   多服务器配置分发、代码变更追踪。
   当需要管理 Git 备份策略或排查同步问题时使用。
-allowed-tools: Bash, Read, Grep
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # Git 同步与备份操作手册

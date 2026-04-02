@@ -3,7 +3,7 @@ name: todo-patrol
 description: >
   TODO 巡检技能。用于扫描 todo.md 完成状态、检测过期任务、
   生成待办摘要和提醒。当需要审查项目进度或催办过期任务时使用。
-allowed-tools: Bash, Read, Grep
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ---
 
 # TODO 巡检操作手册
