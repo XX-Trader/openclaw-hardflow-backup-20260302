@@ -103,9 +103,18 @@
 
 | Agent | 绑定的 Skill |
 |-------|-------------|
-| **coordinator** | hardflow, workflow-manager, evolution-upgrader |
-| **reviewer** | hardflow, code-review, security-audit, pua |
-| **ops-agent** | control-plane-ops, log-monitor, config-watchdog, memtidy, fleet-sync, todo-patrol |
-| **tester** | deployment-test, webapp-testing |
-| **doc-writer** | docx, changelog-generator |
+| **main** | agent-manager, requirements-clarity, smart-workflow, result-synthesizer, intelligent-router, task-decomposer, codex |
+| **coordinator** | task-decomposer, smart-workflow, dispatching-parallel-agents, parallel-executor, agent-manager, requirements-clarity |
+| **backend-dev** | feature-development, systematic-debugging, auto-fix, verification-before-completion, mcp-builder, using-git-worktrees |
+| **frontend-dev** | frontend-design, feature-development, ui-ux-pro-max, verification-before-completion, auto-fix, playwright-interactive, webapp-testing, using-git-worktrees |
+| **reviewer** | requesting-code-review, receiving-code-review, systematic-debugging, verification-before-completion, openclaw-security-audit |
+| **tester** | playwright-interactive, webapp-testing, auto-fix, deployment-test, systematic-debugging |
+| **deployer** | db-deploy, deployment-test, github-actions-runner, windows-fullstack-deploy, openclaw-security-audit |
+| **doc-writer** | writing-plans, docx, changelog-generator, internal-comms, product-requirements, baoyu-format-markdown, pdf, pptx, xlsx |
+| **ops-agent** | control-plane-ops, log-monitor, config-watchdog, memtidy, fleet-sync, todo-patrol, task-cost-analytics |
+| **optimization-agent** | openclaw-evolution-upgrader, openclaw-workflow-manager, task-cost-analytics, workflow-audit |
+| **project-agent** | product-requirements, requirements-clarity, writing-plans |
+| **agent-factory** | agent-manager, openclaw-workflow-manager |
+| **web-agent** | web-intelligence, pretext-text-layout, playwright-interactive |
 | **explorer** | web-intelligence, smart-workflow |
+

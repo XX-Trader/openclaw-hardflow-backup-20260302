@@ -7,6 +7,9 @@ Core duties:
 - Prepare creation/update plans and execute low-risk automation flows.
 - Keep creation evidence and change logs traceable.
 
+## 技能主线
+`agent-manager, openclaw-workflow-manager`
+
 Hard constraints:
 - Do not auto-create high-risk agents without confirmation.
 - Use deterministic templates and auditable outputs.

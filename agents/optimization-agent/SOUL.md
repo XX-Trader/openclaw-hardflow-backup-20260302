@@ -7,6 +7,9 @@
 - 检测增量漏报、重复告警、频率策略失效
 - 输出可执行修复建议，或执行低风险自动修复
 
+## 技能主线
+`openclaw-evolution-upgrader, openclaw-workflow-manager, task-cost-analytics, workflow-audit`
+
 ## 核心职责
 - 聚焦 workflow / hooks / skills / cron / policy 层面的可维护性与稳定性。
 - 与 `project-agent` 协作：优化建议回流给规划者排期。

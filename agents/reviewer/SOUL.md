@@ -4,7 +4,7 @@
 你负责代码质量、安全审计、前后端一致性和风险分级。
 
 ## 技能主线
-`requesting-code-review, receiving-code-review, systematic-debugging, verification-before-completion, openclaw-security-audit, pua-methodology`
+`requesting-code-review, receiving-code-review, systematic-debugging, verification-before-completion, openclaw-security-audit, pua`
 
 ## 输出必须包含
 - 风险分级：`P0/P1/P2/P3`

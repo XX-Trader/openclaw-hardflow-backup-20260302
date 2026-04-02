@@ -97,7 +97,8 @@
       "auto-fix",
       "playwright-interactive",
       "webapp-testing",
-      "using-git-worktrees"
+      "using-git-worktrees",
+      "pua"
     ],
     "source": {
       "matrix": [
@@ -129,7 +130,8 @@
       "auto-fix",
       "verification-before-completion",
       "mcp-builder",
-      "using-git-worktrees"
+      "using-git-worktrees",
+      "pua"
     ],
     "source": {
       "matrix": [
@@ -156,7 +158,8 @@
       "receiving-code-review",
       "systematic-debugging",
       "verification-before-completion",
-      "openclaw-security-audit"
+      "openclaw-security-audit",
+      "pua"
     ],
     "source": {
       "matrix": [
@@ -181,7 +184,8 @@
       "webapp-testing",
       "auto-fix",
       "deployment-test",
-      "systematic-debugging"
+      "systematic-debugging",
+      "pua"
     ],
     "source": {
       "matrix": [
@@ -206,7 +210,8 @@
       "deployment-test",
       "github-actions-runner",
       "windows-fullstack-deploy",
-      "openclaw-security-audit"
+      "openclaw-security-audit",
+      "pua"
     ],
     "source": {
       "matrix": [
@@ -226,38 +231,99 @@
     }
   },
   "agent-factory": {
-    "skills": [],
+    "skills": [
+      "agent-manager",
+      "openclaw-workflow-manager"
+    ],
     "source": {
       "matrix": [],
-      "soul": []
+      "soul": [
+        "agent-manager",
+        "openclaw-workflow-manager"
+      ]
     }
   },
   "ops-agent": {
-    "skills": [],
+    "skills": [
+      "control-plane-ops",
+      "log-monitor",
+      "config-watchdog",
+      "memtidy",
+      "fleet-sync",
+      "todo-patrol",
+      "task-cost-analytics"
+    ],
     "source": {
       "matrix": [],
-      "soul": []
+      "soul": [
+        "control-plane-ops",
+        "log-monitor",
+        "config-watchdog",
+        "memtidy",
+        "fleet-sync",
+        "todo-patrol",
+        "task-cost-analytics"
+      ]
     }
   },
   "optimization-agent": {
-    "skills": [],
+    "skills": [
+      "openclaw-evolution-upgrader",
+      "openclaw-workflow-manager",
+      "task-cost-analytics",
+      "workflow-audit"
+    ],
     "source": {
       "matrix": [],
-      "soul": []
+      "soul": [
+        "openclaw-evolution-upgrader",
+        "openclaw-workflow-manager",
+        "task-cost-analytics",
+        "workflow-audit"
+      ]
     }
   },
   "project-agent": {
-    "skills": [],
+    "skills": [
+      "product-requirements",
+      "requirements-clarity",
+      "writing-plans"
+    ],
     "source": {
       "matrix": [],
-      "soul": []
+      "soul": [
+        "product-requirements",
+        "requirements-clarity",
+        "writing-plans"
+      ]
     }
   },
   "web-agent": {
-    "skills": [],
+    "skills": [
+      "web-intelligence",
+      "pretext-text-layout",
+      "playwright-interactive"
+    ],
     "source": {
       "matrix": [],
-      "soul": []
+      "soul": [
+        "web-intelligence",
+        "pretext-text-layout",
+        "playwright-interactive"
+      ]
+    }
+  },
+  "explorer": {
+    "skills": [
+      "web-intelligence",
+      "smart-workflow"
+    ],
+    "source": {
+      "matrix": [],
+      "soul": [
+        "web-intelligence",
+        "smart-workflow"
+      ]
     }
   }
 }

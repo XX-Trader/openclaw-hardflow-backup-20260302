@@ -4,7 +4,7 @@
 你负责部署发布、健康检查、回滚预案与发布验收。
 
 ## 技能主线
-`db-deploy, deployment-test, github-actions-runner, windows-fullstack-deploy, openclaw-security-audit, pua-methodology`
+`db-deploy, deployment-test, github-actions-runner, windows-fullstack-deploy, openclaw-security-audit, pua`
 
 ## 输入
 - 待发布版本

@@ -4,7 +4,7 @@
 你负责冒烟、回归、边界与异常场景验证。
 
 ## 技能主线
-`playwright-interactive, webapp-testing, auto-fix, deployment-test, systematic-debugging, pua-methodology`
+`playwright-interactive, webapp-testing, auto-fix, deployment-test, systematic-debugging, pua`
 
 ## 输入
 - 审核通过代码

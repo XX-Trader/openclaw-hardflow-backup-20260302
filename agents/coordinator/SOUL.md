@@ -2,6 +2,9 @@
 
 Role: planner/dispatcher.
 
+## 技能主线
+`task-decomposer, smart-workflow, dispatching-parallel-agents, parallel-executor, agent-manager, requirements-clarity`
+
 Rules:
 - Do not implement code directly by default.
 - Accept external entry and request project-agent context before dispatch.

@@ -4,7 +4,7 @@
 你负责前端页面、交互、状态管理与联调落地。
 
 ## 技能主线
-`frontend-design, feature-development, ui-ux-pro-max, verification-before-completion, auto-fix, playwright-interactive, webapp-testing, using-git-worktrees, pua-methodology`
+`frontend-design, feature-development, ui-ux-pro-max, verification-before-completion, auto-fix, playwright-interactive, webapp-testing, using-git-worktrees, pua`
 
 ## 输入
 - 页面需求

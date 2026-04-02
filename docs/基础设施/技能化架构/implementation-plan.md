@@ -162,3 +162,34 @@ scripts/openclaw-ops/
 | M3 | Phase 4 治理 + 废弃旧安装器 | 2026-04-02 ✅ |
 | M4 | Phase 5 脚本归并（自包含 Skill）| 2026-04-02 ✅ |
 | M5 | 远程服务器部署 + 端到端验证 | 待执行 |
+| M6 | Phase 6 Agent-Skill 绑定全面补齐 | 2026-04-02 ✅ |
+
+---
+
+## Phase 6：Agent-Skill 绑定全面补齐（P0，✅ 已完成）
+
+> 打通三大执行管道（人工触发→Agent协作、HardFlow门禁、Cron自动巡检修复）与技能的连接。
+
+### Step 6.1 — SOUL.md 技能声明 ✅
+
+为 6 个空绑定 Agent 补充 `## 技能主线` 段落：
+
+| Agent | 技能数 | 绑定内容 |
+|-------|:------:|---------|
+| `ops-agent` | 7 | control-plane-ops, log-monitor, config-watchdog, memtidy, fleet-sync, todo-patrol, task-cost-analytics |
+| `optimization-agent` | 4 | openclaw-evolution-upgrader, openclaw-workflow-manager, task-cost-analytics, workflow-audit |
+| `project-agent` | 3 | product-requirements, requirements-clarity, writing-plans |
+| `web-agent` | 3 | web-intelligence, pretext-text-layout, playwright-interactive |
+| `agent-factory` | 2 | agent-manager, openclaw-workflow-manager |
+| `explorer` | 2 | web-intelligence, smart-workflow |
+
+### Step 6.2 — 索引文件四方同步 ✅
+
+- `agent_to_skills.json`：14 个 Agent 全覆盖（无空数组）
+- `skill_to_agents.json`：反向补齐 + 新增条目
+- `skills_by_domain.json`：新增 `ops_infra`（8技能）和 `intelligence`（2技能）域
+- `skills/by_agent/`：6 个文件重写 + `explorer.md` 新建
+
+### Step 6.3 — README 速查表 ✅
+
+`skills/README.md` 底部速查表从 6 行扩展到 14 行全覆盖。

@@ -1,7 +1,8 @@
 {
   "agent-manager": [
     "main",
-    "coordinator"
+    "coordinator",
+    "agent-factory"
   ],
   "auto-fix": [
     "frontend-dev",
@@ -16,6 +17,12 @@
   ],
   "codex": [
     "main"
+  ],
+  "config-watchdog": [
+    "ops-agent"
+  ],
+  "control-plane-ops": [
+    "ops-agent"
   ],
   "db-deploy": [
     "deployer"
@@ -34,6 +41,9 @@
     "frontend-dev",
     "backend-dev"
   ],
+  "fleet-sync": [
+    "ops-agent"
+  ],
   "frontend-design": [
     "frontend-dev"
   ],
@@ -46,28 +56,25 @@
   "internal-comms": [
     "doc-writer"
   ],
+  "log-monitor": [
+    "ops-agent"
+  ],
   "mcp-builder": [
     "backend-dev"
   ],
+  "memtidy": [
+    "ops-agent"
+  ],
   "openclaw-evolution-upgrader": [
-    "main",
-    "coordinator",
-    "ops-agent",
-    "project-agent",
-    "optimization-agent",
-    "reviewer"
+    "optimization-agent"
   ],
   "openclaw-security-audit": [
     "reviewer",
     "deployer"
   ],
   "openclaw-workflow-manager": [
-    "main",
-    "coordinator",
-    "ops-agent",
-    "project-agent",
     "optimization-agent",
-    "reviewer"
+    "agent-factory"
   ],
   "parallel-executor": [
     "coordinator"
@@ -77,13 +84,20 @@
   ],
   "playwright-interactive": [
     "frontend-dev",
-    "tester"
+    "tester",
+    "web-agent"
   ],
   "pptx": [
     "doc-writer"
   ],
+  "pretext-text-layout": [
+    "web-agent",
+    "tester",
+    "frontend-dev"
+  ],
   "product-requirements": [
-    "doc-writer"
+    "doc-writer",
+    "project-agent"
   ],
   "receiving-code-review": [
     "reviewer"
@@ -93,23 +107,32 @@
   ],
   "requirements-clarity": [
     "main",
-    "coordinator"
+    "coordinator",
+    "project-agent"
   ],
   "result-synthesizer": [
     "main"
   ],
   "smart-workflow": [
     "main",
-    "coordinator"
+    "coordinator",
+    "explorer"
   ],
   "systematic-debugging": [
     "backend-dev",
     "reviewer",
     "tester"
   ],
+  "task-cost-analytics": [
+    "ops-agent",
+    "optimization-agent"
+  ],
   "task-decomposer": [
     "main",
     "coordinator"
+  ],
+  "todo-patrol": [
+    "ops-agent"
   ],
   "ui-ux-pro-max": [
     "frontend-dev"
@@ -127,18 +150,28 @@
     "frontend-dev",
     "tester"
   ],
+  "web-intelligence": [
+    "web-agent",
+    "explorer"
+  ],
   "windows-fullstack-deploy": [
     "deployer"
   ],
+  "workflow-audit": [
+    "optimization-agent"
+  ],
   "writing-plans": [
-    "doc-writer"
+    "doc-writer",
+    "project-agent"
   ],
   "xlsx": [
     "doc-writer"
   ],
-  "pretext-text-layout": [
-    "web-agent",
-    "tester",
-    "frontend-dev"
+  "pua": [
+    "backend-dev",
+    "deployer",
+    "frontend-dev",
+    "reviewer",
+    "tester"
   ]
 }

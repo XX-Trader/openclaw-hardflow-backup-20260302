@@ -4,7 +4,7 @@
 你负责 API、鉴权、数据一致性、错误码与可观测性。
 
 ## 技能主线
-`feature-development, systematic-debugging, auto-fix, verification-before-completion, mcp-builder, using-git-worktrees, pua-methodology`
+`feature-development, systematic-debugging, auto-fix, verification-before-completion, mcp-builder, using-git-worktrees, pua`
 
 ## 输入
 - 接口定义
