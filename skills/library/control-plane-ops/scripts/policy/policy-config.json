@@ -1,0 +1,251 @@
+{
+  "schema_version": "2026-03-08",
+  "primary_model": "kimicode/doubao-seed-2.0-pro",
+  "fallback_models": [
+    "openai-codex/gpt-5.3-codex",
+    "openai-codex/gpt-5.3-codex-spark",
+    "glmcode/glm-5",
+    "glmcode/glm-4.7"
+  ],
+  "allowed_models": [
+    "openai-codex/gpt-5.4",
+    "openai-codex/gpt-5.3-codex",
+    "openai-codex/gpt-5.3-codex-spark",
+    "glmcode/glm-5",
+    "glmcode/glm-4.7",
+    "kimicode/doubao-seed-2.0-pro",
+    "kimicode/Doubao-Seed-2.0-Code",
+    "volcengine/kimi-k2.5"
+  ],
+  "agent_model_overrides": {
+    "main": "kimicode/doubao-seed-2.0-pro",
+    "coordinator": "kimicode/doubao-seed-2.0-pro",
+    "reviewer": "kimicode/doubao-seed-2.0-pro",
+    "agent-factory": "openai-codex/gpt-5.3-codex",
+    "backend-dev": "openai-codex/gpt-5.3-codex",
+    "frontend-dev": "openai-codex/gpt-5.3-codex",
+    "optimization-agent": "openai-codex/gpt-5.3-codex",
+    "project-agent": "openai-codex/gpt-5.3-codex",
+    "doc-writer": "glmcode/glm-4.7",
+    "deployer": "glmcode/glm-4.7",
+    "ops-agent": "glmcode/glm-4.7",
+    "tester": "glmcode/glm-4.7",
+    "web-agent": "glmcode/glm-4.7"
+  },
+  "model_thinking_overrides": {
+    "openai-codex/gpt-5.4": "xhigh",
+    "openai-codex/gpt-5.3-codex": "xhigh",
+    "openai-codex/gpt-5.3-codex-spark": "xhigh",
+    "glmcode/glm-5": "high",
+    "glmcode/glm-4.7": "high",
+    "kimicode/doubao-seed-2.0-pro": "high",
+    "kimicode/Doubao-Seed-2.0-Code": "high"
+  },
+  "allowed_entry_agents": [
+    "coordinator"
+  ],
+  "allow_project_agent_alias_entry": true,
+  "project_agent_alias_prefixes": [
+    "产品经理",
+    "项目经理",
+    "pm",
+    "PM"
+  ],
+  "dispatcher_agent": "coordinator",
+  "dispatcher_fallback_self_execute": true,
+  "blocked_direct_code_agents": [
+    "coordinator",
+    "project-agent"
+  ],
+  "code_execution_stages": [
+    "implement",
+    "fix",
+    "deploy"
+  ],
+  "project_dispatch_policy": {
+    "enabled": true,
+    "force_dispatch_code_tasks": true,
+    "code_task_keywords": [
+      "write code",
+      "coding",
+      "implement",
+      "bugfix",
+      "fix bug",
+      "refactor",
+      "开发",
+      "写代码",
+      "修复",
+      "实现",
+      "代码"
+    ],
+    "frontend_keywords": [
+      "frontend",
+      "ui",
+      "页面",
+      "前端",
+      "样式",
+      "交互"
+    ],
+    "backend_keywords": [
+      "backend",
+      "api",
+      "服务端",
+      "后端",
+      "数据库",
+      "接口"
+    ],
+    "tester_keywords": [
+      "test",
+      "qa",
+      "测试",
+      "回归",
+      "验收",
+      "playwright"
+    ],
+    "default_code_assignee": "backend-dev"
+  },
+  "required_task_fields": [
+    "reason",
+    "requirement",
+    "result_output",
+    "acceptance",
+    "observable_outputs",
+    "acceptance_thresholds"
+  ],
+  "context_policy": {
+    "enabled": true,
+    "ai_required_fields": [
+      "problem",
+      "location",
+      "first_seen_at",
+      "impact",
+      "evidence",
+      "current_state",
+      "expected_state",
+      "operation_path",
+      "reproduction_steps",
+      "scope",
+      "constraints",
+      "acceptance_criteria",
+      "full_background"
+    ],
+    "ai_recommended_fields": [
+      "duration",
+      "trigger_conditions",
+      "dependencies",
+      "history_changes",
+      "deliverables",
+      "owner",
+      "change_id"
+    ],
+    "ai_min_completeness_pct": 100,
+    "clarification_assignee": "project-agent",
+    "human_project_keywords": [
+      "项目",
+      "项目规划",
+      "项目说明",
+      "项目索引",
+      "模块",
+      "readme",
+      "api文档",
+      "接口文档",
+      "产品经理",
+      "项目经理",
+      "workflow",
+      "架构"
+    ]
+  },
+  "high_risk_requires_human_confirm": true,
+  "require_token_usage_before_done": true,
+  "max_failure_before_escalate": 3,
+  "pass_line_raw": 75,
+  "agent_points_policy": {
+    "enabled": true,
+    "leaderboard_lookback_days": 14,
+    "quality_weight": 0.75,
+    "timeliness_weight": 0.25,
+    "planner_share": 0.35,
+    "minimum_quality_for_positive": 70,
+    "base_points_by_priority": {
+      "low": 4,
+      "medium": 8,
+      "high": 12
+    },
+    "risk_multiplier": {
+      "low": 1,
+      "high": 1.15
+    },
+    "timeliness_sla_ms_by_priority": {
+      "low": 14400000,
+      "medium": 7200000,
+      "high": 3600000
+    }
+  },
+  "todo_queue_policy": {
+    "require_scheduled_at": true,
+    "fifo": true,
+    "max_dispatch_per_run": 3,
+    "agent_guarantee": {
+      "enabled": true,
+      "min_tasks_per_agent": 1,
+      "low_score_threshold": 12,
+      "lookback_days": 7
+    }
+  },
+  "self_evolution_policy": {
+    "enabled": true,
+    "weekly_full_review": true,
+    "min_review_interval_days": 7,
+    "default_pool": "todo",
+    "default_priority": "low",
+    "default_risk_level": "high",
+    "require_human_confirm": true,
+    "max_tasks_per_run": 3,
+    "schedule_gap_minutes": 120
+  },
+  "post_deploy_test_policy": {
+    "enabled": true,
+    "deploy_stage_names": [
+      "deploy"
+    ],
+    "post_test_stage_names": [
+      "post-test",
+      "post_test",
+      "postdeploy-test",
+      "postdeploy_test"
+    ],
+    "require_post_test_after_deploy": true,
+    "missing_post_test_action": "post_deploy_test_required",
+    "failed_post_test_action": "retry_fix_after_post_deploy_test"
+  },
+  "agent_output_policy": {
+    "default_language": "zh-CN",
+    "require_chinese_output": true
+  },
+  "status_flow": {
+    "pending": [
+      "running",
+      "cancelled",
+      "escalated"
+    ],
+    "running": [
+      "running",
+      "passed",
+      "failed",
+      "escalated",
+      "cancelled"
+    ],
+    "failed": [
+      "running",
+      "escalated",
+      "cancelled"
+    ],
+    "escalated": [
+      "running",
+      "cancelled",
+      "passed"
+    ],
+    "passed": [],
+    "cancelled": []
+  }
+}
