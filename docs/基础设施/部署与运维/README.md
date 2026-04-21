@@ -10,6 +10,8 @@
 | [Windows 本机部署说明](windows-本机部署说明.md) | 本机开发环境部署 |
 | [安装与工作流部署说明](安装与工作流部署说明.md) | setup.py + workflow_setup.py 流程 |
 | [Gateway 守护进程说明](gateway-守护进程说明.md) | openclaw gateway 守护/监控 |
+| [Hermes WSL 开机自启动](Hermes-WSL-开机自启动/README.md) | Windows 开机触发 WSL Hermes 的设计与实施 |
+| [Hermes Discord 趋势回测机器人](Hermes-Discord-趋势回测机器人/README.md) | 独立 Hermes profile、Discord 接线与群组 mention 规则 |
 | [多项目服务器模板](多项目服务器模板.md) | 多项目共存的服务器配置模板 |
 | [Rollout 进度追踪](rollout-进度追踪.md) | 5 台服务器推广进度 |
 | [项目维护与排障索引](项目维护与排障索引.md) | 按问题类型定位文件的排障速查 |
