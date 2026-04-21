@@ -250,11 +250,14 @@ node scripts/check-score-gate.mjs \
 
 | 文件 | 位置 | 用途 |
 |------|------|------|
-| score-policy.json | scripts/hardflow/ | 各 Gate 阈值 + 维度阈值 + Veto 策略 |
-| check-score-gate.mjs | scripts/hardflow/ | 确定性评分校验引擎（310行 Node.js） |
-| score-report.mjs | scripts/hardflow/ | 评分报告格式化输出 |
-| SCORECARD_SCHEMA.md | scripts/hardflow/ | 证据 JSON 字段规范 |
-| check-api-doc-gate.sh | scripts/hardflow/ | API 文档门禁检查 |
+| score-policy.json | scripts/ | 各 Gate 阈值 + 维度阈值 + Veto 策略 |
+| check-score-gate.mjs | scripts/ | 确定性评分校验引擎（343行 Node.js） |
+| score-report.mjs | scripts/ | 评分报告格式化输出 |
+| score-aggregator.sh | scripts/ | 批量聚合所有 Gate 评分（Linux） |
+| check-review-test-gate.sh | scripts/ | predeploy/postdeploy 质量门禁检查（Linux） |
+| check-api-doc-gate.sh | scripts/ | API 文档门禁检查（Linux） |
+| SCORECARD_SCHEMA.md | scripts/ | 证据 JSON 字段规范 |
+| hook-selftest.mjs | scripts/ | Hook 端到端自测 |
 
 ## 6. 约束与红线
 

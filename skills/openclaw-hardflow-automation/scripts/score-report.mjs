@@ -2,7 +2,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 
-const GATES = ["requirements", "solution", "frontend", "backend", "security", "release", "final"];
+const GATES = ["requirements", "solution", "frontend", "backend", "refine", "security", "release", "final"];
 
 function parseArgs(argv) {
   const args = {
