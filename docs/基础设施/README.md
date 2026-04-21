@@ -11,5 +11,6 @@
 | [部署与运维](部署与运维/README.md) | 安装/部署/推广/排障 | 含 Linux/Windows 部署说明、Gateway 守护、服务器模板 |
 | [多Agent体系](多Agent体系/README.md) | 14 Agent 角色与能力绑定 | Agent 清单、模型配置、能力 manifest |
 | [协议与规范](协议与规范/README.md) | 全链路协议与输出规范 | trace_id、任务派发、错误进化、TG 输出 |
+| [记忆蒸馏](记忆蒸馏/README.md) | 多源会话蒸馏、热记忆、技能候选 | 含 Hermes 风格记忆蒸馏升级方案 |
 
 另见：[治理与审核](../治理与审核/README.md) — Cron 治理、工作流审计、代码优化 backlog

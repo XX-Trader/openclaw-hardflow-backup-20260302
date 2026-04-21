@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "evidence_base_dir": "~/.openclaw/ops/distill/evidence",
+  "db_path": "~/.openclaw/ops/distill/distill.db",
+  "reports_dir": "~/.openclaw/ops/distill/reports",
+  "skill_candidates_dir": "~/.openclaw/ops/distill/skill-candidates",
+  "partition_by": "source/yyyy-mm/project",
+  "max_evidence_bundle_bytes": 10485760,
+  "max_raw_event_content_chars": 5000,
+  "retention": {
+    "raw_evidence_days": 365,
+    "normalized_events_days": 180,
+    "search_index_rebuildable": true
+  }
+}

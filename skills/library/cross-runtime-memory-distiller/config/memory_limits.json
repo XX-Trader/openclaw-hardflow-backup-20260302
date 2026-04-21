@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "hot_memory": {
+    "user_md": {
+      "max_bytes": 2048,
+      "warn_threshold_pct": 80,
+      "description": "用户偏好、沟通风格、角色画像。精炼短小，半年有效。"
+    },
+    "memory_md": {
+      "max_bytes": 8192,
+      "warn_threshold_pct": 80,
+      "description": "环境事实、项目约束、长期 workaround。稳定事实为主。"
+    }
+  },
+  "experience": {
+    "max_file_bytes": 65536,
+    "max_files_per_topic": 1,
+    "description": "经验卡片按主题文件聚合，单文件不超过 64KB。"
+  },
+  "knowledge_layer": {
+    "adr_max_bytes": 32768,
+    "skill_draft_max_bytes": 131072
+  },
+  "sensitive_scan": {
+    "enabled": true,
+    "rules": [
+      {"name": "api_key", "pattern": "(sk-|ghp_|gho_|xoxb-|xoxp-)[a-zA-Z0-9]{20,}", "action": "mask"},
+      {"name": "aws_credential", "pattern": "AKIA[0-9A-Z]{16}", "action": "mask"},
+      {"name": "private_key", "pattern": "-----BEGIN (RSA |EC |DSA )?PRIVATE KEY", "action": "replace", "replacement": "[REDACTED_KEY]"},
+      {"name": "db_connection", "pattern": "(mongodb|postgres|mysql)://[^\\s]+:[^\\s]+@", "action": "mask"},
+      {"name": "jwt_token", "pattern": "eyJ[a-zA-Z0-9_-]{10,}\\.[a-zA-Z0-9_-]{10,}", "action": "mask"},
+      {"name": "email", "pattern": "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}", "action": "warn"},
+      {"name": "prompt_injection", "pattern": "(ignore previous|disregard above|system:|<system>)", "action": "reject"}
+    ]
+  }
+}

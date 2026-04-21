@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "weights": {
+    "density": 0.3,
+    "decision": 0.25,
+    "failure": 0.2,
+    "reusability": 0.15,
+    "sensitive_risk": -0.1
+  },
+  "thresholds": {
+    "high_value": 0.7,
+    "index_only": 0.4
+  },
+  "keyword_hit_cap": 3,
+  "description": "蒸馏打分权重与路由阈值配置。score = density*0.3 + decision*0.25 + failure*0.2 + reusability*0.15。≥0.7 → high_value；≥0.4 → index_only；<0.4 → skip。"
+}

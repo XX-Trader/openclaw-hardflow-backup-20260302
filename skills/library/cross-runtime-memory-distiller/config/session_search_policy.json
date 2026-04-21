@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "fts_enabled": true,
+  "max_results_per_query": 20,
+  "min_score": 0.3,
+  "snippet_max_chars": 300,
+  "summary_max_chars": 500,
+  "default_since_hours": 168,
+  "indexed_sources": ["claude", "gemini", "openclaw", "hermes", "repo_delta", "control_plane", "docs"]
+}
