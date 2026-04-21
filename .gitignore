@@ -24,3 +24,14 @@ scripts/openclaw-ops/policy/runtime/
 
 scripts/hardflow/
 
+/.agents
+/.claude
+/.codex
+
+# Freqtrade backtest workspace
+/backtest/freqtrade_single_pair/.venv/
+/backtest/freqtrade_single_pair/user_data/data/
+/backtest/freqtrade_single_pair/user_data/backtest_results/
+/backtest/freqtrade_single_pair/user_data/logs/
+/backtest/freqtrade_single_pair/.env
+/backtest/freqtrade_single_pair/user_data/config.private.json
