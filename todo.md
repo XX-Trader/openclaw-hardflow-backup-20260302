@@ -3,6 +3,52 @@
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
 > 更新时间：2026-04-02
 
+## P0 — 项目交付优先工作流（核心战略落地）
+
+> 详细文档：[docs/核心主工作流/项目交付优先工作流/](docs/核心主工作流/项目交付优先工作流/)
+
+### Phase 1：双 AI 对抗式审查文档
+- [x] [🔴 P0] `skills/library/dual-ai-review/SKILL.md` 主 Skill
+- [x] [🔴 P0] 需求审查模板 `requirements_review.md`
+- [x] [🔴 P0] 方案审查模板 `solution_review.md`
+- [x] [🔴 P0] 代码审查模板 `code_review.md`
+- [x] [🔴 P0] 门禁映射契约 `review-gate-contract.md`
+- [x] [🔴 P0] 共识规则 `consensus-rules.md`
+- [x] [🔴 P0] 实现 `review_gate_enforcer.py`
+- [x] [🔴 P0] 升级 reviewer SOUL.md（双 AI 对抗审查调度器）
+- [x] [🔴 P0] 升级 coordinator SOUL.md（项目交付优先调度链路）
+- [x] [🔴 P0] 端到端集成测试全部通过（7/7）
+
+### Phase 1.5：失败学习回写机制文档
+- [x] [🔴 P0] `skills/library/failure-learning/SKILL.md` 主 Skill
+- [x] [🔴 P0] 失败分析报告模板 `failure_analysis.md`
+- [x] [🔴 P0] 实现 `failure_tracker.py`
+
+### Phase 2：project-agent 升级（文档+代码完成）
+- [x] [🟡 P1] `skills/library/project-profile-manager/SKILL.md`
+- [x] [🟡 P1] 项目画像模板 `PROJECT_PROFILE.md`
+- [x] [🟡 P1] `skills/library/api-registry-manager/SKILL.md`
+- [x] [🟡 P1] API 注册表模板 `API_REGISTRY.json`
+- [x] [🟡 P1] 来源注册表模板 `SOURCE_REGISTRY.json`
+- [x] [🟡 P1] 实现 `project_memory_writer.py`
+
+### Phase 3：项目级记忆模块（文档+代码完成）
+- [x] [🟡 P1] 项目记忆目录结构定义
+- [x] [🟡 P1] 注入器接口规范
+- [x] [🟡 P1] 实现 `project_memory_injector.py`
+
+### Phase 4：第三方 API 定期更新（文档+代码完成）
+- [x] [🟢 P2] API watch 操作手册
+- [x] [🟢 P2] 实现 `source_registry_watcher.py`
+- [x] [🟢 P2] 注册 cron job
+
+### Phase 5：自进化完全移除（文档+代码完成）
+- [x] [🟢 P2] cron 裁剪执行清单
+- [x] [🟢 P2] 修改 `cron/jobs.json` 移除自进化类 job
+- [ ] [🟢 P2] 更新安装器默认 profile（安装器层，需独立处理）
+
+---
+
 ## P0 — 评分系统升级（解封 HardFlow 门禁管道）
 
 > 详细文档：[docs/核心主工作流/ACP全链路编码工作流/评分系统升级/](docs/核心主工作流/ACP全链路编码工作流/评分系统升级/README.md)

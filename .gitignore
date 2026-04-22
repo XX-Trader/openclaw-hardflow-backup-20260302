@@ -35,3 +35,4 @@ scripts/hardflow/
 /backtest/freqtrade_single_pair/user_data/logs/
 /backtest/freqtrade_single_pair/.env
 /backtest/freqtrade_single_pair/user_data/config.private.json
+/backtest

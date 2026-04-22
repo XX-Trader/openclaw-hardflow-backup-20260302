@@ -1,0 +1,24 @@
+{
+  "$schema": "source-registry-v1",
+  "project_key": "{{project_key}}",
+  "version": "1.0.0",
+  "last_updated": "{{timestamp}}",
+  "sources": [
+    {
+      "source_id": "{{source_id}}",
+      "provider_id": "{{provider_id}}",
+      "source_type": "github_repo|npm_package|pypi_package|docker_hub|official_docs|other",
+      "urls": {
+        "docs": "{{docs_url}}",
+        "changelog": "{{changelog_url}}",
+        "repo": "{{repo_url}}",
+        "sdk": "{{sdk_url}}"
+      },
+      "current_version": "{{current_version}}",
+      "last_checked": "{{last_checked_timestamp}}",
+      "check_frequency": "daily|weekly|monthly",
+      "change_policy": "ignore|notify_only|notify_and_update|notify_and_block",
+      "owned_by_project_agent": true|false
+    }
+  ]
+}

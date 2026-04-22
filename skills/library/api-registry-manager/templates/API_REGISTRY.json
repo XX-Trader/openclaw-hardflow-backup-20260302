@@ -1,0 +1,47 @@
+{
+  "$schema": "api-registry-v1",
+  "project_key": "{{project_key}}",
+  "version": "1.0.0",
+  "last_updated": "{{timestamp}}",
+  "apis": [
+    {
+      "api_id": "{{api_id}}",
+      "provider_id": "{{provider_id}}",
+      "base_url": "{{base_url}}",
+      "docs_url": "{{docs_url}}",
+      "changelog_url": "{{changelog_url}}",
+      "repo_url": "{{repo_url}}",
+      "version": "{{version}}",
+      "endpoints": [
+        {
+          "path": "{{endpoint_path}}",
+          "method": "GET|POST|PUT|DELETE|PATCH",
+          "description": "{{endpoint_description}}",
+          "parameters": [
+            {
+              "name": "{{param_name}}",
+              "in": "query|path|header|body",
+              "type": "string|integer|boolean|object|array",
+              "required": true|false,
+              "description": "{{param_description}}"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "成功",
+              "schema": {}
+            },
+            "400": {
+              "description": "参数错误",
+              "schema": {}
+            }
+          }
+        }
+      ],
+      "auth_type": "none|basic|bearer|api_key|oauth2",
+      "rate_limit": "{{rate_limit}}",
+      "change_policy": "ignore|notify_only|notify_and_update|notify_and_block",
+      "owned_by_project_agent": true|false
+    }
+  ]
+}

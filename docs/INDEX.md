@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-21 | 项目交付优先工作流文档落盘
+> 最后更新：2026-04-22 | Phase 1 双 AI 对抗审查文档落盘
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -11,7 +11,7 @@
 |------------|-----------|------|----------|----------|
 | 🎯 核心主工作流 | [通用运营工作流](核心主工作流/通用运营工作流/README.md) | ✅ 已上线 | 人工/事件触发 | 任务调度、TODO巡检、日报、评分闭环 |
 | 🎯 核心主工作流 | [ACP全链路编码工作流](核心主工作流/ACP全链路编码工作流/README.md) | ✅ 已上线 | 人工触发 | G0-G6门禁、回流整改、部署验收 |
-| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 📋 方案已定义 | 人工触发 / 项目维护事件 | 外部方案优先、需求/方案/代码三段审查、项目记忆分仓、API watch |
+| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🔧 Phase 1 文档完成 | 人工触发 / 项目维护事件 | 双 AI 对抗审查、外部方案优先、项目记忆分仓、API watch |
 | 📦 专项场景 | [巡检故障闭环工作流](专项场景工作流/巡检故障闭环工作流/README.md) | ✅ 已上线 | 每6小时/异常触发 | 异常分类→知识库匹配→自修复 |
 | 📦 专项场景 | [记忆知识沉淀工作流](专项场景工作流/记忆知识沉淀工作流/README.md) | ✅ 已上线 | 每日/每周 | 知识蒸馏、经验→技能封装 |
 | 📦 专项场景 | [情报采集分析工作流](专项场景工作流/情报采集分析工作流/README.md) | ✅ 已上线 | 每日自动 | 上游同步、网页爬取、GitHub扫描 |
@@ -67,12 +67,49 @@
 | [Tmux Codex UTF8 环境模板](templates/TMUX_CODEX_UTF8_ENV_TEMPLATE.md) | 远程 tmux 编码环境 |
 | [DeepDive 英文模板](templates/deepdive-en.md) | 深入分析英文版 |
 | [基础设施契约模板](templates/openclaw-foundation-contract-templates.md) | Foundation Contract |
+| [项目级记忆模块](基础设施/项目记忆模块/README.md) | 项目记忆目录结构、注入策略、与蒸馏集成 |
 
 ---
 
 ## 📦 代码级文档（scripts 目录）
 
 > 以下文档在各脚本目录内，与工作流 README 互相引用。
+
+### 项目交付优先工作流（核心文档）
+
+| 文档 | 说明 |
+|------|------|
+| [项目交付优先工作流 README](核心主工作流/项目交付优先工作流/README.md) | 需求定义与范围边界 |
+| [项目交付优先工作流架构设计](核心主工作流/项目交付优先工作流/项目交付优先工作流架构设计.md) | 双 AI 对抗审查、项目记忆、API watch 架构 |
+| [项目交付优先工作流实施规划](核心主工作流/项目交付优先工作流/项目交付优先工作流实施规划.md) | Phase 1-5 分阶实施步骤 |
+
+### 双 AI 对抗审查 Skill
+
+| 文档 | 说明 |
+|------|------|
+| [`skills/library/dual-ai-review/SKILL.md`](../skills/library/dual-ai-review/SKILL.md) | 双 AI 对抗审查主 Skill（覆盖需求/方案/代码三阶段） |
+| [`skills/library/dual-ai-review/templates/requirements_review.md`](../skills/library/dual-ai-review/templates/requirements_review.md) | 需求审查输出模板 |
+| [`skills/library/dual-ai-review/templates/solution_review.md`](../skills/library/dual-ai-review/templates/solution_review.md) | 方案审查输出模板 |
+| [`skills/library/dual-ai-review/templates/code_review.md`](../skills/library/dual-ai-review/templates/code_review.md) | 代码审查输出模板 |
+| [`skills/library/dual-ai-review/references/review-gate-contract.md`](../skills/library/dual-ai-review/references/review-gate-contract.md) | 对抗审查与 G0-G6 门禁映射契约 |
+| [`skills/library/dual-ai-review/references/consensus-rules.md`](../skills/library/dual-ai-review/references/consensus-rules.md) | 双 AI 共识规则（3 轮上限、分歧上报、中止条件） |
+
+### 失败学习回写 Skill
+
+| 文档 | 说明 |
+|------|------|
+| [`skills/library/failure-learning/SKILL.md`](../skills/library/failure-learning/SKILL.md) | 失败学习回写主 Skill（根因分析、用户确认、文档回写） |
+| [`skills/library/failure-learning/templates/failure_analysis.md`](../skills/library/failure-learning/templates/failure_analysis.md) | 失败分析报告模板 |
+
+### 项目画像与 API 注册表 Skill
+
+| 文档 | 说明 |
+|------|------|
+| [`skills/library/project-profile-manager/SKILL.md`](../skills/library/project-profile-manager/SKILL.md) | 项目画像管理 Skill（init/update/show/list） |
+| [`skills/library/project-profile-manager/templates/PROJECT_PROFILE.md`](../skills/library/project-profile-manager/templates/PROJECT_PROFILE.md) | 项目画像模板 |
+| [`skills/library/api-registry-manager/SKILL.md`](../skills/library/api-registry-manager/SKILL.md) | API 注册表管理 Skill（add/remove/list/check） |
+| [`skills/library/api-registry-manager/templates/API_REGISTRY.json`](../skills/library/api-registry-manager/templates/API_REGISTRY.json) | API 注册表 JSON Schema 模板 |
+| [`skills/library/api-registry-manager/templates/SOURCE_REGISTRY.json`](../skills/library/api-registry-manager/templates/SOURCE_REGISTRY.json) | 来源注册表 JSON Schema 模板 |
 
 ### HardFlow 核心（→ [ACP编码工作流](核心主工作流/ACP全链路编码工作流/README.md)）
 
