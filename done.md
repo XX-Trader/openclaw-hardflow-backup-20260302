@@ -275,4 +275,4 @@
 - 定时任务索引 → [scripts/openclaw-ops/CRON_TASK_INDEX.md](scripts/openclaw-ops/CRON_TASK_INDEX.md)
 - Agent 映射 → [cron/jobs_agent_mapping.md](cron/jobs_agent_mapping.md)
 - 执行路线图 → [docs/execution-roadmap.md](docs/execution-roadmap.md)
-- 2026-04-24: 修复 project delivery runtime 安装器的 ops 根目录 runner 命名兼容；`runtime_installer.py` 现在同时安装 `pipeline_runner.py` 与 `project_delivery_pipeline.py`，确保安装到 Hermes runtime 后的 `ops/hermes_profile_smoke.py` 可以按同目录加载 runner，新增回归断言覆盖两个入口文件。
+- 2026-04-24: 修复 project delivery runtime 安装器的 ops 根目录 runner 命名兼容；`runtime_installer.py` 现在同时安装 `pipeline_runner.py` 与 `project_delivery_pipeline.py`，`pipeline_runner.py` 会在安装态优先解析同级 `ops/policy`，确保安装到 Hermes runtime 后的 `ops/hermes_profile_smoke.py` 可以按同目录加载 runner 并完成 echo smoke，新增回归断言覆盖两个入口文件与安装态 smoke。

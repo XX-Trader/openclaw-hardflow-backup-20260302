@@ -997,14 +997,27 @@ def pipeline_state(
     }
 
 
+def policy_dir_candidates() -> list[Path]:
+    current = Path(__file__).resolve()
+    return [
+        current.parent / "policy",
+        current.parents[2] / "control-plane-ops" / "scripts" / "policy",
+    ]
+
+
 def policy_dir() -> Path:
-    return Path(__file__).resolve().parents[2] / "control-plane-ops" / "scripts" / "policy"
+    candidates = policy_dir_candidates()
+    for path in candidates:
+        if path.exists():
+            return path
+    return candidates[0]
 
 
 def load_task_center_classes() -> tuple[Any, Any]:
     path = policy_dir()
     if not path.exists():
-        raise PipelineError(f"task-center policy dir not found: {path}")
+        candidates = ", ".join(str(candidate) for candidate in policy_dir_candidates())
+        raise PipelineError(f"task-center policy dir not found: {path}; checked: {candidates}")
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
     try:
