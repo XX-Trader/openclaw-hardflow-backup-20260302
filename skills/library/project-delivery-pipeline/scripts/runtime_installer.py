@@ -28,6 +28,7 @@ REQUIRED_SKILLS = (
     "task-cost-analytics",
 )
 OPS_SCRIPT_MAP = {
+    "pipeline_runner.py": "skills/library/project-delivery-pipeline/scripts/pipeline_runner.py",
     "project_delivery_pipeline.py": "skills/library/project-delivery-pipeline/scripts/pipeline_runner.py",
     "hermes_profile_smoke.py": "skills/library/project-delivery-pipeline/scripts/hermes_profile_smoke.py",
     "todo_patrol.py": "skills/library/todo-patrol/scripts/todo_patrol.py",

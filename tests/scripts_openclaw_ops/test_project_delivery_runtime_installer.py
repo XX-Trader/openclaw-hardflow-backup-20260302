@@ -61,6 +61,8 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertTrue(report.ok)
             self.assertTrue((runtime_home / "skills" / "project-delivery-pipeline" / "SKILL.md").exists())
             self.assertTrue((runtime_home / "skills" / "control-plane-ops" / "scripts" / "policy" / "task_center.py").exists())
+            self.assertTrue((runtime_home / "ops" / "pipeline_runner.py").exists())
+            self.assertTrue((runtime_home / "ops" / "project_delivery_pipeline.py").exists())
             self.assertTrue((runtime_home / "ops" / "hermes_profile_smoke.py").exists())
             self.assertTrue((runtime_home / "ops" / "deadline_to_task_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "exception_to_task_bridge.py").exists())
