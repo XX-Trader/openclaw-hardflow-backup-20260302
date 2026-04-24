@@ -18,7 +18,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 todo-patrol 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/todo_patrol.py --task cron:todo-patrol。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 todo-patrol 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/todo_patrol.py --task cron:todo-patrol。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "toolsAllow": [
           "exec",
           "read"
@@ -65,7 +65,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are scheduled runner. Run command only:\npython3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/policy/project_index_maintainer.py --registry ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/task-center/project-registry.json --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/task-center/task_center.db --task-id cron:project-index-maintainer-4h --actor project-agent --doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change\nReply only command output; if output is empty, reply NO_REPLY.",
+        "message": "You are scheduled runner. Run command only:\npython3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/policy/project_index_maintainer.py --registry ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task-center/project-registry.json --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task-center/task_center.db --task-id cron:project-index-maintainer-4h --actor project-agent --doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change\nReply only command output; if output is empty, reply NO_REPLY.",
         "timeoutSeconds": 1800,
         "toolsAllow": [
           "exec",
@@ -107,7 +107,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 ops-agent 日报任务。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/workspace/scripts/daily_todo_digest.py。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
+        "message": "你是 ops-agent 日报任务。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/workspace/scripts/daily_todo_digest.py。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
         "timeoutSeconds": 1200,
         "toolsAllow": [
           "exec",
@@ -142,7 +142,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 claim-auditor 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/claim_verification_auditor.py --session-log-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/workflow-logs/ --output-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/claim-audit/ --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/task_center.db --scan-since-hours 24。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 claim-auditor 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/claim_verification_auditor.py --session-log-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/workflow-logs/ --output-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/claim-audit/ --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task_center.db --scan-since-hours 24。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 120,
         "toolsAllow": [
           "exec",
@@ -181,7 +181,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 memtidy 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/memtidy_runner.py --memory-dirs ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/memory/ ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/workspace/memory/ --rules-file ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/config/memtidy_rules.json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 memtidy 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/memtidy_runner.py --memory-dirs ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/memory/ ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/workspace/memory/ --rules-file ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/config/memtidy_rules.json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 180,
         "toolsAllow": [
           "exec",
@@ -214,7 +214,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 config-watchdog 子agent。按顺序执行：1) python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/config_watchdog.py --config-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ --verify; 2) 若上一步返回 no_snapshot 则执行 python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/config_watchdog.py --config-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ --snapshot。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 config-watchdog 子agent。按顺序执行：1) python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/config_watchdog.py --config-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ --verify; 2) 若上一步返回 no_snapshot 则执行 python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/config_watchdog.py --config-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ --snapshot。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 120,
         "toolsAllow": [
           "exec",
@@ -253,7 +253,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 exception-scanner 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/unified_exception_logger.py --log-dirs ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/workflow-logs/ ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/sessions/ --output-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/exception-reports/ --abnormal-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/logs/abnormal/ --cleanup --scan-since-hours 6。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 exception-scanner 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/unified_exception_logger.py --log-dirs ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/workflow-logs/ ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/sessions/ --output-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/exception-reports/ --abnormal-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/logs/abnormal/ --cleanup --scan-since-hours 6。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 120,
         "toolsAllow": [
           "exec",
@@ -263,6 +263,45 @@
       },
       "delivery": {
         "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {},
+      "skill_ref": "log-monitor"
+    },
+    {
+      "id": "e6f7a8b9-exception-task-bridge-0006",
+      "agentId": "ops-agent",
+      "name": "system_exception_to_task_bridge",
+      "description": "Scan runtime logs and create deduplicated Task Center tasks for abnormal exceptions that need AI or human handling.",
+      "enabled": true,
+      "createdAtMs": 1772730000000,
+      "updatedAtMs": 1772730000000,
+      "schedule": {
+        "kind": "every",
+        "everyMs": 21600000,
+        "anchorMs": 1772643900000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "You are exception-to-task bridge. Run command only:\npython3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/exception_to_task_bridge.py --log-dirs ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/workflow-logs/ ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/sessions/ --output-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/exception-reports/ --abnormal-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/logs/abnormal/ --cleanup --scan-since-hours 6 --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task-center/task_center.db --task-id cron:exception-to-task-bridge --actor ops-agent --assignee ops-agent --human-assignee human-inbox\nReply only command output; if output is empty, reply NO_REPLY.",
+        "timeoutSeconds": 180,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 3600000,
         "channel": "telegram",
         "to": "-1003333097130"
       },
@@ -286,7 +325,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 source-registry-watcher 子agent。仅用命令执行：python3 ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}/scripts/openclaw-ops/source_registry_watcher.py --scan-all --base-path ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}/.workflow/project-memory --notify-on-change。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 source-registry-watcher 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/source_registry_watcher.py --scan-all --base-path ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/.workflow/project-memory --notify-on-change。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 300,
         "toolsAllow": [
           "exec",
@@ -319,7 +358,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 scheduled runner。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/todo_deadline_checker.py --todo-file ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}/todo.md --task-id cron:deadline-checker-daily。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 scheduled runner。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/todo_deadline_checker.py --todo-file ${HARDFLOW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}/todo.md --task-id cron:deadline-checker-daily。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 60,
         "toolsAllow": [
           "exec",
@@ -329,6 +368,45 @@
       },
       "delivery": {
         "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {},
+      "skill_ref": "todo-patrol"
+    },
+    {
+      "id": "f6a7b8c9-deadline-task-bridge-0007",
+      "agentId": "ops-agent",
+      "name": "todo_deadline_to_task_bridge_daily",
+      "description": "Create human-confirmed Task Center candidate tasks for due or overdue TODO lines.",
+      "enabled": true,
+      "createdAtMs": 1772730300000,
+      "updatedAtMs": 1772730300000,
+      "schedule": {
+        "kind": "cron",
+        "expr": "5 0 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "You are deadline-to-task bridge. Run command only:\npython3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/deadline_to_task_bridge.py --todo-file ${HARDFLOW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}/todo.md --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task-center/task_center.db --task-id cron:deadline-to-task-bridge-daily --actor ops-agent --assignee human-inbox --include-upcoming-days 0 --max-items 20\nReply only command output; if output is empty, reply NO_REPLY.",
+        "timeoutSeconds": 120,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 3600000,
         "channel": "telegram",
         "to": "-1003333097130"
       },

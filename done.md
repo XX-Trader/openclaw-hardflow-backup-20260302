@@ -7,17 +7,45 @@
 
 ## 2026-04-24 已完成
 
+- [x] [2026-04-24] **Hermes profile 非 dry-run smoke 验收**
+  - 新增 `hermes_profile_smoke.py`，支持 `echo`、`hybrid`、`hermes-chat` 三种 smoke 模式
+  - 修复原 `hybrid` 每阶段冷启动 `hermes chat` 导致的 3-10 分钟耗时；现在一次 `hermes chat` 生成 research/code/review bundle，再由本地 stage command 读取缓存
+  - WSL `/home/ubuntu/.hermes` 已完成 `hybrid-single-chat` smoke：真实 `hermes chat --provider zai` 50 秒完成 bundle，verification 走确定性本地命令
+  - 验收证据：run_id=`hermes-profile-smoke-20260424T135014Z`，Task Center task=`project-delivery:hermes-profile-smoke-20260424T135014Z`，状态 `completed`
+  - `hermes-chat` 全阶段模式保留为 provider 诊断入口，不作为默认 smoke 门禁
+
+- [x] [2026-04-24] **Project Delivery Pipeline live 命令适配层**
+  - `pipeline_runner.py` 新增 `--research-command`、`--code-command`、`--verification-command`、`--code-review-command`、`--memory-write-command`、`--write-project-memory`
+  - live 模式会把每个命令的 cwd、退出码、stdout/stderr 写入 `command-runs/*.json`，失败时按阶段回退
+  - `--write-project-memory` 已调用 `project_memory_writer.py` 写入项目记忆；安装器同步 `project_memory_writer.py` 与 `project_memory_injector.py`
+  - 新增单元测试覆盖完整 live command adapter happy path
+
+- [x] [2026-04-24] **运营事件入任务中心 + 人工队列闭环**
+  - 新增 `deadline_to_task_bridge.py`：到期/超期 TODO 自动生成 `todo_deadline_candidate`，默认 `need_human_confirm=true`，等待用户确认后才执行
+  - 新增 `exception_to_task_bridge.py`：增量扫描日志异常，按 fingerprint 去重创建 `ops_exception` 运维任务，并写入 `task_incidents`
+  - 新增 `human_inbox.py`：统一列出、确认、拒绝、澄清 `need_human_confirm`、`needs_clarification`、`escalated`、`escalate_human` 任务
+  - 更新 `cron/jobs.json`：注册 `todo_deadline_to_task_bridge_daily` 与 `system_exception_to_task_bridge`
+  - 新增单元测试：`test_deadline_to_task_bridge.py`、`test_exception_to_task_bridge.py`、`test_human_inbox.py`
+
+- [x] [2026-04-24] **Project Delivery Pipeline 可控性收口**
+  - `pipeline_runner.py` 新增项目记忆定位门禁，自动生成 `.workflow/project-memory/<project_key>/PROJECT_PROFILE.md`、`DECISIONS.md`、`DELIVERY_RULES.md`、`API_REGISTRY.json`、`SOURCE_REGISTRY.json`、`IMPACT_MAP.json`、`RETRIEVAL_MANIFEST.json`
+  - 新增 `--record-task-center` / `--task-center-db` / `--task-center-task-id`，将流水线镜像到 Task Center 的 `tasks`、`stage_runs`、`module_communications`、`task_outputs`、`task_incidents`
+  - 新增 `pipeline_runner.py view` 查看入口，快速定位 run 状态、下一步、失败阶段、关键产物和 Task Center 引用
+  - 修复技能化迁移后的任务查看工具 import path：`task_output_consumer.py`、`task_output_broadcast_runner.py`、`policy_enforcer.py`
+  - 技术裁决：默认 hybrid local-first 项目记忆 + keyword/symbol 检索；向量 RAG 与 GraphRAG 做可插拔增强，不默认引入重服务
+
 - [x] [2026-04-24] **Project Delivery Pipeline Phase 6 MVP**
   - 新增 `skills/library/project-delivery-pipeline/`：Skill 入口、状态机 runner、模板、state-machine 与 runtime-adapter 参考文档
   - `pipeline_runner.py` 支持需求输入、外部 research 产物、需求/方案/代码 review gate、dry-run 编码交付、测试验收、失败回退、writeback 报告
-  - 明确 Hermes/OpenClaw 只是 runtime host，默认 `hermes -> ~/.hermes`、`openclaw -> ~/.openclaw`
+  - 明确 Hermes/OpenClaw 只是 runtime host 示例；默认通用 runtime 为 `~/.hardflow-runtime`，也支持任意 `--runtime-home`
+  - 新增 `runtime_installer.py` 并将根目录 `setup.py` 切换到新入口，旧 `workflow_setup.py` / `install_workflow_profile.py` 不再保留兼容入口
   - 新增测试 `tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py`，覆盖 happy path、需求失败回退、验收需求失败回退、Hermes runtime home
 
 - [x] [2026-04-24] **项目交付优先工作流收束为端到端编码交付流水线**
   - 明确真实目标：自动探索需求、需求包、方案包、编码、测试、代码审核、修复、验收、文档/记忆回写
   - 新增 Phase 6：`project-delivery-pipeline` 状态机与 runtime adapter
-  - 明确不用做：不恢复 `cron_setup.py`，不恢复 `install_*_job.py`，不维护 OpenClaw/Hermes 两套业务流程，不新增平行编码引擎，不恢复默认自进化链
-  - 删除旧 `install_workflow_profile.py` 主体逻辑，仅保留 fail-fast 兼容入口
+  - 明确不用做：不恢复 `cron_setup.py`，不恢复 `install_*_job.py`，不维护多套 runtime 业务流程，不新增平行编码引擎，不恢复默认自进化链
+  - 删除旧 `install_workflow_profile.py` 主体逻辑，不保留兼容入口
   - 删除旧 Hermes 适配测试、`SETUP_WORKFLOW.md`、旧控制面 live acceptance runner、失效 root CLI 入口测试和旧 shared human output 测试
   - 同步文档：`docs/核心主工作流/项目交付优先工作流/`、`docs/INDEX.md`、`docs/核心主工作流/README.md`、`todo.md`
 

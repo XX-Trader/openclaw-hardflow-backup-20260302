@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-24 | 项目交付优先工作流 Phase 6 MVP 已实现（dry-run 状态机）
+> 最后更新：2026-04-24 | 项目交付优先工作流 Phase 6.2 已实现（运营事件入任务中心 + 人工队列闭环）
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -11,7 +11,7 @@
 |------------|-----------|------|----------|----------|
 | 🎯 核心主工作流 | [通用运营工作流](核心主工作流/通用运营工作流/README.md) | ✅ 已上线 | 人工/事件触发 | 任务调度、TODO巡检、日报、评分闭环 |
 | 🎯 核心主工作流 | [ACP全链路编码工作流](核心主工作流/ACP全链路编码工作流/README.md) | ✅ 已上线 | 人工触发 | G0-G6门禁、回流整改、部署验收 |
-| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🟡 Phase 6 MVP 已实现 | 人工触发 / 项目维护事件 | 自动需求探索、编码执行、测试验收、代码审核、修复回写 |
+| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🟡 Phase 6.2 已实现 | 人工触发 / 项目维护事件 / 运维事件 | 自动需求探索、项目记忆定位、编码执行、测试验收、代码审核、Task Center 追踪、人工队列 |
 | 📦 专项场景 | [巡检故障闭环工作流](专项场景工作流/巡检故障闭环工作流/README.md) | ✅ 已上线 | 每6小时/异常触发 | 异常分类→知识库匹配→自修复 |
 | 📦 专项场景 | [记忆知识沉淀工作流](专项场景工作流/记忆知识沉淀工作流/README.md) | ✅ 已上线 | 每日/每周 | 知识蒸馏、经验→技能封装 |
 | 📦 专项场景 | [情报采集分析工作流](专项场景工作流/情报采集分析工作流/README.md) | ✅ 已上线 | 每日自动 | 上游同步、网页爬取、GitHub扫描 |
@@ -80,17 +80,21 @@
 | 文档 | 说明 |
 |------|------|
 | [项目交付优先工作流 README](核心主工作流/项目交付优先工作流/README.md) | 需求定义与范围边界 |
-| [项目交付优先工作流架构设计](核心主工作流/项目交付优先工作流/项目交付优先工作流架构设计.md) | 端到端编码流水线状态机、双 AI 审查、runtime adapter |
-| [项目交付优先工作流实施规划](核心主工作流/项目交付优先工作流/项目交付优先工作流实施规划.md) | Phase 1-6 分阶实施步骤 |
+| [项目交付优先工作流架构设计](核心主工作流/项目交付优先工作流/项目交付优先工作流架构设计.md) | 端到端编码流水线状态机、双 AI 审查、项目记忆定位、Task Center 控制面、runtime adapter |
+| [项目交付优先工作流实施规划](核心主工作流/项目交付优先工作流/项目交付优先工作流实施规划.md) | Phase 1-6.5 分阶实施步骤 |
 
 ### 端到端编码交付流水线 Skill
 
 | 文档 | 说明 |
 |------|------|
 | [`skills/library/project-delivery-pipeline/SKILL.md`](../skills/library/project-delivery-pipeline/SKILL.md) | 项目交付优先编码流水线主入口 |
-| [`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`](../skills/library/project-delivery-pipeline/scripts/pipeline_runner.py) | dry-run 状态机与门禁执行器 |
-| [`skills/library/project-delivery-pipeline/references/state-machine.md`](../skills/library/project-delivery-pipeline/references/state-machine.md) | 状态、产物、门禁、失败回退规则 |
-| [`skills/library/project-delivery-pipeline/references/runtime-adapter.md`](../skills/library/project-delivery-pipeline/references/runtime-adapter.md) | Hermes/OpenClaw 宿主适配契约 |
+| [`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`](../skills/library/project-delivery-pipeline/scripts/pipeline_runner.py) | dry-run 状态机、项目记忆门禁、Task Center 镜像与 view 入口 |
+| [`skills/library/project-delivery-pipeline/scripts/hermes_profile_smoke.py`](../skills/library/project-delivery-pipeline/scripts/hermes_profile_smoke.py) | Hermes profile 非 dry-run smoke 验收入口 |
+| [`skills/library/project-delivery-pipeline/references/state-machine.md`](../skills/library/project-delivery-pipeline/references/state-machine.md) | 状态、产物、门禁、失败回退、Task Center 镜像规则 |
+| [`skills/library/project-delivery-pipeline/references/runtime-adapter.md`](../skills/library/project-delivery-pipeline/references/runtime-adapter.md) | 通用 runtime 宿主、任务中心与检索后端适配契约 |
+| [`skills/library/todo-patrol/scripts/deadline_to_task_bridge.py`](../skills/library/todo-patrol/scripts/deadline_to_task_bridge.py) | 到期 TODO 转 Task Center 候选任务，等待人工确认 |
+| [`skills/library/log-monitor/scripts/exception_to_task_bridge.py`](../skills/library/log-monitor/scripts/exception_to_task_bridge.py) | 增量异常日志转运维任务与 incident |
+| [`skills/library/control-plane-ops/scripts/policy/human_inbox.py`](../skills/library/control-plane-ops/scripts/policy/human_inbox.py) | 人工确认、拒绝、澄清、升级任务统一入口 |
 
 ### 双 AI 对抗审查 Skill
 

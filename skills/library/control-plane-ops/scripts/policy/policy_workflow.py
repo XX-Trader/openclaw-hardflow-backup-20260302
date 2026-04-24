@@ -14,7 +14,20 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-REPO_ROOT = ROOT.parent.parent
+
+
+def _discover_repo_root(start: Path) -> Path:
+    """Find the repository root from a skillized policy module path."""
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    return ROOT.parent.parent
+
+
+REPO_ROOT = _discover_repo_root(ROOT)
+LEGACY_REPO_REF_ALIASES = {
+    "scripts/hardflow/score-policy.json": "skills/openclaw-hardflow-automation/scripts/score-policy.json",
+}
 
 UTC = timezone.utc
 
@@ -93,7 +106,15 @@ class WorkflowMixin:
         candidate = Path(raw).expanduser()
         if candidate.is_absolute():
             return candidate
-        return (REPO_ROOT / candidate).resolve()
+        resolved = (REPO_ROOT / candidate).resolve()
+        if resolved.exists():
+            return resolved
+        alias = LEGACY_REPO_REF_ALIASES.get(raw.replace("\\", "/"))
+        if alias:
+            alias_resolved = (REPO_ROOT / alias).resolve()
+            if alias_resolved.exists():
+                return alias_resolved
+        return resolved
 
 
     def load_score_policy_gates(self, score_policy_ref: str) -> dict[str, Any]:
@@ -844,4 +865,3 @@ class WorkflowMixin:
             "selection_reason": reason,
             "selection_inputs": merged_inputs,
         }
-

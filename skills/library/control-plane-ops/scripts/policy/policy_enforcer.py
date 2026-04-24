@@ -12,7 +12,10 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-REPO_ROOT = ROOT.parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[5]
+SHARED_DIR = REPO_ROOT / "scripts" / "openclaw-ops" / "shared"
+if SHARED_DIR.exists() and str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
 
 from utf8_runtime import configure_process_utf8_stdio
 from task_center import TaskCenter, TASK_STATUSES

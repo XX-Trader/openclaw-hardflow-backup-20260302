@@ -15,6 +15,7 @@ metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 - 定位异常模式（重复错误、OOM、连接超时等）
 - 生成增量巡检报告（只报告新出现的异常）
 - 异常分类和优先级排序
+- 将异常报告按 fingerprint 去重写入 Task Center 运维任务和 incident
 
 ## 操作流程
 
@@ -68,9 +69,11 @@ python3 ~/scripts/openclaw-ops/unified_exception_logger.py --scan-dir /var/log/o
 | 脚本 | 用途 |
 |------|------|
 | `unified_exception_logger.py` | 统一异常日志扫描器（21KB） |
+| `exception_to_task_bridge.py` | 异常日志 → Task Center 运维任务/incident 桥接 |
 
 ## 约束
 
 - 只读操作，不修改日志文件
+- 自动建任务只写 Task Center，不直接做生产修复；critical 异常默认进入人工确认
 - 巡检报告必须包含扫描范围和时间
 - 高严重度异常必须在报告摘要中突出显示

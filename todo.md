@@ -45,7 +45,7 @@
 ### Phase 5：自进化完全移除（文档+代码完成）
 - [x] [🟢 P2] cron 裁剪执行清单
 - [x] [🟢 P2] 修改 `cron/jobs.json` 移除自进化类 job
-- [x] [🟢 P2] 删除旧 `install_workflow_profile.py` 主体逻辑，仅保留 fail-fast 兼容入口
+- [x] [🟢 P2] 删除旧 `install_workflow_profile.py` 主体逻辑，不保留兼容入口
 - [x] [🟢 P2] 删除继续引用 `cron_setup.py` 的旧 `SETUP_WORKFLOW.md`
 
 ### Phase 6：端到端编码流水线编排（下一阶段主任务）
@@ -55,15 +55,25 @@
 - [x] [🔴 P0] 定义 `run_meta.json`、`context_snapshot.md`、`research_report.md`
 - [x] [🔴 P0] 定义 `requirements.md`、`solution.md`（含 implementation plan）、`patch_summary.md`
 - [x] [🔴 P0] 固化双 AI 需求/方案/代码审查产物契约与 verdict gate
-- [ ] [🔴 P0] 接入 HardFlow Core / ACP 编码链
-- [ ] [🔴 P0] 接入 lint、typecheck、unit、integration、smoke、部署验证证据收集
+- [x] [🔴 P0] 接入 HardFlow Core / ACP 可配置编码命令适配（`--code-command`）
+- [x] [🔴 P0] 接入 lint、typecheck、unit、integration、smoke、部署验证命令证据收集（`--verification-command`）
 - [x] [🔴 P0] 实现失败回退和 failure-learning 触发产物
 - [x] [🔴 P0] 实现文档、done/todo、项目记忆回写建议报告
-- [x] [🔴 P0] 实现 OpenClaw/Hermes runtime adapter MVP
+- [x] [🔴 P0] 实现通用 runtime adapter MVP
+- [x] [🔴 P0] 新增通用 `runtime_installer.py`，支持任意 `--runtime-home/--runtime-name`
 - [x] [🔴 P0] 增加 dry-run 状态机集成测试
-- [ ] [🔴 P0] 接入 Hermes 真实多 agent 调度（需求讨论、编码、测试、审查）
-- [ ] [🔴 P0] 接入真实联网 research agent，并把 source URLs 写入 `research_report.md`
-- [ ] [🔴 P0] 通过 `project_memory_writer.py` 执行真实项目记忆回写
+- [x] [🔴 P0] 增加项目记忆定位门禁，生成 `.workflow/project-memory/<project_key>/`
+- [x] [🔴 P0] 增加 Task Center 镜像，记录状态、阶段、通信、输出和 incident
+- [x] [🔴 P0] 增加 `pipeline_runner.py view` 人工查看入口
+- [x] [🔴 P0] 增加到期 TODO → Task Center 候选任务桥接（人工确认后执行）
+- [x] [🔴 P0] 增加异常日志 → 运维任务/incident 桥接（critical 默认转人工确认）
+- [x] [🔴 P0] 增加 `human_inbox.py` 人工队列，统一处理确认、拒绝、澄清和升级任务
+- [x] [🔴 P0] 接入 runtime/Hermes 可配置 agent 命令适配（research/code/verify/review/writeback）
+- [x] [🔴 P0] 接入真实联网 research agent 命令入口，并把 source URLs / 命令输出写入 `research_report.md`
+- [x] [🔴 P0] 通过 `project_memory_writer.py` 执行真实项目记忆回写
+- [x] [🔴 P0] 在 Hermes native profile 中做一次 live 多 agent smoke（非 dry-run）：`hermes-profile-smoke-20260424T135014Z`
+- [x] [🟡 P1] 用 `hybrid-single-chat` 替代多次冷启动 Hermes smoke，避免每阶段 `hermes chat` 超时
+- [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
 
 ---
 

@@ -1,0 +1,274 @@
+#!/usr/bin/env python3
+"""Create human-confirmed Task Center candidates for due TODO lines."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+SCRIPT_PATH = Path(__file__).resolve()
+DEFAULT_RUNTIME_HOME = (
+    os.environ.get("HARDFLOW_RUNTIME_HOME")
+    or os.environ.get("OPENCLAW_HOME")
+    or os.environ.get("HERMES_HOME")
+    or str(Path.home() / ".hardflow-runtime")
+)
+RUNTIME_HOME = Path(DEFAULT_RUNTIME_HOME).expanduser()
+POLICY_DIR_CANDIDATES = [
+    SCRIPT_PATH.parent / "policy",
+    RUNTIME_HOME / "ops" / "policy",
+    Path.home() / ".openclaw" / "ops" / "policy",
+    SCRIPT_PATH.parents[2] / "control-plane-ops" / "scripts" / "policy",
+]
+for candidate in POLICY_DIR_CANDIDATES:
+    if candidate.exists() and str(candidate) not in sys.path:
+        sys.path.insert(0, str(candidate))
+        break
+
+from task_center import TaskCenter, TaskCenterError  # noqa: E402
+
+
+DEADLINE_PATTERN = re.compile(
+    r"\[(?:\u622a\u6b62|deadline|due)\s*[:\uff1a]\s*(\d{4}[-/]\d{1,2}[-/]\d{1,2})\]",
+    re.IGNORECASE,
+)
+UNCHECKED_PATTERN = re.compile(r"^\s*-\s*\[\s*[ /]\s*\]\s*(?P<text>.+?)\s*$")
+
+
+@dataclass(frozen=True)
+class DueTodoItem:
+    line_no: int
+    raw_line: str
+    text: str
+    deadline: datetime
+    days_until: int
+    state: str
+
+
+def default_task_db() -> Path:
+    return RUNTIME_HOME / "ops" / "task-center" / "task_center.db"
+
+
+def parse_deadline(text: str) -> datetime | None:
+    match = DEADLINE_PATTERN.search(text)
+    if not match:
+        return None
+    value = match.group(1).replace("/", "-")
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def scan_due_todos(todo_file: Path, *, now: datetime | None = None, include_upcoming_days: int = 0) -> list[DueTodoItem]:
+    if not todo_file.exists():
+        raise FileNotFoundError(f"todo file not found: {todo_file}")
+    current = now or datetime.now(tz=timezone.utc)
+    lines = todo_file.read_text(encoding="utf-8", errors="replace").splitlines()
+    out: list[DueTodoItem] = []
+    for index, line in enumerate(lines, start=1):
+        unchecked = UNCHECKED_PATTERN.match(line)
+        if not unchecked:
+            continue
+        deadline = parse_deadline(line)
+        if deadline is None:
+            continue
+        days_until = (deadline.date() - current.date()).days
+        if days_until < 0:
+            state = "overdue"
+        elif days_until == 0:
+            state = "due_today"
+        elif days_until <= include_upcoming_days:
+            state = "upcoming"
+        else:
+            continue
+        out.append(
+            DueTodoItem(
+                line_no=index,
+                raw_line=line,
+                text=unchecked.group("text").strip(),
+                deadline=deadline,
+                days_until=days_until,
+                state=state,
+            )
+        )
+    return out
+
+
+def build_task_id(todo_file: Path, item: DueTodoItem) -> str:
+    fingerprint = hashlib.sha256(
+        f"{todo_file.resolve()}|{item.line_no}|{item.deadline.date().isoformat()}|{item.raw_line.strip()}".encode(
+            "utf-8", errors="replace"
+        )
+    ).hexdigest()
+    return f"todo-deadline-{fingerprint[:16]}"
+
+
+def build_candidate_task(todo_file: Path, item: DueTodoItem, *, assignee: str) -> dict[str, Any]:
+    overdue_text = "overdue" if item.days_until < 0 else item.state
+    return {
+        "task_id": build_task_id(todo_file, item),
+        "pool": "todo",
+        "task_type": "todo_deadline_candidate",
+        "reason": f"TODO deadline {overdue_text}: line {item.line_no}",
+        "source": "todo-deadline-bridge",
+        "request_source": "human",
+        "priority": "high" if item.days_until < 0 else "medium",
+        "risk_level": "high",
+        "assignee": assignee,
+        "status": "pending",
+        "need_human_confirm": True,
+        "human_confirmed": False,
+        "action": "await_human_confirm",
+        "requirement": (
+            "Ask the user whether this due TODO should become an executable Task Center item before any agent "
+            f"starts work. TODO: {item.text}"
+        ),
+        "result_output": "A confirmed executable task, a clarified task, or a cancelled candidate.",
+        "acceptance": "The user explicitly confirms, declines, or clarifies the due TODO candidate.",
+        "observable_outputs": "human_inbox entry; task_center task row; human question output",
+        "acceptance_thresholds": "Candidate remains blocked while need_human_confirm=true and human_confirmed=false.",
+        "context_payload": {
+            "bridge": "deadline_to_task_bridge",
+            "question": "Should this due TODO be added to the executable Task Center queue?",
+            "source_file": str(todo_file),
+            "line_no": item.line_no,
+            "deadline": item.deadline.date().isoformat(),
+            "days_until": item.days_until,
+            "state": item.state,
+            "raw_todo": item.raw_line,
+        },
+        "allowed_agents": ["human-inbox", "project-agent", "ops-agent"],
+        "required_capabilities": ["human_confirmation", "task_routing"],
+        "required_skills": ["todo-patrol"],
+    }
+
+
+def create_due_candidates(
+    *,
+    todo_file: Path,
+    task_db: Path,
+    actor: str,
+    assignee: str,
+    include_upcoming_days: int = 0,
+    max_items: int = 20,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    items = scan_due_todos(todo_file, include_upcoming_days=max(0, include_upcoming_days))
+    selected = items[: max(1, max_items)]
+    summary: dict[str, Any] = {
+        "todo_file": str(todo_file),
+        "task_db": str(task_db),
+        "found": len(items),
+        "selected": len(selected),
+        "created": [],
+        "existing": [],
+        "planned": [],
+    }
+    if dry_run:
+        summary["planned"] = [build_candidate_task(todo_file, item, assignee=assignee) for item in selected]
+        return summary
+
+    center = TaskCenter(task_db)
+    try:
+        center.init_schema()
+        for item in selected:
+            task = build_candidate_task(todo_file, item, assignee=assignee)
+            task_id = str(task["task_id"])
+            try:
+                existing = center.get_task(task_id, display_safe=False)
+            except TaskCenterError:
+                existing = None
+            if existing:
+                summary["existing"].append(task_id)
+                continue
+            created = center.create_task(task, actor=actor)
+            command_base = "python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/policy/human_inbox.py"
+            center.record_task_output(
+                task_id=task_id,
+                output_type="human_question",
+                audience="human",
+                channel="human_inbox",
+                status="prepared",
+                summary=f"Confirm due TODO candidate {task_id}",
+                payload={
+                    "question": "Add this due TODO to Task Center for execution?",
+                    "todo": item.raw_line,
+                    "deadline": item.deadline.date().isoformat(),
+                    "choices": ["confirm", "decline", "clarify"],
+                    "commands": {
+                        "confirm": f"{command_base} confirm --task-db {task_db} --task-id {task_id}",
+                        "decline": f"{command_base} decline --task-db {task_db} --task-id {task_id}",
+                    },
+                },
+                actor=actor,
+            )
+            center.add_event(
+                task_id=task_id,
+                actor=actor,
+                event_type="deadline_candidate_created",
+                stage="intake",
+                details={"source_file": str(todo_file), "line_no": item.line_no, "state": item.state},
+            )
+            summary["created"].append(created["task_id"])
+    finally:
+        center.close()
+    return summary
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Bridge due TODO lines into human-confirmed Task Center candidates.")
+    parser.add_argument("--todo-file", required=True)
+    parser.add_argument("--task-db", default=str(default_task_db()))
+    parser.add_argument("--task-id", default="cron:deadline-to-task-bridge")
+    parser.add_argument("--actor", default="todo-deadline-bridge")
+    parser.add_argument("--assignee", default="human-inbox")
+    parser.add_argument("--include-upcoming-days", type=int, default=0)
+    parser.add_argument("--max-items", type=int, default=20)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--emit-json", action="store_true")
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    try:
+        summary = create_due_candidates(
+            todo_file=Path(args.todo_file).expanduser().resolve(),
+            task_db=Path(args.task_db).expanduser().resolve(),
+            actor=str(args.actor or args.task_id or "todo-deadline-bridge"),
+            assignee=str(args.assignee or "human-inbox"),
+            include_upcoming_days=int(args.include_upcoming_days),
+            max_items=int(args.max_items),
+            dry_run=bool(args.dry_run),
+        )
+    except Exception as exc:  # pragma: no cover - CLI safety net
+        print(f"FAILED deadline_to_task_bridge: {exc}", file=sys.stderr)
+        return 2
+
+    if args.emit_json:
+        print(json.dumps(summary, ensure_ascii=False, indent=2))
+        return 0
+    if not summary["created"] and not summary["planned"]:
+        print("NO_REPLY")
+        return 0
+    print(
+        "deadline_to_task_bridge "
+        f"created={len(summary['created'])} existing={len(summary['existing'])} planned={len(summary['planned'])}"
+    )
+    for task_id in summary["created"]:
+        print(f"human_confirm_required task_id={task_id}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -29,6 +29,7 @@ DIR_FLAGS = {
 }
 OPTIONAL_FILE_FLAGS = {"--state-file"}
 OPTIONAL_DIR_FLAGS = {"--history-dir", "--report-dir", "--output-dir"}
+SHELL_PARAM_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::([-?])([^}]*))?\}")
 
 
 def now_iso() -> str:
@@ -63,8 +64,23 @@ def extract_command_from_message(message: str) -> str:
     return ""
 
 
+def expand_shell_params(raw: str) -> str:
+    def repl(match: re.Match[str]) -> str:
+        name = match.group(1)
+        op = match.group(2)
+        fallback = match.group(3) or ""
+        value = os.environ.get(name, "")
+        if value:
+            return value
+        if op == "-":
+            return fallback
+        return ""
+
+    return SHELL_PARAM_PATTERN.sub(repl, str(raw or ""))
+
+
 def resolve_path(raw: str, cwd: Path) -> Path:
-    expanded = os.path.expandvars(str(raw or ""))
+    expanded = os.path.expandvars(expand_shell_params(str(raw or "")))
     p = Path(expanded).expanduser()
     if p.is_absolute():
         return p

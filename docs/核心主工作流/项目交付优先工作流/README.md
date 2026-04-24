@@ -1,9 +1,10 @@
 # 项目交付优先工作流
 
-> 状态：🟡 Phase 6 MVP 已实现（dry-run 状态机 + Hermes/OpenClaw runtime adapter），真实 Hermes 多 agent 调度待接入 | 触发方式：人工触发 / 项目维护事件触发
+> 状态：✅ Phase 6.5 已实现（dry-run 状态机 + Task Center 镜像 + 运营事件入队 + 人工队列 + live 命令适配层 + Hermes hybrid profile smoke） | 触发方式：人工触发 / 项目维护事件 / 运维事件
 > 上级目录：[核心主工作流](../README.md)
-> 2026-04-24 运行态说明：旧 `install_workflow_profile.py` 主体逻辑已删除，仅保留 fail-fast 兼容入口；`OpenClaw/Hermes` 自适应应在 Phase 6 的 runtime adapter 中重新落地。
+> 2026-04-24 运行态说明：旧 `install_workflow_profile.py` / `workflow_setup.py` 已删除；新安装入口是 `skills/library/project-delivery-pipeline/scripts/runtime_installer.py`，支持任意 `--runtime-home/--runtime-name`。
 > 2026-04-24 需求收束：真实目标不是“把某个工作流装进 Hermes”，而是完善一整套编码流水线：自动探索需求、生成需求包、生成方案、编码、测试、代码审核、修复、验收、文档和记忆回写。
+> 2026-04-24 Hermes 验证：WSL `/home/ubuntu/.hermes` 已完成 `hermes_profile_smoke.py --agent-mode hybrid --provider zai` 非 dry-run smoke；新 `hybrid-single-chat` 路径用一次 Hermes chat 生成 AI 阶段 bundle，run_id=`hermes-profile-smoke-20260424T135014Z`。
 
 ## 功能概述
 
@@ -14,6 +15,7 @@
 ```text
 需求进入
 → 自动探索项目上下文与外部成熟方案
+→ 项目记忆检索定位：项目画像 / 决策 / API / 影响面
 → 生成需求包与验收标准
 → 双 AI 需求审查
 → 生成架构/实施方案
@@ -23,7 +25,7 @@
 → 双 AI 代码审核
 → 修复循环
 → 最终验收
-→ 文档、项目记忆、运行态状态回写
+→ 文档、项目记忆、Task Center 状态回写
 ```
 
 它解决的不是单点工具问题，而是主流程错位问题：
@@ -51,13 +53,41 @@
    - 需求审查：2 个 AI 互相质疑范围、边界、验收标准、成熟方案引用是否充分。
    - 方案审查：2 个 AI 互相探讨技术路径、模型/工具/依赖选择是否合理，得出最优方案。
    - 代码审查：审核代码是否按照预定方案和规则执行，发现偏差立即阻断。
-4. **编码执行编排**：通过 HardFlow Core / ACP 编码链执行实现，保证实现者只按通过审查的需求包和方案包工作。
-5. **测试与验收编排**：统一收集 lint、typecheck、unit、integration、smoke、部署验证和人工验收证据。
+4. **编码执行编排**：通过 `--code-command` 接入 HardFlow Core / ACP / runtime agent 编码链，保证实现者只按通过审查的需求包和方案包工作。
+5. **测试与验收编排**：通过多个 `--verification-command` 统一收集 lint、typecheck、unit、integration、smoke、部署验证和人工验收证据。
 6. **修复循环**：测试失败或代码审查失败时，自动回到实现阶段；如果失败反复出现，则触发失败学习。
 7. **失败学习与文档回写闭环**：当某个模型/某条流程反复做不好某类任务时，分析根因 → 去网上查正确做法 → 回写到需求文档/方案文档 → 下次执行时按新规则走。
 8. **项目维护中枢**：`project-agent` 维护项目介绍、架构图、模块边界、API surface、外部依赖、规划与历史决策，每个项目独立记忆模块。
-9. **项目级长期记忆**：按项目拆分的事实记忆、经验记忆、第三方来源和 API watch 列表，超出上下文的长期知识存在项目记忆模块中。
+9. **项目级长期记忆**：按项目拆分的事实记忆、经验记忆、第三方来源、API watch 列表和影响面索引，超出上下文的长期知识存在项目记忆模块中。
 10. **第三方 API 持续跟踪**：定期更新第三方库的 API，随时保持最新状态，只跟踪项目声明过的官方 docs / changelog / repo。
+11. **Task Center 可观测性**：每次流水线可镜像到 `task_center.db`，统一查看状态、阶段、agent 通信、输出和 incident。
+
+## 可控性与可维护性裁决
+
+| 要求 | 实现方式 |
+|------|----------|
+| 流程清晰 | 固定一条状态机：需求 → 项目记忆定位 → research → 需求包 → 方案包 → 编码 → 测试 → 审查 → 验收 → 回写 |
+| 功能可追踪 | 每次运行生成 `.workflow/pipeline-runs/<run_id>/pipeline_state.json`，并可写入 Task Center |
+| 问题可定位 | `project_memory_context.md` 和 `IMPACT_MAP.json` 必须说明候选修改位置、测试和文档 |
+| 执行可控 | 每个阶段都有 pass signal 和失败回退动作，不允许跳过审查或测试 |
+| 代码可维护 | 结构化项目记忆 + keyword/symbol 检索是默认；向量 RAG / GraphRAG 只作为可插拔增强，不默认引入重服务 |
+
+## 项目记忆与 RAG 策略
+
+每个项目维护独立记忆模块：
+
+```text
+.workflow/project-memory/<project_key>/
+├── PROJECT_PROFILE.md
+├── DECISIONS.md
+├── DELIVERY_RULES.md
+├── API_REGISTRY.json
+├── SOURCE_REGISTRY.json
+├── IMPACT_MAP.json
+└── RETRIEVAL_MANIFEST.json
+```
+
+默认策略是 hybrid local-first：先查结构化项目记忆、再查代码关键字/符号、必要时接向量 RAG。GraphRAG 只用于跨模块、多跳依赖、全局架构问题；不作为每次需求的默认成本。
 
 ## 子功能清单
 
@@ -66,13 +96,20 @@
 | 端到端流水线状态机 | 串联探索、需求、方案、编码、测试、审核、修复、验收、回写 | 🟡 MVP 已实现（dry-run） |
 | 自动需求探索 | 新功能先查项目事实源、官方文档与成熟实现，再进入需求定义 | 🟡 方案已定义 |
 | reviewer 前移 | reviewer 介入需求、方案、代码三个阶段 | 🟡 方案已定义 |
-| 编码执行编排 | 调用 HardFlow Core / ACP 编码链，绑定已审查需求包和方案包 | 📋 live agent 接入待实现 |
-| 测试与验收编排 | 聚合 lint、typecheck、unit、integration、smoke、部署验证证据 | 🟡 证据模板与回退规则已实现 |
-| 代码审核与修复循环 | 代码审查失败自动回到实现；反复失败触发失败学习 | 🟡 dry-run 回退已实现，真实 agent 修复待接入 |
+| 编码执行编排 | 调用 HardFlow Core / ACP 编码链，绑定已审查需求包和方案包 | ✅ `--code-command` live 适配已实现 |
+| 测试与验收编排 | 聚合 lint、typecheck、unit、integration、smoke、部署验证证据 | ✅ `--verification-command` 证据收集已实现 |
+| 代码审核与修复循环 | 代码审查失败自动回到实现；反复失败触发失败学习 | ✅ `--code-review-command` + 回退已实现 |
 | project-agent 升级 | 维护项目画像、API 注册表、规划与记忆索引 | 🟡 方案已定义 |
 | 项目级记忆模块 | 为每个项目建立独立记忆目录与摘要注入策略 | 🟡 方案已定义 |
+| 项目记忆定位门禁 | 编码前定位模块、文件、测试、文档和历史决策 | ✅ MVP 已实现 |
+| Task Center 镜像 | 将流水线状态、阶段、通信、输出、incident 写入任务中心 | ✅ MVP 已实现 |
+| 到期 TODO 入队确认 | `deadline_to_task_bridge.py` 将到期 TODO 转为 `need_human_confirm=true` 的候选任务 | ✅ 已实现 |
+| 异常日志自动建任务 | `exception_to_task_bridge.py` 扫描增量日志并按指纹去重创建运维任务/incident | ✅ 已实现 |
+| 人工处理队列 | `human_inbox.py` 统一查看/确认/拒绝/澄清待人工处理、已升级和需确认任务 | ✅ 已实现 |
 | 第三方 API watch | 项目维度维护官方来源和更新检查 | 🟡 方案已定义 |
-| OpenClaw/Hermes 宿主适配 | 同一流水线可安装到 OpenClaw 或 Hermes 宿主 | 🟡 runtime adapter MVP 已实现 |
+| 联网 research 接入 | 接入 researcher/web agent 或外部命令，写入 `research_report.md` | ✅ `--research-command` live 适配已实现 |
+| 项目记忆真实写回 | 验收后调用 `project_memory_writer.py` 写入项目记忆 | ✅ `--write-project-memory` 已实现 |
+| 通用 runtime 宿主适配 | 同一流水线可安装到任意显式 runtime home，OpenClaw/Hermes 只是示例 | ✅ runtime adapter + installer + Hermes hybrid smoke 已实现 |
 | 默认 cron 裁剪 | 自进化链退出默认主链，只保留项目交付核心链 | 🟡 模板已裁剪，安装入口待收口 |
 
 ## 与现有工作流的关系
@@ -114,7 +151,7 @@
 5. 测试、代码审核、修复循环、最终验收和交付证据收集。
 6. 项目级记忆与 API 来源管理。
 7. 第三方方案检索和依赖更新 watch 机制。
-8. OpenClaw/Hermes 宿主路径和运行态状态适配。
+8. 通用 runtime 宿主路径、任务中心和运行态状态适配。
 9. 默认 cron/job 基线向项目交付主链收缩。
 
 ### Out Of Scope
@@ -123,7 +160,7 @@
 2. 不保留“为了优化 OpenClaw 自身而自动持续运行”的重型自进化链为默认主线。
 3. 不在本阶段引入通用外部 workflow 下载市场。
 4. 不在本阶段强依赖单一远端记忆后端，先允许本地项目记忆方案落地。
-5. 不为 OpenClaw 和 Hermes 维护两套业务流程，宿主差异只允许存在于 runtime adapter。
+5. 不为不同 runtime 维护多套业务流程，宿主差异只允许存在于 runtime adapter。
 
 ## 成功标准
 

@@ -172,18 +172,30 @@ def parse_distill_report(path: Path) -> list[Artifact]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global DATA_DIR
     parser = argparse.ArgumentParser(description="项目记忆写入器")
     parser.add_argument("--distill-report", help="蒸馏报告路径")
+    parser.add_argument("--data-dir", default="", help="项目记忆根目录")
     parser.add_argument("--project-key", help="直接指定项目 key")
     parser.add_argument("--artifact-type", choices=["profile", "decision", "api", "source", "rule", "changelog"])
     parser.add_argument("--content", help="直接指定内容")
+    parser.add_argument("--content-file", help="从文件读取直接写入内容")
     parser.add_argument("--source", default="manual", help="来源")
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+    if str(args.data_dir or "").strip():
+        DATA_DIR = Path(args.data_dir).expanduser()
 
     logger = setup_logging()
 
     artifacts: list[Artifact] = []
+    direct_content = args.content
+    if args.content_file:
+        content_path = Path(args.content_file).expanduser()
+        if not content_path.exists():
+            print(json.dumps({"error": "content_file_not_found"}, ensure_ascii=False))
+            return 1
+        direct_content = content_path.read_text(encoding="utf-8")
 
     if args.distill_report:
         report_path = Path(args.distill_report)
@@ -191,11 +203,11 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"error": "report_not_found"}, ensure_ascii=False))
             return 1
         artifacts = parse_distill_report(report_path)
-    elif args.project_key and args.artifact_type and args.content:
+    elif args.project_key and args.artifact_type and direct_content:
         artifacts = [Artifact(
             project_key=args.project_key,
             artifact_type=args.artifact_type,  # type: ignore[arg-type]
-            content=args.content,
+            content=direct_content,
             source=args.source,
         )]
     else:
@@ -208,8 +220,16 @@ def main(argv: list[str] | None = None) -> int:
             results.append({"status": "skipped", "reason": "missing_project_key"})
             continue
 
-        project_dir = ensure_project_dir(artifact.project_key)
-        result = write_artifact(project_dir, artifact)
+        if args.dry_run:
+            target, mode = ROUTE_MAP.get(artifact.artifact_type, ("UNKNOWN", "skip"))
+            result = {
+                "status": "dry_run",
+                "mode": mode,
+                "path": str(DATA_DIR / artifact.project_key / target),
+            }
+        else:
+            project_dir = ensure_project_dir(artifact.project_key)
+            result = write_artifact(project_dir, artifact)
         result["project_key"] = artifact.project_key
         result["artifact_type"] = artifact.artifact_type
         results.append(result)

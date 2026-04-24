@@ -16,6 +16,7 @@ metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 - 检查 Cron Job 状态（卡住、失败、漂移）
 - 导出或对比调度注册表
 - 恢复卡住的 Cron running 状态
+- 查看和处理待人工确认、待澄清、已升级任务
 
 ## 操作流程
 
@@ -82,9 +83,11 @@ python3 ~/scripts/openclaw-ops/config_watchdog.py --status
 | `recover_stale_cron_running_state.py` | Cron 卡住恢复 |
 | `config_watchdog.py` | 配置变更检测 |
 | `policy_enforcer.py` | 策略执行引擎 |
+| `human_inbox.py` | 人工确认、拒绝、澄清、升级任务统一入口 |
 
 ## 约束
 
 - 巡检操作只读，不修改运行态配置
 - 恢复操作仅清理 stale 标记，不重新触发任务
+- 人工队列操作必须写入 Task Center output/event，不能只在聊天中确认
 - 发现异常必须输出结构化报告（JSON 或 Markdown）

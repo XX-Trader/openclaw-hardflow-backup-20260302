@@ -26,8 +26,8 @@
 
 1. `project-delivery-pipeline` 状态机已落地为 dry-run MVP。
 2. “自动探索 -> 需求包 -> 方案包 -> 编码 -> 测试 -> 审核 -> 验收 -> 回写” 已有统一编排产物，但真实 agent 执行仍待接入。
-3. OpenClaw/Hermes 宿主适配已有 runtime adapter MVP。
-4. 旧 `install_workflow_profile.py` 曾经承担过太多安装职责，已经不适合继续扩展。
+3. 通用 runtime 宿主适配与安装入口已有 MVP，OpenClaw/Hermes 只是路径示例。
+4. 旧 `install_workflow_profile.py` 曾经承担过太多安装职责，已经删除且不再扩展。
 
 ## 2. 当前实际分层
 
@@ -70,18 +70,19 @@
 
 ### 2.4 运行态层
 
-- `~/.openclaw/openclaw.json`
-- `~/.openclaw/cron/jobs.json`
-- `~/.openclaw/ops/task-center/task_center.db`
-- Hermes 场景下对应 `$HOME/.hermes/...`
+- 默认通用路径：`~/.hardflow-runtime/`
+- OpenClaw 示例路径：`~/.openclaw/`
+- Hermes 示例路径：`~/.hermes/`
+- 自定义路径：通过 `--runtime-home <runtime_home>` 显式传入
 
-OpenClaw/Hermes 差异必须留在 runtime adapter，不能污染业务流程。
+runtime 差异必须留在 runtime adapter/installer，不能污染业务流程。
 
 ## 3. 已废弃链路
 
 | 链路 | 当前处理 | 原因 |
 |------|----------|------|
-| `install_workflow_profile.py` 旧实现 | 已删除主体，只保留 fail-fast 入口 | 依赖已删除的 `cron_setup.py / install_*_job.py` |
+| `install_workflow_profile.py` 旧实现 | 已删除，不保留兼容入口 | 依赖已删除的 `cron_setup.py / install_*_job.py` |
+| `workflow_setup.py` | 已删除，不保留兼容入口 | 会误导到旧 profile 安装链 |
 | `cron_setup.py` | 不恢复 | 技能化架构已废弃 |
 | `install_*_job.py` 安装器链 | 不恢复 | 会把端到端流水线退回旧 cron 拼装 |
 | `core/all profile` 安装模式 | 不作为主线 | 与 Phase 6 状态机冲突 |
@@ -94,14 +95,14 @@ OpenClaw/Hermes 差异必须留在 runtime adapter，不能污染业务流程。
 3. 接入 HardFlow Core / ACP live 编码链，让 `patch_summary.md` 来自真实实现。
 4. 接入 lint、typecheck、unit、integration、smoke 和部署验证命令证据。
 5. 通过 `project_memory_writer.py` 执行真实项目记忆回写，而不是只生成 `writeback_report.md` 建议。
-6. 在 Hermes live runtime 中做一次完整 dry-run 和一次小任务 live smoke。
+6. 在目标 live runtime 中做一次完整 dry-run 和一次小任务 live smoke。
 
 ## 5. 明确不用做的工作
 
 1. 不恢复旧 profile 安装器主体逻辑。
 2. 不恢复 `cron_setup.py`。
 3. 不恢复 10 个 `install_*_job.py`。
-4. 不为 OpenClaw/Hermes 写两套业务流程。
+4. 不为 OpenClaw、Hermes 或其他 runtime 写多套业务流程。
 5. 不新增新的编码引擎。
 6. 不把 runtime `jobs.json` 当长期架构文档。
 7. 不让自进化链回到默认主线。
@@ -113,6 +114,6 @@ OpenClaw/Hermes 差异必须留在 runtime adapter，不能污染业务流程。
 2. 必须复用 HardFlow Core 的证据、Gate、验收、完成前验证。
 3. 必须声明依赖哪些 capability。
 4. 必须有 dry-run 与产物目录。
-5. 必须能被 runtime adapter 映射到 OpenClaw/Hermes。
+5. 必须能被 runtime adapter 映射到任意显式 `runtime-home`。
 
 换句话说：可以多 workflow，但只能单底座、单状态机模式。

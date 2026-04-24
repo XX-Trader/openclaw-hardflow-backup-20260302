@@ -9,9 +9,17 @@ import sys
 from pathlib import Path
 from typing import Any
 
-POLICY_DIR = Path(__file__).resolve().parent / "policy"
-if str(POLICY_DIR) not in sys.path:
-    sys.path.insert(0, str(POLICY_DIR))
+ROOT = Path(__file__).resolve()
+LIBRARY_DIR = ROOT.parents[2]
+REPO_ROOT = ROOT.parents[4]
+IMPORT_DIRS = [
+    LIBRARY_DIR / "control-plane-ops" / "scripts" / "policy",
+    LIBRARY_DIR / "openclaw-workflow-manager" / "scripts",
+    REPO_ROOT / "scripts" / "openclaw-ops" / "shared",
+]
+for import_dir in IMPORT_DIRS:
+    if import_dir.exists() and str(import_dir) not in sys.path:
+        sys.path.insert(0, str(import_dir))
 
 from io_write_gateway import write_json_atomic  # type: ignore
 from task_center import TaskCenter  # type: ignore
