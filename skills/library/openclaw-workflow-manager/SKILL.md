@@ -2,7 +2,7 @@
 name: openclaw-workflow-manager
 description: >
   Use when someone needs an OpenClaw workflow map, runbook, drift check,
-  install or reinstall guidance, feature enable or disable guidance,
+  feature enable or disable guidance,
   daily health review, or external workflow intake for cron jobs,
   task executor, evolution chains, and git sync.
 ---
@@ -11,13 +11,14 @@ description: >
 
 将本技能视为 OpenClaw 工作流的控制面入口，而不是业务执行器本身。
 
-用本技能解释整套工作流由哪些层组成、哪些部分已经自动化、哪些步骤仍需要人工确认；用本技能驱动安装、重装、启停、巡检、漂移校验、日志日检和外部模式接入评估。真正持续运行的仍然是 cron jobs、task center、task executor、reviewer 与各类 evolution runner。
+用本技能解释整套工作流由哪些层组成、哪些部分已经自动化、哪些步骤仍需要人工确认；用本技能驱动启停建议、巡检、漂移校验、日志日检和外部模式接入评估。真正持续运行的仍然是 cron jobs、task center、task executor、reviewer 与各类 runner。
+
+> 2026-04-24 裁决：旧 `install_workflow_profile.py` 已废弃，只保留 fail-fast 兼容入口。新的编码交付主线应落到 `project-delivery-pipeline` 状态机；OpenClaw/Hermes 差异只允许存在于 runtime adapter。
 
 ## 何时使用
 
 - 需要回答“当前工作流有哪些组成部分、怎么流转、多久执行一次”
 - 需要解释某个 job 为什么存在、失败会影响哪条链路
-- 需要安装、重装、卸载 OpenClaw workflow profile
 - 需要对比仓库模板与运行态是否漂移
 - 需要查看哪些能力已经实现、哪些只是可选、哪些还只是外部候选方案
 - 需要做每日健康检查、异常归因或恢复卡住的 cron 状态
@@ -33,16 +34,16 @@ description: >
 
 1. 先判定诉求类型：`解释`、`状态`、`变更`、`巡检`、`外部接入评估`。
 2. 读取 `references/workflow-map.md`，建立“仓库模板 / 运行态 / 任务执行 / 代码回推”四层视图。
-3. 读取 `references/operations.md`，选择现有脚本入口，不优先手改运行态文件。
+3. 读取 `references/operations.md`，选择仍有效的脚本入口；不要调用已废弃的 profile 安装器。
 4. 解释类问题必须区分：
    - 仓库模板：`cron/jobs.json`、`scripts/openclaw-ops/CRON_TASK_INDEX.md`
    - 运行态：`~/.openclaw/openclaw.json`、`~/.openclaw/cron/jobs.json`
    - 自动执行：cron -> task center -> task executor -> agent
    - 人工门禁：`need_human_confirm`、PR gate、review task
-5. 变更类问题优先使用已有安装器：
-   - 整体安装或对齐：`scripts/openclaw-ops/install_workflow_profile.py`
-   - 整体卸载：`scripts/openclaw-ops/uninstall_workflow_profile.py`
-   - 单项能力：`install_task_executor_job.py`、`install_project_index_job.py`、`install_governance_evolution_job.py`、`install_local_openclaw_backup_job.py`、`install_reviewer_scan_jobs.py`、`install_web_intel_jobs.py`
+5. 变更类问题按当前技能化边界处理：
+   - 新编码交付流水线：`skills/library/project-delivery-pipeline/`（Phase 6 MVP 已实现，真实 Hermes 多 agent 调度待接入）
+   - 运行态漂移检查：只读检查优先，不手改 runtime
+   - 旧 profile 安装器：已废弃，只能作为误调用保护入口
 6. 巡检类问题优先使用已有只读工具：
    - 运行态绑定：`scripts/openclaw-ops/inspect_runtime_bindings.py`
    - 调度总表：`scripts/openclaw-ops/export_schedule_registry.py`
@@ -59,8 +60,9 @@ description: >
 | 解释全景 | `references/workflow-map.md` | 结构图、边界、自动化范围 |
 | 查看安装态 | `inspect_runtime_bindings.py` | repo 与 runtime 差异 |
 | 查看任务编排 | `CRON_TASK_INDEX.md` + `cron/jobs.json` | job、频率、脚本入口 |
-| 整体安装/重装 | `install_workflow_profile.py` | profile 对齐 |
-| 整体卸载 | `uninstall_workflow_profile.py` | runtime 清理计划 |
+| 编码交付流水线 | `project-delivery-pipeline`（MVP 已实现） | 需求探索、编码、测试、审核、回写 |
+| 旧整体安装/重装 | `install_workflow_profile.py` | 已废弃，fail-fast |
+| 整体卸载 | `uninstall_workflow_profile.py` | 仅用于旧 runtime 清理计划 |
 | 恢复 cron 卡住 | `recover_stale_cron_running_state.py` | 清理 stale runningAtMs |
 | 查看调度总表 | `export_schedule_registry.py` | schedule registry JSON |
 | 评估外部模式 | `references/operations.md` 中“外部模式接入” | 差异分析与落点建议 |

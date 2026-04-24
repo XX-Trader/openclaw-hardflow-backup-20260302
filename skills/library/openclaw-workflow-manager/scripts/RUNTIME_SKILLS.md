@@ -17,12 +17,13 @@
 
 ## 已接入的工作流入口
 
-- `python scripts/openclaw-ops/install_workflow_profile.py`
-  - 默认执行 `ensure_runtime_skills`
-  - 可用 `--no-ensure-runtime-skills` 跳过
+- `python skills/library/openclaw-workflow-manager/scripts/install_workflow_profile.py`
+  - 已废弃，只保留 fail-fast 保护入口
+  - 不再负责补齐 runtime skills
 - `python scripts/openclaw-ops/policy/workflow_setup.py init`
   - 默认执行 `ensure_runtime_skills`
   - 可用 `--skip-runtime-skill-ensure` 跳过
+- Phase 6 目标：由 `project-delivery-pipeline` runtime adapter 明确需要哪些 runtime skills
 
 ## 常用命令
 

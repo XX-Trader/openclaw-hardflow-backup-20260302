@@ -1,7 +1,7 @@
 # TODO
 
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
-> 更新时间：2026-04-02
+> 更新时间：2026-04-24
 
 ## P0 — 项目交付优先工作流（核心战略落地）
 
@@ -45,7 +45,25 @@
 ### Phase 5：自进化完全移除（文档+代码完成）
 - [x] [🟢 P2] cron 裁剪执行清单
 - [x] [🟢 P2] 修改 `cron/jobs.json` 移除自进化类 job
-- [ ] [🟢 P2] 更新安装器默认 profile（安装器层，需独立处理）
+- [x] [🟢 P2] 删除旧 `install_workflow_profile.py` 主体逻辑，仅保留 fail-fast 兼容入口
+- [x] [🟢 P2] 删除继续引用 `cron_setup.py` 的旧 `SETUP_WORKFLOW.md`
+
+### Phase 6：端到端编码流水线编排（下一阶段主任务）
+- [x] [🔴 P0] 新建 `skills/library/project-delivery-pipeline/SKILL.md`
+- [x] [🔴 P0] 新建 `skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`
+- [x] [🔴 P0] 定义 `.workflow/pipeline-runs/<run_id>/` 产物目录
+- [x] [🔴 P0] 定义 `run_meta.json`、`context_snapshot.md`、`research_report.md`
+- [x] [🔴 P0] 定义 `requirements.md`、`solution.md`（含 implementation plan）、`patch_summary.md`
+- [x] [🔴 P0] 固化双 AI 需求/方案/代码审查产物契约与 verdict gate
+- [ ] [🔴 P0] 接入 HardFlow Core / ACP 编码链
+- [ ] [🔴 P0] 接入 lint、typecheck、unit、integration、smoke、部署验证证据收集
+- [x] [🔴 P0] 实现失败回退和 failure-learning 触发产物
+- [x] [🔴 P0] 实现文档、done/todo、项目记忆回写建议报告
+- [x] [🔴 P0] 实现 OpenClaw/Hermes runtime adapter MVP
+- [x] [🔴 P0] 增加 dry-run 状态机集成测试
+- [ ] [🔴 P0] 接入 Hermes 真实多 agent 调度（需求讨论、编码、测试、审查）
+- [ ] [🔴 P0] 接入真实联网 research agent，并把 source URLs 写入 `research_report.md`
+- [ ] [🔴 P0] 通过 `project_memory_writer.py` 执行真实项目记忆回写
 
 ---
 

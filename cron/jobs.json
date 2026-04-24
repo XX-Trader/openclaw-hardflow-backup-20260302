@@ -18,7 +18,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 todo-patrol 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/todo_patrol.py --task cron:todo-patrol。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 todo-patrol 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/todo_patrol.py --task cron:todo-patrol。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "toolsAllow": [
           "exec",
           "read"
@@ -65,7 +65,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "You are scheduled runner. Run command only:\npython3 $HOME/.openclaw/ops/policy/project_index_maintainer.py --registry $HOME/.openclaw/ops/task-center/project-registry.json --task-db $HOME/.openclaw/ops/task-center/task_center.db --task-id cron:project-index-maintainer-4h --actor project-agent --doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change\nReply only command output; if output is empty, reply NO_REPLY.",
+        "message": "You are scheduled runner. Run command only:\npython3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/policy/project_index_maintainer.py --registry ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/task-center/project-registry.json --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/task-center/task_center.db --task-id cron:project-index-maintainer-4h --actor project-agent --doc-timeout 8 --doc-fetch-max-chars 24000 --disable-memory-index-on-change\nReply only command output; if output is empty, reply NO_REPLY.",
         "timeoutSeconds": 1800,
         "toolsAllow": [
           "exec",
@@ -107,7 +107,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 ops-agent 日报任务。仅用命令执行：python3 $HOME/.openclaw/workspace/scripts/daily_todo_digest.py。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
+        "message": "你是 ops-agent 日报任务。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/workspace/scripts/daily_todo_digest.py。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY；若输出 FAILED，则按原样回复。",
         "timeoutSeconds": 1200,
         "toolsAllow": [
           "exec",
@@ -142,7 +142,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 claim-auditor 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/claim_verification_auditor.py --session-log-dir $HOME/.openclaw/ops/workflow-logs/ --output-dir $HOME/.openclaw/ops/claim-audit/ --task-db $HOME/.openclaw/ops/task_center.db --scan-since-hours 24。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 claim-auditor 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/claim_verification_auditor.py --session-log-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/workflow-logs/ --output-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/claim-audit/ --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/task_center.db --scan-since-hours 24。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 120,
         "toolsAllow": [
           "exec",
@@ -181,7 +181,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 memtidy 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/memtidy_runner.py --memory-dirs $HOME/.openclaw/memory/ $HOME/.openclaw/workspace/memory/ --rules-file $HOME/.openclaw/config/memtidy_rules.json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 memtidy 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/memtidy_runner.py --memory-dirs ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/memory/ ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/workspace/memory/ --rules-file ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/config/memtidy_rules.json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 180,
         "toolsAllow": [
           "exec",
@@ -214,7 +214,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 config-watchdog 子agent。按顺序执行：1) python3 $HOME/.openclaw/ops/config_watchdog.py --config-dir $HOME/.openclaw/ --verify; 2) 若上一步返回 no_snapshot 则执行 python3 $HOME/.openclaw/ops/config_watchdog.py --config-dir $HOME/.openclaw/ --snapshot。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 config-watchdog 子agent。按顺序执行：1) python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/config_watchdog.py --config-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ --verify; 2) 若上一步返回 no_snapshot 则执行 python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/config_watchdog.py --config-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ --snapshot。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 120,
         "toolsAllow": [
           "exec",
@@ -253,7 +253,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 exception-scanner 子agent。仅用命令执行：python3 $HOME/.openclaw/ops/unified_exception_logger.py --log-dirs $HOME/.openclaw/ops/workflow-logs/ $HOME/.openclaw/sessions/ --output-dir $HOME/.openclaw/ops/exception-reports/ --abnormal-dir $HOME/.openclaw/logs/abnormal/ --cleanup --scan-since-hours 6。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 exception-scanner 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/unified_exception_logger.py --log-dirs ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/workflow-logs/ ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/sessions/ --output-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/exception-reports/ --abnormal-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/logs/abnormal/ --cleanup --scan-since-hours 6。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 120,
         "toolsAllow": [
           "exec",
@@ -286,7 +286,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 source-registry-watcher 子agent。仅用命令执行：python3 $HOME/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/source_registry_watcher.py --scan-all --base-path $HOME/openclaw-hardflow-backup-20260302/.workflow/project-memory --notify-on-change。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 source-registry-watcher 子agent。仅用命令执行：python3 ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}/scripts/openclaw-ops/source_registry_watcher.py --scan-all --base-path ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}/.workflow/project-memory --notify-on-change。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 300,
         "toolsAllow": [
           "exec",
@@ -319,7 +319,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 scheduled runner。仅用命令执行：python3 $HOME/.openclaw/ops/todo_deadline_checker.py --todo-file $HOME/openclaw-hardflow-backup-20260302/todo.md --task-id cron:deadline-checker-daily。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 scheduled runner。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}/ops/todo_deadline_checker.py --todo-file ${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}/todo.md --task-id cron:deadline-checker-daily。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 60,
         "toolsAllow": [
           "exec",

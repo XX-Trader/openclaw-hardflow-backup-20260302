@@ -78,6 +78,7 @@
 | Skill | 说明 |
 |-------|------|
 | [smart-workflow](library/smart-workflow/SKILL.md) | 智能工作流 |
+| [project-delivery-pipeline](library/project-delivery-pipeline/SKILL.md) | 端到端编码交付流水线状态机 |
 | [task-decomposer](library/task-decomposer/SKILL.md) | 任务分解 |
 | [writing-plans](library/writing-plans/SKILL.md) | 编写计划 |
 | [product-requirements](library/product-requirements/SKILL.md) | 产品需求文档 |
@@ -117,4 +118,3 @@
 | **agent-factory** | agent-manager, openclaw-workflow-manager |
 | **web-agent** | web-intelligence, pretext-text-layout, playwright-interactive |
 | **explorer** | web-intelligence, smart-workflow |
-

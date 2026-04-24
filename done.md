@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-04-24 已完成
+
+- [x] [2026-04-24] **Project Delivery Pipeline Phase 6 MVP**
+  - 新增 `skills/library/project-delivery-pipeline/`：Skill 入口、状态机 runner、模板、state-machine 与 runtime-adapter 参考文档
+  - `pipeline_runner.py` 支持需求输入、外部 research 产物、需求/方案/代码 review gate、dry-run 编码交付、测试验收、失败回退、writeback 报告
+  - 明确 Hermes/OpenClaw 只是 runtime host，默认 `hermes -> ~/.hermes`、`openclaw -> ~/.openclaw`
+  - 新增测试 `tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py`，覆盖 happy path、需求失败回退、验收需求失败回退、Hermes runtime home
+
+- [x] [2026-04-24] **项目交付优先工作流收束为端到端编码交付流水线**
+  - 明确真实目标：自动探索需求、需求包、方案包、编码、测试、代码审核、修复、验收、文档/记忆回写
+  - 新增 Phase 6：`project-delivery-pipeline` 状态机与 runtime adapter
+  - 明确不用做：不恢复 `cron_setup.py`，不恢复 `install_*_job.py`，不维护 OpenClaw/Hermes 两套业务流程，不新增平行编码引擎，不恢复默认自进化链
+  - 删除旧 `install_workflow_profile.py` 主体逻辑，仅保留 fail-fast 兼容入口
+  - 删除旧 Hermes 适配测试、`SETUP_WORKFLOW.md`、旧控制面 live acceptance runner、失效 root CLI 入口测试和旧 shared human output 测试
+  - 同步文档：`docs/核心主工作流/项目交付优先工作流/`、`docs/INDEX.md`、`docs/核心主工作流/README.md`、`todo.md`
+
+---
+
+## 2026-04-23 已完成
+
+- [x] [2026-04-23] **Multica Managed Agents 平台调研**
+  - 核对 `multica-ai/multica` 最新 GitHub 仓库、release 资产、CLI/daemon、自部署、桌面端和 Web 控制台结构
+  - 明确 `exe` 分为 CLI 二进制与 Desktop 安装包，GitHub 仓库才是完整源码
+  - 结论：不迁移 OpenClaw 手机/Discord 主链；仅借鉴 runtime registry、任务状态机、transcript、Skill 绑定、daemon 健康检查和 Autopilot 触发模型
+  - 文档路径：`docs/研究参考/multica-managed-agents-平台研究.md`
+
+---
+
 ## 2026-03-29 已完成
 
 ### 配置自动进化体系搭建（阶段四 4.2/4.3）

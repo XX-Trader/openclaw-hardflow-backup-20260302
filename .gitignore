@@ -27,6 +27,7 @@ scripts/hardflow/
 /.agents
 /.claude
 /.codex
+/.omx
 
 # Freqtrade backtest workspace
 /backtest/freqtrade_single_pair/.venv/

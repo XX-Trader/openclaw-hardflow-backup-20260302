@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-22 | Phase 1 双 AI 对抗审查文档落盘
+> 最后更新：2026-04-24 | 项目交付优先工作流 Phase 6 MVP 已实现（dry-run 状态机）
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -11,7 +11,7 @@
 |------------|-----------|------|----------|----------|
 | 🎯 核心主工作流 | [通用运营工作流](核心主工作流/通用运营工作流/README.md) | ✅ 已上线 | 人工/事件触发 | 任务调度、TODO巡检、日报、评分闭环 |
 | 🎯 核心主工作流 | [ACP全链路编码工作流](核心主工作流/ACP全链路编码工作流/README.md) | ✅ 已上线 | 人工触发 | G0-G6门禁、回流整改、部署验收 |
-| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🔧 Phase 1 文档完成 | 人工触发 / 项目维护事件 | 双 AI 对抗审查、外部方案优先、项目记忆分仓、API watch |
+| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🟡 Phase 6 MVP 已实现 | 人工触发 / 项目维护事件 | 自动需求探索、编码执行、测试验收、代码审核、修复回写 |
 | 📦 专项场景 | [巡检故障闭环工作流](专项场景工作流/巡检故障闭环工作流/README.md) | ✅ 已上线 | 每6小时/异常触发 | 异常分类→知识库匹配→自修复 |
 | 📦 专项场景 | [记忆知识沉淀工作流](专项场景工作流/记忆知识沉淀工作流/README.md) | ✅ 已上线 | 每日/每周 | 知识蒸馏、经验→技能封装 |
 | 📦 专项场景 | [情报采集分析工作流](专项场景工作流/情报采集分析工作流/README.md) | ✅ 已上线 | 每日自动 | 上游同步、网页爬取、GitHub扫描 |
@@ -80,8 +80,17 @@
 | 文档 | 说明 |
 |------|------|
 | [项目交付优先工作流 README](核心主工作流/项目交付优先工作流/README.md) | 需求定义与范围边界 |
-| [项目交付优先工作流架构设计](核心主工作流/项目交付优先工作流/项目交付优先工作流架构设计.md) | 双 AI 对抗审查、项目记忆、API watch 架构 |
-| [项目交付优先工作流实施规划](核心主工作流/项目交付优先工作流/项目交付优先工作流实施规划.md) | Phase 1-5 分阶实施步骤 |
+| [项目交付优先工作流架构设计](核心主工作流/项目交付优先工作流/项目交付优先工作流架构设计.md) | 端到端编码流水线状态机、双 AI 审查、runtime adapter |
+| [项目交付优先工作流实施规划](核心主工作流/项目交付优先工作流/项目交付优先工作流实施规划.md) | Phase 1-6 分阶实施步骤 |
+
+### 端到端编码交付流水线 Skill
+
+| 文档 | 说明 |
+|------|------|
+| [`skills/library/project-delivery-pipeline/SKILL.md`](../skills/library/project-delivery-pipeline/SKILL.md) | 项目交付优先编码流水线主入口 |
+| [`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`](../skills/library/project-delivery-pipeline/scripts/pipeline_runner.py) | dry-run 状态机与门禁执行器 |
+| [`skills/library/project-delivery-pipeline/references/state-machine.md`](../skills/library/project-delivery-pipeline/references/state-machine.md) | 状态、产物、门禁、失败回退规则 |
+| [`skills/library/project-delivery-pipeline/references/runtime-adapter.md`](../skills/library/project-delivery-pipeline/references/runtime-adapter.md) | Hermes/OpenClaw 宿主适配契约 |
 
 ### 双 AI 对抗审查 Skill
 
@@ -135,8 +144,7 @@
 | [`scripts/openclaw-ops/CRON_TASK_INDEX.md`](../scripts/openclaw-ops/CRON_TASK_INDEX.md) | Cron 任务完整索引 |
 | [`scripts/openclaw-ops/TODO_PATROL_POLICY_FLOW.md`](../scripts/openclaw-ops/TODO_PATROL_POLICY_FLOW.md) | TODO 巡检策略流程 |
 | [`scripts/openclaw-ops/MODEL_TIER_SWITCH.md`](../scripts/openclaw-ops/MODEL_TIER_SWITCH.md) | 模型档位切换文档 |
-| [`scripts/openclaw-ops/SETUP_WORKFLOW.md`](../scripts/openclaw-ops/SETUP_WORKFLOW.md) | 工作流安装文档 |
-| [`scripts/openclaw-ops/RUNTIME_SKILLS.md`](../scripts/openclaw-ops/RUNTIME_SKILLS.md) | 运行时技能清单 |
+| [`skills/library/openclaw-workflow-manager/scripts/RUNTIME_SKILLS.md`](../skills/library/openclaw-workflow-manager/scripts/RUNTIME_SKILLS.md) | 运行时技能清单 |
 
 ---
 
@@ -147,6 +155,7 @@
 | [Claude Code 源码还原研究](研究参考/claude-code-源码还原研究.md) | 2026-04-01 | 53 个工具、Coordinator 多 Agent 编排、KAIROS 持久助手、隐藏命令与环境变量、9 大 OpenClaw 改进项分析 |
 | [4 项改进实施方案](研究参考/openclaw-4项改进实施方案.md) | 2026-04-01 | Dream 记忆蒸馏(含 Codex) + Gate 工具集限制 + Worker 自包含 Prompt + VerifyPlanExecution |
 | [Harness 工程实战难点与借鉴](研究参考/harness-engineering-实战难点与借鉴.md) | — | Harness 平台工程经验 |
+| [Multica Managed Agents 平台研究](研究参考/multica-managed-agents-平台研究.md) | 2026-04-23 | Web/daemon/agent runtime/skill/autopilot 架构评估，裁决为借鉴轻量机制、不迁移 OpenClaw 主链 |
 
 ---
 

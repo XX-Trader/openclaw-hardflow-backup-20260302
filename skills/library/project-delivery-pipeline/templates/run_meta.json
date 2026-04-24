@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "run_id": "{{run_id}}",
+  "project_key": "{{project_key}}",
+  "created_at": "{{created_at}}",
+  "dry_run": false,
+  "runtime_context": {
+    "host": "hermes",
+    "runtime_home": "~/.hermes",
+    "state_dir": "~/.hermes/.workflow/pipeline-runs"
+  },
+  "source_urls": [],
+  "max_repair_loops": 2,
+  "requirement_preview": "{{requirement_preview}}"
+}

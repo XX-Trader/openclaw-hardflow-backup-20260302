@@ -16,7 +16,7 @@ import logging
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 # ── 路径与 UTF-8 ─────────────────────────────────────────────────────
@@ -88,6 +88,27 @@ def load_config(name: str) -> dict:
     return json.loads(config_path.read_text(encoding="utf-8"))
 
 
+def join_runtime_path(base: str, *parts: str) -> str:
+    root = str(base or "").strip()
+    clean_parts = [str(part).strip("/\\") for part in parts if str(part).strip("/\\")]
+    if root.startswith("/") and not root.startswith("//"):
+        return str(PurePosixPath(root).joinpath(*clean_parts))
+    return str(Path(root).joinpath(*clean_parts))
+
+
+def resolve_default_db_path(hosts: list[str], probe_results: dict[str, dict[str, Any]]) -> str:
+    preferred_host = str(hosts[0]).strip().lower() if hosts else "openclaw"
+    payload = (
+        probe_results.get(preferred_host)
+        or probe_results.get("openclaw")
+        or next(iter(probe_results.values()), {})
+    )
+    runtime_home = str(payload.get("home", "")).strip()
+    if not runtime_home:
+        runtime_home = str(Path.home() / ".openclaw")
+    return join_runtime_path(runtime_home, "ops", "distill", "distill.db")
+
+
 # ── 主流程 ────────────────────────────────────────────────────────────
 
 
@@ -143,7 +164,7 @@ def run_distill(
 
     # 2. 初始化存储层
     if not db_path:
-        db_path = str(Path.home() / ".openclaw" / "ops" / "distill" / "distill.db")
+        db_path = resolve_default_db_path(hosts, probe_results)
     from evidence_store import EvidenceStore
     store = EvidenceStore(db_path)
     logger.info("store_initialized:db=%s stats=%s", db_path, store.stats())
