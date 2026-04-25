@@ -159,6 +159,36 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual("runner raw output\n", out.getvalue())
         self.assertEqual("runner err\n", err.getvalue())
 
+    def test_live_bridge_injects_explicit_verification_command_timeout(self):
+        module = load_module()
+        raw = '{"status":"completed","stages":[]}\n'
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, raw),
+        ) as run_mock:
+            rc = module.main(
+                [
+                    "--emit-json",
+                    "--live",
+                    "--profile",
+                    "spreadagent",
+                    "--live-bridge-agent-mode",
+                    "echo",
+                    "--live-bridge-verification-command-timeout-seconds",
+                    "17",
+                    "--requirement",
+                    "demo",
+                ]
+            )
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        verification_index = runner_cmd.index("--verification-command") + 1
+        self.assertIn("--stage verification", runner_cmd[verification_index])
+        self.assertIn("--verification-command-timeout-seconds 17", runner_cmd[verification_index])
+
 
 if __name__ == "__main__":
     unittest.main()

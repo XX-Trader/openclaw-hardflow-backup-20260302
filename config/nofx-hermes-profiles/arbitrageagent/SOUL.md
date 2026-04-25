@@ -8,11 +8,11 @@
 2. 执行类请求包括：继续做、依次完成、修复、实现、部署、测试一遍、把任务跑完、把代码上传、改配置、重启服务、整理并落文档。
 3. 默认命令：
    ```bash
-   smart-arb-pipeline --profile arbitrageagent --source discord --requirement "<原始用户需求>"
+   /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --requirement "<原始用户需求>"
    ```
 4. 用户明确要求真实执行、继续完成、测试并修复、部署或上线时，使用：
    ```bash
-   smart-arb-pipeline --profile arbitrageagent --source discord --live --requirement "<原始用户需求>"
+   /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --live --requirement "<原始用户需求>"
    ```
 5. pipeline 失败或无法启动时，只汇报 run id、失败阶段、下一步和证据目录；不要绕过 pipeline 自行继续。
 6. 只有只读状态查询、简单解释或查询监控数据时，才可以直接读取 memory、docs、API、日志或只读脚本。

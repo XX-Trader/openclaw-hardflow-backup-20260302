@@ -39,7 +39,7 @@ runtime installer 会把以下 hardflow 脚本安装到 Hermes ops 目录：
 Discord 入口使用：
 
 ```bash
-smart-arb-pipeline --live --profile arbitrageagent --source discord --requirement "<需求文本>"
+/home/arbops/.local/bin/smart-arb-pipeline --live --profile arbitrageagent --source discord --requirement "<需求文本>"
 ```
 
 默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况和关键证据。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`。
@@ -51,7 +51,7 @@ smart-arb-pipeline --live --profile arbitrageagent --source discord --requiremen
 | `external_research` | Hermes / web-agent 查外部资料和项目事实 | `command_external_research_*` |
 | `requirements_discussion` | project-agent 与 reviewer 双 AI 讨论需求 | `command_requirements_discussion_*` |
 | `code_execution` | Hermes headless 执行代码改动 | `command_code_execution_*` |
-| `verification` | 固定命令验证，默认 `git diff --check` 与 unittest | `command_verification_*` |
+| `verification` | 固定命令验证，默认 `git diff --check` 与 `compileall -q scripts strategy_runtime`，单命令超时默认 300 秒 | `command_verification_*` |
 | `code_review` | reviewer 做代码审查 | `command_code_review_*` |
 | `deployment` | 只重启内控 FastAPI 并做状态接口 smoke | `command_deployment_*` |
 | `memory_writeback` | 写项目记忆 changelog | `command_memory_writeback_*` |
@@ -85,11 +85,14 @@ nofx 两个 Discord Hermes profile 的 `SOUL.md` 使用本仓库模板维护：
 3. 只有只读状态查询、简单解释或监控数据查询可以直接处理。
 4. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
 
-2026-04-25 19:20 已按上述模板刷新 nofx 两个 profile，并重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。验证结果：
+2026-04-25 19:20 已按上述模板刷新 nofx 两个 profile，并重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。2026-04-25 23:45 再次刷新为绝对入口命令，并改用 profile `start-gateway.sh` 加载 `.env` 后启动。验证结果：
 
 - 两个 `SOUL.md` 前 10 行中文可读，不再是问号乱码。
+- 两个 `SOUL.md` 中的入口均为 `/home/arbops/.local/bin/smart-arb-pipeline`，不依赖 gateway PATH。
 - 两个 profile 的 `gateway_state.json` 均为 `gateway_state=running`、`discord=connected`、`last_error=null`。
 - 标准入口 dry-run smoke 通过：`codex-prompt-smoke-spreadagent-20260425T112013223220Z`，状态 `completed`。
+- 安装态 echo live smoke 通过：`codex-spreadagent-20260425T154609125415Z`，15 个阶段全部 completed，`verification-1.json` 的命令包含 `--verification-command-timeout-seconds 180`。
+- 安装态真实 verification smoke 通过：`git diff --check` 与 `/home/arbops/.venvs/smart-arbitrage/bin/python -m compileall -q scripts strategy_runtime` 均 returncode 0。
 
 ## 部署边界
 
@@ -143,6 +146,24 @@ SMART_ARB_LIVE_BRIDGE_AGENT_MODE=echo smart-arb-pipeline --live \
   --source discord \
   --requirement "live bridge echo smoke"
 ```
+
+profile 启动脚本：
+
+```bash
+/home/arbops/.hermes/profiles/arbitrageagent/start-gateway.sh
+/home/arbops/.hermes/profiles/spreadagent/start-gateway.sh
+```
+
+两个脚本会设置 `HOME=/home/arbops`、`HERMES_HOME=/home/arbops/.hermes/profiles/<profile>`，加载 profile `.env`，再执行 `hermes gateway run --replace`。`.env` 必须保持 `arbops:arbops` 且 `0600`，否则 gateway 会因无法读取 profile 环境而立即退出。
+
+verification 配置：
+
+```bash
+SMART_ARB_LIVE_BRIDGE_VERIFICATION_COMMAND_TIMEOUT_SECONDS=180
+SMART_ARB_LIVE_BRIDGE_TEST_COMMAND='/home/arbops/.venvs/smart-arbitrage/bin/python -m compileall -q scripts strategy_runtime'
+```
+
+如果没有显式 `SMART_ARB_LIVE_BRIDGE_TEST_COMMAND`，新版 bridge 默认也只做 compile smoke，不再跑全量 `unittest discover`；全量测试应放到离线 CI 或人工排障，不作为 Discord live pipeline 默认门禁。
 
 只读 Hermes 阶段 smoke：
 

@@ -35,10 +35,65 @@
 
 1. 上传模板到 `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，上传前备份原文件。
 2. 避免通过 PowerShell 内联中文重写远程文件；用 SFTP 或 scp 按字节上传。
-3. 重启 tmux 会话：
-   - `hermes-discord-arbitrage`
-   - `hermes-discord-spread`
-4. 验证：
+3. 确认 `SOUL.md` 内入口是绝对路径 `/home/arbops/.local/bin/smart-arb-pipeline`，不要依赖 gateway 的 `PATH`。
+4. 重启 tmux 会话：
+   - `hermes-discord-arbitrage` 通过 `/home/arbops/.hermes/profiles/arbitrageagent/start-gateway.sh`
+   - `hermes-discord-spread` 通过 `/home/arbops/.hermes/profiles/spreadagent/start-gateway.sh`
+5. profile `.env` 必须保持 `arbops:arbops` 且 `0600`；如果通过 root/SFTP 写回 `.env`，必须再 `chown arbops:arbops`，否则 gateway 会因读不到 `.env` 立即退出。
+6. 验证：
    - `tmux ls`
    - `cat /home/arbops/.hermes/profiles/<profile>/gateway_state.json`
    - 读取 `SOUL.md` 前 10 行确认中文不是问号乱码。
+
+## nofx live verification 门禁
+
+Discord live pipeline 的 verification 阶段不再默认跑全量 `unittest discover`，因为 nofx 上该命令曾在 async/zmq 相关测试中长时间挂起。当前安全默认是：
+
+```bash
+git diff --check
+/home/arbops/.venvs/smart-arbitrage/bin/python -m compileall -q scripts strategy_runtime
+```
+
+profile `.env` 显式配置：
+
+```bash
+SMART_ARB_LIVE_BRIDGE_VERIFICATION_COMMAND_TIMEOUT_SECONDS=180
+SMART_ARB_LIVE_BRIDGE_TEST_COMMAND='/home/arbops/.venvs/smart-arbitrage/bin/python -m compileall -q scripts strategy_runtime'
+```
+
+`smart-arb-pipeline --live` 会把单命令超时写入 verification bridge 命令，例如 `--verification-command-timeout-seconds 180`。排障时查：
+
+1. `command-runs/verification-1.json` 的 `command` 是否包含 timeout 参数。
+2. `verification_report.md` 是否记录实际验证命令和 returncode。
+3. 如果需要全量 unittest，只能在人工排障或 CI 中单独跑，不要作为 Discord live 默认门禁。
+
+## nofx Hermes profile 审批配置
+
+本机 WSL 的有效做法是 profile 级配置，而不是只看全局 `~/.hermes/config.yaml`：`/home/ubuntu/.hermes/profiles/trend-backtest/config.yaml` 中有顶层 `approvals.mode: 'off'`。
+
+nofx 上没有 `/home/arbops/.hermes/config.yaml` 全局配置；Discord agent 需要分别看 profile：
+
+- `/home/arbops/.hermes/profiles/arbitrageagent/config.yaml`
+- `/home/arbops/.hermes/profiles/spreadagent/config.yaml`
+
+若出现 `Command Approval Required`，先确认两个 profile 都有顶层配置：
+
+```yaml
+approvals:
+  mode: 'off'
+```
+
+修改后重启两个 tmux gateway：
+
+```bash
+runuser -u arbops -- tmux kill-session -t hermes-discord-arbitrage
+runuser -u arbops -- tmux kill-session -t hermes-discord-spread
+runuser -u arbops -- tmux new-session -d -s hermes-discord-arbitrage /home/arbops/.hermes/profiles/arbitrageagent/start-gateway.sh
+runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.hermes/profiles/spreadagent/start-gateway.sh
+```
+
+验收顺序：
+
+1. 读两个 profile 的 `config.yaml`，确认顶层 `approvals.mode: 'off'`。
+2. 读 `/home/arbops/.hermes/profiles/<profile>/gateway_state.json`，确认 `gateway_state=running` 且 `updated_at` 是重启后的时间。
+3. 扫描 `/home/arbops/.hermes/profiles/<profile>/logs/*.log` 尾部，确认没有新的 `Command Approval Required` / `confusable` 记录。

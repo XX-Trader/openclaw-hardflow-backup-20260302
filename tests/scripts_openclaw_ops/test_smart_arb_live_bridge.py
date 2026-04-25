@@ -4,7 +4,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from importlib import util
+from io import StringIO
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -94,6 +96,55 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
             self.assertTrue(changelog.exists())
             record = json.loads(changelog.read_text(encoding="utf-8").splitlines()[0])
             self.assertIn("Bridge memory test", record["content"])
+
+    def test_run_command_returns_evidence_on_timeout(self):
+        bridge = self._load_bridge_module()
+        proc = bridge.run_command(
+            [sys.executable, "-c", "import time; time.sleep(5)"],
+            cwd=ROOT,
+            timeout=1,
+        )
+
+        self.assertEqual(124, proc.returncode)
+        self.assertIn("timed out", proc.stderr)
+
+    def test_default_verification_uses_compile_smoke_not_unittest_discover(self):
+        bridge = self._load_bridge_module()
+        with tempfile.TemporaryDirectory() as tmpdir, mock.patch.dict(os.environ, {}, clear=True):
+            tmp = Path(tmpdir)
+            scripts_dir = tmp / "scripts"
+            scripts_dir.mkdir()
+            (scripts_dir / "demo.py").write_text("value = 1\n", encoding="utf-8")
+            tests_dir = tmp / "tests"
+            tests_dir.mkdir()
+            (tests_dir / "test_demo.py").write_text("raise RuntimeError('should not be discovered')\n", encoding="utf-8")
+            args = SimpleNamespace(project_dir=tmp, python_bin=Path(sys.executable), skip_tests=False)
+
+            commands = bridge.verification_commands(args)
+
+        self.assertIn("git diff --check", commands)
+        self.assertTrue(any("-m compileall -q scripts" in command for command in commands))
+        self.assertFalse(any("unittest discover" in command for command in commands))
+
+    def test_run_verification_reports_timeout_from_cli_argument(self):
+        bridge = self._load_bridge_module()
+        slow_command = subprocess.list2cmdline([sys.executable, "-c", "import time; time.sleep(5)"])
+        args = SimpleNamespace(
+            project_dir=ROOT,
+            python_bin=Path(sys.executable),
+            skip_tests=False,
+            verification_command_timeout_seconds=1,
+        )
+        out = StringIO()
+
+        with mock.patch.dict(os.environ, {"SMART_ARB_LIVE_BRIDGE_TEST_COMMAND": slow_command}, clear=False), redirect_stdout(out):
+            rc = bridge.run_verification(args)
+
+        text = out.getvalue()
+        self.assertEqual(1, rc)
+        self.assertIn("Verification command timeout seconds: 1", text)
+        self.assertIn("Command timed out after 1 seconds.", text)
+        self.assertIn("LIVE_BRIDGE_STATUS: fail", text)
 
     def test_deployment_restarts_api_with_new_tmux_session_cwd(self):
         bridge = self._load_bridge_module()

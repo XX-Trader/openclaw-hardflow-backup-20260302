@@ -212,6 +212,13 @@ def bridge_command(stage: str, args: argparse.Namespace) -> str:
         command.extend(["--max-turns", str(args.live_bridge_code_max_turns)])
     elif stage in {"external_research", "requirements_discussion", "code_review"}:
         command.extend(["--max-turns", str(args.live_bridge_agent_max_turns)])
+    elif stage == "verification":
+        command.extend(
+            [
+                "--verification-command-timeout-seconds",
+                str(args.live_bridge_verification_command_timeout_seconds),
+            ]
+        )
     if stage == "deployment" and not args.no_internal_api_restart:
         command.append("--allow-internal-api-restart")
     return " ".join(shlex.quote(str(part)) for part in command)
@@ -249,6 +256,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--live-bridge-provider", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROVIDER", "openai-codex"))
     parser.add_argument("--live-bridge-model", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_MODEL", "gpt-5.5"))
     parser.add_argument("--live-bridge-timeout-seconds", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_TIMEOUT_SECONDS", "1800")))
+    parser.add_argument(
+        "--live-bridge-verification-command-timeout-seconds",
+        type=int,
+        default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_VERIFICATION_COMMAND_TIMEOUT_SECONDS", "300")),
+        help="per-command timeout used inside the live verification bridge",
+    )
     parser.add_argument("--live-bridge-agent-max-turns", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_AGENT_MAX_TURNS", "24")))
     parser.add_argument("--live-bridge-code-max-turns", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_CODE_MAX_TURNS", "60")))
     parser.add_argument("--live-bridge-no-yolo", action="store_true", help="do not let Hermes bypass command approvals for code execution")

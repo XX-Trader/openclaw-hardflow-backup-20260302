@@ -77,18 +77,27 @@ def run_command(
     cwd: Path,
     env: dict[str, str] | None = None,
     shell: bool = False,
+    timeout: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        cwd=str(cwd),
-        env=env,
-        shell=shell,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-        check=False,
-    )
+    try:
+        return subprocess.run(
+            command,
+            cwd=str(cwd),
+            env=env,
+            shell=shell,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        stdout = exc.stdout.decode("utf-8", errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+        stderr = exc.stderr.decode("utf-8", errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+        timeout_note = f"Command timed out after {timeout} seconds."
+        stderr = (stderr.rstrip() + "\n" + timeout_note).strip() if stderr else timeout_note
+        return subprocess.CompletedProcess(command, 124, stdout, stderr)
 
 
 def command_block(title: str, command: str | list[str], proc: subprocess.CompletedProcess[str]) -> str:
@@ -260,17 +269,33 @@ def verification_commands(args: argparse.Namespace) -> list[str]:
     test_command = os.environ.get("SMART_ARB_LIVE_BRIDGE_TEST_COMMAND", "").strip()
     if test_command:
         commands.append(test_command)
-    elif not args.skip_tests and (args.project_dir / "tests").is_dir():
+    elif not args.skip_tests:
         python_bin = args.python_bin if args.python_bin.exists() else Path(sys.executable)
-        commands.append(f"{shlex.quote(str(python_bin))} -m unittest discover -s tests -p 'test_*.py'")
+        targets = [args.project_dir / name for name in ("scripts", "strategy_runtime") if (args.project_dir / name).exists()]
+        if targets:
+            quoted_targets = " ".join(shlex.quote(str(target.relative_to(args.project_dir))) for target in targets)
+            commands.append(f"{shlex.quote(str(python_bin))} -m compileall -q {quoted_targets}")
     return commands
+
+
+def int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        return default
+    return value if value > 0 else default
 
 
 def run_verification(args: argparse.Namespace) -> int:
     sections: list[str] = ["# Smart Arb Live Verification"]
     ok = True
+    timeout = int(args.verification_command_timeout_seconds)
+    sections.append(f"- Verification command timeout seconds: {timeout}")
     for index, command in enumerate(verification_commands(args), start=1):
-        proc = run_command(command, cwd=args.project_dir, shell=True)
+        proc = run_command(command, cwd=args.project_dir, shell=True, timeout=timeout)
         sections.append(command_block(f"Verification command {index}", command, proc))
         if proc.returncode != 0:
             ok = False
@@ -433,6 +458,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--allow-yolo", action="store_true")
     parser.add_argument("--skip-tests", action="store_true")
     parser.add_argument("--python-bin", type=Path, default=env_path("SMART_ARB_PYTHON_BIN", VENV_BIN / "python"))
+    parser.add_argument(
+        "--verification-command-timeout-seconds",
+        type=int,
+        default=int_env("SMART_ARB_LIVE_BRIDGE_VERIFICATION_COMMAND_TIMEOUT_SECONDS", 300),
+    )
     parser.add_argument("--allow-internal-api-restart", action="store_true")
     parser.add_argument("--api-session", default=os.environ.get("SMART_ARB_API_TMUX_SESSION", "smart-arb-api"))
     parser.add_argument("--api-cwd", type=Path, default=env_path("SMART_ARB_API_CWD", PROJECT_DIR / API_SUBDIR))

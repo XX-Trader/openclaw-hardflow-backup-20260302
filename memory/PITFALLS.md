@@ -26,3 +26,30 @@
 证据：远程读取 `SOUL.md` 首段显示 `# ???????`；`/home/arbops/.hermes/profiles/spreadagent/sessions/session_20260425_191017_e8d87b.json` 为 Discord 会话，用户消息为“都依次完成吧”，但 `/home/arbops/.hermes/pipeline-runs` 当时最新仍是 18:00 smoke run。
 最后验证：2026-04-25 19:20
 复用建议：profile 提示词不要用 PowerShell 内联中文写远程文件；应从仓库 UTF-8 模板按字节上传。更新后必须重启对应 tmux gateway，并确认 `gateway_state=running`、`discord=connected`。
+
+## 2026-04-25 - nofx Command Approval Required 不能只改全局 Hermes 配置
+
+类型：pitfall
+范围：nofx `/home/arbops/.hermes/profiles/arbitrageagent/config.yaml`、`/home/arbops/.hermes/profiles/spreadagent/config.yaml`、本机 WSL `/home/ubuntu/.hermes/profiles/trend-backtest/config.yaml`
+事实：本机 WSL 虽然全局 `/home/ubuntu/.hermes/config.yaml` 仍是 `approvals.mode: manual`，但 live `trend-backtest` profile 是顶层 `approvals.mode: 'off'`，所以实际不会弹命令审批。nofx 没有 `/home/arbops/.hermes/config.yaml`，两个 Discord profile 原先也没有顶层 `approvals` 配置，遇到 Hermes security scan 的 `Command Approval Required` 仍会进入人工审批。已在 nofx 两个 profile 中补齐顶层 `approvals.mode: 'off'`，并重启 `hermes-discord-arbitrage`、`hermes-discord-spread`。
+证据：本机 WSL `/home/ubuntu/.hermes/profiles/trend-backtest/config.yaml` 第 7-8 行为 `approvals.mode: 'off'`；nofx 两个 profile 配置已验证 `approvals_mode_off=True`；`gateway_state.json` 显示 `arbitrageagent` 为 `running updated_at=2026-04-25T14:56:14.570586+00:00`，`spreadagent` 为 `running updated_at=2026-04-25T15:01:19.106822+00:00`；日志尾部未发现新的 `Command Approval Required` / `confusable` 记录，只有 22:48 的历史 Discord button approval。
+最后验证：2026-04-25 23:03
+复用建议：排查 nofx Hermes 审批问题时，先看 profile 级 `config.yaml`，不要用全局 `~/.hermes/config.yaml` 做结论。改配置后必须重启对应 tmux gateway；旧会话里已经生成的审批卡片不代表新配置未生效，后续新命令才会按 profile 配置执行。
+
+## 2026-04-25 - nofx live verification 不应默认跑全量 unittest discover
+
+类型：pitfall
+范围：`scripts/openclaw-ops/smart_arb_live_bridge.py`、`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、nofx `/home/arbops/.hermes/pipeline-runs/discord-spreadagent-20260425T145231185916Z`
+事实：机器人回复里的 `external_research` 阻塞不是最新真实状态；真实最新 run `discord-spreadagent-20260425T145231185916Z` 已完成 `external_research`、`requirements_discussion`、`code_execution` 三段，真正卡住的是 `verification`：默认 `/home/arbops/.venvs/smart-arbitrage/bin/python -m unittest discover -s tests -p 'test_*.py'` 长时间停在 async/zmq 相关等待。已把 live 默认验证收敛为 `git diff --check` 与 `compileall -q scripts strategy_runtime`，并新增 `--verification-command-timeout-seconds` 显式参数。
+证据：旧 run `pipeline_state.json` 为 `status=blocked failed_stage=verification next_action=return_to_code_execution`；`verification_report.md` 显示 unittest 子进程被终止后 returncode=-15，stderr 含 `asyncio.exceptions.CancelledError` 与 zmq future；安装态真实 verification smoke 显示 `git diff --check` 和 `/home/arbops/.venvs/smart-arbitrage/bin/python -m compileall -q scripts strategy_runtime` 均 returncode 0；echo live smoke `codex-spreadagent-20260425T154609125415Z` 15 阶段 completed，`verification-1.json` 命令包含 `--verification-command-timeout-seconds 180`。
+最后验证：2026-04-25 23:46
+复用建议：Discord live pipeline 只跑有限安全验证；全量 unittest 放到 CI 或人工排障。遇到“卡在 external_research”的机器人回复，先查最新 run 目录和 `ps`，不要相信旧 run_id 或错误路径。
+
+## 2026-04-25 - root 写回 profile .env 会导致 Hermes gateway 立即退出
+
+类型：pitfall
+范围：nofx `/home/arbops/.hermes/profiles/arbitrageagent/.env`、`/home/arbops/.hermes/profiles/spreadagent/.env`、`start-gateway.sh`
+事实：用 root/SFTP 修改 profile `.env` 后，如果权限变成 root:root 且 `0600`，`arbops` 启动的 Hermes gateway 会因无法读取 `.env` 立即退出，tmux 会话看起来创建成功但很快消失。已修正两个 `.env` 为 `arbops:arbops` + `0600`，并用 profile `start-gateway.sh` 加载 `.env` 启动。
+证据：两个 profile 的 `gateway.log` 曾出现 `PermissionError: [Errno 13] Permission denied: '/home/arbops/.hermes/profiles/<profile>/.env'`；修正属主后 `hermes-discord-arbitrage`、`hermes-discord-spread` 均在 tmux 中存在，`gateway_state.json` 显示 `running updated_at=2026-04-25T15:45:14/15Z`。
+最后验证：2026-04-25 23:45
+复用建议：profile `.env` 含凭证，不打印内容；只检查属主和 mode。通过 root 修改后必须 `chown arbops:arbops`，然后再重启对应 tmux gateway。
