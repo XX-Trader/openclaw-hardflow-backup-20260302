@@ -300,27 +300,32 @@ def run_deployment(args: argparse.Namespace) -> int:
         return 3
 
     sections = ["# Smart Arb Live Deployment"]
-    commands = [
-        ["tmux", "has-session", "-t", args.api_session],
-        ["tmux", "send-keys", "-t", args.api_session, "C-c"],
-    ]
-    for index, command in enumerate(commands, start=1):
-        proc = run_tmux(args, command)
-        sections.append(command_block(f"Deployment command {index}", command, proc))
+    has_session = ["tmux", "has-session", "-t", args.api_session]
+    proc = run_tmux(args, has_session)
+    sections.append(command_block("Deployment command 1", has_session, proc))
+    if proc.returncode == 0:
+        kill_session = ["tmux", "kill-session", "-t", args.api_session]
+        proc = run_tmux(args, kill_session)
+        sections.append(command_block("Deployment command 2", kill_session, proc))
         if proc.returncode != 0:
             print("\n\n".join(sections))
             print("LIVE_BRIDGE_STAGE: deployment")
             print("LIVE_BRIDGE_STATUS: fail")
             return 4
 
-    time.sleep(2)
-    start_command = (
-        f"cd {shlex.quote(str(api_cwd))} && "
-        f"exec {shlex.quote(str(uvicorn_bin))} api.main:app --host 127.0.0.1 --port 18080"
-    )
-    send_start = ["tmux", "send-keys", "-t", args.api_session, start_command, "C-m"]
-    proc = run_tmux(args, send_start)
-    sections.append(command_block("Deployment command 3", send_start, proc))
+    start_command = f"{shlex.quote(str(uvicorn_bin))} api.main:app --host 127.0.0.1 --port 18080"
+    new_session = [
+        "tmux",
+        "new-session",
+        "-d",
+        "-s",
+        args.api_session,
+        "-c",
+        str(api_cwd),
+        start_command,
+    ]
+    proc = run_tmux(args, new_session)
+    sections.append(command_block("Deployment command 3", new_session, proc))
     if proc.returncode != 0:
         print("\n\n".join(sections))
         print("LIVE_BRIDGE_STAGE: deployment")
