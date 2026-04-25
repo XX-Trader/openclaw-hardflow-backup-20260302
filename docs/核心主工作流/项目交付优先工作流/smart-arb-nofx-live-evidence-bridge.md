@@ -1,6 +1,6 @@
 # SmartMultiPlatformArbitrage nofx live evidence bridge
 
-> 最后验证：2026-04-25 16:09 Asia/Shanghai  
+> 最后验证：2026-04-25 22:06 Asia/Shanghai
 > 适用范围：nofx 上 SmartMultiPlatformArbitrage 的 Discord 需求入口、Hermes runtime、项目交付优先工作流 live 证据桥。
 
 ## 归属边界
@@ -20,6 +20,7 @@
 | Hermes runtime | `/home/arbops/.hermes` |
 | 标准入口 | `/home/arbops/.local/bin/smart-arb-pipeline` |
 | 内控 FastAPI | `tmux` 会话 `smart-arb-api`，监听 `127.0.0.1:18080` |
+| nofx profile SOUL 模板 | `config/nofx-hermes-profiles/<profile>/SOUL.md` |
 
 ## 安装产物
 
@@ -57,6 +58,39 @@ smart-arb-pipeline --live --profile arbitrageagent --source discord --requiremen
 
 缺少任一关键阶段真实命令证据时，pipeline runner 会阻断并写入 `failed_stage` 与 `next_action`。
 
+### 当前 fan-out 与 workspace 边界
+
+当前 nofx `smart-arb-pipeline --live` 已经具备 **每 agent 独立 workspace 与命令证据留痕**，但还不是严格意义上的宿主 native 并发 agent fan-out。
+
+- `pipeline_runner.py` 固定按阶段 owner 创建 Git worktree：`agent-workspaces/<stage>/<agent>/repo`，并把 `PIPELINE_AGENT_ID`、`PIPELINE_AGENT_WORKSPACE`、`PIPELINE_AGENT_REPO_DIR`、`PIPELINE_AGENT_WORKSPACES_JSON` 注入 stage command。
+- `--command-cwd` 必须是有 `HEAD` 的 Git 仓库，agent workspace root 必须在该仓库外部；不再提供 `shared` / `copy` 模式。
+- `smart_arb_live_bridge.py` 默认使用 `PIPELINE_AGENT_REPO_DIR` 作为 Hermes 阶段项目目录，避免所有阶段都在主项目目录里运行。
+- `code_execution` 阶段在 `backend-dev` workspace 中修改代码；成功后 runner 导出 `command-runs/code_execution-1.patch`，再应用回主项目目录，然后把同一 patch 注入后续 `tester`、`reviewer`、`deployer` workspace。
+- `command-runs/*.json`、`agent-workspaces/manifest.json`、Task Center `stage_runs.details_json` / `module_communications.details_json` 会记录 agent id、workspace、repo dir、dispatch mode 和 patch 文件。
+- Task Center 中的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`tester` 等字段仍然是阶段 owner 与交接记录；是否真正启动多个宿主 native session，要以 command evidence 中的独立 session/run id 为准。
+
+因此，如果用户观察到“Hermes 在工作，但任务没有转发到其他 agent”，现在要分两层判断：第一层检查 `agent-workspaces/manifest.json` 和 `command-runs/*.json`，确认是否进入了独立 workspace；第二层检查 command evidence 中是否出现宿主 native session/run id。workspace 隔离已经落地，宿主级 native 多 agent spawn 仍需要继续接 runtime agent dispatch 能力，并把独立 session id / run id 写入 `command-runs`、Task Center 和最终状态卡。
+
+### Discord profile 提示词规则
+
+nofx 两个 Discord Hermes profile 的 `SOUL.md` 使用本仓库模板维护：
+
+- `config/nofx-hermes-profiles/arbitrageagent/SOUL.md`
+- `config/nofx-hermes-profiles/spreadagent/SOUL.md`
+
+提示词必须把以下规则放在最前面：
+
+1. 执行类请求先创建 `smart-arb-pipeline` run。
+2. 不允许在 profile 会话里直接实现、部署、安装依赖、修改代码或提交 Git。
+3. 只有只读状态查询、简单解释或监控数据查询可以直接处理。
+4. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
+
+2026-04-25 19:20 已按上述模板刷新 nofx 两个 profile，并重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。验证结果：
+
+- 两个 `SOUL.md` 前 10 行中文可读，不再是问号乱码。
+- 两个 profile 的 `gateway_state.json` 均为 `gateway_state=running`、`discord=connected`、`last_error=null`。
+- 标准入口 dry-run smoke 通过：`codex-prompt-smoke-spreadagent-20260425T112013223220Z`，状态 `completed`。
+
 ## 部署边界
 
 deployment 阶段只做：
@@ -79,6 +113,9 @@ deployment 阶段不会启动真实策略交易进程，不会绑定公网地址
 - live echo run：`discord-arbitrageagent-20260425T075149Z`
 - task-center：`project-delivery:discord-arbitrageagent-20260425T075149Z` 为 `passed`
 - 真实 Hermes 只读 smoke：`external_research` 返回 `LIVE_BRIDGE_STATUS: pass`，session `20260425_155252_1a56f9`
+- workspace 隔离 echo smoke：`codex-arbitrageagent-20260425T140605083467Z`，Task Center `project-delivery:codex-arbitrageagent-20260425T140605083467Z` 为 `passed`
+- 该 run 的 `agent-workspaces/manifest.json` 显示 `external_research/web-agent`、`requirements_discussion/project-agent`、`requirements_discussion/reviewer`、`code_execution/backend-dev`、`verification/tester`、`code_review/reviewer`、`deployment/deployer`、`memory_writeback/coordinator` 均为独立 `worktree`
+- 该 run 的 Task Center `stage_runs.details_json` 显示命令阶段 `model_id=runtime-agent-workspace`、`dispatch_mode=isolated-agent-workspace`
 - nofx dashboard/API 测试：37 项 OK
 - nofx API smoke：
   - `/health` 返回 `{"status":"ok","strategy_running":false,"ipc_connected":false}`

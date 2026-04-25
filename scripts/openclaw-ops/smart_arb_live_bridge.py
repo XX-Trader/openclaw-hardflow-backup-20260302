@@ -127,6 +127,9 @@ def bridge_env(args: argparse.Namespace, profile_dir: Path) -> dict[str, str]:
 def stage_prompt(stage: str, args: argparse.Namespace, requirement: str) -> str:
     run_dir = os.environ.get("PIPELINE_RUN_DIR", "")
     memory_dir = os.environ.get("PIPELINE_PROJECT_MEMORY_DIR", "")
+    agent_id = os.environ.get("PIPELINE_AGENT_ID", "").strip()
+    agent_workspace = os.environ.get("PIPELINE_AGENT_WORKSPACE", "").strip()
+    agent_repo_dir = os.environ.get("PIPELINE_AGENT_REPO_DIR", "").strip()
     output_file = stage_output_file(stage)
     common = f"""
 You are running one non-interactive stage of the SmartMultiPlatformArbitrage delivery pipeline.
@@ -136,6 +139,9 @@ Pipeline run dir: {run_dir}
 Project memory dir: {memory_dir}
 Source profile: {args.profile}
 Stage: {stage}
+Agent id: {agent_id or "unspecified"}
+Agent workspace: {agent_workspace or "unspecified"}
+Agent repo dir: {agent_repo_dir or str(args.project_dir)}
 Stage output file hint: {output_file or ""}
 
 Requirement:
@@ -413,7 +419,11 @@ def build_parser() -> argparse.ArgumentParser:
     ])
     parser.add_argument("--agent-mode", choices=["hermes", "echo"], default=os.environ.get("SMART_ARB_LIVE_BRIDGE_AGENT_MODE", "hermes"))
     parser.add_argument("--profile", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROFILE", "arbitrageagent"))
-    parser.add_argument("--project-dir", type=Path, default=env_path("SMART_ARB_PROJECT_DIR", PROJECT_DIR))
+    parser.add_argument(
+        "--project-dir",
+        type=Path,
+        default=env_path("PIPELINE_AGENT_REPO_DIR", env_path("SMART_ARB_PROJECT_DIR", PROJECT_DIR)),
+    )
     parser.add_argument("--runtime-home", type=Path, default=env_path("SMART_ARB_HERMES_RUNTIME_HOME", RUNTIME_HOME))
     parser.add_argument("--home", type=Path, default=env_path("SMART_ARB_HOME", Path("/home/arbops")))
     parser.add_argument("--hermes-bin", type=Path, default=env_path("SMART_ARB_HERMES_BIN", HERMES_BIN))

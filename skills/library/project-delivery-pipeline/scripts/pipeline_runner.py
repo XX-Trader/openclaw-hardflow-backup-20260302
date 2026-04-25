@@ -103,6 +103,7 @@ class PipelineConfig:
     memory_write_command: str | None = None
     write_project_memory: bool = False
     command_cwd: Path = Path(".")
+    agent_workspace_root: Path | None = None
     command_timeout_seconds: int = 600
     project_memory_root: Path = Path(".workflow/project-memory")
     record_task_center: bool = False
@@ -130,6 +131,28 @@ class StageRecord:
             "score": self.score,
             "next_action": self.next_action,
             "detail": self.detail,
+        }
+
+
+@dataclass(frozen=True)
+class AgentWorkspace:
+    stage: str
+    agent_id: str
+    workspace_dir: Path
+    repo_dir: Path
+    mode: str
+    isolated: bool
+    primary: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "stage": self.stage,
+            "agent_id": self.agent_id,
+            "workspace_dir": str(self.workspace_dir),
+            "repo_dir": str(self.repo_dir),
+            "mode": self.mode,
+            "isolated": self.isolated,
+            "primary": self.primary,
         }
 
 
@@ -254,6 +277,9 @@ def render_run_meta(config: PipelineConfig, run_id: str, requirement: str, runti
         "runtime_context": runtime,
         "source_urls": list(config.source_urls),
         "max_repair_loops": config.max_repair_loops,
+        "agent_workspace_strategy": "git-worktree",
+        "agent_workspace_root": str(config.agent_workspace_root) if config.agent_workspace_root else "",
+        "code_workspace_diff_policy": "always-apply",
         "requirement_preview": requirement[:240],
     }
 
@@ -596,11 +622,158 @@ def clip_text(value: str, limit: int = 12000) -> str:
     return text[:limit] + f"\n... truncated {len(text) - limit} chars ..."
 
 
+def stage_agent_ids(stage_name: str) -> list[str]:
+    raw = STAGE_AGENT_MAP.get(stage_name, "coordinator")
+    agents = [part.strip() for part in str(raw).split(",") if part.strip()]
+    return agents or ["coordinator"]
+
+
+def agent_workspace_base(config: PipelineConfig, run_dir: Path) -> Path:
+    if config.agent_workspace_root is not None:
+        root = config.agent_workspace_root.expanduser()
+        return root / run_dir.name if root.name != run_dir.name else root
+    return run_dir / "agent-workspaces"
+
+
+def run_git(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+
+
+def ensure_agent_repo(base_cwd: Path, workspace_dir: Path) -> tuple[Path, str, bool]:
+    repo_dir = workspace_dir / "repo"
+    if repo_dir.exists():
+        return repo_dir, "worktree", True
+
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        nested_under_base = repo_dir.resolve().is_relative_to(base_cwd.resolve())
+    except OSError:
+        nested_under_base = False
+    if nested_under_base:
+        raise PipelineError(
+            f"agent workspace root must be outside command cwd for git worktree mode: "
+            f"repo={repo_dir} command_cwd={base_cwd}"
+        )
+    inside = run_git(["rev-parse", "--is-inside-work-tree"], base_cwd)
+    head = run_git(["rev-parse", "HEAD"], base_cwd)
+    if inside.returncode != 0 or head.returncode != 0:
+        raise PipelineError(f"agent workspaces require a git repository with HEAD: {base_cwd}")
+    proc = run_git(["worktree", "add", "--detach", str(repo_dir), "HEAD"], base_cwd)
+    if proc.returncode != 0:
+        raise PipelineError(f"failed to create git worktree at {repo_dir}: {proc.stderr.strip()}")
+    return repo_dir, "worktree", True
+
+
+def apply_patch_file(repo_dir: Path, patch_file: Path) -> dict[str, Any]:
+    if not patch_file.exists() or patch_file.stat().st_size == 0:
+        return {"ok": True, "applied": False, "returncode": 0, "stderr": ""}
+    proc = run_git(["apply", "--whitespace=nowarn", str(patch_file)], repo_dir)
+    return {
+        "ok": proc.returncode == 0,
+        "applied": proc.returncode == 0,
+        "returncode": proc.returncode,
+        "stdout": clip_text(proc.stdout),
+        "stderr": clip_text(proc.stderr),
+    }
+
+
+def export_workspace_patch(repo_dir: Path, patch_file: Path) -> dict[str, Any]:
+    inside = run_git(["rev-parse", "--is-inside-work-tree"], repo_dir)
+    if inside.returncode != 0:
+        return {
+            "ok": False,
+            "patch_file": str(patch_file),
+            "stderr": "workspace repo is not a git repository; cannot export workspace diff",
+        }
+    run_git(["add", "-N", "."], repo_dir)
+    proc = run_git(["diff", "--binary"], repo_dir)
+    if proc.returncode != 0:
+        return {
+            "ok": False,
+            "patch_file": str(patch_file),
+            "stdout": clip_text(proc.stdout),
+            "stderr": clip_text(proc.stderr),
+        }
+    patch_file.parent.mkdir(parents=True, exist_ok=True)
+    patch_file.write_text(proc.stdout or "", encoding="utf-8")
+    return {
+        "ok": True,
+        "patch_file": str(patch_file),
+        "has_changes": bool((proc.stdout or "").strip()),
+        "stdout": "",
+        "stderr": "",
+    }
+
+
+def update_agent_workspace_manifest(run_dir: Path, stage_name: str, index: int, workspaces: list[AgentWorkspace]) -> Path:
+    manifest_file = run_dir / "agent-workspaces" / "manifest.json"
+    if manifest_file.exists():
+        try:
+            manifest = json.loads(manifest_file.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            manifest = {}
+    else:
+        manifest = {}
+    manifest.setdefault("schema_version", SCHEMA_VERSION)
+    manifest.setdefault("stages", {})
+    manifest["updated_at"] = utc_now()
+    manifest["stages"].setdefault(stage_name, {})
+    manifest["stages"][stage_name][str(index)] = [workspace.as_dict() for workspace in workspaces]
+    write_json(manifest_file, manifest)
+    return manifest_file
+
+
+def prepare_agent_workspaces(
+    config: PipelineConfig,
+    run_dir: Path,
+    stage_name: str,
+    index: int,
+    base_cwd: Path,
+    input_patch_file: Path | None = None,
+) -> list[AgentWorkspace]:
+    workspaces: list[AgentWorkspace] = []
+    root = agent_workspace_base(config, run_dir)
+    for agent_index, agent_id in enumerate(stage_agent_ids(stage_name)):
+        workspace_dir = root / slugify(stage_name) / slugify(agent_id)
+        repo_preexisted = (workspace_dir / "repo").exists()
+        repo_dir, effective_mode, isolated = ensure_agent_repo(base_cwd, workspace_dir)
+        workspace = AgentWorkspace(
+            stage=stage_name,
+            agent_id=agent_id,
+            workspace_dir=workspace_dir,
+            repo_dir=repo_dir,
+            mode=effective_mode,
+            isolated=isolated,
+            primary=agent_index == 0,
+        )
+        if agent_index == 0 and input_patch_file and isolated and not repo_preexisted:
+            result = apply_patch_file(repo_dir, input_patch_file)
+            if not result.get("ok"):
+                raise PipelineError(
+                    f"failed to apply prior code workspace diff to {agent_id} workspace: "
+                    f"{result.get('stderr', '')}"
+                )
+        workspaces.append(workspace)
+    update_agent_workspace_manifest(run_dir, stage_name, index, workspaces)
+    return workspaces
+
+
 def command_env(
     config: PipelineConfig,
     run_dir: Path,
     runtime: dict[str, Any],
     requirement: str,
+    stage_name: str = "",
+    primary_workspace: AgentWorkspace | None = None,
+    workspaces: list[AgentWorkspace] | None = None,
 ) -> dict[str, str]:
     env = dict(os.environ)
     requirement_file = run_dir / "requirement.txt"
@@ -624,6 +797,23 @@ def command_env(
             "PIPELINE_WRITEBACK_REPORT_FILE": str(run_dir / "writeback_report.md"),
         }
     )
+    if stage_name:
+        env["PIPELINE_STAGE_NAME"] = stage_name
+    if primary_workspace is not None:
+        env.update(
+            {
+                "PIPELINE_AGENT_ID": primary_workspace.agent_id,
+                "PIPELINE_AGENT_WORKSPACE": str(primary_workspace.workspace_dir),
+                "PIPELINE_AGENT_REPO_DIR": str(primary_workspace.repo_dir),
+                "PIPELINE_AGENT_WORKSPACE_MODE": primary_workspace.mode,
+                "PIPELINE_AGENT_WORKSPACE_ISOLATED": "1" if primary_workspace.isolated else "0",
+            }
+        )
+    if workspaces is not None:
+        env["PIPELINE_AGENT_WORKSPACES_JSON"] = json.dumps(
+            [workspace.as_dict() for workspace in workspaces],
+            ensure_ascii=False,
+        )
     return env
 
 
@@ -636,13 +826,17 @@ def run_stage_command(
     stage_name: str,
     command: str,
     index: int = 1,
+    input_patch_file: Path | None = None,
 ) -> dict[str, Any]:
     command_text = str(command or "").strip()
     if not command_text:
         raise PipelineError(f"{stage_name} command must not be empty")
-    cwd = config.command_cwd.expanduser().resolve()
-    if not cwd.exists() or not cwd.is_dir():
-        raise PipelineError(f"command cwd not found: {cwd}")
+    base_cwd = config.command_cwd.expanduser().resolve()
+    if not base_cwd.exists() or not base_cwd.is_dir():
+        raise PipelineError(f"command cwd not found: {base_cwd}")
+    workspaces = prepare_agent_workspaces(config, run_dir, stage_name, index, base_cwd, input_patch_file)
+    primary_workspace = workspaces[0]
+    cwd = primary_workspace.repo_dir
 
     started_at = utc_now()
     stdout = ""
@@ -650,12 +844,13 @@ def run_stage_command(
     returncode = 124
     timed_out = False
     error = ""
+    workspace_patch: dict[str, Any] = {}
     try:
         proc = subprocess.run(
             command_text,
             shell=True,
             cwd=str(cwd),
-            env=command_env(config, run_dir, runtime, requirement),
+            env=command_env(config, run_dir, runtime, requirement, stage_name, primary_workspace, workspaces),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -672,11 +867,34 @@ def run_stage_command(
         stderr = str(exc.stderr or "")
         error = f"timeout after {config.command_timeout_seconds}s"
 
+    if (
+        stage_name == "code_execution"
+        and returncode == 0
+        and not timed_out
+        and primary_workspace.isolated
+    ):
+        patch_file = run_dir / "command-runs" / f"{stage_name}-{index}.patch"
+        workspace_patch = export_workspace_patch(primary_workspace.repo_dir, patch_file)
+        if workspace_patch.get("ok") and workspace_patch.get("has_changes"):
+            apply_result = apply_patch_file(base_cwd, patch_file)
+            workspace_patch["applied_to_command_cwd"] = apply_result
+            if not apply_result.get("ok"):
+                returncode = int(apply_result.get("returncode") or 1)
+                error = f"failed to apply code workspace diff to command cwd: {apply_result.get('stderr', '')}"
+        elif not workspace_patch.get("ok"):
+            returncode = 1
+            error = f"failed to export code workspace diff: {workspace_patch.get('stderr', '')}"
+
     report = {
         "stage": stage_name,
         "index": index,
         "command": command_text,
         "cwd": str(cwd),
+        "command_cwd": str(base_cwd),
+        "agent_id": primary_workspace.agent_id,
+        "agent_workspace": primary_workspace.as_dict(),
+        "agent_workspaces": [workspace.as_dict() for workspace in workspaces],
+        "dispatch_mode": "isolated-agent-workspace",
         "started_at": started_at,
         "ended_at": utc_now(),
         "returncode": returncode,
@@ -686,10 +904,15 @@ def run_stage_command(
         "stdout": clip_text(stdout),
         "stderr": clip_text(stderr),
     }
+    if workspace_patch:
+        report["workspace_patch"] = workspace_patch
+        if workspace_patch.get("patch_file"):
+            report["workspace_patch_file"] = workspace_patch["patch_file"]
     report_dir = run_dir / "command-runs"
     report_file = report_dir / f"{stage_name}-{index}.json"
     write_json(report_file, report)
     artifacts[f"command_{stage_name}_{index}"] = str(report_file)
+    artifacts["agent_workspace_manifest"] = str(run_dir / "agent-workspaces" / "manifest.json")
     return report
 
 
@@ -701,9 +924,10 @@ def run_stage_commands(
     requirement: str,
     stage_name: str,
     commands: tuple[str, ...],
+    input_patch_file: Path | None = None,
 ) -> list[dict[str, Any]]:
     return [
-        run_stage_command(config, run_dir, runtime, artifacts, requirement, stage_name, command, index)
+        run_stage_command(config, run_dir, runtime, artifacts, requirement, stage_name, command, index, input_patch_file)
         for index, command in enumerate(commands, start=1)
     ]
 
@@ -719,6 +943,8 @@ def command_markdown(title: str, reports: list[dict[str, Any]]) -> str:
             [
                 f"### Command {item.get('index')}",
                 f"- cwd: `{item.get('cwd', '')}`",
+                f"- agent: `{item.get('agent_id', '')}`",
+                f"- dispatch: `{item.get('dispatch_mode', '')}`",
                 f"- returncode: {item.get('returncode')}",
                 f"- ok: {str(item.get('ok')).lower()}",
                 "",
@@ -749,11 +975,16 @@ def render_patch_summary(config: PipelineConfig, command_report: dict[str, Any] 
             - Status: {"pass" if command_report.get("ok") else "fail"}
             - Return code: {command_report.get("returncode")}
             - Command evidence: `command-runs/code_execution-1.json`
+            - Agent: `{command_report.get("agent_id", "")}`
+            - Agent repo: `{command_report.get("cwd", "")}`
+            - Workspace diff: `{command_report.get("workspace_patch_file", "") or "not_applicable"}`
 
             {command_markdown("Coding Command", [command_report])}
 
             ## Handoff
-            Runtime agent output above is treated as the implementation handoff.
+            Runtime agent output above is treated as the implementation handoff. When the
+            command ran in an isolated workspace, the exported workspace diff is applied
+            back to the configured command cwd before verification.
             """
         )
 
@@ -1190,6 +1421,40 @@ def stage_output_ref(run_dir: Path, stage: dict[str, Any]) -> str:
     return str(run_dir / artifact)
 
 
+def stage_command_execution_details(state: dict[str, Any], stage_name: str) -> dict[str, Any]:
+    artifacts = state.get("artifacts", {})
+    command_refs = {
+        key: value
+        for key, value in artifacts.items()
+        if str(key).startswith(f"command_{stage_name}_")
+    }
+    reports: list[dict[str, Any]] = []
+    for ref in command_refs.values():
+        path = Path(str(ref))
+        if not path.exists():
+            continue
+        try:
+            reports.append(json.loads(path.read_text(encoding="utf-8")))
+        except json.JSONDecodeError:
+            continue
+    agent_workspaces: list[dict[str, Any]] = []
+    for report in reports:
+        for workspace in report.get("agent_workspaces", []) or []:
+            if isinstance(workspace, dict):
+                agent_workspaces.append(workspace)
+    return {
+        "command_run_refs": command_refs,
+        "dispatch_mode": reports[0].get("dispatch_mode") if reports else "state-machine",
+        "agent_id": reports[0].get("agent_id") if reports else STAGE_AGENT_MAP.get(stage_name, "coordinator"),
+        "agent_workspaces": agent_workspaces,
+        "workspace_patch_files": [
+            report.get("workspace_patch_file")
+            for report in reports
+            if report.get("workspace_patch_file")
+        ],
+    }
+
+
 def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], requirement: str) -> dict[str, Any] | None:
     if not config.record_task_center:
         return None
@@ -1270,13 +1535,19 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
                 continue
             agent_id = STAGE_AGENT_MAP.get(stage_name, "coordinator")
             output_ref = stage_output_ref(run_dir, stage)
+            execution_details = stage_command_execution_details(state, stage_name)
+            model_id = (
+                "runtime-agent-workspace"
+                if execution_details.get("command_run_refs")
+                else "state-machine"
+            )
             task_center.start_stage_run(
                 task_id=task_id,
                 stage=stage_name,
                 agent_id=agent_id,
-                model_id="state-machine",
+                model_id=model_id,
                 input_ref=str(run_dir / "run_meta.json"),
-                details={"pipeline_stage": stage},
+                details={"pipeline_stage": stage, "agent_execution": execution_details},
             )
             stage_status = "passed" if str(stage.get("status")) == "completed" else "failed"
             task_center.finish_stage_run(
@@ -1290,6 +1561,7 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
                     "verdict": stage.get("verdict"),
                     "score": stage.get("score"),
                     "next_action": stage.get("next_action"),
+                    "agent_execution": execution_details,
                 },
             )
             handoff_agents = [part.strip() for part in str(agent_id).split(",") if part.strip()] or ["coordinator"]
@@ -1302,7 +1574,11 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
                     message_type="stage_handoff",
                     status="acked" if stage_status == "passed" else "failed",
                     payload_ref=output_ref,
-                    details={"stage": stage_name, "run_id": state["run_id"]},
+                    details={
+                        "stage": stage_name,
+                        "run_id": state["run_id"],
+                        "agent_execution": execution_details,
+                    },
                     actor="project-delivery-pipeline",
                 )
 
@@ -1556,6 +1832,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         )
 
     code_command_report = None
+    code_workspace_patch_file: Path | None = None
     if config.code_command:
         code_command_report = run_stage_command(
             config,
@@ -1566,6 +1843,10 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             "code_execution",
             config.code_command,
         )
+        if code_command_report.get("workspace_patch_file"):
+            candidate = Path(str(code_command_report["workspace_patch_file"]))
+            if candidate.exists() and candidate.stat().st_size > 0:
+                code_workspace_patch_file = candidate
     if code_command_report and not code_command_report.get("ok"):
         record("code_execution", "patch_summary.md", render_patch_summary(config, code_command_report), verdict="fail")
         return finalize_pipeline_state(
@@ -1612,6 +1893,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         requirement,
         "verification",
         config.verification_commands,
+        code_workspace_patch_file,
     ) if config.verification_commands else []
     missing_live_verification = (
         not config.dry_run
@@ -1662,6 +1944,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
             "code_review",
             config.code_review_command,
+            input_patch_file=code_workspace_patch_file,
         )
     missing_live_code_review = (
         not config.dry_run
@@ -1709,6 +1992,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
             "deployment",
             config.deployment_command,
+            input_patch_file=code_workspace_patch_file,
         )
         deployment_failed = not deployment_command_report.get("ok")
         record(
@@ -1883,6 +2167,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--memory-write-command", help="trusted command that writes project memory after acceptance")
     parser.add_argument("--write-project-memory", action="store_true", help="call project_memory_writer.py for accepted runs")
     parser.add_argument("--command-cwd", type=Path, default=Path("."))
+    parser.add_argument("--agent-workspace-root", type=Path, help="root for per-run agent workspaces")
     parser.add_argument("--command-timeout-seconds", type=int, default=600)
     parser.add_argument("--project-memory-root", type=Path, default=Path(".workflow/project-memory"))
     parser.add_argument("--record-task-center", action="store_true")
@@ -1919,6 +2204,7 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         memory_write_command=args.memory_write_command,
         write_project_memory=bool(args.write_project_memory),
         command_cwd=args.command_cwd,
+        agent_workspace_root=args.agent_workspace_root,
         command_timeout_seconds=args.command_timeout_seconds,
         project_memory_root=args.project_memory_root,
         record_task_center=args.record_task_center,

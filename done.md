@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-04-25 已完成
+
+- [x] [2026-04-25] **nofx live bridge per-agent workspace 隔离**
+  - `pipeline_runner.py` 固定使用 Git worktree 隔离，新增 `agent-workspaces/manifest.json`、`PIPELINE_AGENT_*` 环境变量注入、command report workspace 留痕和 Task Center `agent_execution` 详情；不再暴露 `shared` / `copy` 模式。
+  - `code_execution` 默认在 `backend-dev` 独立 workspace 内执行；成功后导出 `command-runs/code_execution-1.patch`，应用回主项目目录，并注入后续 `tester`、`reviewer`、`deployer` workspace。
+  - `smart_arb_live_bridge.py` 默认使用 `PIPELINE_AGENT_REPO_DIR` 作为 Hermes 阶段项目目录。
+  - workspace root 若被配置到项目目录内部，会直接报错要求移到 `--command-cwd` 外部，不再静默降级。
+  - 新增回归测试覆盖 worktree 隔离、diff 回流、两条 verification 命令共享 workspace 时不重复 apply patch、后续 reviewer workspace 注入、嵌套 workspace 拒绝和 nofx entry 不再传 workspace mode；nofx smoke `codex-arbitrageagent-20260425T140605083467Z` 已通过。
+
+- [x] [2026-04-25] **nofx Hermes profile 提示词修复与 fan-out 边界澄清**
+  - 复核 nofx 发现 `spreadagent` 19:10 Discord 会话没有创建新的 `smart-arb-pipeline` run，而是在 Hermes profile 会话里直接规划任务；同时两个 profile 的 `SOUL.md` 主体为问号乱码，coordinator pipeline 约束不稳定。
+  - 新增仓库模板 `config/nofx-hermes-profiles/arbitrageagent/SOUL.md` 与 `config/nofx-hermes-profiles/spreadagent/SOUL.md`，按字节上传到 nofx 并备份原文件，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
+  - 验证两个 profile 均为 `gateway_state=running`、`discord=connected`，且 `SOUL.md` 中文可读；标准入口 dry-run smoke `codex-prompt-smoke-spreadagent-20260425T112013223220Z` 返回 `completed`。
+  - 同步文档和项目记忆，明确当前 live bridge 是 Hermes 单会话 stage bridge，不是真实 native 多 agent fan-out；真实 fan-out 已记录到 `todo.md`。
+
 ## 2026-04-24 已完成
 
 - [x] [2026-04-24] **Hermes profile 非 dry-run smoke 验收**

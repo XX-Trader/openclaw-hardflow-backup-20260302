@@ -115,13 +115,15 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             module.subprocess,
             "run",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
-        ), redirect_stdout(out), redirect_stderr(err):
+        ) as run_mock, redirect_stdout(out), redirect_stderr(err):
             rc = module.main(["--profile", "arbitrageagent", "--source", "discord", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         self.assertIn("# nofx 任务执行状态", out.getvalue())
         self.assertIn("Run ID: discord-arbitrageagent-test", out.getvalue())
         self.assertIn("任务接入: coordinator -> 完成", out.getvalue())
+        runner_cmd = run_mock.call_args.args[0]
+        self.assertNotIn("--agent-workspace-mode", runner_cmd)
         self.assertEqual("", err.getvalue())
 
     def test_main_emit_json_prints_raw_runner_json(self):

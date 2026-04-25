@@ -37,6 +37,18 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         self.assertIn("Final verdict: pass", proc.stdout)
         self.assertIn("LIVE_BRIDGE_STATUS: pass", proc.stdout)
 
+    def test_project_dir_defaults_to_pipeline_agent_repo_dir(self):
+        bridge = self._load_bridge_module()
+        with tempfile.TemporaryDirectory() as tmpdir, mock.patch.dict(
+            os.environ,
+            {"PIPELINE_AGENT_REPO_DIR": tmpdir},
+            clear=False,
+        ):
+            parser = bridge.build_parser()
+            args = parser.parse_args(["--stage", "external_research", "--agent-mode", "echo"])
+
+        self.assertEqual(Path(tmpdir), args.project_dir)
+
     def test_memory_writeback_uses_pipeline_memory_parent(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

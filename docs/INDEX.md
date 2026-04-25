@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-25 | 项目交付优先工作流已补齐 SmartMultiPlatformArbitrage nofx live evidence bridge
+> 最后更新：2026-04-25 | 项目交付优先工作流已补齐 SmartMultiPlatformArbitrage nofx live bridge fan-out 边界
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -175,6 +175,7 @@
 | 文件 | 说明 |
 |------|------|
 | [PROJECT_MEMORY_GUIDE.md](../PROJECT_MEMORY_GUIDE.md) | 项目记忆使用指南 |
+| [memory/INDEX.md](../memory/INDEX.md) | 项目记忆入口、nofx runtime 排障边界与长期事实导航 |
 | [done.md](../done.md) | 已完成功能清单 |
 | [todo.md](../todo.md) | 待办事项 |
 

@@ -78,6 +78,13 @@ Every command writes `command-runs/<stage>-<n>.json` with command, cwd,
 timestamps, return code, stdout, and stderr. Non-zero exit routes to the owning
 stage instead of marking the pipeline completed.
 
+Each stage owner gets a dedicated Git worktree under
+`agent-workspaces/<stage>/<agent>/repo`. The command
+report also records `agent_id`, `agent_workspace`, `agent_workspaces`, and
+`dispatch_mode`. For code execution, the runner exports the implementation diff
+from the coding workspace and applies it back to the configured command cwd
+before tester/reviewer/deployer workspaces are prepared.
+
 Hermes profile smoke uses the same hooks through `hermes_profile_smoke.py`.
 Recommended mode is `hybrid`: one `hermes chat` call creates a
 research/code/review bundle while verification remains a deterministic local

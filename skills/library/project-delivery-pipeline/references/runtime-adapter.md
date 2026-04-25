@@ -95,6 +95,42 @@ python skills/library/project-delivery-pipeline/scripts/pipeline_runner.py run \
 Each command is treated as trusted runtime code and writes a JSON evidence file
 under `command-runs/`.
 
+### Agent Workspace Isolation
+
+Live command adapters run in per-agent Git worktrees:
+
+```bash
+python skills/library/project-delivery-pipeline/scripts/pipeline_runner.py run \
+  --runtime-host hermes \
+  --runtime-home ~/.hermes \
+  --project-key <project_key> \
+  --requirement-file <requirement_file> \
+  --code-command "<backend-dev command>" \
+  --verification-command "<tester command>" \
+  --code-review-command "<reviewer command>"
+```
+
+The runner always creates `agent-workspaces/<stage>/<agent>/repo` using
+`git worktree add --detach HEAD`. `--command-cwd` must therefore be a Git
+repository with a valid `HEAD`, and the agent workspace root must be outside
+that repository. Use `--agent-workspace-root` only to choose a different
+external location; it is not a mode switch.
+
+The runner injects these variables into every stage command:
+
+- `PIPELINE_AGENT_ID`
+- `PIPELINE_AGENT_WORKSPACE`
+- `PIPELINE_AGENT_REPO_DIR`
+- `PIPELINE_AGENT_WORKSPACES_JSON`
+- `PIPELINE_AGENT_WORKSPACE_MODE`
+
+For isolated `code_execution`, the runner exports the agent workspace diff to
+`command-runs/code_execution-1.patch`, applies it back to `--command-cwd`, and
+then applies the same patch to later verification, review, and deployment
+workspaces. Command reports and Task Center details must record the workspace and
+patch refs. A runtime still needs native session/run ids to claim true host-level
+multi-agent fan-out.
+
 ### Hermes Profile Smoke
 
 Use the smoke harness to verify the profile without creating a second workflow:

@@ -2,6 +2,7 @@ import argparse
 import importlib.util
 import json
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -316,6 +317,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             research_script = scripts_dir / "research.py"
             code_script = scripts_dir / "code.py"
             verify_script = scripts_dir / "verify.py"
+            verify_second_script = scripts_dir / "verify_second.py"
             review_script = scripts_dir / "review.py"
             deploy_script = scripts_dir / "deploy.py"
             research_script.write_text("print('# Research\\n- Source: official docs checked')\n", encoding="utf-8")
@@ -361,6 +363,122 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             changelog = root / "memory" / "demo" / "CHANGELOG.ndjson"
             self.assertTrue(changelog.exists())
             self.assertIn("project-delivery:live-adapter", changelog.read_text(encoding="utf-8"))
+
+    def test_live_agent_worktree_isolates_code_and_applies_diff_for_verification(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            code_script = scripts_dir / "code.py"
+            verify_script = scripts_dir / "verify.py"
+            verify_second_script = scripts_dir / "verify_second.py"
+            review_script = scripts_dir / "review.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            code_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "(repo / 'feature.txt').write_text('from isolated backend-dev workspace\\n', encoding='utf-8')\n"
+                "print('code workspace', repo)\n",
+                encoding="utf-8",
+            )
+            verify_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "assert (repo / 'feature.txt').read_text(encoding='utf-8').startswith('from isolated')\n"
+                "print('verified workspace', repo)\n",
+                encoding="utf-8",
+            )
+            verify_second_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "assert (repo / 'feature.txt').read_text(encoding='utf-8').startswith('from isolated')\n"
+                "print('verified second workspace', repo)\n",
+                encoding="utf-8",
+            )
+            review_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "assert (repo / 'feature.txt').exists()\n"
+                "print('Final verdict: pass')\n",
+                encoding="utf-8",
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Run coding in an isolated backend-dev workspace.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="agent-worktree",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    code_command=py_cmd(code_script),
+                    verification_commands=(py_cmd(verify_script), py_cmd(verify_second_script)),
+                    code_review_command=py_cmd(review_script),
+                    memory_write_command=py_cmd(pass_script),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("completed", state["status"])
+            self.assertTrue((repo / "feature.txt").exists())
+            code_report = json.loads(Path(state["artifacts"]["command_code_execution_1"]).read_text(encoding="utf-8"))
+            verify_report = json.loads(Path(state["artifacts"]["command_verification_1"]).read_text(encoding="utf-8"))
+            verify_second_report = json.loads(
+                Path(state["artifacts"]["command_verification_2"]).read_text(encoding="utf-8")
+            )
+            review_report = json.loads(Path(state["artifacts"]["command_code_review_1"]).read_text(encoding="utf-8"))
+            self.assertEqual("backend-dev", code_report["agent_id"])
+            self.assertEqual("tester", verify_report["agent_id"])
+            self.assertEqual("tester", verify_second_report["agent_id"])
+            self.assertEqual("reviewer", review_report["agent_id"])
+            self.assertNotEqual(str(repo), code_report["cwd"])
+            self.assertNotEqual(str(repo), verify_report["cwd"])
+            self.assertEqual(verify_report["cwd"], verify_second_report["cwd"])
+            self.assertNotEqual(str(repo), review_report["cwd"])
+            self.assertTrue(Path(code_report["workspace_patch_file"]).exists())
+            self.assertIn("agent_workspace_manifest", state["artifacts"])
+            manifest = json.loads(Path(state["artifacts"]["agent_workspace_manifest"]).read_text(encoding="utf-8"))
+            self.assertIn("backend-dev", json.dumps(manifest, ensure_ascii=False))
+
+    def test_nested_agent_workspace_root_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            workspace_dir = repo / ".workflow" / "agent-workspaces" / "code_execution" / "backend-dev"
+            with self.assertRaises(_mod.PipelineError) as ctx:
+                _mod.ensure_agent_repo(repo, workspace_dir)
+            self.assertIn("must be outside command cwd", str(ctx.exception))
 
     def test_deployment_command_failure_blocks_before_acceptance(self):
         with tempfile.TemporaryDirectory() as tmp:
