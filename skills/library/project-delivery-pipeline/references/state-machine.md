@@ -9,7 +9,7 @@
 | `project_memory_context` | `project_memory_context.md` | project memory module loaded and change-localization gate recorded |
 | `external_research` | `research_report.md` | source URLs, report file, or `--research-command` evidence present |
 | `requirements_package` | `requirements.md` | acceptance criteria and non-goals present |
-| `requirements_review` | `requirements_review.md` | `Final verdict: ready_for_solution` |
+| `requirements_discussion -> requirements_review` | `requirements_discussion -> requirements_review.md` | `Final verdict: ready_for_solution` |
 | `solution_package` | `solution.md` | implementation and verification plan present |
 | `solution_review` | `solution_review.md` | `Final verdict: ready_for_implement` |
 | `code_execution` | `patch_summary.md` | implementation artifact or `--code-command` evidence present |
@@ -67,7 +67,7 @@ The state machine exposes trusted command hooks instead of hardcoding a single
 runtime:
 
 - `--research-command`: researcher/web agent or official-doc lookup command.
-- `--code-command`: HardFlow Core / ACP / implementation-agent command.
+- `--code-command`: HardFlow Core / ACP / backend-dev command.
 - `--verification-command`: repeatable lint, typecheck, unit, integration,
   smoke, or deployment verification commands.
 - `--code-review-command`: reviewer command that must emit `Final verdict: pass`.

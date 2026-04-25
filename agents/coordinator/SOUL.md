@@ -126,7 +126,7 @@ python3 scripts/openclaw-ops/policy/review_gate_enforcer.py \
 - Use structured task packets with task_id and acceptance.
 - High-risk or unclear tasks require human confirmation.
 - Do not guess when issues occur; require and cite real logs, concrete error outputs, or reproducible evidence before diagnosis and dispatch decisions.
-- **自进化类任务完全不做**：optimization-agent、skill_evolution_review、workflow_upgrade_scoring 等不再调度。
+- **旧自动优化类任务完全不做**：不再调度独立优化/自进化角色。
 
 ## 输出语言
 - 默认输出语言：中文（简体，zh-CN）。

@@ -49,14 +49,15 @@ STAGE_AGENT_MAP = {
     "project_memory_context": "project-agent",
     "external_research": "web-agent",
     "requirements_package": "project-agent",
-    "requirements_review": "reviewer-pair",
+    "requirements_discussion": "project-agent,reviewer",
+    "requirements_review": "reviewer",
     "solution_package": "project-agent",
-    "solution_review": "reviewer-pair",
-    "code_execution": "implementation-agent",
-    "verification": "test-agent",
-    "code_review": "reviewer-pair",
-    "acceptance": "test-agent",
-    "writeback": "project-agent",
+    "solution_review": "reviewer",
+    "code_execution": "backend-dev",
+    "verification": "tester",
+    "code_review": "reviewer",
+    "acceptance": "tester",
+    "writeback": "doc-writer",
 }
 SIMULATED_FAILURES = {
     "requirements",
@@ -90,6 +91,7 @@ class PipelineConfig:
     max_repair_loops: int = 2
     research_report_file: Path | None = None
     research_commands: tuple[str, ...] = ()
+    requirements_discussion_commands: tuple[str, ...] = ()
     code_command: str | None = None
     patch_summary_file: Path | None = None
     verification_commands: tuple[str, ...] = ()
@@ -496,6 +498,57 @@ def render_requirements(requirement: str) -> str:
     )
 
 
+def render_requirements_discussion(requirement: str) -> str:
+    return dedent(
+        f"""
+        # Dual-Agent Requirement Discussion
+
+        ## Goal
+        Two AI roles must actively discuss the requirement before the final requirement review:
+        - `project-agent`: product/project analyst, owns user intent, scope, acceptance criteria, and delivery constraints.
+        - `reviewer`: independent challenger, owns ambiguity, hidden risks, missing evidence, and testability.
+
+        ## Original Requirement
+        {requirement}
+
+        ## Discussion Transcript Template
+
+        ### Round 1 - project-agent: intent and first draft
+        - Restate the user goal in concrete, testable language.
+        - Identify target users, entry points, outputs, constraints, and non-goals.
+        - Draft acceptance criteria and required evidence.
+
+        ### Round 2 - reviewer: challenge and gap finding
+        - Challenge unclear terms, missing data contracts, unsafe assumptions, and unsupported external facts.
+        - Ask whether internet or official documentation research is required before implementation.
+        - Identify risks that would make the requirement incomplete or unsafe.
+
+        ### Round 3 - project-agent: revised requirement
+        - Answer reviewer challenges.
+        - Add missing scope boundaries, explicit non-goals, validation steps, and rollback/verification expectations.
+        - Convert the discussion into a coherent requirement document outline.
+
+        ### Round 4 - reviewer: final tightening
+        - Confirm the requirement is specific, testable, bounded, and implementable.
+        - List any remaining open questions that must block coding.
+        - If no blocking questions remain, mark the requirement ready for formal review.
+
+        ## Final Requirement Document Contract
+        The final `requirements.md` / requirement package must include:
+        - Problem statement
+        - Users and entry points
+        - In-scope behavior
+        - Out-of-scope behavior
+        - Data/API/config contracts
+        - External research evidence needed or supplied
+        - Acceptance criteria
+        - Test and verification plan
+        - Security/credential/production boundaries
+        - Open questions, with coding blocked if any are material
+        """
+    )
+
+
 def render_solution(runtime: dict[str, Any]) -> str:
     return dedent(
         f"""
@@ -516,14 +569,15 @@ def render_solution(runtime: dict[str, Any]) -> str:
         3. project_memory_context
         4. external_research
         5. requirements_package
-        6. requirements_review
-        7. solution_package
-        8. solution_review
-        9. code_execution
-        10. verification
-        11. code_review
-        12. acceptance
-        13. writeback
+        6. requirements_discussion
+        7. requirements_review
+        8. solution_package
+        9. solution_review
+        10. code_execution
+        11. verification
+        12. code_review
+        13. acceptance
+        14. writeback
 
         ## Failure Routing
         - Requirement defects route to revise_requirements.
@@ -560,6 +614,7 @@ def command_env(
             "PIPELINE_RUNTIME_HOME": str(runtime.get("runtime_home", "")),
             "PIPELINE_PROJECT_MEMORY_DIR": str(memory_dir),
             "PIPELINE_RESEARCH_REPORT_FILE": str(run_dir / "research_report.md"),
+            "PIPELINE_REQUIREMENTS_DISCUSSION_FILE": str(run_dir / "requirements_discussion.md"),
             "PIPELINE_PATCH_SUMMARY_FILE": str(run_dir / "patch_summary.md"),
             "PIPELINE_VERIFICATION_REPORT_FILE": str(run_dir / "verification_report.md"),
             "PIPELINE_CODE_REVIEW_FILE": str(run_dir / "code_review.md"),
@@ -1081,13 +1136,14 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
         "result_output": f"Pipeline {state['status']} at {state['run_dir']}",
         "acceptance": "delivery_evidence.md and pipeline_state.json must show pass",
         "observable_outputs": ",".join(sorted(str(key) for key in state.get("artifacts", {}).keys())),
+        "requirements_discussion_agents": "project-agent,reviewer",
         "acceptance_thresholds": (
             "requirements_review=ready_for_solution,"
             "solution_review=ready_for_implement,verification=pass,code_review=pass,acceptance=pass"
         ),
         "required_capabilities": "project_memory_retrieval,external_research,coding,verification,code_review",
         "required_skills": "project-delivery-pipeline",
-        "allowed_agents": "coordinator,project-agent,web-agent,reviewer-pair,implementation-agent,test-agent",
+        "allowed_agents": "coordinator,project-agent,web-agent,backend-dev,frontend-dev,reviewer,tester,ops-agent,deployer,doc-writer",
         "workflow_profile_id": "project-delivery-pipeline@stable",
         "workflow_channel": "stable",
         "selection_reason": "single controlled coding delivery pipeline",
@@ -1148,17 +1204,19 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
                     "next_action": stage.get("next_action"),
                 },
             )
-            task_center.record_module_communication(
-                task_id=task_id,
-                from_module="coordinator",
-                to_module=agent_id,
-                protocol="project-delivery-pipeline",
-                message_type="stage_handoff",
-                status="acked" if stage_status == "passed" else "failed",
-                payload_ref=output_ref,
-                details={"stage": stage_name, "run_id": state["run_id"]},
-                actor="project-delivery-pipeline",
-            )
+            handoff_agents = [part.strip() for part in str(agent_id).split(",") if part.strip()] or ["coordinator"]
+            for handoff_agent in handoff_agents:
+                task_center.record_module_communication(
+                    task_id=task_id,
+                    from_module="coordinator",
+                    to_module=handoff_agent,
+                    protocol="project-delivery-pipeline",
+                    message_type="stage_handoff",
+                    status="acked" if stage_status == "passed" else "failed",
+                    payload_ref=output_ref,
+                    details={"stage": stage_name, "run_id": state["run_id"]},
+                    actor="project-delivery-pipeline",
+                )
 
         task_center.record_task_output(
             task_id=task_id,
@@ -1316,6 +1374,43 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
         )
     record("requirements_package", "requirements.md", render_requirements(requirement))
+    discussion_command_reports = run_stage_commands(
+        config,
+        run_dir,
+        runtime,
+        artifacts,
+        requirement,
+        "requirements_discussion",
+        config.requirements_discussion_commands,
+    ) if config.requirements_discussion_commands else []
+    discussion_evidence_supplied = bool(config.dry_run or discussion_command_reports)
+    discussion_body = render_requirements_discussion(requirement)
+    if discussion_command_reports:
+        discussion_body = discussion_body.rstrip() + "\n\n" + command_markdown("Requirements Discussion Commands", discussion_command_reports)
+    record(
+        "requirements_discussion",
+        "requirements_discussion.md",
+        discussion_body,
+        verdict="pass" if discussion_evidence_supplied and (not discussion_command_reports or commands_ok(discussion_command_reports)) else "missing",
+    )
+    if not config.dry_run and (not discussion_evidence_supplied or (discussion_command_reports and not commands_ok(discussion_command_reports))):
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "requirements_discussion",
+                "run_dual_agent_requirements_discussion",
+                "live mode requires successful project-agent/reviewer requirement discussion evidence before requirements review",
+                "requirements_discussion.md",
+                "fail",
+            ),
+            requirement,
+        )
 
     req_verdict = "requires_revision" if config.simulate_failure_stage == "requirements" else "ready_for_solution"
     req_review = record(
@@ -1652,6 +1747,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-repair-loops", type=int, default=2)
     parser.add_argument("--research-report-file", type=Path)
     parser.add_argument("--research-command", action="append", default=[], help="trusted command that produces research evidence")
+    parser.add_argument("--requirements-discussion-command", action="append", default=[], help="trusted command that makes project-agent and reviewer discuss/refine requirements")
     parser.add_argument("--code-command", help="trusted runtime/agent command that performs or dispatches implementation")
     parser.add_argument("--patch-summary-file", type=Path)
     parser.add_argument("--verification-command", action="append", default=[], help="trusted command used as verification evidence")
@@ -1686,6 +1782,7 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         max_repair_loops=args.max_repair_loops,
         research_report_file=args.research_report_file,
         research_commands=tuple(args.research_command or ()),
+        requirements_discussion_commands=tuple(args.requirements_discussion_command or ()),
         code_command=args.code_command,
         patch_summary_file=args.patch_summary_file,
         verification_commands=tuple(args.verification_command or ()),
@@ -1789,7 +1886,7 @@ def render_view_text(payload: dict[str, Any]) -> str:
     artifacts = state.get("artifacts", {})
     if artifacts:
         lines.append("- key artifacts:")
-        for key in ("project_memory_context", "requirements_package", "solution_package", "verification", "code_review", "acceptance"):
+        for key in ("project_memory_context", "requirements_package", "requirements_discussion", "solution_package", "verification", "code_review", "acceptance"):
             if key in artifacts:
                 lines.append(f"  {key}: {artifacts[key]}")
     return "\n".join(lines)

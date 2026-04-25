@@ -405,7 +405,7 @@ def default_config() -> dict[str, Any]:
             "task_center_db": str(home / ".openclaw" / "ops" / "task-center" / "task_center.db"),
             "task_type": "ops_workflow_repair",
             "source": "ops-agent/ops-cron-runner",
-            "default_assignee": "optimization-agent",
+            "default_assignee": "ops-agent",
             "pool": "jobs",
             "priority": "high",
             "risk_level": "low",
@@ -2049,8 +2049,8 @@ def create_workflow_follow_up_tasks(
 
     max_tasks = max(1, int(follow_up_cfg.get("max_tasks_per_run", 2) or 2))
     default_assignee = (
-        str(follow_up_cfg.get("default_assignee", "optimization-agent")).strip()
-        or "optimization-agent"
+        str(follow_up_cfg.get("default_assignee", "ops-agent")).strip()
+        or "ops-agent"
     )
     task_type = str(follow_up_cfg.get("task_type", "ops_workflow_repair")).strip() or "ops_workflow_repair"
     pool = str(follow_up_cfg.get("pool", "jobs")).strip().lower() or "jobs"

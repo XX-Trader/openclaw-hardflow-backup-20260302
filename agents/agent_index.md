@@ -2,21 +2,13 @@
 
 > Generated file by `scripts/openclaw-ops/generate_runtime_binding_manifests.py`. Do not edit manually.
 
-## main
-- name: 大总管
-- default: True
-- workspace: /home/ubuntu/.openclaw/workspace
-- agentDir: None
-- model: openai-codex/gpt-5.4
-- allowAgentsCount: 13
-
 ## coordinator
 - name: coordinator
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-coordinator
 - agentDir: None
 - model: openai-codex/gpt-5.4
-- allowAgentsCount: 13
+- allowAgentsCount: 10
 
 ## doc-writer
 - name: doc-writer
@@ -66,29 +58,13 @@
 - model: glmcode/glm-4.7
 - allowAgentsCount: 0
 
-## agent-factory
-- name: agent-factory
-- default: False
-- workspace: /home/ubuntu/.openclaw/workspace-agent-factory
-- agentDir: None
-- model: openai-codex/gpt-5.3-codex
-- allowAgentsCount: 3
-
 ## ops-agent
 - name: ops-agent
 - default: False
 - workspace: /home/ubuntu/.openclaw/workspace-ops-agent
 - agentDir: /home/ubuntu/.openclaw/agents/ops-agent/agent
 - model: glmcode/glm-4.7
-- allowAgentsCount: 2
-
-## optimization-agent
-- name: optimization-agent
-- default: False
-- workspace: /home/ubuntu/.openclaw/workspace-optimization-agent
-- agentDir: /home/ubuntu/.openclaw/agents/optimization-agent/agent
-- model: openai-codex/gpt-5.3-codex
-- allowAgentsCount: 2
+- allowAgentsCount: 1
 
 ## project-agent
 - name: project-agent

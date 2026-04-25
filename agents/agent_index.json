@@ -1,28 +1,5 @@
 [
   {
-    "id": "main",
-    "name": "大总管",
-    "default": true,
-    "workspace": "/home/ubuntu/.openclaw/workspace",
-    "agentDir": null,
-    "model": "openai-codex/gpt-5.4",
-    "allowAgents": [
-      "agent-factory",
-      "backend-dev",
-      "coordinator",
-      "deployer",
-      "doc-writer",
-      "frontend-dev",
-      "main",
-      "ops-agent",
-      "optimization-agent",
-      "project-agent",
-      "reviewer",
-      "tester",
-      "web-agent"
-    ]
-  },
-  {
     "id": "coordinator",
     "name": "coordinator",
     "default": false,
@@ -30,15 +7,12 @@
     "agentDir": null,
     "model": "openai-codex/gpt-5.4",
     "allowAgents": [
-      "agent-factory",
       "backend-dev",
       "coordinator",
       "deployer",
       "doc-writer",
       "frontend-dev",
-      "main",
       "ops-agent",
-      "optimization-agent",
       "project-agent",
       "reviewer",
       "tester",
@@ -100,19 +74,6 @@
     "allowAgents": []
   },
   {
-    "id": "agent-factory",
-    "name": "agent-factory",
-    "default": false,
-    "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
-    "agentDir": null,
-    "model": "openai-codex/gpt-5.3-codex",
-    "allowAgents": [
-      "optimization-agent",
-      "project-agent",
-      "web-agent"
-    ]
-  },
-  {
     "id": "ops-agent",
     "name": "ops-agent",
     "default": false,
@@ -120,20 +81,7 @@
     "agentDir": "/home/ubuntu/.openclaw/agents/ops-agent/agent",
     "model": "glmcode/glm-4.7",
     "allowAgents": [
-      "optimization-agent",
       "project-agent"
-    ]
-  },
-  {
-    "id": "optimization-agent",
-    "name": "optimization-agent",
-    "default": false,
-    "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
-    "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-    "model": "openai-codex/gpt-5.3-codex",
-    "allowAgents": [
-      "project-agent",
-      "web-agent"
     ]
   },
   {

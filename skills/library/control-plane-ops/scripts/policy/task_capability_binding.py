@@ -15,11 +15,8 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
             "owner_domain": "policy",
             "default_agent": "project-agent",
             "allowed_agents": [
-                "agent-factory",
                 "ops-agent",
-                "optimization-agent",
                 "project-agent",
-                "self-evolution-agent",
                 "web-agent",
             ],
             "required_skills": [],
@@ -36,7 +33,6 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
             "owner_domain": "workflow",
             "default_agent": "coordinator",
             "allowed_agents": [
-                "main",
                 "coordinator",
                 "backend-dev",
                 "frontend-dev",
@@ -72,7 +68,6 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
             "display_name": "Routing",
             "owner_domain": "workflow",
             "default_agent": "coordinator",
-            "allowed_agents": ["coordinator", "main"],
             "required_skills": [],
             "required_runtime": ["task-center"],
             "tool_requirements": [],
@@ -93,7 +88,6 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
                 "tester",
                 "deployer",
                 "ops-agent",
-                "optimization-agent",
             ],
             "required_skills": [],
             "required_runtime": ["task-center"],
@@ -106,10 +100,8 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
     ],
     "agent_defaults": [
         {
-            "agent_id": "agent-factory",
             "required_capabilities": ["role_only"],
             "required_skills": [],
-            "allowed_agents": ["agent-factory"],
         },
         {
             "agent_id": "ops-agent",
@@ -118,10 +110,8 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
             "allowed_agents": ["ops-agent"],
         },
         {
-            "agent_id": "optimization-agent",
             "required_capabilities": ["skill_backed", "task_execution"],
             "required_skills": [],
-            "allowed_agents": ["optimization-agent"],
         },
         {
             "agent_id": "project-agent",
@@ -130,10 +120,8 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
             "allowed_agents": ["project-agent"],
         },
         {
-            "agent_id": "self-evolution-agent",
             "required_capabilities": ["role_only"],
             "required_skills": [],
-            "allowed_agents": ["self-evolution-agent"],
         },
         {
             "agent_id": "web-agent",
@@ -142,10 +130,8 @@ DEFAULT_CAPABILITY_REGISTRY: dict[str, Any] = {
             "allowed_agents": ["web-agent"],
         },
         {
-            "agent_id": "main",
             "required_capabilities": ["skill_backed"],
             "required_skills": ["requirements-clarity", "task-decomposer"],
-            "allowed_agents": ["main"],
         },
         {
             "agent_id": "coordinator",

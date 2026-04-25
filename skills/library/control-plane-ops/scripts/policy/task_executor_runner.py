@@ -82,7 +82,7 @@ RETRYABLE_AGENT_ERROR_PATTERNS = (
     "failovererror: ⚠️ api rate limit reached",
 )
 DEFAULT_STRICT_PREFLIGHT_TASK_TYPES = (
-    "self_evolution",
+
     "github_web_evolution",
     "governance_evolution_context_preflight",
     "governance_evolution_optimize",
@@ -854,7 +854,7 @@ def contract_from_agent_result(exit_code: int, stdout_text: str, stderr_text: st
 
 def default_stage(assignee: str) -> str:
     agent = str(assignee or "").strip().lower()
-    if agent in {"coordinator", "project-agent", "agent-factory"}:
+    if agent in {"coordinator", "project-agent"}:
         return "plan"
     if agent == "tester":
         return "test-loop"

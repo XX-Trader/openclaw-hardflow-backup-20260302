@@ -7,11 +7,8 @@
       "owner_domain": "policy",
       "default_agent": "project-agent",
       "allowed_agents": [
-        "agent-factory",
         "ops-agent",
-        "optimization-agent",
         "project-agent",
-        "self-evolution-agent",
         "web-agent"
       ],
       "required_skills": [],
@@ -32,7 +29,6 @@
       "owner_domain": "workflow",
       "default_agent": "coordinator",
       "allowed_agents": [
-        "main",
         "coordinator",
         "backend-dev",
         "frontend-dev",
@@ -84,8 +80,7 @@
       "owner_domain": "workflow",
       "default_agent": "coordinator",
       "allowed_agents": [
-        "coordinator",
-        "main"
+        "coordinator"
       ],
       "required_skills": [],
       "required_runtime": [
@@ -110,8 +105,7 @@
         "reviewer",
         "tester",
         "deployer",
-        "ops-agent",
-        "optimization-agent"
+        "ops-agent"
       ],
       "required_skills": [],
       "required_runtime": [
@@ -132,16 +126,6 @@
   ],
   "agent_defaults": [
     {
-      "agent_id": "agent-factory",
-      "required_capabilities": [
-        "role_only"
-      ],
-      "required_skills": [],
-      "allowed_agents": [
-        "agent-factory"
-      ]
-    },
-    {
       "agent_id": "ops-agent",
       "required_capabilities": [
         "role_only"
@@ -149,16 +133,6 @@
       "required_skills": [],
       "allowed_agents": [
         "ops-agent"
-      ]
-    },
-    {
-      "agent_id": "optimization-agent",
-      "required_capabilities": [
-        "role_only"
-      ],
-      "required_skills": [],
-      "allowed_agents": [
-        "optimization-agent"
       ]
     },
     {
@@ -172,16 +146,6 @@
       ]
     },
     {
-      "agent_id": "self-evolution-agent",
-      "required_capabilities": [
-        "role_only"
-      ],
-      "required_skills": [],
-      "allowed_agents": [
-        "self-evolution-agent"
-      ]
-    },
-    {
       "agent_id": "web-agent",
       "required_capabilities": [
         "role_only"
@@ -189,19 +153,6 @@
       "required_skills": [],
       "allowed_agents": [
         "web-agent"
-      ]
-    },
-    {
-      "agent_id": "main",
-      "required_capabilities": [
-        "skill_backed"
-      ],
-      "required_skills": [
-        "requirements-clarity",
-        "task-decomposer"
-      ],
-      "allowed_agents": [
-        "main"
       ]
     },
     {
@@ -290,5 +241,18 @@
         "doc-writer"
       ]
     }
-  ]
+  ],
+  "active_delivery_agents": [
+    "coordinator",
+    "project-agent",
+    "web-agent",
+    "backend-dev",
+    "frontend-dev",
+    "reviewer",
+    "tester",
+    "ops-agent",
+    "deployer",
+    "doc-writer"
+  ],
+  "disabled_autonomous_agents": []
 }

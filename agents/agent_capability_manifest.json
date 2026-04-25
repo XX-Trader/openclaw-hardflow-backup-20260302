@@ -2,74 +2,18 @@
   "source_report": "scripts/openclaw-ops/inspect_runtime_bindings.py",
   "agents": [
     {
-      "agent_id": "main",
-      "name": "大总管",
-      "default": true,
-      "model": "openai-codex/gpt-5.4",
-      "workspace": "/home/ubuntu/.openclaw/workspace",
-      "allow_agents": [
-        "agent-factory",
-        "backend-dev",
-        "coordinator",
-        "deployer",
-        "doc-writer",
-        "frontend-dev",
-        "main",
-        "ops-agent",
-        "optimization-agent",
-        "project-agent",
-        "reviewer",
-        "tester",
-        "web-agent"
-      ],
-      "declared_skills": [
-        "agent-manager",
-        "requirements-clarity",
-        "smart-workflow",
-        "result-synthesizer",
-        "intelligent-router",
-        "task-decomposer",
-        "codex"
-      ],
-      "missing_skills": [],
-      "soul_skills": [
-        "agent-manager",
-        "requirements-clarity",
-        "smart-workflow",
-        "result-synthesizer",
-        "intelligent-router",
-        "task-decomposer",
-        "codex"
-      ],
-      "runtime_skill_overrides": [],
-      "capability_mode": "skill_backed",
-      "hook_events_affected": [
-        "agent:bootstrap",
-        "command",
-        "command:new",
-        "command:reset",
-        "command:stop",
-        "gateway:startup"
-      ],
-      "has_by_agent_doc": true,
-      "has_soul_doc": true
-    },
-    {
       "agent_id": "coordinator",
       "name": "coordinator",
       "default": false,
       "model": "openai-codex/gpt-5.4",
       "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
       "allow_agents": [
-        "agent-factory",
         "backend-dev",
         "coordinator",
         "deployer",
         "doc-writer",
         "frontend-dev",
-        "main",
         "ops-agent",
-        "optimization-agent",
         "project-agent",
         "reviewer",
         "tester",
@@ -344,40 +288,12 @@
       "has_soul_doc": true
     },
     {
-      "agent_id": "agent-factory",
-      "name": "agent-factory",
-      "default": false,
-      "model": "openai-codex/gpt-5.3-codex",
-      "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
-      "allow_agents": [
-        "optimization-agent",
-        "project-agent",
-        "web-agent"
-      ],
-      "declared_skills": [],
-      "missing_skills": [],
-      "soul_skills": [],
-      "runtime_skill_overrides": [],
-      "capability_mode": "role_only",
-      "hook_events_affected": [
-        "agent:bootstrap",
-        "command",
-        "command:new",
-        "command:reset",
-        "command:stop",
-        "gateway:startup"
-      ],
-      "has_by_agent_doc": true,
-      "has_soul_doc": true
-    },
-    {
       "agent_id": "ops-agent",
       "name": "ops-agent",
       "default": false,
       "model": "glmcode/glm-4.7",
       "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
       "allow_agents": [
-        "optimization-agent",
         "project-agent"
       ],
       "declared_skills": [
@@ -398,44 +314,6 @@
         "openclaw-security-audit",
         "openclaw-remote-safe-update",
         "systematic-debugging"
-      ],
-      "runtime_skill_overrides": [],
-      "capability_mode": "skill_backed",
-      "hook_events_affected": [
-        "agent:bootstrap",
-        "command",
-        "command:new",
-        "command:reset",
-        "command:stop",
-        "gateway:startup"
-      ],
-      "has_by_agent_doc": true,
-      "has_soul_doc": true
-    },
-    {
-      "agent_id": "optimization-agent",
-      "name": "optimization-agent",
-      "default": false,
-      "model": "openai-codex/gpt-5.3-codex",
-      "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
-      "allow_agents": [
-        "project-agent",
-        "web-agent"
-      ],
-      "declared_skills": [
-        "systematic-debugging",
-        "auto-fix",
-        "verification-before-completion",
-        "openclaw-evolution-upgrader",
-        "pua-methodology"
-      ],
-      "missing_skills": [],
-      "soul_skills": [
-        "systematic-debugging",
-        "auto-fix",
-        "verification-before-completion",
-        "openclaw-evolution-upgrader",
-        "pua-methodology"
       ],
       "runtime_skill_overrides": [],
       "capability_mode": "skill_backed",

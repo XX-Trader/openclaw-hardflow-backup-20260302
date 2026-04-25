@@ -150,10 +150,6 @@
       "normal_log_mode": "silent",
       "risk_always_notify": true
     },
-    "self_evolution": {
-      "normal_log_mode": "silent",
-      "risk_always_notify": true
-    },
     "conversation_evolution": {
       "normal_log_mode": "silent",
       "risk_always_notify": true
@@ -199,7 +195,7 @@
     "task_center_db": "C:\\Users\\superma\\.openclaw\\ops\\task-center\\task_center.db",
     "task_type": "ops_workflow_repair",
     "source": "ops-agent/ops-cron-runner",
-    "default_assignee": "optimization-agent",
+    "default_assignee": "ops-agent",
     "pool": "jobs",
     "priority": "high",
     "risk_level": "low",

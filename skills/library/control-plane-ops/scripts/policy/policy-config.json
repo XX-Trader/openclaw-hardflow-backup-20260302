@@ -18,13 +18,10 @@
     "volcengine/kimi-k2.5"
   ],
   "agent_model_overrides": {
-    "main": "kimicode/doubao-seed-2.0-pro",
     "coordinator": "kimicode/doubao-seed-2.0-pro",
     "reviewer": "kimicode/doubao-seed-2.0-pro",
-    "agent-factory": "openai-codex/gpt-5.3-codex",
     "backend-dev": "openai-codex/gpt-5.3-codex",
     "frontend-dev": "openai-codex/gpt-5.3-codex",
-    "optimization-agent": "openai-codex/gpt-5.3-codex",
     "project-agent": "openai-codex/gpt-5.3-codex",
     "doc-writer": "glmcode/glm-4.7",
     "deployer": "glmcode/glm-4.7",
@@ -44,7 +41,7 @@
   "allowed_entry_agents": [
     "coordinator"
   ],
-  "allow_project_agent_alias_entry": true,
+  "allow_project_agent_alias_entry": false,
   "project_agent_alias_prefixes": [
     "产品经理",
     "项目经理",
@@ -192,17 +189,6 @@
       "lookback_days": 7
     }
   },
-  "self_evolution_policy": {
-    "enabled": true,
-    "weekly_full_review": true,
-    "min_review_interval_days": 7,
-    "default_pool": "todo",
-    "default_priority": "low",
-    "default_risk_level": "high",
-    "require_human_confirm": true,
-    "max_tasks_per_run": 3,
-    "schedule_gap_minutes": 120
-  },
   "post_deploy_test_policy": {
     "enabled": true,
     "deploy_stage_names": [
@@ -247,5 +233,23 @@
     ],
     "passed": [],
     "cancelled": []
-  }
+  },
+  "active_delivery_agents": [
+    "coordinator",
+    "project-agent",
+    "web-agent",
+    "backend-dev",
+    "frontend-dev",
+    "reviewer",
+    "tester",
+    "ops-agent",
+    "deployer",
+    "doc-writer"
+  ],
+  "disabled_autonomous_agents": [],
+  "research_agent": "web-agent",
+  "requirements_discussion_agents": [
+    "project-agent",
+    "reviewer"
+  ]
 }
