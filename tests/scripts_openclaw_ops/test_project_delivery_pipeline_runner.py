@@ -269,10 +269,12 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             code_script = scripts_dir / "code.py"
             verify_script = scripts_dir / "verify.py"
             review_script = scripts_dir / "review.py"
+            deploy_script = scripts_dir / "deploy.py"
             research_script.write_text("print('# Research\\n- Source: official docs checked')\n", encoding="utf-8")
             code_script.write_text("print('# Patch Summary\\n- Implemented by live command adapter')\n", encoding="utf-8")
             verify_script.write_text("print('verification passed')\n", encoding="utf-8")
             review_script.write_text("print('Final verdict: pass\\nConfidence: high')\n", encoding="utf-8")
+            deploy_script.write_text("print('deployment passed')\n", encoding="utf-8")
 
             def py_cmd(path: Path) -> str:
                 return f'"{sys.executable}" "{path}"'
@@ -286,9 +288,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     run_id="live-adapter",
                     dry_run=False,
                     research_commands=(py_cmd(research_script),),
+                    requirements_discussion_commands=(py_cmd(research_script),),
                     code_command=py_cmd(code_script),
                     verification_commands=(py_cmd(verify_script),),
                     code_review_command=py_cmd(review_script),
+                    deployment_command=py_cmd(deploy_script),
                     write_project_memory=True,
                     command_cwd=ROOT,
                 )
@@ -299,6 +303,8 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertIn("command_code_execution_1", state["artifacts"])
             self.assertIn("command_verification_1", state["artifacts"])
             self.assertIn("command_code_review_1", state["artifacts"])
+            self.assertIn("command_deployment_1", state["artifacts"])
+            self.assertIn("deployment", state["artifacts"])
             self.assertIn("memory_writeback", state["artifacts"])
             review = Path(state["artifacts"]["code_review"]).read_text(encoding="utf-8")
             self.assertIn("Final verdict: pass", review)
@@ -307,6 +313,46 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             changelog = root / "memory" / "demo" / "CHANGELOG.ndjson"
             self.assertTrue(changelog.exists())
             self.assertIn("project-delivery:live-adapter", changelog.read_text(encoding="utf-8"))
+
+    def test_deployment_command_failure_blocks_before_acceptance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            review_script = scripts_dir / "review.py"
+            deploy_script = scripts_dir / "deploy.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            review_script.write_text("print('Final verdict: pass')\n", encoding="utf-8")
+            deploy_script.write_text("import sys\nprint('deployment failed')\nsys.exit(7)\n", encoding="utf-8")
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Deploy after passing review.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="deploy-failure",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    code_command=py_cmd(pass_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_command=py_cmd(review_script),
+                    deployment_command=py_cmd(deploy_script),
+                    write_project_memory=True,
+                    command_cwd=ROOT,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("deployment", state["failed_stage"])
+            self.assertEqual("return_to_deployment", state["next_action"])
+            self.assertIn("deployment", state["artifacts"])
+            self.assertNotIn("acceptance", state["artifacts"])
 
 
 if __name__ == "__main__":

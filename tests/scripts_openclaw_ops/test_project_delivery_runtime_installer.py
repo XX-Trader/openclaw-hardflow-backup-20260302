@@ -76,6 +76,8 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertTrue((runtime_home / "ops" / "deadline_to_task_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "exception_to_task_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "project_memory_writer.py").exists())
+            self.assertTrue((runtime_home / "ops" / "smart_arb_live_bridge.py").exists())
+            self.assertTrue((runtime_home / "ops" / "smart_arb_pipeline_entry.py").exists())
             self.assertTrue((runtime_home / "ops" / "policy" / "human_inbox.py").exists())
 
             jobs = json.loads(cron_file.read_text(encoding="utf-8"))["jobs"]

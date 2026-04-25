@@ -56,6 +56,7 @@ STAGE_AGENT_MAP = {
     "code_execution": "backend-dev",
     "verification": "tester",
     "code_review": "reviewer",
+    "deployment": "deployer",
     "acceptance": "tester",
     "writeback": "doc-writer",
 }
@@ -98,6 +99,7 @@ class PipelineConfig:
     verification_report_file: Path | None = None
     code_review_command: str | None = None
     code_review_file: Path | None = None
+    deployment_command: str | None = None
     memory_write_command: str | None = None
     write_project_memory: bool = False
     command_cwd: Path = Path(".")
@@ -618,6 +620,7 @@ def command_env(
             "PIPELINE_PATCH_SUMMARY_FILE": str(run_dir / "patch_summary.md"),
             "PIPELINE_VERIFICATION_REPORT_FILE": str(run_dir / "verification_report.md"),
             "PIPELINE_CODE_REVIEW_FILE": str(run_dir / "code_review.md"),
+            "PIPELINE_DEPLOYMENT_REPORT_FILE": str(run_dir / "deployment_report.md"),
             "PIPELINE_WRITEBACK_REPORT_FILE": str(run_dir / "writeback_report.md"),
         }
     )
@@ -844,6 +847,34 @@ def render_code_review(
     return consensus_review("code_review", verdict, "Implementation evidence is attached in patch_summary.md.")
 
 
+def render_deployment_report(command_report: dict[str, Any] | None) -> str:
+    if command_report is not None:
+        passed = bool(command_report.get("ok"))
+        return dedent(
+            f"""
+            # Deployment Report
+
+            ## Result
+            - Status: {"pass" if passed else "fail"}
+            - Return code: {command_report.get("returncode")}
+            - Command evidence: `command-runs/deployment-1.json`
+
+            {command_markdown("Deployment Command", [command_report])}
+            """
+        )
+    return dedent(
+        """
+        # Deployment Report
+
+        ## Result
+        - Status: skipped
+
+        ## Evidence
+        - No deployment command was supplied for this run.
+        """
+    )
+
+
 def render_delivery_evidence(score: int, status: str, next_action: str) -> str:
     return dedent(
         f"""
@@ -860,6 +891,7 @@ def render_delivery_evidence(score: int, status: str, next_action: str) -> str:
         - Patch summary
         - Verification report
         - Code review
+        - Deployment report when a deployment command is supplied
         - Pipeline state
         """
     )
@@ -1611,6 +1643,43 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
         )
 
+    deployment_command_report = None
+    if config.deployment_command:
+        deployment_command_report = run_stage_command(
+            config,
+            run_dir,
+            runtime,
+            artifacts,
+            requirement,
+            "deployment",
+            config.deployment_command,
+        )
+        deployment_failed = not deployment_command_report.get("ok")
+        record(
+            "deployment",
+            "deployment_report.md",
+            render_deployment_report(deployment_command_report),
+            verdict="fail" if deployment_failed else "pass",
+        )
+        if deployment_failed:
+            return finalize_pipeline_state(
+                config,
+                block_pipeline(
+                    config,
+                    run_id,
+                    run_dir,
+                    runtime,
+                    stages,
+                    artifacts,
+                    "deployment",
+                    "return_to_deployment",
+                    "deployment command failed and must be repaired by deployer",
+                    "deployment_report.md",
+                    "fail",
+                ),
+                requirement,
+            )
+
     if config.simulate_failure_stage == "acceptance_requirement":
         acceptance_path = record(
             "acceptance",
@@ -1754,6 +1823,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--verification-report-file", type=Path)
     parser.add_argument("--code-review-command", help="trusted runtime/agent command that produces code review output")
     parser.add_argument("--code-review-file", type=Path)
+    parser.add_argument("--deployment-command", help="trusted command that deploys an accepted implementation")
     parser.add_argument("--memory-write-command", help="trusted command that writes project memory after acceptance")
     parser.add_argument("--write-project-memory", action="store_true", help="call project_memory_writer.py for accepted runs")
     parser.add_argument("--command-cwd", type=Path, default=Path("."))
@@ -1789,6 +1859,7 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         verification_report_file=args.verification_report_file,
         code_review_command=args.code_review_command,
         code_review_file=args.code_review_file,
+        deployment_command=args.deployment_command,
         memory_write_command=args.memory_write_command,
         write_project_memory=bool(args.write_project_memory),
         command_cwd=args.command_cwd,

@@ -410,6 +410,7 @@ def run_smoke(config: SmokeConfig) -> dict[str, Any]:
         dry_run=False,
         source_urls=("https://github.com/openai/codex",),
         research_commands=(py_cmd(scripts["research"]),),
+        requirements_discussion_commands=(py_cmd(scripts["research"]),),
         code_command=py_cmd(scripts["code"]),
         verification_commands=(py_cmd(scripts["verify"]),),
         code_review_command=py_cmd(scripts["review"]),

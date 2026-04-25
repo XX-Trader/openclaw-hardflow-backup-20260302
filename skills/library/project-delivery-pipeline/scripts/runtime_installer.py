@@ -43,6 +43,8 @@ OPS_SCRIPT_MAP = {
     "source_registry_watcher.py": "scripts/openclaw-ops/source_registry_watcher.py",
     "project_memory_writer.py": "scripts/openclaw-ops/project_memory_writer.py",
     "project_memory_injector.py": "scripts/openclaw-ops/project_memory_injector.py",
+    "smart_arb_live_bridge.py": "scripts/openclaw-ops/smart_arb_live_bridge.py",
+    "smart_arb_pipeline_entry.py": "scripts/openclaw-ops/smart_arb_pipeline_entry.py",
 }
 
 
