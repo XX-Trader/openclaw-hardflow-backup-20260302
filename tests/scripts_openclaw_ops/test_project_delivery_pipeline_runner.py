@@ -258,10 +258,19 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("completed", first["status"])
             self.assertEqual("completed", second["status"])
             self.assertEqual("project-delivery:task-center-repeat", second["task_center"]["task_id"])
+            self.assertEqual("passed", second["task_center"]["status"])
             conn = sqlite3.connect(db_path)
             try:
                 task_count = conn.execute(
                     "SELECT COUNT(*) FROM tasks WHERE task_id = ?",
+                    ("project-delivery:task-center-repeat",),
+                ).fetchone()[0]
+                stage_count = conn.execute(
+                    "SELECT COUNT(*) FROM stage_runs WHERE task_id = ?",
+                    ("project-delivery:task-center-repeat",),
+                ).fetchone()[0]
+                comm_count = conn.execute(
+                    "SELECT COUNT(*) FROM module_communications WHERE task_id = ?",
                     ("project-delivery:task-center-repeat",),
                 ).fetchone()[0]
                 output_count = conn.execute(
@@ -271,6 +280,8 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             finally:
                 conn.close()
             self.assertEqual(1, task_count)
+            self.assertGreaterEqual(stage_count, 26)
+            self.assertGreaterEqual(comm_count, 26)
             self.assertEqual(2, output_count)
 
     def test_legacy_hardflow_score_policy_ref_resolves_after_skillization(self):

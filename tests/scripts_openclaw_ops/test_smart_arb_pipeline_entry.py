@@ -1,8 +1,11 @@
 import importlib.util
+import io
 import json
 import sys
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +19,15 @@ def load_module():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def completed_process(module, stdout: str, stderr: str = "", returncode: int = 0):
+    return module.subprocess.CompletedProcess(
+        args=["pipeline_runner"],
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
 
 
 class SmartArbPipelineEntryTests(unittest.TestCase):
@@ -81,6 +93,69 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("内部部署: deployer -> 完成", text)
         self.assertIn("记忆写回: doc-writer -> 完成", text)
         self.assertIn("关键证据: requirements_discussion, verification, code_review, deployment, acceptance, writeback", text)
+
+    def test_main_default_prints_chat_summary(self):
+        module = load_module()
+        payload = {
+            "run_id": "discord-arbitrageagent-test",
+            "status": "completed",
+            "next_action": "none",
+            "failed_stage": None,
+            "run_dir": "/tmp/discord-arbitrageagent-test",
+            "task_center": {"task_id": "project-delivery:discord-arbitrageagent-test"},
+            "artifacts": {},
+            "stages": [
+                {"name": "intake", "status": "completed", "artifact": "run_meta.json"},
+            ],
+        }
+        out = io.StringIO()
+        err = io.StringIO()
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
+        ), redirect_stdout(out), redirect_stderr(err):
+            rc = module.main(["--profile", "arbitrageagent", "--source", "discord", "--requirement", "demo"])
+
+        self.assertEqual(0, rc)
+        self.assertIn("# nofx 任务执行状态", out.getvalue())
+        self.assertIn("Run ID: discord-arbitrageagent-test", out.getvalue())
+        self.assertIn("任务接入: coordinator -> 完成", out.getvalue())
+        self.assertEqual("", err.getvalue())
+
+    def test_main_emit_json_prints_raw_runner_json(self):
+        module = load_module()
+        raw = '{"status":"completed","stages":[]}\n'
+        out = io.StringIO()
+        err = io.StringIO()
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, raw, stderr="runner warning\n"),
+        ), redirect_stdout(out), redirect_stderr(err):
+            rc = module.main(["--emit-json", "--requirement", "demo"])
+
+        self.assertEqual(0, rc)
+        self.assertEqual(raw, out.getvalue())
+        self.assertEqual("runner warning\n", err.getvalue())
+
+    def test_main_no_chat_summary_prints_raw_runner_output(self):
+        module = load_module()
+        out = io.StringIO()
+        err = io.StringIO()
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, "runner raw output\n", stderr="runner err\n"),
+        ), redirect_stdout(out), redirect_stderr(err):
+            rc = module.main(["--no-chat-summary", "--requirement", "demo"])
+
+        self.assertEqual(0, rc)
+        self.assertEqual("runner raw output\n", out.getvalue())
+        self.assertEqual("runner err\n", err.getvalue())
 
 
 if __name__ == "__main__":
