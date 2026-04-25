@@ -332,17 +332,26 @@ def run_deployment(args: argparse.Namespace) -> int:
         print("LIVE_BRIDGE_STATUS: fail")
         return 4
 
-    time.sleep(args.deploy_wait_seconds)
     smoke_commands = [
         "curl -fsS http://127.0.0.1:18080/health",
         "curl -fsS http://127.0.0.1:18080/api/strategy/status",
     ]
-    ok = True
-    for index, command in enumerate(smoke_commands, start=1):
-        proc = run_command(command, cwd=args.project_dir, shell=True)
+    deadline = time.monotonic() + max(args.deploy_wait_seconds, 0)
+    smoke_results: list[tuple[int, str, subprocess.CompletedProcess[str]]] = []
+    while True:
+        smoke_results = []
+        ok = True
+        for index, command in enumerate(smoke_commands, start=1):
+            proc = run_command(command, cwd=args.project_dir, shell=True)
+            smoke_results.append((index, command, proc))
+            if proc.returncode != 0:
+                ok = False
+        if ok or time.monotonic() >= deadline:
+            break
+        time.sleep(1)
+
+    for index, command, proc in smoke_results:
         sections.append(command_block(f"Deployment smoke {index}", command, proc))
-        if proc.returncode != 0:
-            ok = False
     sections.append("LIVE_BRIDGE_STAGE: deployment")
     sections.append(f"LIVE_BRIDGE_STATUS: {'pass' if ok else 'fail'}")
     print("\n\n".join(sections))
@@ -418,7 +427,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-session", default=os.environ.get("SMART_ARB_API_TMUX_SESSION", "smart-arb-api"))
     parser.add_argument("--api-cwd", type=Path, default=env_path("SMART_ARB_API_CWD", PROJECT_DIR / API_SUBDIR))
     parser.add_argument("--uvicorn-bin", type=Path, default=env_path("SMART_ARB_UVICORN_BIN", VENV_BIN / "uvicorn"))
-    parser.add_argument("--deploy-wait-seconds", type=int, default=int(os.environ.get("SMART_ARB_DEPLOY_WAIT_SECONDS", "6")))
+    parser.add_argument("--deploy-wait-seconds", type=int, default=int(os.environ.get("SMART_ARB_DEPLOY_WAIT_SECONDS", "30")))
     return parser
 
 
