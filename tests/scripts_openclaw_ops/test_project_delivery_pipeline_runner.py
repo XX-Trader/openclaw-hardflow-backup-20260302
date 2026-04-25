@@ -236,6 +236,43 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertGreaterEqual(comm_count, 13)
             self.assertEqual(1, output_count)
 
+    def test_task_center_mirror_allows_repeat_run_updates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            db_path = root / "task_center.db"
+            config = PipelineConfig(
+                project_key="demo",
+                requirement="Record repeat pipeline runs in task center.",
+                workspace_root=root / "runs",
+                project_memory_root=root / "memory",
+                run_id="task-center-repeat",
+                dry_run=True,
+                force=True,
+                record_task_center=True,
+                task_center_db=db_path,
+            )
+
+            first = run_pipeline(config)
+            second = run_pipeline(config)
+
+            self.assertEqual("completed", first["status"])
+            self.assertEqual("completed", second["status"])
+            self.assertEqual("project-delivery:task-center-repeat", second["task_center"]["task_id"])
+            conn = sqlite3.connect(db_path)
+            try:
+                task_count = conn.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE task_id = ?",
+                    ("project-delivery:task-center-repeat",),
+                ).fetchone()[0]
+                output_count = conn.execute(
+                    "SELECT COUNT(*) FROM task_outputs WHERE task_id = ?",
+                    ("project-delivery:task-center-repeat",),
+                ).fetchone()[0]
+            finally:
+                conn.close()
+            self.assertEqual(1, task_count)
+            self.assertEqual(2, output_count)
+
     def test_legacy_hardflow_score_policy_ref_resolves_after_skillization(self):
         module = load_policy_workflow_module()
         resolved = module.WorkflowMixin._resolve_repo_ref_path("scripts/hardflow/score-policy.json")

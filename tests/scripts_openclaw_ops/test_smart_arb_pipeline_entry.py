@@ -29,6 +29,12 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertEqual(payload, module.parse_runner_state(json.dumps(payload)))
 
+    def test_utc_run_id_uses_subsecond_precision(self):
+        module = load_module()
+        run_id = module.utc_run_id("discord/arbitrageagent")
+
+        self.assertRegex(run_id, r"^discord-arbitrageagent-\d{8}T\d{12}Z$")
+
     def test_render_chat_summary_shows_agents_and_stage_results(self):
         module = load_module()
         state = {

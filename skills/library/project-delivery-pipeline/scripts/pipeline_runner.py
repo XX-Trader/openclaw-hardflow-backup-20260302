@@ -143,7 +143,7 @@ def slugify(value: str) -> str:
 
 
 def default_run_id(project_key: str) -> str:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     return f"{stamp}-{slugify(project_key)}"
 
 
@@ -1124,6 +1124,62 @@ def task_center_task_id(config: PipelineConfig, run_id: str) -> str:
     return config.task_center_task_id or f"project-delivery:{run_id}"
 
 
+TASK_CENTER_UPDATE_FIELDS = {
+    "task_type",
+    "reason",
+    "source",
+    "request_source",
+    "trace_id",
+    "attempt_id",
+    "priority",
+    "risk_level",
+    "assignee",
+    "status",
+    "retry_count",
+    "failure_count",
+    "need_human_confirm",
+    "human_confirmed",
+    "needs_clarification",
+    "clarification_reason",
+    "context_completeness",
+    "context_fields_missing",
+    "context_fields_recommended_missing",
+    "context_payload",
+    "review_status",
+    "review_mode",
+    "review_head",
+    "reviewed_at",
+    "owner",
+    "change_id",
+    "requirement",
+    "result_output",
+    "acceptance",
+    "observable_outputs",
+    "acceptance_thresholds",
+    "stage_id",
+    "stage_score_gate",
+    "stage_min_evidence_count",
+    "stage_output_contract",
+    "stage_verification_contract",
+    "required_capabilities",
+    "required_skills",
+    "allowed_agents",
+    "workflow_profile_id",
+    "workflow_channel",
+    "selection_reason",
+    "selection_inputs",
+    "score_raw",
+    "score_normalized",
+    "score_payload",
+    "token_usage_summary",
+    "cost_estimate_total",
+    "action",
+    "scheduled_at",
+    "started_at",
+    "completed_at",
+}
+
+
 def stage_output_ref(run_dir: Path, stage: dict[str, Any]) -> str:
     artifact = str(stage.get("artifact") or "").strip()
     if not artifact:
@@ -1205,7 +1261,7 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
         except TaskCenterError:
             task_center.create_task(task_payload, actor="project-delivery-pipeline")
         else:
-            update_fields = {key: value for key, value in task_payload.items() if key != "task_id"}
+            update_fields = {key: value for key, value in task_payload.items() if key in TASK_CENTER_UPDATE_FIELDS}
             task_center.update_task(task_id, actor="project-delivery-pipeline", fields=update_fields)
 
         for stage in state.get("stages", []):

@@ -65,7 +65,7 @@ STATUS_LABELS = {
 
 
 def utc_run_id(prefix: str) -> str:
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     safe_prefix = "".join(ch if ch.isalnum() or ch in "-_." else "-" for ch in prefix).strip("-")
     return f"{safe_prefix or 'discord'}-{stamp}"
 
