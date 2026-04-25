@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-24 | 项目交付优先工作流 Phase 6.2 已实现（运营事件入任务中心 + 人工队列闭环）
+> 最后更新：2026-04-25 | 项目交付优先工作流已补齐 SmartMultiPlatformArbitrage nofx live evidence bridge
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -82,6 +82,7 @@
 | [项目交付优先工作流 README](核心主工作流/项目交付优先工作流/README.md) | 需求定义与范围边界 |
 | [项目交付优先工作流架构设计](核心主工作流/项目交付优先工作流/项目交付优先工作流架构设计.md) | 端到端编码流水线状态机、双 AI 审查、项目记忆定位、Task Center 控制面、runtime adapter |
 | [项目交付优先工作流实施规划](核心主工作流/项目交付优先工作流/项目交付优先工作流实施规划.md) | Phase 1-6.5 分阶实施步骤 |
+| [Smart Arb nofx live evidence bridge](核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md) | SmartMultiPlatformArbitrage Discord 需求入口、Hermes runtime、live 证据桥与 deployment 边界 |
 
 ### 端到端编码交付流水线 Skill
 

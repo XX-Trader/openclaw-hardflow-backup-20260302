@@ -5,6 +5,7 @@
 > 2026-04-24 运行态说明：旧 `install_workflow_profile.py` / `workflow_setup.py` 已删除；新安装入口是 `skills/library/project-delivery-pipeline/scripts/runtime_installer.py`，支持任意 `--runtime-home/--runtime-name`。
 > 2026-04-24 需求收束：真实目标不是“把某个工作流装进 Hermes”，而是完善一整套编码流水线：自动探索需求、生成需求包、生成方案、编码、测试、代码审核、修复、验收、文档和记忆回写。
 > 2026-04-24 Hermes 验证：WSL `/home/ubuntu/.hermes` 已完成 `hermes_profile_smoke.py --agent-mode hybrid --provider zai` 非 dry-run smoke；新 `hybrid-single-chat` 路径用一次 Hermes chat 生成 AI 阶段 bundle，run_id=`hermes-profile-smoke-20260424T135014Z`。
+> 2026-04-25 nofx 验证：SmartMultiPlatformArbitrage Discord live 入口已补齐外部研究、双 AI 需求讨论、代码执行、验证、代码审查、内部 deployment 与记忆写回证据桥，详见 [Smart Arb nofx live evidence bridge](smart-arb-nofx-live-evidence-bridge.md)。
 
 ## 功能概述
 
@@ -178,3 +179,4 @@
 |------|------|
 | [架构设计](项目交付优先工作流架构设计.md) | 角色拓扑、数据对象、流程分层、项目记忆与 API watch 结构 |
 | [实施规划](项目交付优先工作流实施规划.md) | Phase 拆分、落地步骤、验证点、风险与回滚策略 |
+| [Smart Arb nofx live evidence bridge](smart-arb-nofx-live-evidence-bridge.md) | SmartMultiPlatformArbitrage Discord 入口、Hermes runtime、live 证据桥、内部 deployment 边界与 nofx 验收证据 |
