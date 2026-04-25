@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -78,6 +79,7 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertTrue((runtime_home / "ops" / "project_memory_writer.py").exists())
             self.assertTrue((runtime_home / "ops" / "smart_arb_live_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "smart_arb_pipeline_entry.py").exists())
+            self.assertTrue(os.access(runtime_home / "ops" / "smart_arb_pipeline_entry.py", os.X_OK))
             self.assertTrue((runtime_home / "ops" / "policy" / "human_inbox.py").exists())
 
             jobs = json.loads(cron_file.read_text(encoding="utf-8"))["jobs"]

@@ -9,6 +9,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -146,6 +147,17 @@ def copy_file(src: Path, dst: Path, *, dry_run: bool) -> bool:
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
     return changed
+
+
+def ensure_executable(path: Path, *, dry_run: bool) -> bool:
+    if dry_run or not path.exists():
+        return False
+    mode = path.stat().st_mode
+    wanted = mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    if wanted == mode:
+        return False
+    path.chmod(wanted)
+    return True
 
 
 def copy_tree(src: Path, dst: Path, *, dry_run: bool) -> tuple[bool, list[str]]:
@@ -293,6 +305,8 @@ def install_runtime(config: InstallConfig) -> InstallReport:
             report.missing_sources.append(str(src))
             continue
         if copy_file(src, dst, dry_run=config.dry_run):
+            report.changed = True
+        if ensure_executable(dst, dry_run=config.dry_run):
             report.changed = True
         report.installed_ops_scripts.append(dst_name)
 
