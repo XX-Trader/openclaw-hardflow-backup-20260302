@@ -1,0 +1,36 @@
+# nofx Discord Hermes profile for SmartMultiPlatformArbitrage
+worktree: true
+approvals:
+  mode: 'off'
+command_allowlist: []
+security:
+  redact_secrets: true
+  tirith_enabled: false
+terminal:
+  backend: local
+  cwd: /home/arbops/projects/SmartMultiPlatformArbitrage
+  timeout: 180
+agent:
+  max_turns: 90
+discord:
+  require_mention: true
+  free_response_channels: "1494595613159850086"
+  auto_thread: true
+  reactions: true
+  allow_mentions:
+    everyone: false
+    roles: false
+    users: true
+    replied_user: true
+session_reset:
+  mode: both
+  idle_minutes: 1440
+  at_hour: 4
+display:
+  tool_progress: new
+model:
+  provider: openai-codex
+  default: gpt-5.5
+fallback_model:
+  provider: kimi-coding
+  model: kimi-k2.6

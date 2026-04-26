@@ -9,6 +9,15 @@
 最后验证：2026-04-26 00:00
 复用建议：遇到 Discord 回复“默认 pipeline dry-run/simulation”时，先查入口版本和 runner 命令；不要再要求用户补一句“继续真实执行”。
 
+## 2026-04-26 - nofx 早期 workflow 权限按高信任模式配置
+
+类型：decision
+范围：nofx `/home/arbops/.hermes/profiles/*/config.yaml`、`/etc/sudoers.d/90-arbops-hermes`
+事实：用户明确要求前期不做细粒度权限划分，workflow 和其他 agent 必须能直接执行服务器级修复。当前 nofx 两个 Discord profile 已关闭命令审批和 security scan，`arbops` 配置为无密码 sudo。真实交易仍由 `PRODUCTION_TRADING_ENABLED=false` 与策略手册边界约束，不在 Hermes 权限层放开。
+证据：profile 模板 `config/nofx-hermes-profiles/*/config.yaml` 包含 `approvals.mode: 'off'` 与 `security.tirith_enabled: false`；nofx `/etc/sudoers.d/90-arbops-hermes` 写入 `arbops ALL=(ALL) NOPASSWD:ALL` 并通过 `visudo -cf`。
+最后验证：2026-04-26 00:00
+复用建议：后期收紧权限时，先把 sudoers 改成命令 allowlist，再打开 profile security scan；不要在用户要求“直接可用”阶段重新引入 approval gate。
+
 ## 2026-04-26 - nofx `/sethome` 写配置失败通常是 profile config 属主错误
 
 类型：pitfall

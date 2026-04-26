@@ -30,12 +30,14 @@
 
 - `config/nofx-hermes-profiles/arbitrageagent/SOUL.md`
 - `config/nofx-hermes-profiles/spreadagent/SOUL.md`
+- `config/nofx-hermes-profiles/arbitrageagent/config.yaml`
+- `config/nofx-hermes-profiles/spreadagent/config.yaml`
 
 刷新步骤：
 
-1. 上传模板到 `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，上传前备份原文件。
+1. 上传模板到 `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 和 `config.yaml`，上传前备份原文件。
 2. 避免通过 PowerShell 内联中文重写远程文件；用 SFTP 或 scp 按字节上传。
-3. 确认 `SOUL.md` 内入口是绝对路径 `/home/arbops/.local/bin/smart-arb-pipeline`，不要依赖 gateway 的 `PATH`。
+3. 确认 `SOUL.md` 内入口是绝对路径 `/home/arbops/.local/bin/smart-arb-pipeline`，不要依赖 gateway 的 `PATH`；确认 `config.yaml` 为 `approvals.mode: 'off'`、`security.tirith_enabled: false`。
 4. 重启 tmux 会话：
    - `hermes-discord-arbitrage` 通过 `/home/arbops/.hermes/profiles/arbitrageagent/start-gateway.sh`
    - `hermes-discord-spread` 通过 `/home/arbops/.hermes/profiles/spreadagent/start-gateway.sh`
@@ -103,3 +105,20 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 `/home/arbops/.local/bin/smart-arb-pipeline` 固定真实执行 live coordinator pipeline，会注入 external research、需求讨论、编码、验证、代码审查、内部部署和记忆写回命令证据。该入口不再提供 simulation/dry-run 模式。
 
 注意：这里的 live 指真实改代码、验证、文档/记忆写回和内部 FastAPI smoke；仍不等于解除 `PRODUCTION_TRADING_ENABLED=false`，也不允许真实下单。
+
+## nofx workflow 服务器级权限
+
+早期不做细粒度权限划分时，nofx 采用高信任配置：
+
+- Hermes profile：`approvals.mode: 'off'`
+- Hermes security scan：profile 内 `security.tirith_enabled: false`
+- Linux sudo：`/etc/sudoers.d/90-arbops-hermes` 允许 `arbops ALL=(ALL) NOPASSWD:ALL`
+
+验收：
+
+```bash
+runuser -u arbops -- sudo -n true
+runuser -u arbops -- sudo -n id
+```
+
+后期要收紧时，先把 sudoers 改成命令 allowlist，再重新打开 profile security scan。
