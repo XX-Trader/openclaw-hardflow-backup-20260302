@@ -24,6 +24,17 @@
 
 注意：当前 live bridge 已证明 workspace 隔离和阶段命令执行；2026-04-25 22:06 的 nofx smoke `codex-arbitrageagent-20260425T140605083467Z` 里，命令阶段均记录为 `runtime-agent-workspace` / `isolated-agent-workspace`。native 多 agent fan-out 仍需以独立宿主 session/run id 为准。
 
+## nofx hardflow 拉取与安装记录
+
+### 2026-04-26 17:03 - Discord pipeline evidence 修复安装
+
+类型：deploy
+范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`
+事实：本机提交 `edd05e23` 已推送到 `origin/main`，nofx 仓库已 fast-forward 到 `edd05e2` 并运行 runtime installer；`smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py` 已安装到 `/home/arbops/.hermes/ops`，`/home/arbops/.local/bin/smart-arb-pipeline` 指向新入口。拉取前服务器上已有上一轮手动同步的同批脏改动，已先保存为 `stash@{0}: pre-pull-hardflow-discord-pipeline-20260426`，再执行 `git pull --ff-only origin main`。
+证据：runtime installer 返回 `ok=true`、`changed=true`、manifest 为 `/home/arbops/.hermes/ops/install/project-delivery-runtime-install.json`；`py_compile` 通过；nofx 相关单测 `tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 与 `tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 共 37 项 OK；`curl http://127.0.0.1:18080/health` 返回 `{"status":"ok","strategy_running":false,"ipc_connected":false}`，`/api/strategy/status` 返回 `{"running":false,"pid":null}`；echo smoke run `cli-arbitrageagent-20260426T090250542271Z` 为 14/14 阶段 completed，中文状态卡包含 agent 分工、agent 输出摘要和证据目录。
+最后验证：2026-04-26 17:03
+复用建议：以后 hardflow 代码推送后，nofx 安装按 `git fetch -> stash dirty tracked changes -> git pull --ff-only -> runtime_installer.py install -> py_compile -> gateway restart -> API smoke -> echo smart-arb-pipeline smoke` 顺序执行；若服务器仓库因手动同步变脏，先保留 stash，不要直接 reset。
+
 ## nofx profile SOUL 刷新
 
 本仓库维护两个 UTF-8 模板：

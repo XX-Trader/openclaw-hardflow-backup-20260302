@@ -7,6 +7,13 @@
 
 ## 2026-04-26 已完成
 
+- [x] [2026-04-26] **nofx 拉取最新 hardflow 代码并安装**
+  - 本机提交 `edd05e23` 已推送到 `origin/main`；nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302` 已 fast-forward 到 `edd05e2`。
+  - 拉取前 nofx 仓库存在上一轮手动同步留下的 13 个脏改动，已保存为 `stash@{0}: pre-pull-hardflow-discord-pipeline-20260426` 后再 `git pull --ff-only origin main`。
+  - 运行 `runtime_installer.py install` 成功，返回 `ok=true`、`changed=true`，并安装 `smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py` 到 `/home/arbops/.hermes/ops`。
+  - 两个 Discord Hermes gateway 已重启，`arbitrageagent` 与 `spreadagent` 的 `platforms.discord.state=connected`。
+  - 验证：远端 `py_compile` 通过；相关单测 37 项 OK；`/health` 与 `/api/strategy/status` smoke 通过；echo pipeline run `cli-arbitrageagent-20260426T090250542271Z` 14/14 completed 并返回中文状态卡。
+
 - [x] [2026-04-26] **nofx Discord 状态卡、session 输出恢复与 P0 写回门禁修复**
   - `smart_arb_pipeline_entry.py` 将状态卡命令摘要上限改为可配置，默认展示 24 条 `command-runs/*.json`；两个 nofx profile `SOUL.md` 要求失败时把完整中文状态卡回传聊天频道。
   - `smart_arb_live_bridge.py` 在 Hermes CLI 只返回 `session_id` 时，从 profile session 文件恢复最新 assistant 输出并脱敏；`external_research` 的 `NO_EXTERNAL_LOOKUP_NEEDED` 可据此通过 live gate。
