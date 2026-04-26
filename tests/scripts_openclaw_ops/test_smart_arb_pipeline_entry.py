@@ -128,37 +128,15 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertNotIn("--agent-workspace-mode", runner_cmd)
         self.assertEqual("", err.getvalue())
 
-    def test_main_dry_run_flag_forces_simulation(self):
+    def test_main_dry_run_flag_is_rejected(self):
         module = load_module()
-        raw = '{"status":"completed","stages":[]}\n'
+        err = io.StringIO()
 
-        with mock.patch.object(
-            module.subprocess,
-            "run",
-            return_value=completed_process(module, raw),
-        ) as run_mock:
-            rc = module.main(["--emit-json", "--dry-run", "--requirement", "demo"])
+        with self.assertRaises(SystemExit) as raised, redirect_stderr(err):
+            module.main(["--emit-json", "--dry-run", "--requirement", "demo"])
 
-        self.assertEqual(0, rc)
-        runner_cmd = run_mock.call_args.args[0]
-        self.assertIn("--dry-run", runner_cmd)
-        self.assertNotIn("--code-command", runner_cmd)
-
-    def test_env_can_restore_dry_run_default(self):
-        module = load_module()
-        raw = '{"status":"completed","stages":[]}\n'
-
-        with mock.patch.dict(module.os.environ, {"SMART_ARB_PIPELINE_DEFAULT_LIVE": "0"}), mock.patch.object(
-            module.subprocess,
-            "run",
-            return_value=completed_process(module, raw),
-        ) as run_mock:
-            rc = module.main(["--emit-json", "--requirement", "demo"])
-
-        self.assertEqual(0, rc)
-        runner_cmd = run_mock.call_args.args[0]
-        self.assertIn("--dry-run", runner_cmd)
-        self.assertNotIn("--code-command", runner_cmd)
+        self.assertEqual(2, raised.exception.code)
+        self.assertIn("dry-run is disabled", err.getvalue())
 
     def test_main_emit_json_prints_raw_runner_json(self):
         module = load_module()

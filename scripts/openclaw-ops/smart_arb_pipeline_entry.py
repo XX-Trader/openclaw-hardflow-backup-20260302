@@ -74,13 +74,6 @@ def option_present(args: list[str], option: str) -> bool:
     return any(item == option or item.startswith(option + "=") for item in args)
 
 
-def env_flag(name: str, default: bool) -> bool:
-    raw = os.environ.get(name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on", "live"}
-
-
 def compact_text(value: object, limit: int = 120) -> str:
     text = " ".join(str(value or "").split())
     if len(text) <= limit:
@@ -257,8 +250,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Smart arbitrage project delivery pipeline entry")
     parser.add_argument("--source", default="discord")
     parser.add_argument("--profile", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROFILE", "arbitrageagent"))
-    parser.add_argument("--live", action="store_true", help="force live implementation, verification, review and memory evidence")
-    parser.add_argument("--dry-run", action="store_true", help="force simulation mode without modifying product code")
+    parser.add_argument("--live", action="store_true", help="kept for compatibility; this entrypoint always runs live")
+    parser.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-live-bridge", action="store_true", help="do not inject default live evidence commands")
     parser.add_argument("--live-bridge-agent-mode", choices=["hermes", "echo"], default=os.environ.get("SMART_ARB_LIVE_BRIDGE_AGENT_MODE", "hermes"))
     parser.add_argument("--live-bridge-provider", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROVIDER", "openai-codex"))
@@ -283,9 +276,9 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args, passthrough = parser.parse_known_args(argv)
-    default_live = env_flag("SMART_ARB_PIPELINE_DEFAULT_LIVE", True)
-    effective_live = args.live or (default_live and not args.dry_run)
-    args.live = effective_live
+    if args.dry_run or option_present(passthrough, "--dry-run"):
+        parser.error("dry-run is disabled for smart-arb-pipeline; execution requests always run live")
+    args.live = True
 
     profile = args.profile or "arbitrageagent"
     run_id = utc_run_id(f"{args.source}-{profile}")
@@ -315,9 +308,6 @@ def main(argv: list[str] | None = None) -> int:
         "--force",
         "--emit-json",
     ]
-    if not effective_live:
-        cmd.append("--dry-run")
-
     cmd += default_live_bridge_args(args, passthrough)
     cmd += passthrough
     proc = subprocess.run(

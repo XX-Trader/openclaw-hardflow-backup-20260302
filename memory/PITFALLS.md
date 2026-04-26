@@ -4,8 +4,8 @@
 
 类型：pitfall
 范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、nofx `/home/arbops/.local/bin/smart-arb-pipeline`、Discord `arbitrageagent` / `spreadagent`
-事实：旧入口只有显式 `--live` 才真实执行，否则会向 runner 追加 `--dry-run`，导致 Discord 对“继续”“都依次完成”这类执行请求只生成编排证据并提示 `No product code was modified by this runner.`。已改为默认 live；只有显式 `--dry-run` 或 `SMART_ARB_PIPELINE_DEFAULT_LIVE=0` 才恢复模拟。
-证据：`smart_arb_pipeline_entry.py` 新增 `--dry-run` 与 `SMART_ARB_PIPELINE_DEFAULT_LIVE`，默认不再追加 `--dry-run`，并默认注入 live bridge commands；两个 nofx profile SOUL 已改成“执行类需求默认 live pipeline”。
+事实：旧入口只有显式 `--live` 才真实执行，否则会向 runner 追加 `--dry-run`，导致 Discord 对“继续”“都依次完成”这类执行请求只生成编排证据并提示 `No product code was modified by this runner.`。已改为固定 live；`smart-arb-pipeline` 项目入口不再提供 simulation/dry-run 模式。
+证据：`smart_arb_pipeline_entry.py` 不再追加 `--dry-run`，并默认注入 live bridge commands；两个 nofx profile SOUL 已改成“执行类需求默认 live pipeline”。
 最后验证：2026-04-26 00:00
 复用建议：遇到 Discord 回复“默认 pipeline dry-run/simulation”时，先查入口版本和 runner 命令；不要再要求用户补一句“继续真实执行”。
 

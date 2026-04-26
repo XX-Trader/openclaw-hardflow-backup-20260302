@@ -8,7 +8,7 @@
 ## 2026-04-26 已完成
 
 - [x] [2026-04-26] **nofx Discord pipeline 默认 live 与 profile 写权限修复**
-  - `smart_arb_pipeline_entry.py` 改为默认 live coordinator pipeline；只有显式 `--dry-run` 或 `SMART_ARB_PIPELINE_DEFAULT_LIVE=0` 才进入模拟。
+  - `smart_arb_pipeline_entry.py` 改为固定 live coordinator pipeline；项目入口不再提供 simulation/dry-run 模式。
   - 两个 nofx Discord profile 提示词改为“执行类需求默认真实执行”，不再要求用户追加“继续真实执行”。
   - nofx `spreadagent/config.yaml`、`arbitrageagent/config.yaml` 从 `root:root 0600` 修回 `arbops:arbops 0600`，解决 `/sethome` 写 profile 配置失败。
   - 同步 runbook、pitfalls 和 nofx live bridge 文档，保留 `PRODUCTION_TRADING_ENABLED=false` 与真实交易禁止边界。

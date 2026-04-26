@@ -42,8 +42,6 @@ Discord 入口默认就是真实执行：
 /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --requirement "<需求文本>"
 ```
 
-只有明确要求只验证流程、不改代码时，才追加 `--dry-run`。`SMART_ARB_PIPELINE_DEFAULT_LIVE=0` 可临时恢复旧的默认模拟模式。
-
 默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况和关键证据。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`。
 
 live 默认注入以下命令证据：
