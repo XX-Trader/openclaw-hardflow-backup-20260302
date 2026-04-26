@@ -106,6 +106,23 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 注意：这里的 live 指真实改代码、验证、文档/记忆写回和内部 FastAPI smoke；仍不等于解除 `PRODUCTION_TRADING_ENABLED=false`，也不允许真实下单。
 
+## nofx Discord 输出与自动修复
+
+Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_action`：
+
+1. `agent 分工与完成情况` 展示每个阶段对应 owner、状态、verdict、score 和证据文件。
+2. `agent 输出摘要` 从 `command-runs/*.json` 读取 stdout/stderr/error，展示每个 stage command 的 agent、returncode 和关键输出。
+3. `阻塞原因` 展示失败阶段、stage detail、命令输出和 artifact 摘要。
+4. `自动修复判断` 记录是否回流、回流次数、风险分类和每次结果。
+
+默认自动修复策略：
+
+- `return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`：最多自动回流 2 次。
+- 自动回流仍重新执行 `/home/arbops/.local/bin/smart-arb-pipeline`，每次使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
+- 自动回流会把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并同时通过内联 `PIPELINE_REPAIR_CONTEXT` 注入后续 Hermes stage prompt；即使文件写入失败，也不会丢失失败上下文。
+- 高风险内容不自动继续：凭证/API key/token/private key、真实交易、资金转移、提现、破坏性数据操作、force push 等。
+- 排障时优先看最终状态卡，再看原 run 与 `-repair<n>` run 各自的 `command-runs/*.json`，以及原 run 下的 `auto_repair_context_<n>.md`。
+
 ## nofx workflow 服务器级权限
 
 早期不做细粒度权限划分时，nofx 采用高信任配置：

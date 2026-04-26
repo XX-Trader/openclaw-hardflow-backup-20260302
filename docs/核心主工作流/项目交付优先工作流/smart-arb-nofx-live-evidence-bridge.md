@@ -1,6 +1,6 @@
 # SmartMultiPlatformArbitrage nofx live evidence bridge
 
-> 最后验证：2026-04-25 22:06 Asia/Shanghai
+> 最后验证：2026-04-26 11:30 Asia/Shanghai
 > 适用范围：nofx 上 SmartMultiPlatformArbitrage 的 Discord 需求入口、Hermes runtime、项目交付优先工作流 live 证据桥。
 
 ## 归属边界
@@ -42,7 +42,7 @@ Discord 入口默认就是真实执行：
 /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --requirement "<需求文本>"
 ```
 
-默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况和关键证据。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`。
+默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况、agent 输出摘要、阻塞证据、自动修复判断和关键证据。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`。
 
 live 默认注入以下命令证据：
 
@@ -57,6 +57,24 @@ live 默认注入以下命令证据：
 | `memory_writeback` | 写项目记忆 changelog | `command_memory_writeback_*` |
 
 缺少任一关键阶段真实命令证据时，pipeline runner 会阻断并写入 `failed_stage` 与 `next_action`。
+
+### Discord 状态卡与自动修复
+
+Discord 状态卡必须回答三个问题：
+
+1. 本轮哪些 agent / stage 做了什么。
+2. 达到了什么结果，关键输出是什么。
+3. 如果卡住，具体因为什么卡住，系统是否已自行回流修复。
+
+当前入口会读取 `command-runs/*.json`，从 stage command 的 stdout、stderr、error 中抽取摘要写入 `agent 输出摘要`。如果 pipeline 进入 `blocked`，状态卡会追加 `阻塞原因`，包含失败阶段、stage detail、命令输出或 artifact 摘要。
+
+自动修复策略：
+
+- `return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback` 默认自动回流，最多 2 次，可用 `--auto-repair-attempts` 或 `SMART_ARB_AUTO_REPAIR_ATTEMPTS` 调整。
+- 每次回流使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
+- 每次回流前，入口把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并通过 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT` 传给 live bridge；后续 Hermes stage prompt 会看到上一轮失败原因。
+- 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署或记忆写回。
+- 检测到凭证/API key/token/private key、真实交易、资金转移、提现、破坏性数据操作或 force push 等高风险内容时，不自动继续，状态卡显示需要人工确认。
 
 ### 当前 fan-out 与 workspace 边界
 

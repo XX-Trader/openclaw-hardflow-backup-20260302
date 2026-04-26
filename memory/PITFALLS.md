@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-04-26 - nofx Discord 状态卡不能只回 failed_stage
+
+类型：pitfall
+范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`scripts/openclaw-ops/smart_arb_live_bridge.py`、nofx Discord `smart-arb-pipeline`
+事实：只把 `pipeline_state.json` 的 `status`、`failed_stage`、`next_action` 发回 Discord，会让用户看不到各 agent 实际输出、目标完成情况和具体阻塞证据。入口已改为读取 `command-runs/*.json`，状态卡包含 `agent 输出摘要`、`阻塞原因` 和 `自动修复判断`。
+证据：`smart_arb_pipeline_entry.py` 新增 command report 摘要、失败证据提取、高风险分类和自动回流；`smart_arb_live_bridge.py` 会读取 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT`，把上一轮失败证据注入后续 stage prompt；测试 `test_render_chat_summary_shows_block_reason_and_repair_decision`、`test_main_auto_repairs_low_risk_blocked_run`、`test_main_auto_repair_keeps_context_when_context_file_write_fails`、`test_main_does_not_auto_repair_high_risk_blocked_run` 覆盖该行为。
+最后验证：2026-04-26 11:30
+复用建议：遇到 Discord 回复“已阻塞，不能绕过 pipeline”时，先检查入口是否为新版；新版会在低/中风险下自动回流，只有凭证、真实交易、资金、破坏性数据操作等高风险才停人工确认。
+
 ## 2026-04-26 - nofx smart-arb-pipeline 旧默认值会把执行请求跑成 dry-run
 
 类型：pitfall

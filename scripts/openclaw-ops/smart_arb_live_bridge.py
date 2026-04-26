@@ -71,6 +71,18 @@ def requirement_text() -> str:
     return os.environ.get("PIPELINE_REQUIREMENT", "").strip()
 
 
+def repair_context_text() -> str:
+    for name in ("PIPELINE_REPAIR_CONTEXT_FILE", "SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE"):
+        path = env_path(name, Path(""))
+        if path and str(path) != "." and path.exists():
+            return read_text(path)
+    for name in ("PIPELINE_REPAIR_CONTEXT", "SMART_ARB_ENTRY_REPAIR_CONTEXT"):
+        value = os.environ.get(name, "").strip()
+        if value:
+            return value
+    return ""
+
+
 def run_command(
     command: str | list[str],
     *,
@@ -136,6 +148,7 @@ def bridge_env(args: argparse.Namespace, profile_dir: Path) -> dict[str, str]:
 def stage_prompt(stage: str, args: argparse.Namespace, requirement: str) -> str:
     run_dir = os.environ.get("PIPELINE_RUN_DIR", "")
     memory_dir = os.environ.get("PIPELINE_PROJECT_MEMORY_DIR", "")
+    repair_context = repair_context_text()
     agent_id = os.environ.get("PIPELINE_AGENT_ID", "").strip()
     agent_workspace = os.environ.get("PIPELINE_AGENT_WORKSPACE", "").strip()
     agent_repo_dir = os.environ.get("PIPELINE_AGENT_REPO_DIR", "").strip()
@@ -155,6 +168,9 @@ Stage output file hint: {output_file or ""}
 
 Requirement:
 {requirement}
+
+Repair context from previous blocked attempt:
+{repair_context or "not_applicable"}
 
 Safety contract:
 - Do not print, move, or modify secrets, tokens, cookies, credentials, auth state files, or private API keys.

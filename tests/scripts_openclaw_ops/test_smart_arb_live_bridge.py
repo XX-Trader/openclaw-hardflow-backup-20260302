@@ -51,6 +51,11 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
 
         self.assertEqual(Path(tmpdir), args.project_dir)
 
+    def test_repair_context_can_be_supplied_inline_env(self):
+        bridge = self._load_bridge_module()
+        with mock.patch.dict(os.environ, {"PIPELINE_REPAIR_CONTEXT": "previous failure evidence"}, clear=False):
+            self.assertEqual("previous failure evidence", bridge.repair_context_text())
+
     def test_memory_writeback_uses_pipeline_memory_parent(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

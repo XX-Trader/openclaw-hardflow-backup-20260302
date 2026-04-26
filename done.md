@@ -7,6 +7,12 @@
 
 ## 2026-04-26 已完成
 
+- [x] [2026-04-26] **nofx Discord pipeline 状态卡与自动修复**
+  - `smart_arb_pipeline_entry.py` 状态卡新增 `agent 输出摘要`、`阻塞原因` 和 `自动修复判断`，会读取 `command-runs/*.json` 的 stdout/stderr/error，而不再只回 `failed_stage` / `next_action`。
+  - 低/中风险阻塞会按 `return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback` 自动回流最多 2 次；每次回流使用 `<原 run_id>-repair<n>` 独立 run id，写入 `auto_repair_context_<n>.md`，并重新走完整 coordinator pipeline。
+  - `smart_arb_live_bridge.py` 会把上一轮失败上下文注入后续 Hermes stage prompt，便于执行 agent 自行修复根因。
+  - 高风险凭证、真实交易、资金转移、提现、破坏性数据操作和 force push 仍停人工确认。
+
 - [x] [2026-04-26] **nofx Discord pipeline 默认 live 与 profile 写权限修复**
   - `smart_arb_pipeline_entry.py` 改为固定 live coordinator pipeline；项目入口不再提供 simulation/dry-run 模式。
   - 两个 nofx Discord profile 提示词改为“执行类需求默认真实执行”，并新增仓库级 `config.yaml` 模板，关闭命令审批和 security scan。
