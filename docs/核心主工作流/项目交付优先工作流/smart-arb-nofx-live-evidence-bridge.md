@@ -70,11 +70,14 @@ Discord 状态卡必须回答三个问题：
 
 自动修复策略：
 
-- `return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback` 默认自动回流，最多 2 次，可用 `--auto-repair-attempts` 或 `SMART_ARB_AUTO_REPAIR_ATTEMPTS` 调整。
+- `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback` 默认自动回流，最多 2 次，可用 `--auto-repair-attempts` 或 `SMART_ARB_AUTO_REPAIR_ATTEMPTS` 调整。
 - 每次回流使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 每次回流前，入口把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并通过 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT` 传给 live bridge；后续 Hermes stage prompt 会看到上一轮失败原因。
 - 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署或记忆写回。
-- 检测到凭证/API key/token/private key、真实交易、资金转移、提现、破坏性数据操作或 force push 等高风险内容时，不自动继续，状态卡显示需要人工确认。
+- 非代码 Hermes 阶段不允许直接编辑 `research_report.md`、`requirements_discussion.md`、`verification_report.md` 等 pipeline artifacts；stage evidence 必须通过 stdout/final answer 返回，由 runner 持久化。bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，避免 agent 通过环境变量直接定位并覆盖 artifact。
+- `external_research` 对本地记忆蒸馏、环境基线、权限修复这类不依赖互联网的问题，可以输出 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据，作为有效 research evidence。
+- 检测到正向要求读取/输出/使用凭证、API key、token/private key，或启用真实交易、下单、资金转移、提现、破坏性数据操作或 force push 等高风险内容时，不自动继续，状态卡显示需要人工确认。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全约束不会单独触发高风险阻断；如果同一段里还有 `but needs credentials`、`但需要资金操作` 等正向子句，仍按高风险处理。
+- 前序 artifact 注入后续 Hermes prompt 前会脱敏常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key 和 AWS access key，避免修复上下文扩散短格式 secret。
 
 ### 当前 fan-out 与 workspace 边界
 
@@ -191,6 +194,8 @@ smart_arb_live_bridge.py --stage external_research \
   --agent-mode hermes \
   --max-turns 4
 ```
+
+本地事实足够时，`external_research` 输出必须包含 `NO_EXTERNAL_LOOKUP_NEEDED` 和本地证据；如果 Hermes 试图修改 `research_report.md` 等 artifact 并因此返回 review diff，应视为 bridge/prompt 问题，而不是 research 证据缺失。
 
 检查内控 API：
 

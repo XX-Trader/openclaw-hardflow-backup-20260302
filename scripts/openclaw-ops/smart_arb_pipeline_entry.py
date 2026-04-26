@@ -64,6 +64,7 @@ STATUS_LABELS = {
     "passed": "通过",
 }
 REPAIRABLE_NEXT_ACTIONS = {
+    "run_external_research",
     "return_to_code_execution",
     "return_to_deployment",
     "fix_memory_writeback",
@@ -71,31 +72,67 @@ REPAIRABLE_NEXT_ACTIONS = {
 HIGH_RISK_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"\bapi[_ -]?key\b\s*[:=]?",
-        r"\bsecret\b\s*[:=]?",
-        r"\b(?:access|refresh|bearer|auth|api)[_ -]?token\b\s*[:=]?",
-        r"\bcredential\b\s*[:=]?",
-        r"\bpassword\b\s*[:=]?",
-        r"private\s+key",
+        r"\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|(?:access|refresh|bearer|auth|api|csrf)[_ -]?tokens?)\b\s*[:=]",
+        r"\b(?:need|needs|requires?|read|print|show|dump|export|upload|commit|use|modify|delete)\b.{0,60}\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|sessions?|(?:access|refresh|bearer|auth|api|csrf)[_ -]?tokens?)\b",
+        r"\b(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|x-csrf-token)\b\s*[:=]",
         r"PRODUCTION_TRADING_ENABLED\s*=\s*true",
-        r"\bwithdraw\b",
-        r"\btransfer\s+funds\b",
-        r"\bplace\s+order\b",
-        r"\breal\s+trading\b",
-        r"\blive\s+trading\b",
+        r"\b(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?|enable\s+(?:real|live)\s+trading|start\s+(?:real|live)\s+trading)\b",
+        r"\b(?:need|needs|requires?|start|enable|execute|place|submit|perform|allow)\b.{0,60}\b(?:withdrawals?|transfer\s+funds|funds?\s+(?:movement|operation|transfer)|place\s+orders?|real\s+trading|live\s+trading)\b",
         r"\brm\s+-rf\b",
         r"\bdrop\s+table\b",
         r"\btruncate\s+table\b",
         r"\bforce\s+push\b",
-        r"真实交易",
-        r"出金",
-        r"提现",
-        r"转账",
-        r"密钥",
-        r"凭证",
+        r"(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}(?:密钥|凭证|token|cookie|私钥|会话)",
+        r"(?:下单|划转|转账|提现|出金|资金操作)",
+        r"(?:需要|要求|启动|启用|执行|进行|允许).{0,20}(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作)",
+        r"(?:真实交易|实盘交易).{0,20}(?:授权|开启|执行)",
+    )
+]
+SAFE_NEGATED_RISK_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:do\s+not|don't|never|without|no)\b.{0,80}\b(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdraw|transfer)\b",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不读取|不泄露).{0,60}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)",
+        r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金).{0,30}(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|关闭|false)",
+    )
+]
+RISK_CLAUSE_SPLIT_RE = re.compile(
+    r"[\r\n.;；。!?！？,，]+|\b(?:but|however|yet|and)\b|(?:但|但是|不过|然而|并且|并|且|同时)",
+    re.IGNORECASE,
+)
+NEGATED_CLAUSE_RE = re.compile(
+    r"^\s*(?:(?:do\s+not|don't|never|without|no)\b|不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不读取|不泄露)",
+    re.IGNORECASE,
+)
+SAFE_NEGATED_COORDINATE_RE = re.compile(
+    r"\b(?:or|nor)\s+(?:use|read|print|show|dump|export|upload|commit|modify|delete|place|start|enable|execute|transfer|withdraw)?\s*"
+    r"(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b",
+    re.IGNORECASE,
+)
+SAFE_NEGATED_CN_COORDINATE_RE = re.compile(r"(?:或|或者|以及|和)(?:读取|泄露|使用|输出|打印|查看|启动|启用|执行|进行|允许|下单|划转|转账|提现|出金)?(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)")
+SAFE_NEGATED_FRAGMENT_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:do\s+not|don't|never|without|no)\b\s+(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?|enable\s+(?:real|live)\s+trading|start\s+(?:real|live)\s+trading)\b",
+        r"\b(?:do\s+not|don't|never|without|no)\b\s+(?:use|read|print|show|dump|export|upload|commit|modify|delete|place|start|enable|execute|transfer|withdraw)?\s*(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdrawals?|transfer\s+funds)\s*(?:required|needed|used|enabled|disabled)?",
+        r"\bkeep\s+(?:live\s+trading|real\s+trading|orders?|funds?|withdrawals?|transfers?)\s+disabled\b",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露)(?:读取|泄露|使用|输出|打印|查看|启动|启用|执行|进行|允许|下单|划转|转账|提现|出金)?(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)?(?:关闭|false)?",
+        r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|关闭|false)",
     )
 ]
 SENSITIVE_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9][A-Za-z0-9_-]{47,}(?![A-Za-z0-9])")
+KNOWN_SECRET_RE = re.compile(
+    r"(?<![A-Za-z0-9_])("
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"gh[pousr]_[A-Za-z0-9_]{20,}|"
+    r"sk-[A-Za-z0-9][A-Za-z0-9_-]{16,}|"
+    r"xox[baprs]-[A-Za-z0-9-]{10,}|"
+    r"hf_[A-Za-z0-9]{20,}|"
+    r"AIza[0-9A-Za-z_-]{20,}|"
+    r"ya29\.[0-9A-Za-z_-]{20,}|"
+    r"AKIA[0-9A-Z]{16}"
+    r")(?![A-Za-z0-9_])"
+)
 SENSITIVE_ASSIGNMENT_RE = re.compile(
     r"(?i)\b(api[_ -]?key|secret|password|credential|session(?:id|_id)?|"
     r"(?:access|refresh|bearer|auth|api|csrf)[_ -]?token)\b\s*[:=]\s*([^\s,;]+)"
@@ -132,7 +169,25 @@ def redact_text(value: object) -> str:
     text = PRIVATE_KEY_BLOCK_RE.sub("[REDACTED_PRIVATE_KEY]", text)
     text = SENSITIVE_HEADER_RE.sub(lambda match: f"{match.group(1)}: [REDACTED]", text)
     text = SENSITIVE_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}=[REDACTED]", text)
+    text = KNOWN_SECRET_RE.sub("[REDACTED]", text)
     return SENSITIVE_TOKEN_RE.sub("[REDACTED]", text)
+
+
+def risk_scan_text(value: object) -> str:
+    text = redact_text(value)
+    clauses = [clause.strip() for clause in RISK_CLAUSE_SPLIT_RE.split(text) if clause.strip()]
+    risky_clauses = []
+    for clause in clauses:
+        cleaned_clause = clause
+        for pattern in SAFE_NEGATED_FRAGMENT_PATTERNS:
+            cleaned_clause = pattern.sub(" ", cleaned_clause)
+        if NEGATED_CLAUSE_RE.search(clause):
+            cleaned_clause = SAFE_NEGATED_COORDINATE_RE.sub(" ", cleaned_clause)
+            cleaned_clause = SAFE_NEGATED_CN_COORDINATE_RE.sub(" ", cleaned_clause)
+        if not cleaned_clause.strip() and any(pattern.search(clause) for pattern in SAFE_NEGATED_RISK_PATTERNS):
+            continue
+        risky_clauses.append(cleaned_clause)
+    return "\n".join(risky_clauses)
 
 
 def parse_runner_state(stdout: str) -> dict | None:
@@ -261,7 +316,7 @@ def classify_repair_risk(state: dict | None) -> tuple[str, list[str]]:
         return "unknown", ["没有可解析的 pipeline 状态"]
     if str(state.get("status") or "") != "blocked":
         return "none", ["当前不是阻塞态"]
-    evidence = failure_evidence(state)
+    evidence = risk_scan_text(failure_evidence(state))
     reasons = [pattern.pattern for pattern in HIGH_RISK_PATTERNS if pattern.search(evidence)]
     if reasons:
         return "high", reasons[:4]

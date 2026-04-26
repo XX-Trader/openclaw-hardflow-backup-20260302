@@ -24,10 +24,52 @@ API_SUBDIR = "\u667a\u80fd\u591a\u5e73\u53f0\u5957\u5229"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 STATUS_RE = re.compile(r"(?im)^\s*LIVE_BRIDGE_STATUS\s*:\s*(pass|fail)\s*$")
 FINAL_VERDICT_RE = re.compile(r"(?im)^\s*Final verdict\s*:\s*pass\s*$")
+SENSITIVE_VALUE_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9][A-Za-z0-9_-]{47,}(?![A-Za-z0-9])")
+KNOWN_SECRET_RE = re.compile(
+    r"(?<![A-Za-z0-9_])("
+    r"github_pat_[A-Za-z0-9_]{20,}|"
+    r"gh[pousr]_[A-Za-z0-9_]{20,}|"
+    r"sk-[A-Za-z0-9][A-Za-z0-9_-]{16,}|"
+    r"xox[baprs]-[A-Za-z0-9-]{10,}|"
+    r"hf_[A-Za-z0-9]{20,}|"
+    r"AIza[0-9A-Za-z_-]{20,}|"
+    r"ya29\.[0-9A-Za-z_-]{20,}|"
+    r"AKIA[0-9A-Z]{16}"
+    r")(?![A-Za-z0-9_])"
+)
+SENSITIVE_LINE_RE = re.compile(
+    r"(?im)\b(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|"
+    r"x-csrf-token|api[_ -]?key|secret|password|credential|session(?:id|_id)?|"
+    r"(?:access|refresh|bearer|auth|api|csrf)[_ -]?token)\b\s*[:=]\s*([^\r\n]+)"
+)
+ARTIFACT_PATH_ENV_NAMES = {
+    "PIPELINE_RESEARCH_REPORT_FILE",
+    "PIPELINE_REQUIREMENTS_FILE",
+    "PIPELINE_REQUIREMENTS_DISCUSSION_FILE",
+    "PIPELINE_REQUIREMENTS_REVIEW_FILE",
+    "PIPELINE_SOLUTION_FILE",
+    "PIPELINE_SOLUTION_REVIEW_FILE",
+    "PIPELINE_PATCH_SUMMARY_FILE",
+    "PIPELINE_VERIFICATION_REPORT_FILE",
+    "PIPELINE_CODE_REVIEW_FILE",
+    "PIPELINE_DEPLOYMENT_REPORT_FILE",
+    "PIPELINE_WRITEBACK_REPORT_FILE",
+}
+NON_CODE_HERMES_STAGES = {
+    "external_research",
+    "requirements_discussion",
+    "code_review",
+}
 
 
 def strip_ansi(text: str) -> str:
     return ANSI_RE.sub("", text or "")
+
+
+def redact_text(text: str) -> str:
+    text = SENSITIVE_LINE_RE.sub(lambda match: f"{match.group(1)}: [REDACTED]", text or "")
+    text = KNOWN_SECRET_RE.sub("[REDACTED]", text)
+    return SENSITIVE_VALUE_RE.sub("[REDACTED]", text)
 
 
 def read_text(path: Path, default: str = "") -> str:
@@ -50,20 +92,6 @@ def profile_home(runtime_home: Path, profile: str) -> Path:
     return candidate if candidate.exists() else runtime_home
 
 
-def stage_output_file(stage: str) -> Path | None:
-    key_by_stage = {
-        "external_research": "PIPELINE_RESEARCH_REPORT_FILE",
-        "requirements_discussion": "PIPELINE_REQUIREMENTS_DISCUSSION_FILE",
-        "code_execution": "PIPELINE_PATCH_SUMMARY_FILE",
-        "verification": "PIPELINE_VERIFICATION_REPORT_FILE",
-        "code_review": "PIPELINE_CODE_REVIEW_FILE",
-        "deployment": "PIPELINE_DEPLOYMENT_REPORT_FILE",
-        "memory_writeback": "PIPELINE_WRITEBACK_REPORT_FILE",
-    }
-    value = os.environ.get(key_by_stage.get(stage, ""), "").strip()
-    return Path(value).expanduser() if value else None
-
-
 def requirement_text() -> str:
     path = env_path("PIPELINE_REQUIREMENT_FILE", Path(""))
     if path and str(path) != "." and path.exists():
@@ -81,6 +109,47 @@ def repair_context_text() -> str:
         if value:
             return value
     return ""
+
+
+def stage_context_files(stage: str) -> tuple[str, ...]:
+    if stage == "requirements_discussion":
+        return ("research_report.md", "project_memory_context.md")
+    if stage == "code_execution":
+        return (
+            "research_report.md",
+            "requirements.md",
+            "requirements_discussion.md",
+            "requirements_review.md",
+            "solution.md",
+            "solution_review.md",
+        )
+    if stage in {"verification", "code_review", "deployment", "memory_writeback"}:
+        return (
+            "research_report.md",
+            "requirements_discussion.md",
+            "solution.md",
+            "patch_summary.md",
+            "verification_report.md",
+            "code_review.md",
+        )
+    return ()
+
+
+def pipeline_context_text(stage: str, limit_per_file: int = 2200) -> str:
+    run_dir_raw = os.environ.get("PIPELINE_RUN_DIR", "").strip()
+    if not run_dir_raw:
+        return "not_applicable"
+    run_dir = Path(run_dir_raw).expanduser()
+    sections: list[str] = []
+    for name in stage_context_files(stage):
+        path = run_dir / name
+        if not path.exists() or not path.is_file():
+            continue
+        text = redact_text(read_text(path))
+        if len(text) > limit_per_file:
+            text = text[:limit_per_file].rstrip() + "\n...[truncated]"
+        sections.append(f"## {name}\n{text.strip()}")
+    return "\n\n".join(sections) if sections else "not_applicable"
 
 
 def run_command(
@@ -133,8 +202,11 @@ def command_block(title: str, command: str | list[str], proc: subprocess.Complet
     )
 
 
-def bridge_env(args: argparse.Namespace, profile_dir: Path) -> dict[str, str]:
+def bridge_env(args: argparse.Namespace, profile_dir: Path, stage: str = "") -> dict[str, str]:
     env = dict(os.environ)
+    if stage in NON_CODE_HERMES_STAGES:
+        for name in ARTIFACT_PATH_ENV_NAMES:
+            env.pop(name, None)
     env["HOME"] = str(args.home)
     env["HERMES_HOME"] = str(profile_dir)
     env["HERMES_ACCEPT_HOOKS"] = "1"
@@ -149,10 +221,10 @@ def stage_prompt(stage: str, args: argparse.Namespace, requirement: str) -> str:
     run_dir = os.environ.get("PIPELINE_RUN_DIR", "")
     memory_dir = os.environ.get("PIPELINE_PROJECT_MEMORY_DIR", "")
     repair_context = repair_context_text()
+    prior_stage_context = pipeline_context_text(stage)
     agent_id = os.environ.get("PIPELINE_AGENT_ID", "").strip()
     agent_workspace = os.environ.get("PIPELINE_AGENT_WORKSPACE", "").strip()
     agent_repo_dir = os.environ.get("PIPELINE_AGENT_REPO_DIR", "").strip()
-    output_file = stage_output_file(stage)
     common = f"""
 You are running one non-interactive stage of the SmartMultiPlatformArbitrage delivery pipeline.
 
@@ -164,7 +236,6 @@ Stage: {stage}
 Agent id: {agent_id or "unspecified"}
 Agent workspace: {agent_workspace or "unspecified"}
 Agent repo dir: {agent_repo_dir or str(args.project_dir)}
-Stage output file hint: {output_file or ""}
 
 Requirement:
 {requirement}
@@ -172,11 +243,16 @@ Requirement:
 Repair context from previous blocked attempt:
 {repair_context or "not_applicable"}
 
+Prior accepted stage context:
+{prior_stage_context}
+
 Safety contract:
 - Do not print, move, or modify secrets, tokens, cookies, credentials, auth state files, or private API keys.
 - Do not place exchange orders, transfer funds, start trading strategies, or enable live trading.
 - Keep changes scoped to the requirement and the existing repository patterns.
 - Record evidence with concrete files, commands, and outcomes.
+- Do not edit pipeline artifact files such as research_report.md, requirements_discussion.md, patch_summary.md, verification_report.md, code_review.md, or deployment_report.md.
+- For non-code stages, do not edit any files. Return the stage evidence in your final answer/stdout only; the runner will persist it.
 - End the final answer with these exact lines:
 LIVE_BRIDGE_STAGE: {stage}
 LIVE_BRIDGE_STATUS: pass
@@ -184,8 +260,9 @@ LIVE_BRIDGE_STATUS: pass
     if stage == "external_research":
         specific = """
 Act as web-agent. Check whether current external docs or online references are needed before implementation.
-Use available browser/search tools when the requirement depends on external facts. If no external lookup is needed, explain why.
+Use available browser/search tools when the requirement depends on external facts. If no external lookup is needed, explicitly say NO_EXTERNAL_LOOKUP_NEEDED, explain why, and give local evidence instead.
 Return concise research evidence and implementation constraints.
+Do not modify files. Do not write the stage output artifact yourself.
 """
     elif stage == "requirements_discussion":
         specific = """
@@ -198,6 +275,7 @@ Run at least two short rounds of discussion:
     elif stage == "code_execution":
         specific = """
 Act as backend-dev/frontend-dev executor. Read project memory/docs/todo/done and the relevant code before editing.
+Treat Prior accepted stage context and Repair context as hard constraints. Do not implement later-phase strategy work if the current requirement or research context says to stay on P0 memory/environment work.
 Implement the smallest safe change that satisfies the refined requirement.
 Run the most relevant local checks you can run in this environment.
 Return a patch summary with changed files, commands run, and remaining risk.
@@ -255,7 +333,7 @@ def run_hermes_stage(stage: str, args: argparse.Namespace) -> int:
     if args.allow_yolo:
         command.append("--yolo")
 
-    proc = run_command(command, cwd=args.project_dir, env=bridge_env(args, profile_dir))
+    proc = run_command(command, cwd=args.project_dir, env=bridge_env(args, profile_dir, stage))
     if proc.stdout:
         print(proc.stdout.rstrip())
     if proc.stderr:

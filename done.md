@@ -7,6 +7,15 @@
 
 ## 2026-04-26 已完成
 
+- [x] [2026-04-26] **nofx external_research 自动回流与安全边界误判修复**
+  - `smart_arb_pipeline_entry.py` 将 `run_external_research` 纳入自动修复白名单，并在高风险扫描前剥离“不得泄露凭证 / 不启动真实交易 / 不下单不划转”等否定式安全约束。
+  - 高风险扫描改为分句级处理；混合句里出现 `but needs credentials`、`但需要资金操作` 等正向凭证/资金操作仍会停人工确认。
+  - `smart_arb_live_bridge.py` 要求非代码 Hermes 阶段只通过 stdout/final answer 返回证据，不直接编辑 pipeline artifact；`external_research` 可用 `NO_EXTERNAL_LOOKUP_NEEDED` 表示本地事实已足够。
+  - 非代码 Hermes 子进程环境会剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，避免 agent 直接覆盖 `research_report.md` 等 runner 管理的产物。
+  - `code_execution` prompt 会读取前序 `research_report.md`、需求、方案和 review artifacts，避免 P0 记忆/环境任务漂移到后续 S1 策略重构。
+  - 前序 artifact 注入后续 prompt 前会脱敏常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack/HF/Google/AWS key。
+  - 新增回归测试覆盖 local-only external research、否定式安全边界、混合句正向高风险、正向凭证/真实交易高风险、前序上下文注入和上下文脱敏。
+
 - [x] [2026-04-26] **nofx Discord pipeline 状态卡与自动修复**
   - `smart_arb_pipeline_entry.py` 状态卡新增 `agent 输出摘要`、`阻塞原因` 和 `自动修复判断`，会读取 `command-runs/*.json` 的 stdout/stderr/error，而不再只回 `failed_stage` / `next_action`。
   - 低/中风险阻塞会按 `return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback` 自动回流最多 2 次；每次回流使用 `<原 run_id>-repair<n>` 独立 run id，写入 `auto_repair_context_<n>.md`，并重新走完整 coordinator pipeline。

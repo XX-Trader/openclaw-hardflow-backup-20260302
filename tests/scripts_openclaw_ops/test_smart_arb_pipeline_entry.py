@@ -368,6 +368,154 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("second failure", second_repair_env["PIPELINE_REPAIR_CONTEXT"])
         self.assertNotIn("first failure", second_repair_env["PIPELINE_REPAIR_CONTEXT"])
 
+    def test_negated_safety_terms_do_not_block_external_research_repair(self):
+        module = load_module()
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "run_external_research",
+            "failed_stage": "external_research",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "external_research",
+                    "status": "blocked",
+                    "detail": "不得泄露凭证；不得启动真实交易；不下单不划转",
+                    "next_action": "run_external_research",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流动作: run_external_research", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+        self.assertIn("可回流动作: run_external_research", repair_reasons)
+
+    def test_positive_credential_or_trading_request_still_high_risk(self):
+        module = load_module()
+        fake_openai_key = "sk-" + "1234567890abcdefghijklmnop"
+        for detail in (
+            "需要读取凭证并启用真实交易授权",
+            "needs credentials to continue",
+            "needs fund movement to continue",
+            "requires funds operation before proceeding",
+            "需要资金操作后继续",
+            "do not use credentials, but needs fund movement to continue",
+            "do not use credentials and needs fund movement to continue",
+            "no credentials required and enable live trading",
+            "不要读取凭证，但需要资金操作后继续",
+            "不要读取凭证并且需要资金操作后继续",
+            f"api_key={fake_openai_key} and continue",
+            "password=hunter2 and continue",
+            "credential=session-cookie and continue",
+            "transfer funds to continue",
+            "withdraw to continue",
+            "place order now",
+            "下单后继续",
+            "提现后继续",
+            "划转资金后继续",
+            "no credentials required and transfer funds",
+            "no credentials required and place order now",
+        ):
+            with self.subTest(detail=detail):
+                state = {
+                    "run_id": "discord-spreadagent-test",
+                    "status": "blocked",
+                    "next_action": "run_external_research",
+                    "failed_stage": "external_research",
+                    "run_dir": "",
+                    "artifacts": {},
+                    "stages": [
+                        {
+                            "name": "external_research",
+                            "status": "blocked",
+                            "detail": detail,
+                            "next_action": "run_external_research",
+                        },
+                    ],
+                }
+
+                risk, reasons = module.classify_repair_risk(state)
+                should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+
+                self.assertEqual("high", risk)
+                self.assertTrue(reasons)
+                self.assertFalse(should_repair)
+                self.assertEqual("high", repair_risk)
+                self.assertEqual(reasons, repair_reasons)
+
+    def test_negated_english_safety_terms_do_not_block_repair(self):
+        module = load_module()
+        for detail in (
+            "do not use credentials or transfer funds; keep live trading disabled",
+            "do not transfer funds",
+            "do not withdraw",
+            "do not submit orders",
+            "do not enable live trading",
+            "do not use credentials or withdraw",
+            "不提现",
+            "不出金",
+            "不转账",
+            "不要下单",
+            "不要读取凭证或转账",
+            "不要泄露密钥以及提现",
+        ):
+            with self.subTest(detail=detail):
+                state = {
+                    "run_id": "discord-spreadagent-test",
+                    "status": "blocked",
+                    "next_action": "run_external_research",
+                    "failed_stage": "external_research",
+                    "run_dir": "",
+                    "artifacts": {},
+                    "stages": [
+                        {
+                            "name": "external_research",
+                            "status": "blocked",
+                            "detail": detail,
+                            "next_action": "run_external_research",
+                        },
+                    ],
+                }
+
+                risk, reasons = module.classify_repair_risk(state)
+                should_repair, repair_risk, _ = module.should_auto_repair(state, 0, 2)
+
+                self.assertEqual("medium", risk)
+                self.assertIn("可回流动作: run_external_research", reasons)
+                self.assertTrue(should_repair)
+                self.assertEqual("medium", repair_risk)
+
+    def test_redacts_short_known_secret_shapes_from_failure_evidence(self):
+        module = load_module()
+        fake_github_token = "ghp_" + "123456789012345678901234567890123456"
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "return_to_code_execution",
+            "failed_stage": "code_execution",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "code_execution",
+                    "status": "blocked",
+                    "detail": f"token only: {fake_github_token}",
+                    "next_action": "return_to_code_execution",
+                },
+            ],
+        }
+
+        text = module.render_chat_summary(state, source="discord", profile="spreadagent", returncode=1)
+
+        self.assertIn("[REDACTED]", text)
+        self.assertNotIn(fake_github_token, text)
+
     def test_main_does_not_auto_repair_high_risk_blocked_run(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:

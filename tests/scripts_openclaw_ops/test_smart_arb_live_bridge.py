@@ -102,6 +102,85 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
             record = json.loads(changelog.read_text(encoding="utf-8").splitlines()[0])
             self.assertIn("Bridge memory test", record["content"])
 
+    def test_external_research_prompt_forbids_file_edits_and_allows_local_only_pass(self):
+        bridge = self._load_bridge_module()
+        args = SimpleNamespace(project_dir=ROOT, profile="spreadagent")
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            prompt = bridge.stage_prompt("external_research", args, "只做本地环境检查")
+
+        self.assertIn("NO_EXTERNAL_LOOKUP_NEEDED", prompt)
+        self.assertIn("Do not modify files", prompt)
+        self.assertIn("Return the stage evidence in your final answer/stdout only", prompt)
+        self.assertNotIn("Stage output file hint", prompt)
+
+    def test_non_code_hermes_env_hides_pipeline_artifact_paths(self):
+        bridge = self._load_bridge_module()
+        args = SimpleNamespace(
+            home=Path("/tmp/home"),
+            hermes_bin=Path("/tmp/hermes/bin/hermes"),
+        )
+        profile_dir = Path("/tmp/hermes/profile")
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "PIPELINE_RESEARCH_REPORT_FILE": "/tmp/run/research_report.md",
+                "PIPELINE_PATCH_SUMMARY_FILE": "/tmp/run/patch_summary.md",
+                "PIPELINE_CODE_REVIEW_FILE": "/tmp/run/code_review.md",
+            },
+            clear=True,
+        ):
+            research_env = bridge.bridge_env(args, profile_dir, "external_research")
+            review_env = bridge.bridge_env(args, profile_dir, "code_review")
+            code_env = bridge.bridge_env(args, profile_dir, "code_execution")
+
+        self.assertNotIn("PIPELINE_RESEARCH_REPORT_FILE", research_env)
+        self.assertNotIn("PIPELINE_PATCH_SUMMARY_FILE", research_env)
+        self.assertNotIn("PIPELINE_CODE_REVIEW_FILE", review_env)
+        self.assertEqual("/tmp/run/research_report.md", code_env["PIPELINE_RESEARCH_REPORT_FILE"])
+        self.assertEqual("/tmp/run/patch_summary.md", code_env["PIPELINE_PATCH_SUMMARY_FILE"])
+
+    def test_code_execution_prompt_includes_prior_stage_context(self):
+        bridge = self._load_bridge_module()
+        args = SimpleNamespace(project_dir=ROOT, profile="spreadagent")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            (run_dir / "research_report.md").write_text("P0 only; do not implement S1\n", encoding="utf-8")
+            (run_dir / "solution.md").write_text("Solution says memory first\n", encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {"PIPELINE_RUN_DIR": str(run_dir)}, clear=True):
+                prompt = bridge.stage_prompt("code_execution", args, "按 P0 顺序执行")
+
+        self.assertIn("Prior accepted stage context", prompt)
+        self.assertIn("P0 only; do not implement S1", prompt)
+        self.assertIn("Solution says memory first", prompt)
+        self.assertIn("Do not implement later-phase strategy work", prompt)
+
+    def test_pipeline_context_redacts_sensitive_context_values(self):
+        bridge = self._load_bridge_module()
+        args = SimpleNamespace(project_dir=ROOT, profile="spreadagent")
+        fake_github_token = "ghp_" + "123456789012345678901234567890123456"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            run_dir = Path(tmpdir)
+            (run_dir / "research_report.md").write_text(
+                "Authorization: Bearer should-not-leak\n"
+                "api_key=should-not-leak-either\n"
+                f"token only: {fake_github_token}\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(os.environ, {"PIPELINE_RUN_DIR": str(run_dir)}, clear=True):
+                prompt = bridge.stage_prompt("code_execution", args, "检查上下文脱敏")
+
+        self.assertIn("Authorization: [REDACTED]", prompt)
+        self.assertIn("api_key: [REDACTED]", prompt)
+        self.assertNotIn("should-not-leak", prompt)
+        self.assertNotIn("should-not-leak-either", prompt)
+        self.assertNotIn(fake_github_token, prompt)
+
     def test_run_command_returns_evidence_on_timeout(self):
         bridge = self._load_bridge_module()
         proc = bridge.run_command(

@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-04-26 - external_research local-only 证据不应因 artifact 写入失败被判阻塞
+
+类型：pitfall
+范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`scripts/openclaw-ops/smart_arb_live_bridge.py`、nofx Discord `smart-arb-pipeline`
+事实：最新 nofx run `discord-spreadagent-20260426T025738089361Z` 的 `external_research` 实际已经产出 local-only 研究证据，并说明不需要互联网检索；失败根因是 Hermes 阶段尝试直接编辑 `research_report.md`，触发 review diff 后 bridge 返回 `LIVE_BRIDGE_STATUS: fail`。同时失败证据里的“不得泄露凭证 / 不启动真实交易”是安全边界，不应被当作正向高风险请求。
+证据：`smart_arb_live_bridge.py` 已要求非代码阶段不编辑 pipeline artifacts，只在 stdout/final answer 返回证据，并在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量；`external_research` 可输出 `NO_EXTERNAL_LOOKUP_NEEDED` 作为有效证据；`code_execution` prompt 会消费前序阶段上下文，避免 P0 任务漂移到后续 S1 策略重构，并在注入前脱敏常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack/HF/Google/AWS key。`smart_arb_pipeline_entry.py` 已把 `run_external_research` 纳入自动回流白名单，并按分句剥离纯否定式安全边界；混合句中的正向凭证/资金操作仍判高风险。测试 `test_negated_safety_terms_do_not_block_external_research_repair`、`test_positive_credential_or_trading_request_still_high_risk`、`test_negated_english_safety_terms_do_not_block_repair`、`test_redacts_short_known_secret_shapes_from_failure_evidence`、`test_non_code_hermes_env_hides_pipeline_artifact_paths`、`test_pipeline_context_redacts_sensitive_context_values`、`test_external_research_prompt_forbids_file_edits_and_allows_local_only_pass`、`test_code_execution_prompt_includes_prior_stage_context` 覆盖该行为。
+最后验证：2026-04-26
+复用建议：遇到 live gate 说 `run_external_research` 时，先查 `command-runs/external_research-*.json` 是否已有 local-only 证据；如果有，不要让 agent 直接改 `research_report.md`，而是通过自动回流重新生成 stdout 证据并由 runner 写入 artifact。
+
 ## 2026-04-26 - nofx Discord 状态卡不能只回 failed_stage
 
 类型：pitfall

@@ -117,10 +117,13 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 
 默认自动修复策略：
 
-- `return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`：最多自动回流 2 次。
+- `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`：最多自动回流 2 次。
 - 自动回流仍重新执行 `/home/arbops/.local/bin/smart-arb-pipeline`，每次使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 自动回流会把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并同时通过内联 `PIPELINE_REPAIR_CONTEXT` 注入后续 Hermes stage prompt；即使文件写入失败，也不会丢失失败上下文。
-- 高风险内容不自动继续：凭证/API key/token/private key、真实交易、资金转移、提现、破坏性数据操作、force push 等。
+- 非代码 Hermes 阶段只返回 stdout/final answer 证据，不直接编辑 `research_report.md`、`requirements_discussion.md`、`patch_summary.md` 等 pipeline artifacts；bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，这些文件由 runner 负责持久化。
+- `external_research` 如果不需要互联网检索，必须在输出里写明 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据；这属于有效 research evidence，不应因缺少 browser lookup 被判失败。
+- 高风险内容不自动继续：正向要求读取/输出/使用凭证、API key、token、private key，或要求启用真实交易、下单、资金转移、提现、破坏性数据操作、force push 等。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全边界不应被当成高风险阻断；如果同一段同时出现“但需要资金操作 / but needs credentials”等正向子句，仍按高风险停人工确认。
+- bridge 会在前序 artifact 注入后续 prompt 前脱敏常见 header、assignment、长 token 和 GitHub PAT / OpenAI `sk-` / Slack / HF / Google / AWS access key 等短格式 secret；排障时不要把原始 token 放进 artifact。
 - 排障时优先看最终状态卡，再看原 run 与 `-repair<n>` run 各自的 `command-runs/*.json`，以及原 run 下的 `auto_repair_context_<n>.md`。
 
 ## nofx workflow 服务器级权限
