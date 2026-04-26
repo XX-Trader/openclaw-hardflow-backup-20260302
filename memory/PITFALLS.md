@@ -1,5 +1,23 @@
 # PITFALLS
 
+## 2026-04-26 - nofx smart-arb-pipeline 旧默认值会把执行请求跑成 dry-run
+
+类型：pitfall
+范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、nofx `/home/arbops/.local/bin/smart-arb-pipeline`、Discord `arbitrageagent` / `spreadagent`
+事实：旧入口只有显式 `--live` 才真实执行，否则会向 runner 追加 `--dry-run`，导致 Discord 对“继续”“都依次完成”这类执行请求只生成编排证据并提示 `No product code was modified by this runner.`。已改为默认 live；只有显式 `--dry-run` 或 `SMART_ARB_PIPELINE_DEFAULT_LIVE=0` 才恢复模拟。
+证据：`smart_arb_pipeline_entry.py` 新增 `--dry-run` 与 `SMART_ARB_PIPELINE_DEFAULT_LIVE`，默认不再追加 `--dry-run`，并默认注入 live bridge commands；两个 nofx profile SOUL 已改成“执行类需求默认 live pipeline”。
+最后验证：2026-04-26 00:00
+复用建议：遇到 Discord 回复“默认 pipeline dry-run/simulation”时，先查入口版本和 runner 命令；不要再要求用户补一句“继续真实执行”。
+
+## 2026-04-26 - nofx `/sethome` 写配置失败通常是 profile config 属主错误
+
+类型：pitfall
+范围：nofx `/home/arbops/.hermes/profiles/<profile>/config.yaml`
+事实：`/sethome` 需要 Hermes gateway 进程写当前 profile 的 `config.yaml`。如果文件被 root 写成 `root:root` 且 `0600`，`arbops` 用户运行的 gateway 会无法写入并返回 `[Errno 13]`。已将两个 Discord profile 的 `config.yaml` 修回 `arbops:arbops` + `0600`。
+证据：远端 stat 曾显示 `spreadagent/config.yaml` 和 `arbitrageagent/config.yaml` 均为 `root:root 0600`，而 profile 目录与 `.env` 为 `arbops:arbops`；修复后以 `arbops` 身份完成写入 smoke。
+最后验证：2026-04-26 00:00
+复用建议：通过 root/SFTP 改 profile 配置后必须立即 `chown arbops:arbops /home/arbops/.hermes/profiles/<profile>/config.yaml`；不要只修 `.env`。
+
 ## 2026-04-25 - nofx live bridge 容易被误判为真实多 agent 分发
 
 类型：pitfall

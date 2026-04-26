@@ -36,15 +36,17 @@ runtime installer 会把以下 hardflow 脚本安装到 Hermes ops 目录：
 
 ## live 流程
 
-Discord 入口使用：
+Discord 入口默认就是真实执行：
 
 ```bash
-/home/arbops/.local/bin/smart-arb-pipeline --live --profile arbitrageagent --source discord --requirement "<需求文本>"
+/home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --requirement "<需求文本>"
 ```
+
+只有明确要求只验证流程、不改代码时，才追加 `--dry-run`。`SMART_ARB_PIPELINE_DEFAULT_LIVE=0` 可临时恢复旧的默认模拟模式。
 
 默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况和关键证据。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`。
 
-`--live` 默认注入以下命令证据：
+live 默认注入以下命令证据：
 
 | 阶段 | 责任 | 证据 |
 |------|------|------|
@@ -185,4 +187,5 @@ curl -fsS http://127.0.0.1:18080/api/strategy/status
 
 - 不把 Discord token、模型 key、auth JSON、SQLite 运行库提交到 Git。
 - `--live-bridge-no-yolo` 可关闭 headless 代码执行的 yolo 模式。
+- profile 配置必须归属运行用户 `arbops`；如果 `config.yaml` 被 root 写成 `0600`，Discord `/sethome` 会因为无法写入 profile 配置而失败。
 - 真实交易启动必须另走 SmartMultiPlatformArbitrage 的策略运行手册；本 bridge 的 deployment 只负责内控 API。

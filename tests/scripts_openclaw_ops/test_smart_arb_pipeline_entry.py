@@ -123,8 +123,42 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("Run ID: discord-arbitrageagent-test", out.getvalue())
         self.assertIn("任务接入: coordinator -> 完成", out.getvalue())
         runner_cmd = run_mock.call_args.args[0]
+        self.assertNotIn("--dry-run", runner_cmd)
+        self.assertIn("--code-command", runner_cmd)
         self.assertNotIn("--agent-workspace-mode", runner_cmd)
         self.assertEqual("", err.getvalue())
+
+    def test_main_dry_run_flag_forces_simulation(self):
+        module = load_module()
+        raw = '{"status":"completed","stages":[]}\n'
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, raw),
+        ) as run_mock:
+            rc = module.main(["--emit-json", "--dry-run", "--requirement", "demo"])
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        self.assertIn("--dry-run", runner_cmd)
+        self.assertNotIn("--code-command", runner_cmd)
+
+    def test_env_can_restore_dry_run_default(self):
+        module = load_module()
+        raw = '{"status":"completed","stages":[]}\n'
+
+        with mock.patch.dict(module.os.environ, {"SMART_ARB_PIPELINE_DEFAULT_LIVE": "0"}), mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, raw),
+        ) as run_mock:
+            rc = module.main(["--emit-json", "--requirement", "demo"])
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        self.assertIn("--dry-run", runner_cmd)
+        self.assertNotIn("--code-command", runner_cmd)
 
     def test_main_emit_json_prints_raw_runner_json(self):
         module = load_module()

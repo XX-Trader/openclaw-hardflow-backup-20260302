@@ -7,7 +7,7 @@
 - nofx hardflow 仓库：`/home/arbops/projects/openclaw-hardflow-backup-20260302`
 - nofx SmartMultiPlatformArbitrage 仓库：`/home/arbops/projects/SmartMultiPlatformArbitrage`
 - Hermes runtime：`/home/arbops/.hermes`
-- 标准入口：`/home/arbops/.local/bin/smart-arb-pipeline`
+- 标准入口：`/home/arbops/.local/bin/smart-arb-pipeline`（默认 live；只有显式 `--dry-run` 才模拟）
 - pipeline runs：`/home/arbops/.hermes/pipeline-runs`
 - Task Center DB：`/home/arbops/.hermes/ops/task-center/task_center.db`
 - nofx profile SOUL 模板：`config/nofx-hermes-profiles/<profile>/SOUL.md`
@@ -16,7 +16,7 @@
 
 1. 查 `tmux ls`，确认 `hermes-tg`、`hermes-discord-arbitrage`、`hermes-discord-spread`、`smart-arb-api` 是否存在。
 2. 查 Hermes profile gateway state，确认 Discord 是否 connected。
-3. 查最近 `pipeline_state.json` 和 `command-runs/*.json`，确认是否进入 `smart-arb-pipeline --live`，以及每个阶段实际 command。
+3. 查最近 `pipeline_state.json` 和 `command-runs/*.json`，确认是否进入 live pipeline，以及每个阶段实际 command。若用户明确要求只模拟，才应看到 `--dry-run`。
 4. 查 `agent-workspaces/manifest.json`，确认每个阶段 owner 是否有独立 workspace。
 5. 查 `command-runs/code_execution-1.patch` 是否生成并成功应用回主项目目录。
 6. 查 `smart_arb_pipeline_entry.py` 和 `smart_arb_live_bridge.py` 的安装态版本，确认是否与本仓库 HEAD 对齐。
@@ -39,7 +39,7 @@
 4. 重启 tmux 会话：
    - `hermes-discord-arbitrage` 通过 `/home/arbops/.hermes/profiles/arbitrageagent/start-gateway.sh`
    - `hermes-discord-spread` 通过 `/home/arbops/.hermes/profiles/spreadagent/start-gateway.sh`
-5. profile `.env` 必须保持 `arbops:arbops` 且 `0600`；如果通过 root/SFTP 写回 `.env`，必须再 `chown arbops:arbops`，否则 gateway 会因读不到 `.env` 立即退出。
+5. profile `.env` 和 `config.yaml` 必须保持 `arbops:arbops` 且 `0600`；如果通过 root/SFTP 写回，必须再 `chown arbops:arbops`，否则 gateway 或 Discord slash command 会因读写 profile 配置失败。
 6. 验证：
    - `tmux ls`
    - `cat /home/arbops/.hermes/profiles/<profile>/gateway_state.json`
@@ -97,3 +97,19 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 1. 读两个 profile 的 `config.yaml`，确认顶层 `approvals.mode: 'off'`。
 2. 读 `/home/arbops/.hermes/profiles/<profile>/gateway_state.json`，确认 `gateway_state=running` 且 `updated_at` 是重启后的时间。
 3. 扫描 `/home/arbops/.hermes/profiles/<profile>/logs/*.log` 尾部，确认没有新的 `Command Approval Required` / `confusable` 记录。
+
+## nofx smart-arb-pipeline 默认 live
+
+`/home/arbops/.local/bin/smart-arb-pipeline` 现在默认真实执行 live coordinator pipeline，会注入 external research、需求讨论、编码、验证、代码审查、内部部署和记忆写回命令证据。只有明确需要模拟时才使用：
+
+```bash
+/home/arbops/.local/bin/smart-arb-pipeline --dry-run --profile spreadagent --source discord --requirement "<需求文本>"
+```
+
+如果需要临时恢复旧行为，可设置：
+
+```bash
+SMART_ARB_PIPELINE_DEFAULT_LIVE=0
+```
+
+注意：这里的 live 指真实改代码、验证、文档/记忆写回和内部 FastAPI smoke；仍不等于解除 `PRODUCTION_TRADING_ENABLED=false`，也不允许真实下单。
