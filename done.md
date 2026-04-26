@@ -7,6 +7,14 @@
 
 ## 2026-04-26 已完成
 
+- [x] [2026-04-26] **nofx Discord 状态卡、session 输出恢复与 P0 写回门禁修复**
+  - `smart_arb_pipeline_entry.py` 将状态卡命令摘要上限改为可配置，默认展示 24 条 `command-runs/*.json`；两个 nofx profile `SOUL.md` 要求失败时把完整中文状态卡回传聊天频道。
+  - `smart_arb_live_bridge.py` 在 Hermes CLI 只返回 `session_id` 时，从 profile session 文件恢复最新 assistant 输出并脱敏；`external_research` 的 `NO_EXTERNAL_LOOKUP_NEEDED` 可据此通过 live gate。
+  - 风险扫描保留正向高风险：`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]`、真实 credential assignment、真实交易/资金/破坏性操作仍停人工确认。
+  - 风险扫描放行安全否定噪音：`不得泄露凭证`、`不下单不划转`、普通 `session_id=[REDACTED]`、`No need for ...`、`Do not need ...` 可自动回流。
+  - memory/docs-only、no service control、no deployment、no restart 需求不再注入 deployment command，避免纯记忆/文档写回任务重启 `smart-arb-api`；混合需求里如后续明确要求重启/部署，则正向 deployment 动作优先，普通 API/服务改动也保留 deployment smoke。
+  - nofx 已完成 P0-1 写回 run `discord-spreadagent-20260426T075133316811Z`，15 个阶段 completed，verification/code_review/acceptance 均 pass。
+
 - [x] [2026-04-26] **nofx external_research 自动回流与安全边界误判修复**
   - `smart_arb_pipeline_entry.py` 将 `run_external_research` 纳入自动修复白名单，并在高风险扫描前剥离“不得泄露凭证 / 不启动真实交易 / 不下单不划转”等否定式安全约束。
   - 高风险扫描改为分句级处理；混合句里出现 `but needs credentials`、`但需要资金操作` 等正向凭证/资金操作仍会停人工确认。

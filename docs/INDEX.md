@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-25 | 项目交付优先工作流已补齐 SmartMultiPlatformArbitrage nofx live bridge fan-out 边界
+> 最后更新：2026-04-26 | SmartMultiPlatformArbitrage nofx live bridge 已补齐 chat 状态卡、session 输出恢复、风险误判修复和 memory/docs-only 跳过 deployment 边界
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---

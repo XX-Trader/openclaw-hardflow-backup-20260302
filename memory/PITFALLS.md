@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-04-26 - P0 记忆写回不应被否定式敏感词或 session_id 输出卡住
+
+类型：pitfall
+范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`scripts/openclaw-ops/smart_arb_live_bridge.py`、nofx Discord `smart-arb-pipeline`
+事实：run `discord-spreadagent-20260426T065131327963Z` 的 P0-1 OpenClaw 历史蒸馏已完成 external_research，但 code_execution 被安全门禁误判 high-risk；原因是报告里出现“未读取 / 不输出 token、key、cookie、OAuth、API key、credential”等否定式安全边界。随后新 run `discord-spreadagent-20260426T075133316811Z` 已完成 15 个阶段：external_research、需求讨论、code_execution、verification、code_review、deployment、acceptance、writeback 均通过。
+证据：`smart_arb_pipeline_entry.py` 现在按子句处理风险扫描：纯否定式安全边界、历史文档清理记录、普通 `session_id=[REDACTED]` 和否定式预脱敏噪音可回流；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]`、真实 credential assignment、真实交易/资金/破坏性操作仍按 high 停人工确认。`smart_arb_live_bridge.py` 会在 Hermes CLI 只输出 `session_id` 时，从固定 profile session 文件恢复最新 assistant 输出并脱敏；`external_research` 的 `NO_EXTERNAL_LOOKUP_NEEDED` 可据此合成 pass。entry 还会在 memory/docs-only、no service control、no deployment、no restart 需求下跳过 deployment command，避免纯写回任务重启 `smart-arb-api`。
+最后验证：2026-04-26 16:00
+复用建议：遇到 P0/P1 文档或项目记忆写回任务被凭证词卡住时，先判断这些词是否处在否定句、历史清理记录或预脱敏噪音中；不要为了绕过门禁删除安全边界。若命令输出只有 `session_id`，去 profile session JSON 核对实际 assistant 输出。若需求写明不触碰服务，确认 runner 命令没有 `--deployment-command`。
+
 ## 2026-04-26 - external_research local-only 证据不应因 artifact 写入失败被判阻塞
 
 类型：pitfall

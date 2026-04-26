@@ -1,6 +1,6 @@
 # SmartMultiPlatformArbitrage nofx live evidence bridge
 
-> 最后验证：2026-04-26 11:30 Asia/Shanghai
+> 最后验证：2026-04-26 16:00 Asia/Shanghai
 > 适用范围：nofx 上 SmartMultiPlatformArbitrage 的 Discord 需求入口、Hermes runtime、项目交付优先工作流 live 证据桥。
 
 ## 归属边界
@@ -53,7 +53,7 @@ live 默认注入以下命令证据：
 | `code_execution` | Hermes headless 执行代码改动 | `command_code_execution_*` |
 | `verification` | 固定命令验证，默认 `git diff --check` 与 `compileall -q scripts strategy_runtime`，单命令超时默认 300 秒 | `command_verification_*` |
 | `code_review` | reviewer 做代码审查 | `command_code_review_*` |
-| `deployment` | 只重启内控 FastAPI 并做状态接口 smoke | `command_deployment_*` |
+| `deployment` | 普通服务/API 改动时重启内控 FastAPI 并做状态接口 smoke；memory/docs-only 或 no service control/no deployment/no restart 需求会跳过该命令 | `command_deployment_*` |
 | `memory_writeback` | 写项目记忆 changelog | `command_memory_writeback_*` |
 
 缺少任一关键阶段真实命令证据时，pipeline runner 会阻断并写入 `failed_stage` 与 `next_action`。
@@ -74,9 +74,11 @@ Discord 状态卡必须回答三个问题：
 - 每次回流使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 每次回流前，入口把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并通过 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT` 传给 live bridge；后续 Hermes stage prompt 会看到上一轮失败原因。
 - 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署或记忆写回。
+- 状态卡默认展开最多 24 条命令摘要，可用 `SMART_ARB_CHAT_COMMAND_LIMIT` 或 `--chat-command-limit` 调整；Discord profile 必须把中文状态卡回传到聊天频道，长消息分段发送，不能只给 run id、失败阶段和证据目录。
 - 非代码 Hermes 阶段不允许直接编辑 `research_report.md`、`requirements_discussion.md`、`verification_report.md` 等 pipeline artifacts；stage evidence 必须通过 stdout/final answer 返回，由 runner 持久化。bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，避免 agent 通过环境变量直接定位并覆盖 artifact。
 - `external_research` 对本地记忆蒸馏、环境基线、权限修复这类不依赖互联网的问题，可以输出 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据，作为有效 research evidence。
-- 检测到正向要求读取/输出/使用凭证、API key、token/private key，或启用真实交易、下单、资金转移、提现、破坏性数据操作或 force push 等高风险内容时，不自动继续，状态卡显示需要人工确认。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全约束不会单独触发高风险阻断；如果同一段里还有 `but needs credentials`、`但需要资金操作` 等正向子句，仍按高风险处理。
+- 如果 Hermes CLI stdout/stderr 只输出 `session_id: ...`，bridge 会在 `/home/arbops/.hermes/profiles/<profile>/sessions/session_<id>.json` 恢复最新 assistant 内容并先脱敏，再用于 stage pass 判定和状态卡输出。
+- 检测到正向要求读取/输出/使用凭证、API key、token/private key、session_id，或启用真实交易、下单、资金转移、提现、破坏性数据操作或 force push 等高风险内容时，不自动继续，状态卡显示需要人工确认。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全约束不会单独触发高风险阻断；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]` 仍是 high，`No need for ...` / `Do not need ...` 可作为否定式预脱敏噪音回流；如果同一段里还有 `but needs credentials`、`但需要资金操作` 等正向子句，仍按高风险处理。
 - 前序 artifact 注入后续 Hermes prompt 前会脱敏常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key 和 AWS access key，避免修复上下文扩散短格式 secret。
 
 ### 当前 fan-out 与 workspace 边界
@@ -130,6 +132,8 @@ deployment 阶段只做：
 
 deployment 阶段不会启动真实策略交易进程，不会绑定公网地址，也不会执行资金操作。
 
+如果需求明确“不触碰服务控制 / no service control / no deployment / no restart”或属于 memory/docs-only 写回，`smart_arb_pipeline_entry.py` 不会注入 deployment command；该类任务只走验证、代码审查、acceptance 和 memory_writeback，不重启 `smart-arb-api`。如果同一需求后续明确要求 restart/deploy/重启/部署，正向 deployment 动作优先，仍会执行内控 FastAPI restart/smoke。
+
 ## 验收证据
 
 - hardflow 提交：`8f0c1b2f Make installed ops scripts executable`
@@ -144,6 +148,7 @@ deployment 阶段不会启动真实策略交易进程，不会绑定公网地址
 - nofx API smoke：
   - `/health` 返回 `{"status":"ok","strategy_running":false,"ipc_connected":false}`
   - `/api/strategy/status` 返回 `{"running":false,"pid":null}`
+- P0-1 OpenClaw 历史蒸馏写回：`discord-spreadagent-20260426T075133316811Z`，15 个阶段 completed，verification/code_review/acceptance 均 pass；原始误阻塞 run `discord-spreadagent-20260426T065131327963Z` 现在被风险扫描判为 medium 可回流。
 
 ## 常用运维命令
 

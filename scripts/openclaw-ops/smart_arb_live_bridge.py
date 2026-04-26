@@ -24,6 +24,7 @@ API_SUBDIR = "\u667a\u80fd\u591a\u5e73\u53f0\u5957\u5229"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 STATUS_RE = re.compile(r"(?im)^\s*LIVE_BRIDGE_STATUS\s*:\s*(pass|fail)\s*$")
 FINAL_VERDICT_RE = re.compile(r"(?im)^\s*Final verdict\s*:\s*pass\s*$")
+SESSION_ID_RE = re.compile(r"(?im)^\s*session_id\s*:\s*([A-Za-z0-9_-]+)\s*$")
 SENSITIVE_VALUE_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9][A-Za-z0-9_-]{47,}(?![A-Za-z0-9])")
 KNOWN_SECRET_RE = re.compile(
     r"(?<![A-Za-z0-9_])("
@@ -79,6 +80,14 @@ def read_text(path: Path, default: str = "") -> str:
         return default
 
 
+def read_json(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
 def env_path(name: str, default: Path) -> Path:
     value = os.environ.get(name, "").strip()
     return Path(value).expanduser() if value else default
@@ -90,6 +99,35 @@ def profile_home(runtime_home: Path, profile: str) -> Path:
         return runtime_home
     candidate = runtime_home / "profiles" / profile
     return candidate if candidate.exists() else runtime_home
+
+
+def recover_hermes_session_output(profile_dir: Path, command_text: str) -> str:
+    match = SESSION_ID_RE.search(command_text or "")
+    if not match:
+        return ""
+    session_id = match.group(1).strip()
+    if not session_id:
+        return ""
+    session_file = profile_dir / "sessions" / f"session_{session_id}.json"
+    payload = read_json(session_file)
+    messages = payload.get("messages") if isinstance(payload.get("messages"), list) else []
+    for message in reversed(messages):
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            continue
+        content = str(message.get("content") or "").strip()
+        if content:
+            return redact_text(content)
+    return ""
+
+
+def recovered_stage_pass(stage: str, text: str) -> bool:
+    if not text.strip():
+        return False
+    if STATUS_RE.search(text):
+        return True
+    if stage == "external_research" and "NO_EXTERNAL_LOOKUP_NEEDED" in text:
+        return True
+    return False
 
 
 def requirement_text() -> str:
@@ -341,6 +379,15 @@ def run_hermes_stage(stage: str, args: argparse.Namespace) -> int:
         print(proc.stderr.rstrip())
 
     plain = strip_ansi((proc.stdout or "") + "\n" + (proc.stderr or ""))
+    recovered = recover_hermes_session_output(profile_dir, plain)
+    if recovered and recovered not in plain:
+        print("\n# recovered_session_output")
+        print(recovered.rstrip())
+        plain = f"{plain}\n{recovered}"
+    if recovered_stage_pass(stage, recovered) and not STATUS_RE.search(plain):
+        plain = f"{plain}\nLIVE_BRIDGE_STAGE: {stage}\nLIVE_BRIDGE_STATUS: pass"
+        print(f"LIVE_BRIDGE_STAGE: {stage}")
+        print("LIVE_BRIDGE_STATUS: pass")
     status = STATUS_RE.search(plain)
     if proc.returncode != 0:
         print(f"LIVE_BRIDGE_STAGE: {stage}")

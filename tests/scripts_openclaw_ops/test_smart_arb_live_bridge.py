@@ -114,6 +114,60 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         self.assertIn("Return the stage evidence in your final answer/stdout only", prompt)
         self.assertNotIn("Stage output file hint", prompt)
 
+    def test_external_research_recovers_local_only_output_from_session_file(self):
+        bridge = self._load_bridge_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            profile_dir = tmp / "profiles" / "spreadagent"
+            sessions_dir = profile_dir / "sessions"
+            sessions_dir.mkdir(parents=True)
+            session_id = "20260426_154049_316711"
+            (sessions_dir / f"session_{session_id}.json").write_text(
+                json.dumps(
+                    {
+                        "messages": [
+                            {"role": "user", "content": "research"},
+                            {
+                                "role": "assistant",
+                                "content": "NO_EXTERNAL_LOOKUP_NEEDED\nlocal evidence from prior run",
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            args = SimpleNamespace(
+                runtime_home=tmp,
+                profile="spreadagent",
+                hermes_bin=Path("/tmp/hermes"),
+                provider="openai-codex",
+                model="gpt-5.5",
+                max_turns=24,
+                allow_yolo=False,
+                project_dir=ROOT,
+                home=tmp,
+            )
+            out = StringIO()
+
+            with mock.patch.object(
+                bridge,
+                "run_command",
+                return_value=subprocess.CompletedProcess(
+                    ["hermes"],
+                    0,
+                    "",
+                    f"session_id: {session_id}\n",
+                ),
+            ), redirect_stdout(out):
+                rc = bridge.run_hermes_stage("external_research", args)
+
+        text = out.getvalue()
+        self.assertEqual(0, rc)
+        self.assertIn("# recovered_session_output", text)
+        self.assertIn("NO_EXTERNAL_LOOKUP_NEEDED", text)
+        self.assertIn("LIVE_BRIDGE_STATUS: pass", text)
+
     def test_non_code_hermes_env_hides_pipeline_artifact_paths(self):
         bridge = self._load_bridge_module()
         args = SimpleNamespace(

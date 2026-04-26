@@ -72,8 +72,8 @@ REPAIRABLE_NEXT_ACTIONS = {
 HIGH_RISK_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|(?:access|refresh|bearer|auth|api|csrf)[_ -]?tokens?)\b\s*[:=]",
-        r"\b(?:need|needs|requires?|read|print|show|dump|export|upload|commit|use|modify|delete)\b.{0,60}\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|sessions?|(?:access|refresh|bearer|auth|api|csrf)[_ -]?tokens?)\b",
+        r"\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|jwt|(?:access|refresh|bearer|auth|api|csrf)[_ -]?tokens?)\b\s*[:=]",
+        r"\b(?:need|needs|requires?|read|print|show|dump|export|upload|commit|use|modify|delete)\b.{0,60}\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|(?:access|refresh|bearer|auth|api|csrf)[_ -]?tokens?)\b",
         r"\b(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|x-csrf-token)\b\s*[:=]",
         r"PRODUCTION_TRADING_ENABLED\s*=\s*true",
         r"\b(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?|enable\s+(?:real|live)\s+trading|start\s+(?:real|live)\s+trading)\b",
@@ -120,6 +120,71 @@ SAFE_NEGATED_FRAGMENT_PATTERNS = [
         r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|关闭|false)",
     )
 ]
+SAFE_NEGATED_LIST_FRAGMENT_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:no\s+need(?:ed)?\s+for|do\s+not\s+need|don't\s+need|not\s+(?:required|needed))\b.{0,120}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|authorization|auth\s+state\s+files?)\b\s*(?::|=)?\s*(?:\[[^\]]*REDACTED[^\]]*\])?",
+        r"\b(?:do\s+not|don't|never|without)\b(?:(?!\b(?:but|however|yet|needs?|requires?|start|enable|execute|place|submit|perform|allow)\b).){0,160}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|auth\s+state\s+files?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds)\b",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未在|未启动|未下单|未划转|未转账|未提现|未出金|未读取|未泄露|未打印|未移动|未修改|未保留|不保留|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露|不打印|不移动|不修改)(?:(?!(?:但|但是|不过|然而|需要|要求|启动|启用|执行|进行|允许|下单后|划转后|转账后|提现后|出金后|资金操作)).){0,160}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|credential(?:-imports)?|credentials?|secrets?|tokens?|cookies?|oauth|api[_ /-]?keys?)",
+    )
+]
+SAFE_DOCUMENTATION_HISTORY_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"(?:按用户要求|已|已经).{0,30}从待办中删除.{0,80}(?:凭证|密钥|token|cookie|安全轮换).{0,80}(?:事项|TODO|任务|跟踪)",
+        r"未在.{0,40}(?:文档|输出|日志).{0,40}(?:保留|记录|包含).{0,80}(?:token|key|pat|密钥|凭证|cookie).{0,40}(?:明文)?",
+    )
+]
+SERVICE_CONTROL_DENY_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"不触碰服务控制",
+        r"不触碰服务",
+        r"不修改服务",
+        r"不需要.{0,10}(?:重启|部署)",
+        r"不重启",
+        r"不部署",
+        r"不要.{0,20}(?:重启|部署|改动服务|触碰服务)",
+        r"\bdo\s+not\s+(?:restart|deploy|touch\s+service|modify\s+service)",
+        r"\bwithout\s+(?:service\s+control|deployment|restart)",
+        r"\bno\s+(?:service\s+control|deployment|restart)",
+    )
+]
+MEMORY_DOC_ONLY_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"(?:只|仅)写入.{0,60}(?:memory|记忆|docs|文档|长期事实)",
+        r"写回.{0,60}(?:memory|记忆|docs|文档|长期事实).{0,40}(?:不触碰|不要|不修改|不重启|不部署)",
+        r"\b(?:memory|docs?|documentation)[-/ ]?only\b",
+    )
+]
+POSITIVE_DEPLOYMENT_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"(?:重启|部署|上线|发布|启动).{0,30}(?:服务|API|FastAPI|内控|完成部署)?",
+        r"\b(?:restart|deploy|deployment|rollout|smoke)\b",
+    )
+]
+PRE_REDACTED_ASSIGNMENT_RE = re.compile(
+    r"(?i)\b(api[_ -]?key|secret|password|credential|session(?:id|_id)?|"
+    r"(?:access|refresh|bearer|auth|api|csrf)[_ -]?token)\b\s*[:=]\s*\[[^\]]*REDACTED[^\]]*\]"
+)
+PRE_REDACTED_HEADER_RE = re.compile(
+    r"(?im)\b(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|"
+    r"x-csrf-token|session(?:id|_id)?|csrf(?:token)?|jwt)\b\s*[:=]\s*\[[^\]]*REDACTED[^\]]*\]"
+)
+PRE_REDACTED_MARKER_RE = re.compile(
+    r"__SMART_ARB_PRE_REDACTED__(?P<key>[A-Za-z0-9_-]+)(?P<sep>[:=])\[REDACTED\]__"
+)
+NEGATED_PRE_REDACTED_CONTEXT_RE = re.compile(
+    r"(?i)\b(?:no\s+need(?:ed)?\s+for|do\s+not\s+need|don't\s+need|not\s+(?:required|needed))\b|"
+    r"(?:不需要|无需|无须)"
+)
+SENSITIVE_ACTION_CONTEXT_RE = re.compile(
+    r"(?i)\b(?:need|needs|required?|requires?|missing|read|print|show|dump|export|upload|"
+    r"commit|use|modify|delete|provide|set|configure|add)\b|"
+    r"(?:需要|要求|缺少|未配置|读取|打印|展示|输出|导出|上传|提交|使用|修改|删除|配置|提供|填入|设置)"
+)
 SENSITIVE_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9][A-Za-z0-9_-]{47,}(?![A-Za-z0-9])")
 KNOWN_SECRET_RE = re.compile(
     r"(?<![A-Za-z0-9_])("
@@ -173,12 +238,48 @@ def redact_text(value: object) -> str:
     return SENSITIVE_TOKEN_RE.sub("[REDACTED]", text)
 
 
+def strip_safe_negated_fragments(text: str) -> str:
+    cleaned = text
+    for pattern in SAFE_NEGATED_LIST_FRAGMENT_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+    return cleaned
+
+
+def strip_safe_documentation_history(text: str) -> str:
+    cleaned = text
+    for pattern in SAFE_DOCUMENTATION_HISTORY_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+    return cleaned
+
+
+def mark_pre_redacted_sensitive_markers(text: str) -> str:
+    def replacement(match: re.Match, separator: str) -> str:
+        key = re.sub(r"[^A-Za-z0-9_-]+", "_", match.group(1).strip()).strip("_").lower()
+        return f"__SMART_ARB_PRE_REDACTED__{key}{separator}[REDACTED]__"
+
+    text = PRE_REDACTED_HEADER_RE.sub(lambda match: replacement(match, ":"), text)
+    return PRE_REDACTED_ASSIGNMENT_RE.sub(lambda match: replacement(match, "="), text)
+
+
+def restore_or_strip_pre_redacted_sensitive_markers(text: str) -> str:
+    if PRE_REDACTED_MARKER_RE.search(text) and NEGATED_PRE_REDACTED_CONTEXT_RE.search(text):
+        return PRE_REDACTED_MARKER_RE.sub(" ", text)
+    if SENSITIVE_ACTION_CONTEXT_RE.search(text):
+        return PRE_REDACTED_MARKER_RE.sub(
+            lambda match: f"{match.group('key')}{match.group('sep')}[REDACTED]",
+            text,
+        )
+    return PRE_REDACTED_MARKER_RE.sub(" ", text)
+
+
 def risk_scan_text(value: object) -> str:
-    text = redact_text(value)
+    text = redact_text(mark_pre_redacted_sensitive_markers(str(value or "")))
+    text = strip_safe_negated_fragments(strip_safe_documentation_history(text))
     clauses = [clause.strip() for clause in RISK_CLAUSE_SPLIT_RE.split(text) if clause.strip()]
     risky_clauses = []
     for clause in clauses:
-        cleaned_clause = clause
+        cleaned_clause = strip_safe_negated_fragments(strip_safe_documentation_history(clause))
+        cleaned_clause = restore_or_strip_pre_redacted_sensitive_markers(cleaned_clause)
         for pattern in SAFE_NEGATED_FRAGMENT_PATTERNS:
             cleaned_clause = pattern.sub(" ", cleaned_clause)
         if NEGATED_CLAUSE_RE.search(clause):
@@ -288,7 +389,7 @@ def report_line(report: dict) -> str:
     return f"- {label}: {agent} -> {ok}；returncode={returncode}；输出={output}"
 
 
-def failure_evidence(state: dict | None) -> str:
+def failure_evidence(state: dict | None, *, redact: bool = True) -> str:
     if not isinstance(state, dict):
         return ""
     failed_stage = str(state.get("failed_stage") or "").strip()
@@ -308,7 +409,8 @@ def failure_evidence(state: dict | None) -> str:
     artifact = artifact_path(stage.get("artifact"), str(state.get("run_dir") or ""))
     if artifact:
         parts.append(read_text_excerpt(artifact, 640))
-    return redact_text("\n".join(part for part in parts if part))
+    text = "\n".join(part for part in parts if part)
+    return redact_text(text) if redact else text
 
 
 def classify_repair_risk(state: dict | None) -> tuple[str, list[str]]:
@@ -316,7 +418,7 @@ def classify_repair_risk(state: dict | None) -> tuple[str, list[str]]:
         return "unknown", ["没有可解析的 pipeline 状态"]
     if str(state.get("status") or "") != "blocked":
         return "none", ["当前不是阻塞态"]
-    evidence = risk_scan_text(failure_evidence(state))
+    evidence = risk_scan_text(failure_evidence(state, redact=False))
     reasons = [pattern.pattern for pattern in HIGH_RISK_PATTERNS if pattern.search(evidence)]
     if reasons:
         return "high", reasons[:4]
@@ -416,6 +518,7 @@ def render_chat_summary(
     raw_stdout: str = "",
     raw_stderr: str = "",
     stage_limit: int = 20,
+    command_limit: int = 24,
 ) -> str:
     if not state:
         tail = compact_text((raw_stderr or raw_stdout or "pipeline runner 没有返回可解析状态"), 360)
@@ -462,10 +565,11 @@ def render_chat_summary(
     if reports:
         lines.append("")
         lines.append("## agent 输出摘要")
-        for report in reports[:8]:
+        visible_command_limit = max(1, int(command_limit or 24))
+        for report in reports[:visible_command_limit]:
             lines.append(report_line(report))
-        if len(reports) > 8:
-            lines.append(f"- 还有 {len(reports) - 8} 条命令输出未展开，详见 command-runs/")
+        if len(reports) > visible_command_limit:
+            lines.append(f"- 还有 {len(reports) - visible_command_limit} 条命令输出未展开，详见 command-runs/")
 
     auto_repair = state.get("auto_repair") if isinstance(state.get("auto_repair"), dict) else {}
     if auto_repair:
@@ -553,6 +657,50 @@ def command_with_option_value(cmd: list[str], option: str, value: str) -> list[s
     return updated
 
 
+def passthrough_option_value(passthrough: list[str], option: str) -> str:
+    try:
+        index = passthrough.index(option)
+    except ValueError:
+        return ""
+    if index + 1 >= len(passthrough):
+        return ""
+    return str(passthrough[index + 1] or "")
+
+
+def requirement_from_passthrough(passthrough: list[str]) -> str:
+    parts: list[str] = []
+    requirement = passthrough_option_value(passthrough, "--requirement")
+    if requirement:
+        parts.append(requirement)
+    requirement_file = passthrough_option_value(passthrough, "--requirement-file")
+    if requirement_file:
+        path = Path(requirement_file).expanduser()
+        if path.exists():
+            parts.append(read_text_excerpt(path, 4000))
+    return "\n\n".join(part for part in parts if part)
+
+
+def strip_service_control_denials(text: str) -> str:
+    cleaned = text or ""
+    for pattern in SERVICE_CONTROL_DENY_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+    return cleaned
+
+
+def requirement_requests_deployment(requirement: str) -> bool:
+    text = strip_service_control_denials(requirement)
+    return any(pattern.search(text) for pattern in POSITIVE_DEPLOYMENT_PATTERNS)
+
+
+def requirement_disables_deployment(requirement: str) -> bool:
+    text = requirement or ""
+    if requirement_requests_deployment(text):
+        return False
+    if any(pattern.search(text) for pattern in SERVICE_CONTROL_DENY_PATTERNS):
+        return True
+    return any(pattern.search(text) for pattern in MEMORY_DOC_ONLY_PATTERNS)
+
+
 def bridge_command(stage: str, args: argparse.Namespace) -> str:
     command = [
         sys.executable,
@@ -590,15 +738,19 @@ def default_live_bridge_args(args: argparse.Namespace, passthrough: list[str]) -
         return []
 
     injected: list[str] = []
+    inject_deployment = not args.skip_deployment_command and not requirement_disables_deployment(
+        requirement_from_passthrough(passthrough)
+    )
     command_options = [
         ("--research-command", "external_research"),
         ("--requirements-discussion-command", "requirements_discussion"),
         ("--code-command", "code_execution"),
         ("--verification-command", "verification"),
         ("--code-review-command", "code_review"),
-        ("--deployment-command", "deployment"),
         ("--memory-write-command", "memory_writeback"),
     ]
+    if inject_deployment:
+        command_options.insert(5, ("--deployment-command", "deployment"))
     for option, stage in command_options:
         if not option_present(passthrough, option):
             injected.extend([option, bridge_command(stage, args)])
@@ -628,9 +780,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--live-bridge-code-max-turns", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_CODE_MAX_TURNS", "60")))
     parser.add_argument("--live-bridge-no-yolo", action="store_true", help="do not let Hermes bypass command approvals for code execution")
     parser.add_argument("--no-internal-api-restart", action="store_true", help="do not restart the internal FastAPI tmux service in deployment stage")
+    parser.add_argument("--skip-deployment-command", action="store_true", help="do not inject the deployment stage live bridge command")
     parser.add_argument("--emit-json", action="store_true", help="print raw pipeline JSON instead of the chat summary")
     parser.add_argument("--no-chat-summary", action="store_true", help="print raw runner output without the chat summary")
     parser.add_argument("--chat-stage-limit", type=int, default=int(os.environ.get("SMART_ARB_CHAT_STAGE_LIMIT", "20")))
+    parser.add_argument("--chat-command-limit", type=int, default=int(os.environ.get("SMART_ARB_CHAT_COMMAND_LIMIT", "24")))
     parser.add_argument(
         "--auto-repair-attempts",
         type=int,
@@ -755,6 +909,7 @@ def main(argv: list[str] | None = None) -> int:
                 raw_stdout=proc.stdout,
                 raw_stderr=proc.stderr,
                 stage_limit=args.chat_stage_limit,
+                command_limit=args.chat_command_limit,
             )
         )
     return int(proc.returncode)

@@ -215,7 +215,66 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         runner_cmd = run_mock.call_args.args[0]
         self.assertNotIn("--dry-run", runner_cmd)
         self.assertIn("--code-command", runner_cmd)
+        self.assertIn("--deployment-command", runner_cmd)
         self.assertNotIn("--agent-workspace-mode", runner_cmd)
+        self.assertEqual("", err.getvalue())
+
+    def test_main_skips_deployment_when_requirement_forbids_service_control(self):
+        module = load_module()
+        payload = {
+            "run_id": "discord-spreadagent-test",
+            "status": "completed",
+            "next_action": "none",
+            "failed_stage": None,
+            "run_dir": "/tmp/discord-spreadagent-test",
+            "artifacts": {},
+            "stages": [],
+        }
+        requirement = "P0-1 只写入 memory/docs 长期事实，不触碰服务控制，不重启服务，不部署。"
+        out = io.StringIO()
+        err = io.StringIO()
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
+        ) as run_mock, redirect_stdout(out), redirect_stderr(err):
+            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", requirement])
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        self.assertIn("--code-review-command", runner_cmd)
+        self.assertIn("--memory-write-command", runner_cmd)
+        self.assertNotIn("--deployment-command", runner_cmd)
+        self.assertNotIn("--allow-internal-api-restart", " ".join(runner_cmd))
+        self.assertEqual("", err.getvalue())
+
+    def test_main_keeps_deployment_for_mixed_docs_then_restart_requirement(self):
+        module = load_module()
+        payload = {
+            "run_id": "discord-spreadagent-test",
+            "status": "completed",
+            "next_action": "none",
+            "failed_stage": None,
+            "run_dir": "/tmp/discord-spreadagent-test",
+            "artifacts": {},
+            "stages": [],
+        }
+        requirement = "先只写入 memory/docs 长期事实，再重启服务完成部署。"
+        out = io.StringIO()
+        err = io.StringIO()
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
+        ) as run_mock, redirect_stdout(out), redirect_stderr(err):
+            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", requirement])
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        self.assertIn("--deployment-command", runner_cmd)
+        self.assertIn("--allow-internal-api-restart", " ".join(runner_cmd))
         self.assertEqual("", err.getvalue())
 
     def test_main_auto_repairs_low_risk_blocked_run(self):
@@ -488,6 +547,142 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
                 self.assertEqual("medium", risk)
                 self.assertIn("可回流动作: run_external_research", reasons)
+                self.assertTrue(should_repair)
+                self.assertEqual("medium", repair_risk)
+
+    def test_negated_multilingual_safety_list_does_not_block_code_repair(self):
+        module = load_module()
+        detail = (
+            "Do not print, move, or modify secrets, tokens, cookies, credentials, "
+            "auth state files, or private API keys.\n"
+            "不打印、不移动、不修改 token、cookie、OAuth、API key、交易所密钥或 credential-imports 原始凭证。\n"
+            "未读取 raw token/key/cookie/OAuth/API key；未读取 credential-imports；未启动交易；未下单不划转。"
+        )
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "return_to_code_execution",
+            "failed_stage": "code_execution",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "code_execution",
+                    "status": "blocked",
+                    "detail": detail,
+                    "next_action": "return_to_code_execution",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流动作: return_to_code_execution", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+        self.assertIn("可回流动作: return_to_code_execution", repair_reasons)
+
+    def test_redacted_markers_and_history_diff_do_not_block_repair(self):
+        module = load_module()
+        detail = (
+            "# stderr\n"
+            "session_id=[REDACTED]\n"
+            "- 2026-04-25: 按用户要求从待办中删除 P0 凭证/安全轮换类事项，不再作为项目 TODO 跟踪。\n"
+            "- 未在文档或输出中保留任何 token/key/PAT 明文。\n"
+            "LIVE_BRIDGE_STATUS: fail"
+        )
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "return_to_code_execution",
+            "failed_stage": "code_execution",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "code_execution",
+                    "status": "blocked",
+                    "detail": detail,
+                    "next_action": "return_to_code_execution",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, _ = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流动作: return_to_code_execution", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+
+    def test_redacted_secret_request_stays_high_risk(self):
+        module = load_module()
+        details = [
+            "Need api_key=[REDACTED] before retrying.",
+            "Need Authorization: [REDACTED] before retrying.",
+            "Need session_id=[REDACTED] before retrying.",
+        ]
+        for detail in details:
+            with self.subTest(detail=detail):
+                state = {
+                    "run_id": "discord-spreadagent-test",
+                    "status": "blocked",
+                    "next_action": "return_to_code_execution",
+                    "failed_stage": "code_execution",
+                    "run_dir": "",
+                    "artifacts": {},
+                    "stages": [
+                        {
+                            "name": "code_execution",
+                            "status": "blocked",
+                            "detail": detail,
+                            "next_action": "return_to_code_execution",
+                        },
+                    ],
+                }
+
+                risk, _ = module.classify_repair_risk(state)
+                should_repair, repair_risk, _ = module.should_auto_repair(state, 0, 2)
+
+                self.assertEqual("high", risk)
+                self.assertFalse(should_repair)
+                self.assertEqual("high", repair_risk)
+
+    def test_negated_redacted_secret_need_does_not_block_repair(self):
+        module = load_module()
+        details = [
+            "No need for api_key=[REDACTED] before retrying.",
+            "Do not need Authorization: [REDACTED] before retrying.",
+            "Authorization: [REDACTED] is not required for this docs-only repair.",
+            "No need for session_id=[REDACTED] before retrying.",
+        ]
+        for detail in details:
+            with self.subTest(detail=detail):
+                state = {
+                    "run_id": "discord-spreadagent-test",
+                    "status": "blocked",
+                    "next_action": "return_to_code_execution",
+                    "failed_stage": "code_execution",
+                    "run_dir": "",
+                    "artifacts": {},
+                    "stages": [
+                        {
+                            "name": "code_execution",
+                            "status": "blocked",
+                            "detail": detail,
+                            "next_action": "return_to_code_execution",
+                        },
+                    ],
+                }
+
+                risk, reasons = module.classify_repair_risk(state)
+                should_repair, repair_risk, _ = module.should_auto_repair(state, 0, 2)
+
+                self.assertEqual("medium", risk)
+                self.assertIn("可回流动作: return_to_code_execution", reasons)
                 self.assertTrue(should_repair)
                 self.assertEqual("medium", repair_risk)
 

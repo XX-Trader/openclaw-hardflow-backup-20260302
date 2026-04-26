@@ -10,7 +10,7 @@
    ```bash
    /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --requirement "<原始用户需求>"
    ```
-4. pipeline 失败或无法启动时，只汇报 run id、失败阶段、下一步和证据目录；不要绕过 pipeline 自行继续。
+4. pipeline 完成、阻塞或失败后，必须把 `/home/arbops/.local/bin/smart-arb-pipeline` stdout 里的中文状态卡回传到聊天 channel；至少保留 `agent 分工与完成情况`、`agent 输出摘要`、`阻塞原因`、`自动修复判断` 和证据目录。不要自行压缩成只含 run id、失败阶段、下一步和证据目录；如果 Discord 单条过长，分多条连续发送。
 5. 只有只读状态查询、简单解释或查询监控数据时，才可以直接读取 memory、docs、API、日志或只读脚本。
 
 ## 多 agent 边界

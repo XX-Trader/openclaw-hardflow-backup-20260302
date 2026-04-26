@@ -74,6 +74,7 @@
 - [x] [🔴 P0] 在 Hermes native profile 中做一次 live 多 agent smoke（非 dry-run）：`hermes-profile-smoke-20260424T135014Z`
 - [x] [🟡 P1] 用 `hybrid-single-chat` 替代多次冷启动 Hermes smoke，避免每阶段 `hermes chat` 超时
 - [x] [🟡 P1] 为 nofx Smart Arb live bridge 补齐每阶段 owner 的独立 agent workspace、`PIPELINE_AGENT_REPO_DIR` 注入、code workspace diff 回流和 Task Center workspace 留痕
+- [x] [🟡 P1] 修复 nofx Discord 状态卡回显、Hermes `session_id` 输出恢复、否定式敏感词误判和 memory/docs-only 写回误触发 deployment
 - [ ] [🟡 P1] 将 nofx Smart Arb live bridge 继续升级为宿主 native agent dispatch，并在 Task Center 记录独立 agent session/run id
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
 
