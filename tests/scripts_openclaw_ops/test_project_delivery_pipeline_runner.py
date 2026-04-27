@@ -88,6 +88,24 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             memory_dir = Path(tmp) / "project-memory" / "demo"
             self.assertTrue((memory_dir / "RETRIEVAL_MANIFEST.json").exists())
 
+    def test_code_agent_can_select_frontend_stage_owner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Update a frontend dashboard interaction.",
+                    workspace_root=Path(tmp),
+                    run_id="frontend-owner",
+                    dry_run=True,
+                    code_agent="frontend-dev",
+                )
+            )
+
+            self.assertEqual("completed", state["status"])
+            self.assertEqual(["frontend-dev"], state["stage_agents"]["code_execution"])
+            run_meta = json.loads(Path(state["artifacts"]["run_meta"]).read_text(encoding="utf-8"))
+            self.assertEqual("frontend-dev", run_meta["code_agent"])
+
     def test_requirements_failure_routes_back_to_requirements(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = run_pipeline(

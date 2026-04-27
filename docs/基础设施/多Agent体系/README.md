@@ -1,206 +1,90 @@
-# 多 Agent 体系 — 历史注册中心
+# 多 Agent / Workflow Owner 体系
 
-> **范围说明（2026-04-27）**：本文档记录的是 2026-03 OpenClaw 14 Agent 注册表快照，保留用于理解旧控制面和历史 Skill 绑定；它不代表 nofx 当前 Hermes workflow runtime。
-> nofx 当前 live 入口只有 `arbitrageagent` / `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`。项目交付工作流里的 `project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 等是阶段 owner / workspace 标签，不是 nofx 上 14 个常驻 agent。
->
 > 最后更新：2026-04-27
+> 本页是 nofx 当前 workflow 口径，不再使用 2026-03 的 14 Agent 注册表作为 active 事实源。
 
----
+## 当前结论
 
-## 1. 架构概述
+nofx 现在按四层理解：
 
-本历史快照描述 **14 Agent 协作架构**，按职责分为 4 层。另有 1 个路由别名（`self-evolution-agent` → 实际由 `optimization-agent` 处理）。如果问题指向 nofx 当前服务器，请以 `docs/核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md` 和 `memory/RUNBOOK.md` 的实时口径为准。
+1. **入口层**：服务器对外运行两个 Hermes Discord profile：`arbitrageagent`、`spreadagent`。它们是入口，不是完整工作流本身；两者模型均为 `openai-codex/gpt-5.5`。
+2. **工作流层**：真正执行入口是 `/home/arbops/.local/bin/smart-arb-pipeline`，它调用 `/home/arbops/.hermes/ops/pipeline_runner.py`。
+3. **逻辑 owner 层**：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是 workflow 阶段责任人 / workspace 标签，不是常驻进程。
+4. **定时任务层**：cron/task-center 主要由 `ops-agent`、`project-agent` 执行；本地最新方案新增 `optimization-agent` 执行仓库精简巡检。
 
-```
-┌─────────────── 调度层 ───────────────┐
-│  main (总入口)  ←→  coordinator (分配) │
-└──────────┬────────────────┬──────────┘
-           │                │
-┌──────────▼──────┐  ┌──────▼──────────┐
-│    探索层        │  │    执行层        │
-│  explorer (灵感) │  │  backend-dev    │
-│                  │  │  frontend-dev   │
-│                  │  │  reviewer       │
-│                  │  │  tester         │
-│                  │  │  deployer       │
-│                  │  │  doc-writer     │
-└──────────────────┘  └────────────────┘
-┌───────────── 运维 / 进化层 ──────────┐
-│  ops-agent        project-agent      │
-│  optimization-agent                  │
-│  self-evolution-agent                │
-│  agent-factory    web-agent          │
-└──────────────────────────────────────┘
-```
+## 入口层
 
----
+| profile | 类型 | 模型 | 作用 |
+|---------|------|------|------|
+| `arbitrageagent` | Hermes Discord profile | `openai-codex/gpt-5.5` | 套利策略运维与策略开发入口 |
+| `spreadagent` | Hermes Discord profile | `openai-codex/gpt-5.5` | 价差费率监控与只读观测入口 |
 
-## 2. Agent 完整注册表
+这两个 profile 收到执行类请求后必须创建 `smart-arb-pipeline` run，不在 profile 会话里直接实现、部署、安装依赖、修改代码或提交 Git。
 
-### 2.1 调度层
+## 工作流层
 
-| # | Agent ID | 显示名 | 模型 | 子Agent数 | 核心职责 |
-|---|----------|--------|------|:---------:|----------|
-| 1 | `main` | 大总管 | gpt-5.4 | 13 | 默认入口，总调度，可调度除 self-evolution-agent 外的所有 Agent |
-| 2 | `coordinator` | 协调员 | gpt-5.4 | 13 | 任务协调与分配，Deepdive-Lite 需求澄清，Explorer 联动 |
+标准入口：
 
-### 2.2 探索层
-
-| # | Agent ID | 显示名 | 模型 | 子Agent数 | 核心职责 |
-|---|----------|--------|------|:---------:|----------|
-| 3 | `explorer` | 探索者 / 灵感引擎 | gpt-5.4-mini | 1 (web-agent) | 发散思维、跨领域联想、需求边界探索。**不写代码**，只输出灵感清单与方向建议 |
-
-### 2.3 执行层
-
-| # | Agent ID | 显示名 | 模型 | 子Agent数 | 核心职责 |
-|---|----------|--------|------|:---------:|----------|
-| 4 | `backend-dev` | 后端开发 | gpt-5.3-codex | 0 | 后端功能实现（Django/Python） |
-| 5 | `frontend-dev` | 前端开发 | gpt-5.3-codex | 0 | 前端功能实现（Vue/React） |
-| 6 | `reviewer` | 代码审核 | gpt-5.4 | 0 | 代码评审 + 安全审计 |
-| 7 | `tester` | 测试验收 | glm-4.7 | 0 | 测试用例编写 + 验收执行 |
-| 8 | `deployer` | 部署执行 | glm-4.7 | 0 | 部署操作执行 |
-| 9 | `doc-writer` | 文档撰写 | glm-4.7 | 0 | 技术文档、变更日志 |
-
-### 2.4 运维 / 进化层
-
-| # | Agent ID | 显示名 | 模型 | 子Agent数 | 核心职责 |
-|---|----------|--------|------|:---------:|----------|
-| 10 | `ops-agent` | 运维代理 | glm-4.7 | 2 | Cron 巡检、运维告警、系统监控 |
-| 11 | `project-agent` | 项目代理 | gpt-5.3-codex | 1 | 项目索引、结构审查、规划 |
-| 12 | `optimization-agent` | 优化代理 | gpt-5.3-codex | 2 | 自动进化、配置优化、增量扫描 |
-| 13 | `agent-factory` | Agent工厂 | gpt-5.3-codex | 3 | 创建/管理新 Agent |
-| 14 | `web-agent` | Web代理 | glm-4.7 | 0 | 网页交互、搜索验证 |
-
-### 2.5 路由别名（非独立 Agent）
-
-| 别名 ID | 实际处理者 | 关键词 | 说明 |
-|---------|-----------|--------|------|
-| `self-evolution-agent` | `optimization-agent` | 自我进化、经验沉淀、历史会话复盘 | 仅在 `routing-rules.json` 中定义路由关键词，无独立 SOUL.md 和运行时配置。实际的自进化工作由 `optimization-agent` 的 `optimize_incremental_scan.py --mode evolution` 执行 |
-
----
-
-## 3. 调度拓扑 — 谁可以调度谁
-
-```mermaid
-graph TD
-    main -->|可调度全部| coordinator
-    main --> backend-dev & frontend-dev & reviewer & tester & deployer & doc-writer
-    main --> ops-agent & optimization-agent & project-agent & agent-factory & web-agent & explorer
-    coordinator -->|同 main| backend-dev & frontend-dev & reviewer & tester & deployer & doc-writer
-    coordinator --> ops-agent & optimization-agent & project-agent & agent-factory & web-agent & explorer
-    coordinator -.->|Explorer联动| explorer
-    explorer -->|唯一子Agent| web-agent
-    ops-agent --> optimization-agent & project-agent
-    optimization-agent --> project-agent & web-agent
-    project-agent --> web-agent
-    agent-factory --> optimization-agent & project-agent & web-agent
+```bash
+/home/arbops/.local/bin/smart-arb-pipeline --profile <arbitrageagent|spreadagent> --source discord --requirement "<需求文本>"
 ```
 
-**规则**：
-- `main` 和 `coordinator` 是全局调度者，可调度除 `self-evolution-agent` 外的所有 Agent
-- `explorer` 只可调度 `web-agent`（用于搜索验证灵感），**严禁调度执行型 Agent**
-- 执行层 Agent（`backend-dev` 等）无子调度能力（`allowAgents = 0`）
-- `self-evolution-agent` 仅由 `routing-rules.json` 路由触发，不在任何 Agent 的 `allowAgents` 列表中
+安装态调用链：
 
----
+```text
+Hermes Discord profile
+→ /home/arbops/.local/bin/smart-arb-pipeline
+→ /home/arbops/.hermes/ops/smart_arb_pipeline_entry.py
+→ /home/arbops/.hermes/ops/pipeline_runner.py
+```
 
-## 4. 注册完整性审计（四维对账）
+主阶段：
 
-> 每次新增/下线 Agent 后，必须对照此表检查四个维度的一致性。
+```text
+research
+→ 需求讨论
+→ 方案
+→ 编码
+→ 测试
+→ review
+→ deployment
+→ memory_writeback
+```
 
-| Agent ID | ① SOUL.md | ② agent_index.json | ③ capability-registry | ④ capability-manifest | 状态 |
-|----------|:---------:|:------------------:|:---------------------:|:--------------------:|:----:|
-| `main` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `coordinator` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `explorer` | ✅ | ✅ 已补齐 | ❌ 待同步 | ✅ | ⚠️ 需同步 registry |
-| `backend-dev` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `frontend-dev` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `reviewer` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `tester` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `deployer` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `doc-writer` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `ops-agent` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `optimization-agent` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `project-agent` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `agent-factory` | ✅ | ✅ | ✅ | ✅ | 正常 |
-| `web-agent` | ✅ | ✅ | ✅ | ✅ | 正常 |
+`git_publish` 是 memory writeback 之后的可选发布门禁，由 `coordinator` 负责，不再注册为单独 agent。
 
-> **注**：`self-evolution-agent` 为路由别名，不计入审计
+## 逻辑 owner 层
 
-### 四维定义
+| owner | 对应阶段 | 说明 |
+|-------|----------|------|
+| `coordinator` | intake、Git 发布门禁 | 组织流程、汇总状态、处理受控发布 |
+| `project-agent` | 项目记忆、需求包、方案包、需求讨论 | 项目事实源和需求/方案结构化 |
+| `web-agent` | research | 官方资料、外部来源、成熟方案核对 |
+| `reviewer` | 需求审查、方案审查、代码审查 | 审查裁决与分歧拦截 |
+| `backend-dev` | 编码 | 后端、脚本、服务和策略代码修改执行 |
+| `frontend-dev` | 编码 | 前端、页面、UI 和交互代码修改执行 |
+| `tester` | 测试、验收 | verification 与 acceptance |
+| `deployer` | deployment | 内控 FastAPI restart/smoke |
+| `doc-writer` | memory_writeback | 文档和项目记忆回写 |
 
-| 维度 | 文件路径 | 说明 |
-|------|----------|------|
-| ① SOUL.md | `agents/<agent-id>/SOUL.md` | Agent 角色定义（行为准则/能力边界/输出规范） |
-| ② agent_index.json | `~/.openclaw/agents/agent_index.json` | 运行时绑定（模型/工作空间/子调度权限） |
-| ③ capability-registry | `scripts/openclaw-ops/policy/capability-registry.json` | 能力注册（preflight 校验用） |
-| ④ capability-manifest | `~/agents/agent_capability_manifest.json` | 任务执行器能力声明（本地 preflight 用） |
+这些 owner 会出现在 `command-runs/*.json`、`agent-workspaces/manifest.json`、Task Center 记录和状态卡里。它们代表阶段责任与隔离 workspace，不代表 nofx 上存在同名常驻模型进程。
 
----
+## 定时任务层
 
-## 5. 已知缺陷与待办
+| owner | 当前用途 |
+|-------|----------|
+| `ops-agent` | TODO 巡检、异常日志巡检、配置巡检、memtidy、claim audit、deadline bridge |
+| `project-agent` | 项目索引维护、项目事实源相关定时任务 |
+| `optimization-agent` | 本地最新方案新增的 `repo_hygiene_reviewer_2d` 仓库精简巡检 |
 
-- [x] ~~**explorer 未部署到运行时**~~：已补齐到 `agent_index.json` 和 `agent_capability_manifest.json`（2026-03-31）
-- [ ] **explorer 需同步到 capability-registry.json**：远端 NOFX 服务器的 `capability-registry.json` 尚未包含 explorer
-- [x] ~~**self-evolution-agent 缺 SOUL.md**~~：确认为 `optimization-agent` 的路由别名，无需独立注册
-- [ ] **main/coordinator 的 allowAgents 已包含 explorer**：本地已更新，需同步到远端
-- [ ] **配置同步机制缺失**：没有自动化脚本将本文档的变更同步到四个维度的配置文件中
+## 已停用 / 不再 active 的旧标签
 
----
+以下标签不属于 nofx 当前 active workflow / cron owner 集合：
 
-## 6. 相关文件索引
+- `main`
+- `explorer`
+- `agent-factory`
+- `self-evolution-agent`
+- `git-master`
 
-### 6.1 Agent 定义文件
-
-| 文件路径 | 说明 | 权威性 |
-|----------|------|:------:|
-| `agents/<agent-id>/SOUL.md` | 角色定义、行为准则、能力边界 | 🟢 设计态权威 |
-| **本文档** (`docs/基础设施/多Agent体系/README.md`) | Agent 注册中心，全局视图 | 🟢 全局权威 |
-
-### 6.2 运行时配置文件
-
-| 文件路径 | 说明 | 生成方式 |
-|----------|------|----------|
-| `~/.openclaw/agents/agent_index.json` | 运行时绑定索引 | `generate_runtime_binding_manifests.py` 自动生成 |
-| `~/.openclaw/agents/agent_index.md` | Markdown 可读版 | 同上，自动生成 |
-| `~/agents/agent_capability_manifest.json` | 任务执行器 preflight 能力声明 | 手动维护 |
-
-### 6.3 策略与路由文件
-
-| 文件路径 | 说明 |
-|----------|------|
-| `scripts/openclaw-ops/policy/capability-registry.json` | 能力域注册（capabilities + agent_defaults） |
-| `scripts/openclaw-ops/policy/routing-rules.json` | 任务路由规则（关键词 → assignee 映射） |
-| `cron/jobs.json` | 定时任务 → Agent 映射 |
-
-### 6.4 模型管理
-
-| 文件路径 | 说明 |
-|----------|------|
-| `scripts/openclaw-ops/switch_model_tier.py` | 模型档位切换脚本 |
-| `scripts/openclaw-ops/model_tier_profiles.json` | 模型档位配置（标准/经济/高性能） |
-
----
-
-## 7. 运维 SOP
-
-### 7.1 新增 Agent 检查清单
-
-1. [ ] 在本文档「Agent 完整注册表」中添加条目
-2. [ ] 创建 `agents/<agent-id>/SOUL.md` 角色定义
-3. [ ] 更新 `agent_index.json`（或运行 `generate_runtime_binding_manifests.py`）
-4. [ ] 更新 `capability-registry.json` 的 `agent_defaults` 部分
-5. [ ] 更新 `agent_capability_manifest.json`
-6. [ ] 如需 Cron 调度，更新 `cron/jobs.json`
-7. [ ] 如需被其他 Agent 调度，更新调度者的 `allowAgents`
-8. [ ] 更新本文档「注册完整性审计」表
-
-### 7.2 下线 Agent 检查清单
-
-1. [ ] 在本文档中标记为 `[已下线]`，保留历史记录
-2. [ ] 从 `agent_index.json` 移除
-3. [ ] 从 `capability-registry.json` 移除
-4. [ ] 从 `agent_capability_manifest.json` 移除
-5. [ ] 从所有 Agent 的 `allowAgents` 中移除
-6. [ ] 清理 `cron/jobs.json` 中相关定时任务
-7. [ ] 归档（不删除）`agents/<agent-id>/SOUL.md`
+若历史文档或旧会话中出现这些名称，只能作为 2026-03 OpenClaw 旧注册表或旧任务证据理解，不能作为当前运行态结论。

@@ -18,14 +18,15 @@ LOCAL_TIME_RE = re.compile(
 )
 
 SENDER_LABELS = {
-    "agent-factory": "代理工厂",
     "coordinator": "协调代理",
-    "conversation-evolution-agent": "对话复盘代理",
+    "deployer": "部署代理",
+    "doc-writer": "文档代理",
+    "backend-dev": "后端执行代理",
+    "frontend-dev": "前端执行代理",
     "ops-agent": "运维代理",
     "optimization-agent": "优化代理",
     "project-agent": "项目代理",
     "reviewer": "审查代理",
-    "self-evolution-agent": "自进化代理",
     "tester": "测试代理",
     "web-agent": "网页采集代理",
 }

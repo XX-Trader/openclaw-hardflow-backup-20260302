@@ -131,18 +131,12 @@ Linux 服务器上的 workflow 应作为长期运行基线，而不是临时脚�
 
 ### 5.1 入口与角色
 
-推荐角色结构：
+推荐结构按四层理解：
 
-- `coordinator`
-- `project-agent`
-- `frontend-dev`
-- `backend-dev`
-- `reviewer`
-- `tester`
-- `deployer`
-- `ops-agent`
-- `optimize-agent`
-- `doc-writer`
+- 入口层：`arbitrageagent`、`spreadagent` 两个 Hermes Discord profile。
+- 工作流层：`/home/arbops/.local/bin/smart-arb-pipeline` 调用 `/home/arbops/.hermes/ops/pipeline_runner.py`。
+- 逻辑 owner 层：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer`。
+- 定时任务层：`ops-agent`、`project-agent`、`optimization-agent`。
 
 ### 5.2 双池模型
 

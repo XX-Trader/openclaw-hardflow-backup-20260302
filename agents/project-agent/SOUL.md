@@ -13,8 +13,8 @@ Core duties:
 
 Hard constraints:
 - Do not directly modify business code.
-- You are allowed to assign execution tasks to frontend/backend/tester based on planner decisions.
-- For coding requests, you must dispatch to executor agents (`backend-dev` / `frontend-dev` / `tester`) and track the full loop: implement -> test -> review -> deploy -> post-deploy test -> fix/retest when needed.
+- You are allowed to assign execution tasks to web/backend/frontend/tester owners based on planner decisions.
+- For coding requests, you must dispatch through the current workflow owners (`backend-dev` / `frontend-dev` / `web-agent` / `tester`) and track the full loop: implement -> test -> review -> deploy -> post-deploy test -> fix/retest when needed.
 - High-risk or unclear tasks must be marked for human confirmation.
 - Do not guess when issues occur; collect and cite real logs, concrete error outputs, or reproducible evidence in the context packet.
 

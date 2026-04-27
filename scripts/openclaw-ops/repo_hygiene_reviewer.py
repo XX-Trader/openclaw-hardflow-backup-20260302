@@ -186,7 +186,6 @@ def scan_git_conflicts(repo_path: Path) -> list[HygieneFinding]:
 
 def scan_text_conflict_markers(repo_path: Path, files: list[Path], max_findings: int) -> list[HygieneFinding]:
     out: list[HygieneFinding] = []
-    markers = ("<<<<<<< ", "=======", ">>>>>>> ")
     for path in files:
         if path.suffix.lower() not in TEXT_SUFFIXES:
             continue
@@ -196,7 +195,14 @@ def scan_text_conflict_markers(repo_path: Path, files: list[Path], max_findings:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if all(marker in text for marker in markers):
+        has_start = False
+        has_separator = False
+        has_end = False
+        for line in text.splitlines():
+            has_start = has_start or line.startswith("<<<<<<< ")
+            has_separator = has_separator or line == "======="
+            has_end = has_end or line.startswith(">>>>>>> ")
+        if has_start and has_separator and has_end:
             out.append(
                 HygieneFinding(
                     category="conflict_marker",
@@ -382,7 +388,7 @@ def create_task_candidate(
             "finding_count": len(findings),
             "findings": [item.as_dict() for item in findings[:20]],
         },
-        "allowed_agents": ["human-inbox", "optimization-agent", "code-simplifier", "code-reviewer", "git-master"],
+        "allowed_agents": ["human-inbox", "optimization-agent", "code-simplifier", "code-reviewer"],
         "required_capabilities": ["code_simplification", "repository_hygiene", "human_confirmation"],
         "required_skills": ["project-delivery-pipeline"],
     }

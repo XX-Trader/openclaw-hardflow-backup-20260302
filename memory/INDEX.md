@@ -14,7 +14,7 @@
 ## 当前重点
 
 - nofx 上 SmartMultiPlatformArbitrage 的项目交付入口由本仓库提供：`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`pipeline_runner.py` 和 runtime installer。
-- nofx 当前 agent/model 口径已修正：live 入口只有两个 Hermes Discord profile：`arbitrageagent` 与 `spreadagent`；2026-04-27 服务器实测两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`、`gateway_state=running`。`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master`、`optimization-agent` 等在项目交付链路里是阶段 owner、cron 责任标签或隔离 workspace 标签，不等于 nofx 上 14 个常驻 agent 进程。
+- nofx 当前 agent/model 口径已修正：live 入口只有两个 Hermes Discord profile：`arbitrageagent` 与 `spreadagent`；2026-04-27 服务器实测两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`、`gateway_state=running`。工作流阶段 owner 为 `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer`；cron / Task Center 责任标签主要是 `ops-agent`、`project-agent`，本仓库最新方案新增 `optimization-agent` 做 2 天仓库精简巡检。以上都不是 nofx 上 14 个常驻 agent 进程；`git_publish` 是 `coordinator` 负责的发布门禁，不再单独建 `git-master` agent。
 - nofx 两个 Discord Hermes profile 已按本机 WSL 的有效模式改为 profile 级 `approvals.mode: 'off'`；遇到 `Command Approval Required` 先查 `/home/arbops/.hermes/profiles/<profile>/config.yaml`，不要只看全局配置。
 - nofx Discord profile 的 SOUL 现在使用绝对入口 `/home/arbops/.local/bin/smart-arb-pipeline`；gateway 通过 profile `start-gateway.sh` 加载 `.env`，`.env` 必须是 `arbops:arbops` 且 `0600`。
 - nofx live verification 默认收敛为 `git diff --check` + `compileall -q scripts strategy_runtime`，并通过 `--verification-command-timeout-seconds` 显式记录单命令超时；不要再把全量 `unittest discover` 当 Discord live 默认门禁。
@@ -28,12 +28,12 @@
 - 最新 nofx 安装记录：2026-04-26 17:03 已把提交 `edd05e23` 拉到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 并运行 runtime installer；安装态入口 smoke `cli-arbitrageagent-20260426T090250542271Z` 14/14 completed，详见 `RUNBOOK.md`。
 - 2026-04-27 服务器复核：nofx hardflow 仓库当前仍在 `44b4dae`，安装态 `/home/arbops/.hermes/ops` 还没有 `repo_hygiene_reviewer.py`，cron 中 `source_registry_watcher` 仍是每周日；本仓库最新 `e45e0af` 的 `git_publish`、2 天 `source_registry_watcher` 和 `repo_hygiene_reviewer_2d` 需要再次 pull + runtime installer 后才会成为 nofx 运行态。
 - 前序 artifact 注入后续 Hermes prompt 前会做敏感信息脱敏，覆盖常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key、AWS access key 等形态。
-- `code_execution` 在 `backend-dev` workspace 产出 diff，runner 会把 diff 应用回主项目目录，并注入后续 tester/reviewer/deployer workspace。
+- `code_execution` 默认在 `backend-dev` workspace 产出 diff；前端/UI/页面/交互类需求可通过 `--code-agent frontend-dev` 或入口自动推断切到 `frontend-dev` workspace。runner 会把 diff 应用回主项目目录，并注入后续 tester/reviewer/deployer workspace。
 - `git_publish` 是可选发布门禁，只在验证、代码审查、deployment（如有）、验收和记忆回写通过后执行；提交说明、备注和变更描述必须使用中文，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态，失败回流为 `fix_git_publish`。
 - `source_registry_watcher` 与 `repo_hygiene_reviewer` 默认每 2 天执行一次；前者只检查已注册来源，后者由 `optimization-agent` 只读扫描冗余、冲突、缓存、重复文件并创建人工确认候选，不自动删除、不自动推送。
 - 最后远端 smoke：`codex-arbitrageagent-20260425T140605083467Z`，Task Center 为 `passed`；命令阶段 `model_id=runtime-agent-workspace`，`dispatch_mode=isolated-agent-workspace`。
 - Task Center 中的 agent 字段仍表示责任标签和交接记录；要声称真正 native fan-out，仍需 command evidence 中出现独立宿主 session/run id。
-- 如果要让任务真正转发到 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`tester` 等宿主 native agent，需要继续在 runtime adapter 增加 session dispatch 能力，而不是只修改 stage prompt。
+- 如果要让任务真正转发到 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester` 等宿主 native agent，需要继续在 runtime adapter 增加 session dispatch 能力，而不是只修改 stage prompt。
 - nofx SSH 曾出现原生 `ssh` 空退和 Paramiko banner 被拒；远程排障需要低频单连接重试，避免并发连接触发服务端临时拒绝。
 
 ## 安全边界

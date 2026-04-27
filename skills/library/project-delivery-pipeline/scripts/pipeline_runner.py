@@ -59,7 +59,7 @@ STAGE_AGENT_MAP = {
     "deployment": "deployer",
     "acceptance": "tester",
     "writeback": "doc-writer",
-    "git_publish": "git-master",
+    "git_publish": "coordinator",
 }
 SIMULATED_FAILURES = {
     "requirements",
@@ -95,6 +95,7 @@ class PipelineConfig:
     research_report_file: Path | None = None
     research_commands: tuple[str, ...] = ()
     requirements_discussion_commands: tuple[str, ...] = ()
+    code_agent: str = "backend-dev"
     code_command: str | None = None
     patch_summary_file: Path | None = None
     verification_commands: tuple[str, ...] = ()
@@ -283,6 +284,7 @@ def render_run_meta(config: PipelineConfig, run_id: str, requirement: str, runti
         "agent_workspace_strategy": "git-worktree",
         "agent_workspace_root": str(config.agent_workspace_root) if config.agent_workspace_root else "",
         "code_workspace_diff_policy": "always-apply",
+        "code_agent": normalize_code_agent(config.code_agent),
         "requirement_preview": requirement[:240],
     }
 
@@ -628,8 +630,13 @@ def clip_text(value: str, limit: int = 12000) -> str:
     return text[:limit] + f"\n... truncated {len(text) - limit} chars ..."
 
 
-def stage_agent_ids(stage_name: str) -> list[str]:
-    raw = STAGE_AGENT_MAP.get(stage_name, "coordinator")
+def normalize_code_agent(value: str | None) -> str:
+    agent = str(value or "").strip()
+    return agent if agent in {"backend-dev", "frontend-dev"} else "backend-dev"
+
+
+def stage_agent_ids(stage_name: str, config: PipelineConfig | None = None) -> list[str]:
+    raw = normalize_code_agent(config.code_agent) if stage_name == "code_execution" and config else STAGE_AGENT_MAP.get(stage_name, "coordinator")
     agents = [part.strip() for part in str(raw).split(",") if part.strip()]
     return agents or ["coordinator"]
 
@@ -747,7 +754,7 @@ def prepare_agent_workspaces(
 ) -> list[AgentWorkspace]:
     workspaces: list[AgentWorkspace] = []
     root = agent_workspace_base(config, run_dir)
-    for agent_index, agent_id in enumerate(stage_agent_ids(stage_name)):
+    for agent_index, agent_id in enumerate(stage_agent_ids(stage_name, config)):
         workspace_dir = root / slugify(stage_name) / slugify(agent_id)
         repo_preexisted = (workspace_dir / "repo").exists()
         repo_dir, effective_mode, isolated = ensure_agent_repo(base_cwd, workspace_dir)
@@ -1347,6 +1354,10 @@ def pipeline_state(
         "runtime_context": runtime,
         "run_dir": str(run_dir),
         "artifacts": artifacts,
+        "stage_agents": {
+            stage.name: stage_agent_ids(stage.name, config)
+            for stage in stages
+        },
         "stages": [stage.as_dict() for stage in stages],
         "updated_at": utc_now(),
     }
@@ -1534,7 +1545,7 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
         ),
         "required_capabilities": "project_memory_retrieval,external_research,coding,verification,code_review,git_publish",
         "required_skills": "project-delivery-pipeline",
-        "allowed_agents": "coordinator,project-agent,web-agent,backend-dev,frontend-dev,reviewer,tester,ops-agent,deployer,doc-writer,git-master",
+        "allowed_agents": "coordinator,project-agent,web-agent,reviewer,backend-dev,frontend-dev,tester,deployer,doc-writer",
         "workflow_profile_id": "project-delivery-pipeline@stable",
         "workflow_channel": "stable",
         "selection_reason": "single controlled coding delivery pipeline",
@@ -2303,6 +2314,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--research-report-file", type=Path)
     parser.add_argument("--research-command", action="append", default=[], help="trusted command that produces research evidence")
     parser.add_argument("--requirements-discussion-command", action="append", default=[], help="trusted command that makes project-agent and reviewer discuss/refine requirements")
+    parser.add_argument("--code-agent", choices=["backend-dev", "frontend-dev"], default="backend-dev", help="workflow owner for code_execution")
     parser.add_argument("--code-command", help="trusted runtime/agent command that performs or dispatches implementation")
     parser.add_argument("--patch-summary-file", type=Path)
     parser.add_argument("--verification-command", action="append", default=[], help="trusted command used as verification evidence")
@@ -2341,6 +2353,7 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         research_report_file=args.research_report_file,
         research_commands=tuple(args.research_command or ()),
         requirements_discussion_commands=tuple(args.requirements_discussion_command or ()),
+        code_agent=normalize_code_agent(args.code_agent),
         code_command=args.code_command,
         patch_summary_file=args.patch_summary_file,
         verification_commands=tuple(args.verification_command or ()),

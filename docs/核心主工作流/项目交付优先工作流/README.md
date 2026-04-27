@@ -7,7 +7,7 @@
 > 2026-04-24 Hermes 验证：WSL `/home/ubuntu/.hermes` 已完成 `hermes_profile_smoke.py --agent-mode hybrid --provider zai` 非 dry-run smoke；新 `hybrid-single-chat` 路径用一次 Hermes chat 生成 AI 阶段 bundle，run_id=`hermes-profile-smoke-20260424T135014Z`。
 > 2026-04-25 nofx 验证：SmartMultiPlatformArbitrage Discord live 入口已补齐外部研究、双 AI 需求讨论、代码执行、验证、代码审查、内部 deployment 与记忆写回证据桥，详见 [Smart Arb nofx live evidence bridge](smart-arb-nofx-live-evidence-bridge.md)。
 > 2026-04-27 治理增强：流水线在验收和记忆回写通过后可进入 `git_publish` 受控发布阶段，提交说明/备注必须使用中文；`source_registry_watcher` 与仓库精简巡检均调整为每 2 天一次，仓库精简由 `optimization-agent` 只读生成候选报告并进入人工确认。
-> 2026-04-27 nofx 运行态口径：服务器 live 入口是 `arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`；`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 等是 workflow 阶段 owner / workspace 标签，不是 nofx 上 14 个常驻 agent。
+> 2026-04-27 nofx 运行态口径：服务器 live 入口是 `arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`；执行链路是 `/home/arbops/.local/bin/smart-arb-pipeline -> /home/arbops/.hermes/ops/pipeline_runner.py`；`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是 workflow 阶段 owner / workspace 标签，不是 nofx 上 14 个常驻 agent。
 
 ## 功能概述
 
@@ -142,7 +142,7 @@
 → reviewer 双 AI 审代码
 → 修复循环或 tester 最终验收
 → project-agent 回写项目记忆
-→ git-master 受控 Git 发布
+→ coordinator 受控 Git 发布门禁
 ```
 
 ### 与通用运营工作流的关系

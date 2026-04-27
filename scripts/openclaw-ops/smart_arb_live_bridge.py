@@ -313,13 +313,19 @@ Run at least two short rounds of discussion:
 3. project-agent produces the final refined requirement document.
 """
     elif stage == "code_execution":
+        role = "frontend-dev" if agent_id == "frontend-dev" else "backend-dev"
+        focus = (
+            "front-end UI, page, interaction, state, and integration changes"
+            if role == "frontend-dev"
+            else "backend, script, service, API, and strategy-runtime changes"
+        )
         specific = """
-Act as backend-dev/frontend-dev executor. Read project memory/docs/todo/done and the relevant code before editing.
+Act as {role} executor for {focus}. Read project memory/docs/todo/done and the relevant code before editing.
 Treat Prior accepted stage context and Repair context as hard constraints. Do not implement later-phase strategy work if the current requirement or research context says to stay on P0 memory/environment work.
 Implement the smallest safe change that satisfies the refined requirement.
 Run the most relevant local checks you can run in this environment.
 Return a patch summary with changed files, commands run, and remaining risk.
-"""
+""".format(role=role, focus=focus)
     elif stage == "code_review":
         specific = """
 Act as reviewer. Review the current diff and the pipeline artifacts for bugs, regressions, missing tests, unsafe behavior, and doc drift.

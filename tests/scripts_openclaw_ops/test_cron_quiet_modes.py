@@ -43,10 +43,10 @@ class CronQuietModeTests(unittest.TestCase):
 
         self.assertEqual(tier, "high_doubao")
         self.assertEqual(profile["primary_model"], "kimicode/doubao-seed-2.0-pro")
-        self.assertEqual(profile["agent_model_overrides"]["optimization-agent"], "openai-codex/gpt-5.3-codex")
-        self.assertEqual(profile["agent_model_overrides"]["backend-dev"], "openai-codex/gpt-5.3-codex")
-        self.assertEqual(profile["agent_model_overrides"]["ops-agent"], "glmcode/glm-4.7")
-        self.assertEqual(profile["agent_model_overrides"]["web-agent"], "glmcode/glm-4.7")
+        self.assertEqual(profile["agent_model_overrides"]["optimization-agent"], "openai-codex/gpt-5.5")
+        self.assertEqual(profile["agent_model_overrides"]["backend-dev"], "openai-codex/gpt-5.5")
+        self.assertEqual(profile["agent_model_overrides"]["ops-agent"], "openai-codex/gpt-5.5")
+        self.assertEqual(profile["agent_model_overrides"]["web-agent"], "openai-codex/gpt-5.5")
         self.assertEqual(profile["model_thinking_overrides"]["kimicode/doubao-seed-2.0-pro"], "high")
         self.assertEqual(profile["model_thinking_overrides"]["openai-codex/gpt-5.3-codex"], "xhigh")
 

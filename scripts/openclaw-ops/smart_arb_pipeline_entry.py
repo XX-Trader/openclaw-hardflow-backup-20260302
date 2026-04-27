@@ -39,8 +39,36 @@ STAGE_AGENT_MAP = {
     "deployment": "deployer",
     "acceptance": "tester",
     "writeback": "doc-writer",
-    "git_publish": "git-master",
+    "git_publish": "coordinator",
 }
+FRONTEND_KEYWORDS = (
+    "frontend",
+    "front-end",
+    "ui",
+    "ux",
+    "react",
+    "vue",
+    "页面",
+    "前端",
+    "样式",
+    "交互",
+    "按钮",
+    "表单",
+    "组件",
+)
+BACKEND_KEYWORDS = (
+    "backend",
+    "api",
+    "database",
+    "db",
+    "service",
+    "strategy",
+    "后端",
+    "接口",
+    "数据库",
+    "服务",
+    "策略",
+)
 STAGE_LABELS = {
     "intake": "任务接入",
     "context_snapshot": "上下文快照",
@@ -489,10 +517,14 @@ def write_repair_context_file(
         return None
 
 
-def render_stage_line(stage: dict) -> str:
+def render_stage_line(stage: dict, stage_agents: dict | None = None) -> str:
     name = str(stage.get("name") or "").strip()
     label = STAGE_LABELS.get(name, name or "未知阶段")
-    agent = STAGE_AGENT_MAP.get(name, "coordinator")
+    raw_agents = stage_agents.get(name) if isinstance(stage_agents, dict) else None
+    if isinstance(raw_agents, list):
+        agent = ",".join(str(item).strip() for item in raw_agents if str(item).strip()) or STAGE_AGENT_MAP.get(name, "coordinator")
+    else:
+        agent = STAGE_AGENT_MAP.get(name, "coordinator")
     status = str(stage.get("status") or "").strip()
     status_label = STATUS_LABELS.get(status, status or "未知")
     parts = [f"{label}: {agent} -> {status_label}"]
@@ -558,8 +590,9 @@ def render_chat_summary(
 
     lines.append("")
     lines.append("## agent 分工与完成情况")
+    stage_agents = state.get("stage_agents") if isinstance(state.get("stage_agents"), dict) else {}
     for stage in stages[: max(1, int(stage_limit or 20))]:
-        lines.append(render_stage_line(stage))
+        lines.append(render_stage_line(stage, stage_agents))
     if len(stages) > stage_limit:
         lines.append(f"- 还有 {len(stages) - stage_limit} 个阶段未展开，详见 pipeline_state.json")
 
@@ -683,6 +716,20 @@ def requirement_from_passthrough(passthrough: list[str]) -> str:
     return "\n\n".join(part for part in parts if part)
 
 
+def normalize_code_agent(value: str | None) -> str:
+    agent = str(value or "").strip()
+    return agent if agent in {"backend-dev", "frontend-dev"} else ""
+
+
+def infer_code_agent(requirement: str) -> str:
+    text = str(requirement or "").lower()
+    frontend_hit = any(keyword in text for keyword in FRONTEND_KEYWORDS)
+    backend_hit = any(keyword in text for keyword in BACKEND_KEYWORDS)
+    if frontend_hit and not backend_hit:
+        return "frontend-dev"
+    return "backend-dev"
+
+
 def strip_service_control_denials(text: str) -> str:
     cleaned = text or ""
     for pattern in SERVICE_CONTROL_DENY_PATTERNS:
@@ -794,6 +841,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--live-bridge-agent-max-turns", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_AGENT_MAX_TURNS", "24")))
     parser.add_argument("--live-bridge-code-max-turns", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_CODE_MAX_TURNS", "60")))
+    parser.add_argument("--code-agent", choices=["backend-dev", "frontend-dev"], default=normalize_code_agent(os.environ.get("SMART_ARB_CODE_AGENT", "")), help="workflow owner for code execution; defaults to inferred backend/frontend owner")
     parser.add_argument("--live-bridge-no-yolo", action="store_true", help="do not let Hermes bypass command approvals for code execution")
     parser.add_argument("--no-internal-api-restart", action="store_true", help="do not restart the internal FastAPI tmux service in deployment stage")
     parser.add_argument("--skip-deployment-command", action="store_true", help="do not inject the deployment stage live bridge command")
@@ -852,6 +900,9 @@ def main(argv: list[str] | None = None) -> int:
         "--force",
         "--emit-json",
     ]
+    requirement_text = requirement_from_passthrough(passthrough)
+    code_agent = normalize_code_agent(args.code_agent) or infer_code_agent(requirement_text)
+    cmd += ["--code-agent", code_agent]
     cmd += default_live_bridge_args(args, passthrough)
     cmd += passthrough
     proc = run_pipeline_command(cmd)

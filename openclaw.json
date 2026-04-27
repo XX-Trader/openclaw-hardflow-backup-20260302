@@ -59,6 +59,10 @@
         "api": "openai-completions",
         "models": [
           {
+            "id": "gpt-5.5",
+            "name": "GPT-5.5"
+          },
+          {
             "id": "gpt-5.4",
             "name": "GPT-5.4"
           },
@@ -81,8 +85,9 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "openai-codex/gpt-5.4-mini",
+        "primary": "openai-codex/gpt-5.5",
         "fallbacks": [
+          "openai-codex/gpt-5.5",
           "openai-codex/gpt-5.4",
           "kimicode/Doubao-Seed-2.0-pro",
           "glmcode/glm-5",
@@ -99,6 +104,12 @@
         },
         "kimicode/Doubao-Seed-2.0-Code": {
           "alias": "doubao-code",
+          "params": {
+            "thinking": "high"
+          }
+        },
+        "openai-codex/gpt-5.5": {
+          "alias": "codex55",
           "params": {
             "thinking": "high"
           }
@@ -160,124 +171,22 @@
     },
     "list": [
       {
-        "id": "main",
-        "default": true,
-        "name": "大总管",
-        "workspace": "/root/.openclaw/workspace",
-        "model": "openai-codex/gpt-5.4",
-        "subagents": {
-          "allowAgents": [
-            "agent-factory",
-            "backend-dev",
-            "coordinator",
-            "deployer",
-            "doc-writer",
-            "frontend-dev",
-            "main",
-            "ops-agent",
-            "optimization-agent",
-            "project-agent",
-            "reviewer",
-            "tester",
-            "web-agent"
-          ]
-        }
-      },
-      {
         "id": "coordinator",
+        "default": true,
         "name": "coordinator",
         "workspace": "/root/.openclaw/workspace-coordinator",
-        "model": "openai-codex/gpt-5.4",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner",
         "subagents": {
           "allowAgents": [
-            "agent-factory",
-            "backend-dev",
-            "coordinator",
-            "deployer",
-            "doc-writer",
-            "frontend-dev",
-            "main",
-            "ops-agent",
-            "optimization-agent",
             "project-agent",
+            "web-agent",
             "reviewer",
+            "backend-dev",
+            "frontend-dev",
             "tester",
-            "web-agent"
-          ]
-        }
-      },
-      {
-        "id": "doc-writer",
-        "name": "doc-writer",
-        "workspace": "/root/.openclaw/workspace-doc-writer",
-        "model": "kimicode/doubao-seed-2.0-pro"
-      },
-      {
-        "id": "frontend-dev",
-        "name": "frontend-dev",
-        "workspace": "/root/.openclaw/workspace-frontend-dev",
-        "model": "openai-codex/gpt-5.4"
-      },
-      {
-        "id": "backend-dev",
-        "name": "backend-dev",
-        "workspace": "/root/.openclaw/workspace-backend-dev",
-        "model": "openai-codex/gpt-5.4"
-      },
-      {
-        "id": "reviewer",
-        "name": "代码审核",
-        "workspace": "/root/.openclaw/workspace-reviewer",
-        "model": "openai-codex/gpt-5.4"
-      },
-      {
-        "id": "tester",
-        "name": "测试验收",
-        "workspace": "/root/.openclaw/workspace-tester",
-        "model": "kimicode/doubao-seed-2.0-pro"
-      },
-      {
-        "id": "deployer",
-        "name": "deployer",
-        "workspace": "/root/.openclaw/workspace-deployer",
-        "model": "glmcode/glm-4.7"
-      },
-      {
-        "id": "agent-factory",
-        "name": "agent-factory",
-        "workspace": "/root/.openclaw/workspace-agent-factory",
-        "model": "openai-codex/gpt-5.4",
-        "subagents": {
-          "allowAgents": [
-            "optimization-agent",
-            "project-agent",
-            "web-agent"
-          ]
-        }
-      },
-      {
-        "id": "ops-agent",
-        "name": "ops-agent",
-        "workspace": "/root/.openclaw/workspace-ops-agent",
-        "agentDir": "/root/.openclaw/agents/ops-agent/agent",
-        "model": "glmcode/glm-4.7",
-        "subagents": {
-          "allowAgents": [
-            "optimization-agent",
-            "project-agent"
-          ]
-        }
-      },
-      {
-        "id": "optimization-agent",
-        "name": "optimization-agent",
-        "workspace": "/root/.openclaw/workspace-optimization-agent",
-        "agentDir": "/root/.openclaw/agents/optimization-agent/agent",
-        "model": "openai-codex/gpt-5.4",
-        "subagents": {
-          "allowAgents": [
-            "project-agent",
-            "web-agent"
+            "deployer",
+            "doc-writer"
           ]
         }
       },
@@ -286,10 +195,12 @@
         "name": "project-agent",
         "workspace": "/root/.openclaw/workspace-project-agent",
         "agentDir": "/root/.openclaw/agents/project-agent/agent",
-        "model": "openai-codex/gpt-5.4",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner",
         "subagents": {
           "allowAgents": [
-            "web-agent"
+            "web-agent",
+            "reviewer"
           ]
         }
       },
@@ -298,12 +209,71 @@
         "name": "web-agent",
         "workspace": "/root/.openclaw/workspace-web-agent",
         "agentDir": "/root/.openclaw/agents/web-agent/agent",
-        "model": "glmcode/glm-4.7"
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
       },
       {
-        "id": "explorer",
-        "name": "Explorer",
-        "model": "openai-codex/gpt-5.4-mini"
+        "id": "reviewer",
+        "name": "reviewer",
+        "workspace": "/root/.openclaw/workspace-reviewer",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
+      },
+      {
+        "id": "backend-dev",
+        "name": "backend-dev",
+        "workspace": "/root/.openclaw/workspace-backend-dev",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
+      },
+      {
+        "id": "frontend-dev",
+        "name": "frontend-dev",
+        "workspace": "/root/.openclaw/workspace-frontend-dev",
+        "agentDir": "/root/.openclaw/agents/frontend-dev/agent",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
+      },
+      {
+        "id": "tester",
+        "name": "tester",
+        "workspace": "/root/.openclaw/workspace-tester",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
+      },
+      {
+        "id": "deployer",
+        "name": "deployer",
+        "workspace": "/root/.openclaw/workspace-deployer",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
+      },
+      {
+        "id": "doc-writer",
+        "name": "doc-writer",
+        "workspace": "/root/.openclaw/workspace-doc-writer",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
+      },
+      {
+        "id": "ops-agent",
+        "name": "ops-agent",
+        "workspace": "/root/.openclaw/workspace-ops-agent",
+        "agentDir": "/root/.openclaw/agents/ops-agent/agent",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "cron-task-owner",
+        "subagents": {
+          "allowAgents": [
+            "project-agent"
+          ]
+        }
+      },
+      {
+        "id": "optimization-agent",
+        "name": "optimization-agent",
+        "workspace": "/root/.openclaw/workspace-optimization-agent",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "cron-task-owner"
       }
     ]
   },
@@ -315,13 +285,11 @@
     "agentToAgent": {
       "enabled": true,
       "allow": [
-        "agent-factory",
         "backend-dev",
         "coordinator",
         "deployer",
         "doc-writer",
         "frontend-dev",
-        "main",
         "ops-agent",
         "optimization-agent",
         "project-agent",

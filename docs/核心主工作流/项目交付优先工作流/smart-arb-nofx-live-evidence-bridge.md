@@ -27,8 +27,9 @@
 2026-04-27 远程核对后，nofx 当前运行态按三层理解：
 
 1. **live 入口**：只有两个 Hermes Discord profile，`arbitrageagent` 与 `spreadagent`。
-2. **workflow 阶段 owner**：`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 等用于阶段分工、隔离 workspace 和 Task Center 留痕，不是独立常驻 agent 进程。
-3. **cron 责任标签**：`ops-agent`、`optimization-agent` 等用于定时任务归属；是否真的有运行中的 agent，要继续看具体 profile、tmux、session/run id 或命令证据。
+2. **workflow 层**：`/home/arbops/.local/bin/smart-arb-pipeline` 调用 `/home/arbops/.hermes/ops/pipeline_runner.py`，主阶段为 `research -> 需求讨论 -> 方案 -> 编码 -> 测试 -> review -> deployment -> memory_writeback`。
+3. **逻辑 owner 层**：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 用于阶段分工、隔离 workspace 和 Task Center 留痕，不是独立常驻 agent 进程。
+4. **cron 责任标签**：`ops-agent`、`project-agent`、`optimization-agent` 等用于定时任务归属；是否真的有运行中的 agent，要继续看具体 profile、tmux、session/run id 或命令证据。
 
 | profile | 入口类型 | 模型 provider | 默认模型 | gateway |
 |---------|----------|---------------|----------|---------|
@@ -106,10 +107,10 @@ Discord 状态卡必须回答三个问题：
 - `pipeline_runner.py` 固定按阶段 owner 创建 Git worktree：`agent-workspaces/<stage>/<agent>/repo`，并把 `PIPELINE_AGENT_ID`、`PIPELINE_AGENT_WORKSPACE`、`PIPELINE_AGENT_REPO_DIR`、`PIPELINE_AGENT_WORKSPACES_JSON` 注入 stage command。
 - `--command-cwd` 必须是有 `HEAD` 的 Git 仓库，agent workspace root 必须在该仓库外部；不再提供 `shared` / `copy` 模式。
 - `smart_arb_live_bridge.py` 默认使用 `PIPELINE_AGENT_REPO_DIR` 作为 Hermes 阶段项目目录，避免所有阶段都在主项目目录里运行。
-- `code_execution` 阶段在 `backend-dev` workspace 中修改代码；成功后 runner 导出 `command-runs/code_execution-1.patch`，再应用回主项目目录，然后把同一 patch 注入后续 `tester`、`reviewer`、`deployer`、`git-master` workspace。
+- `code_execution` 阶段默认在 `backend-dev` workspace 中修改代码；前端/UI/页面/交互类需求可通过 `--code-agent frontend-dev` 或入口推断切到 `frontend-dev` workspace。成功后 runner 导出 `command-runs/code_execution-1.patch`，再应用回主项目目录，然后把同一 patch 注入后续 `tester`、`reviewer`、`deployer` workspace。`git_publish` 不再对应独立 `git-master` agent，而是由 `coordinator` 负责的发布门禁。
 - `git_publish` 只在前序门禁通过后执行，发布输入优先使用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码变更和写回变更一起进入发布工作区且不夹带未验收脏改动；默认提交信息为中文并脱敏，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态；远端冲突、认证失败、疑似密钥或 push 失败都会阻塞为 `fix_git_publish`，不做 force push。
 - `command-runs/*.json`、`agent-workspaces/manifest.json`、Task Center `stage_runs.details_json` / `module_communications.details_json` 会记录 agent id、workspace、repo dir、dispatch mode 和 patch 文件。
-- Task Center 中的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`tester` 等字段仍然是阶段 owner 与交接记录；是否真正启动多个宿主 native session，要以 command evidence 中的独立 session/run id 为准。
+- Task Center 中的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester` 等字段仍然是阶段 owner 与交接记录；是否真正启动多个宿主 native session，要以 command evidence 中的独立 session/run id 为准。
 
 因此，如果用户观察到“Hermes 在工作，但任务没有转发到其他 agent”，现在要分两层判断：第一层检查 `agent-workspaces/manifest.json` 和 `command-runs/*.json`，确认是否进入了独立 workspace；第二层检查 command evidence 中是否出现宿主 native session/run id。workspace 隔离已经落地，宿主级 native 多 agent spawn 仍需要继续接 runtime agent dispatch 能力，并把独立 session id / run id 写入 `command-runs`、Task Center 和最终状态卡。
 
@@ -161,7 +162,7 @@ deployment 阶段不会启动真实策略交易进程，不会绑定公网地址
 - task-center：`project-delivery:discord-arbitrageagent-20260425T075149Z` 为 `passed`
 - 真实 Hermes 只读 smoke：`external_research` 返回 `LIVE_BRIDGE_STATUS: pass`，session `20260425_155252_1a56f9`
 - workspace 隔离 echo smoke：`codex-arbitrageagent-20260425T140605083467Z`，Task Center `project-delivery:codex-arbitrageagent-20260425T140605083467Z` 为 `passed`
-- 该 run 的 `agent-workspaces/manifest.json` 显示 `external_research/web-agent`、`requirements_discussion/project-agent`、`requirements_discussion/reviewer`、`code_execution/backend-dev`、`verification/tester`、`code_review/reviewer`、`deployment/deployer`、`memory_writeback/coordinator` 均为独立 `worktree`
+- 该 run 的 `agent-workspaces/manifest.json` 显示 `external_research/web-agent`、`requirements_discussion/project-agent`、`requirements_discussion/reviewer`、`code_execution/backend-dev`、`verification/tester`、`code_review/reviewer`、`deployment/deployer`、`memory_writeback/coordinator` 均为独立 `worktree`；前端类任务可将 `code_execution` owner 切为 `frontend-dev`
 - 该 run 的 Task Center `stage_runs.details_json` 显示命令阶段 `model_id=runtime-agent-workspace`、`dispatch_mode=isolated-agent-workspace`
 - nofx dashboard/API 测试：37 项 OK
 - nofx API smoke：

@@ -9,12 +9,14 @@
 
 - [x] [2026-04-27] **nofx agent/model 口径修正**
   - 远程复核 nofx 当前运行态：`arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile 均为 `openai-codex/gpt-5.5`，gateway running。
-  - 修正“14 个 agent”误导口径：2026-03 的 14 Agent 文档仅保留为历史 OpenClaw 注册表快照；nofx 当前项目交付链路中的 `project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 是阶段 owner / workspace / Task Center 标签，不是独立常驻 agent。
+  - 修正“14 个 agent”误导口径：2026-03 的 14 Agent 文档仅保留为历史 OpenClaw 注册表快照；nofx 当前项目交付链路中的 `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是阶段 owner / workspace / Task Center 标签，不是独立常驻 agent；`git_publish` 是 `coordinator` 负责的发布门禁，不再单独建 `git-master` agent。
+  - 保留 `frontend-dev` 作为前端/UI/页面/交互代码执行 owner；入口脚本支持 `--code-agent frontend-dev`，也会按前端关键词自动推断。
   - 同步 `memory/`、项目交付工作流文档、基础设施索引和 `todo.md` 的模型配置说明。
 
 - [x] [2026-04-27] **仓库精简巡检与 Git 发布门禁**
   - 新增 `repo_hygiene_reviewer.py`，由 `optimization-agent` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和 Task Center 人工确认候选，不自动删除、不自动推送。
   - `source_registry_watcher（API来源监控）` 调整为每 2 天执行，并修复 `--base-path`，确保安装态读取 runtime 项目记忆目录。
+  - 修复仓库精简巡检对内联冲突标记示例的误报；删除已跟踪的 `cron/jobs.json.bak.20260422220950` 备份文件。
   - 项目交付流水线新增 `git_publish` 阶段：验证、代码审查、deployment（如有）、验收和记忆回写通过后才执行；提交说明、备注和变更描述必须中文；疑似密钥、远端冲突、认证失败或 push 失败会阻塞为 `fix_git_publish`。
   - `smart_arb_pipeline_entry.py` 默认注入 Git 发布命令，也支持 `--skip-git-publish-command` / `SMART_ARB_SKIP_GIT_PUBLISH_COMMAND=1` 临时关闭。
   - 同步文档：项目交付 README/架构设计、nofx live evidence bridge、Cron 索引、治理清单、项目记忆和 todo。
@@ -62,7 +64,7 @@
 
 - [x] [2026-04-25] **nofx live bridge per-agent workspace 隔离**
   - `pipeline_runner.py` 固定使用 Git worktree 隔离，新增 `agent-workspaces/manifest.json`、`PIPELINE_AGENT_*` 环境变量注入、command report workspace 留痕和 Task Center `agent_execution` 详情；不再暴露 `shared` / `copy` 模式。
-  - `code_execution` 默认在 `backend-dev` 独立 workspace 内执行；成功后导出 `command-runs/code_execution-1.patch`，应用回主项目目录，并注入后续 `tester`、`reviewer`、`deployer` workspace。
+  - `code_execution` 默认在 `backend-dev` 独立 workspace 内执行；前端/UI/页面/交互类需求可切到 `frontend-dev` workspace；成功后导出 `command-runs/code_execution-1.patch`，应用回主项目目录，并注入后续 `tester`、`reviewer`、`deployer` workspace。
   - `smart_arb_live_bridge.py` 默认使用 `PIPELINE_AGENT_REPO_DIR` 作为 Hermes 阶段项目目录。
   - workspace root 若被配置到项目目录内部，会直接报错要求移到 `--command-cwd` 外部，不再静默降级。
   - 新增回归测试覆盖 worktree 隔离、diff 回流、两条 verification 命令共享 workspace 时不重复 apply patch、后续 reviewer workspace 注入、嵌套 workspace 拒绝和 nofx entry 不再传 workspace mode；nofx smoke `codex-arbitrageagent-20260425T140605083467Z` 已通过。

@@ -437,13 +437,13 @@
         "创建agent",
         "新增agent",
         "agent工厂",
-        "agent-factory",
+        "workflow owner",
         "补齐agent",
         "路由补齐",
         "agent配置"
       ],
-      "agent": "agent-factory",
-      "description": "根据缺口队列生成 agent 创建计划与候选配置",
+      "agent": "coordinator",
+      "description": "按当前 nofx workflow owner 口径评估是否需要调整阶段 owner 或配置；不再自动创建 agent",
       "priority": 1
     }
   ]

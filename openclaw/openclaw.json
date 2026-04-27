@@ -67,6 +67,10 @@
         "api": "openai-completions",
         "models": [
           {
+            "id": "gpt-5.5",
+            "name": "GPT-5.5"
+          },
+          {
             "id": "gpt-5.4",
             "name": "GPT-5.4"
           },
@@ -89,8 +93,9 @@
   "agents": {
     "defaults": {
       "model": {
-        "primary": "openai-codex/gpt-5.4-mini",
+        "primary": "openai-codex/gpt-5.5",
         "fallbacks": [
+          "openai-codex/gpt-5.5",
           "openai-codex/gpt-5.4",
           "kimicode/Doubao-Seed-2.0-pro",
           "glmcode/glm-5",
@@ -121,6 +126,12 @@
           "alias": "glm47",
           "params": {
             "thinking": "high"
+          }
+        },
+        "openai-codex/gpt-5.5": {
+          "alias": "codex55",
+          "params": {
+            "thinking": "xhigh"
           }
         },
         "openai-codex/gpt-5.4": {
@@ -168,49 +179,22 @@
     },
     "list": [
       {
-        "id": "main",
-        "default": true,
-        "name": "大总管",
-        "workspace": "/home/ubuntu/.openclaw/workspace",
-        "model": "openai-codex/gpt-5.4",
-        "subagents": {
-          "allowAgents": [
-            "agent-factory",
-            "backend-dev",
-            "coordinator",
-            "deployer",
-            "doc-writer",
-            "frontend-dev",
-            "main",
-            "ops-agent",
-            "optimization-agent",
-            "project-agent",
-            "reviewer",
-            "tester",
-            "web-agent"
-          ]
-        }
-      },
-      {
         "id": "coordinator",
+        "default": true,
         "name": "coordinator",
         "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
-        "model": "openai-codex/gpt-5.4",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner",
         "subagents": {
           "allowAgents": [
-            "agent-factory",
-            "backend-dev",
-            "coordinator",
-            "deployer",
-            "doc-writer",
-            "frontend-dev",
-            "main",
-            "ops-agent",
-            "optimization-agent",
             "project-agent",
+            "web-agent",
             "reviewer",
+            "backend-dev",
+            "frontend-dev",
             "tester",
-            "web-agent"
+            "deployer",
+            "doc-writer"
           ]
         }
       },
@@ -218,60 +202,54 @@
         "id": "doc-writer",
         "name": "doc-writer",
         "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
-        "model": "kimicode/doubao-seed-2.0-pro"
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "frontend-dev",
         "name": "frontend-dev",
         "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
-        "model": "openai-codex/gpt-5.4"
+        "agentDir": "/home/ubuntu/.openclaw/agents/frontend-dev/agent",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "backend-dev",
         "name": "backend-dev",
         "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
-        "model": "openai-codex/gpt-5.4"
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "reviewer",
-        "name": "代码审核",
+        "name": "reviewer",
         "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
-        "model": "openai-codex/gpt-5.4"
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "tester",
-        "name": "测试验收",
+        "name": "tester",
         "workspace": "/home/ubuntu/.openclaw/workspace-tester",
-        "model": "kimicode/doubao-seed-2.0-pro"
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "deployer",
         "name": "deployer",
         "workspace": "/home/ubuntu/.openclaw/workspace-deployer",
-        "model": "glmcode/glm-4.7"
-      },
-      {
-        "id": "agent-factory",
-        "name": "agent-factory",
-        "workspace": "/home/ubuntu/.openclaw/workspace-agent-factory",
-        "model": "openai-codex/gpt-5.4",
-        "subagents": {
-          "allowAgents": [
-            "optimization-agent",
-            "project-agent",
-            "web-agent"
-          ]
-        }
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "ops-agent",
         "name": "ops-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/ops-agent/agent",
-        "model": "glmcode/glm-4.7",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "cron-task-owner",
         "subagents": {
           "allowAgents": [
-            "optimization-agent",
             "project-agent"
           ]
         }
@@ -281,20 +259,16 @@
         "name": "optimization-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-        "model": "openai-codex/gpt-5.4",
-        "subagents": {
-          "allowAgents": [
-            "project-agent",
-            "web-agent"
-          ]
-        }
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "cron-task-owner"
       },
       {
         "id": "project-agent",
         "name": "project-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
-        "model": "openai-codex/gpt-5.4",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner",
         "subagents": {
           "allowAgents": [
             "web-agent"
@@ -306,12 +280,8 @@
         "name": "web-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-web-agent",
         "agentDir": "/home/ubuntu/.openclaw/agents/web-agent/agent",
-        "model": "glmcode/glm-4.7"
-      },
-      {
-        "id": "explorer",
-        "name": "Explorer",
-        "model": "openai-codex/gpt-5.4-mini"
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
       }
     ]
   },
@@ -323,13 +293,11 @@
     "agentToAgent": {
       "enabled": true,
       "allow": [
-        "agent-factory",
         "backend-dev",
         "coordinator",
         "deployer",
         "doc-writer",
         "frontend-dev",
-        "main",
         "ops-agent",
         "optimization-agent",
         "project-agent",

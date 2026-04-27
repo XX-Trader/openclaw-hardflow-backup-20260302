@@ -44,17 +44,17 @@ if (-not $Servers -or $Servers.Count -eq 0) {
 }
 
 $modelAgents = @(
-    "agent-factory",
     "backend-dev",
     "coordinator",
     "deployer",
     "doc-writer",
     "frontend-dev",
-    "main",
     "ops-agent",
+    "optimization-agent",
     "project-agent",
     "reviewer",
-    "tester"
+    "tester",
+    "web-agent"
 )
 
 $opsFiles = @(
@@ -194,17 +194,17 @@ targets = [
 targets.extend(
     Path.home() / ".openclaw" / "agents" / agent / "agent" / "models.json"
     for agent in (
-        "agent-factory",
         "backend-dev",
         "coordinator",
         "deployer",
         "doc-writer",
         "frontend-dev",
-        "main",
         "ops-agent",
+        "optimization-agent",
         "project-agent",
         "reviewer",
         "tester",
+        "web-agent",
     )
 )
 

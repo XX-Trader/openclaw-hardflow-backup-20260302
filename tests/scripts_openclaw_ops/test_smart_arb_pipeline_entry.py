@@ -111,7 +111,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("代码审查: reviewer -> 完成", text)
         self.assertIn("内部部署: deployer -> 完成", text)
         self.assertIn("记忆写回: doc-writer -> 完成", text)
-        self.assertIn("Git 发布: git-master -> 完成", text)
+        self.assertIn("Git 发布: coordinator -> 完成", text)
         self.assertIn("## agent 输出摘要", text)
         self.assertIn("代码执行: backend-dev -> 通过", text)
         self.assertIn("changed files", text)
@@ -816,6 +816,30 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual(0, rc)
         self.assertEqual("runner raw output\n", out.getvalue())
         self.assertEqual("runner err\n", err.getvalue())
+
+    def test_main_infers_frontend_code_agent_from_requirement(self):
+        module = load_module()
+        raw = '{"status":"completed","stages":[]}\n'
+        out = io.StringIO()
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, raw),
+        ) as run_mock, redirect_stdout(out):
+            rc = module.main(
+                [
+                    "--emit-json",
+                    "--no-live-bridge",
+                    "--requirement",
+                    "请优化前端页面布局和按钮交互",
+                ]
+            )
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        code_agent_index = runner_cmd.index("--code-agent") + 1
+        self.assertEqual("frontend-dev", runner_cmd[code_agent_index])
 
     def test_live_bridge_injects_explicit_verification_command_timeout(self):
         module = load_module()

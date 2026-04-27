@@ -172,7 +172,7 @@ scripts/openclaw-ops/
 
 ### Step 6.1 — SOUL.md 技能声明 ✅
 
-为 6 个空绑定 Agent 补充 `## 技能主线` 段落：
+历史步骤曾为 6 个空绑定 Agent 补充 `## 技能主线` 段落；2026-04-27 起 nofx 当前 active 口径以 `docs/基础设施/多Agent体系/README.md` 为准，不再把 `agent-factory` / `explorer` 注册为 active owner：
 
 | Agent | 技能数 | 绑定内容 |
 |-------|:------:|---------|
@@ -180,15 +180,13 @@ scripts/openclaw-ops/
 | `optimization-agent` | 4 | openclaw-evolution-upgrader, openclaw-workflow-manager, task-cost-analytics, workflow-audit |
 | `project-agent` | 3 | product-requirements, requirements-clarity, writing-plans |
 | `web-agent` | 3 | web-intelligence, pretext-text-layout, playwright-interactive |
-| `agent-factory` | 2 | agent-manager, openclaw-workflow-manager |
-| `explorer` | 2 | web-intelligence, smart-workflow |
 
 ### Step 6.2 — 索引文件四方同步 ✅
 
 - `agent_to_skills.json`：历史 OpenClaw 注册表 14 个 Agent 全覆盖（无空数组）；不作为 nofx 当前 Hermes runtime 的常驻 agent 数量依据
 - `skill_to_agents.json`：反向补齐 + 新增条目
 - `skills_by_domain.json`：新增 `ops_infra`（8技能）和 `intelligence`（2技能）域
-- `skills/by_agent/`：6 个文件重写 + `explorer.md` 新建
+- `skills/by_agent/`：历史 2026-03 技能索引保留作参考；nofx 当前 active owner 不包含 `explorer`
 
 ### Step 6.3 — README 速查表 ✅
 

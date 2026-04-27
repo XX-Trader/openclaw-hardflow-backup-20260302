@@ -59,17 +59,17 @@ SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-12}"
 SSH_CMD_TIMEOUT="${SSH_CMD_TIMEOUT:-180}"
 
 MODEL_AGENTS=(
-  "agent-factory"
   "backend-dev"
   "coordinator"
   "deployer"
   "doc-writer"
   "frontend-dev"
-  "main"
   "ops-agent"
+  "optimization-agent"
   "project-agent"
   "reviewer"
   "tester"
+  "web-agent"
 )
 
 OPS_FILES=(
@@ -234,17 +234,17 @@ targets = [
 targets.extend(
     Path.home() / ".openclaw" / "agents" / agent / "agent" / "models.json"
     for agent in (
-        "agent-factory",
         "backend-dev",
         "coordinator",
         "deployer",
         "doc-writer",
         "frontend-dev",
-        "main",
         "ops-agent",
+        "optimization-agent",
         "project-agent",
         "reviewer",
         "tester",
+        "web-agent",
     )
 )
 

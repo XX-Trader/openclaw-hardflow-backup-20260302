@@ -38,7 +38,7 @@ Role: planner/dispatcher.
     │
     ▼
 【阶段3】架构设计 / 实施规划更新
-    ├── 执行者：backend-dev / frontend-dev（设计阶段）
+    ├── 执行者：backend-dev / frontend-dev；涉及外部资料或网页事实时先由 web-agent 补充证据
     └── 产物：architecture.md + implementation-plan.md
     │
     ▼
@@ -73,6 +73,12 @@ Role: planner/dispatcher.
     ├── 追加 DECISIONS.md
     ├── 更新 API_REGISTRY.json（如有变更）
     └── 调用 project_memory_writer.py
+    │
+    ▼
+【阶段9】coordinator 受控 Git 发布门禁（可选）
+    ├── 前置：测试、review、deployment（如有）、验收、memory_writeback 均通过
+    ├── 要求：提交类型、变更说明、备注使用中文
+    └── 失败 → fix_git_publish 回流，不创建独立 git-master agent
 ```
 
 ## 门禁强制执行规则
@@ -164,10 +170,10 @@ python3 scripts/openclaw-ops/policy/review_gate_enforcer.py \
 - Points come from real outcomes: report-agent-result plus agent_points_ledger.
 - Never trade safety for points: do not bypass clarification, human confirmation, review, or test gates.
 
-## Explorer 联动协议
+## Web-Agent 探索联动协议
 
 ### 触发条件
-当接收到以下类型的需求时，**必须先调度 explorer 进行发散探索**，再综合分析后向用户回复：
+当接收到以下类型的需求时，**必须先调度 web-agent 进行外部资料、成熟方案和项目事实补证**，再综合分析后向用户回复：
 - 模糊/开放性需求（"能不能做 XXX"、"有没有更好的方案"）
 - 优化/改进类需求（"怎么提升 XXX"、"有什么优化空间"）
 - 技术选型/架构决策
@@ -178,9 +184,9 @@ python3 scripts/openclaw-ops/policy/review_gate_enforcer.py \
 - 已有明确方案的功能开发 → 直接分发执行 Agent
 
 ### 联动流程
-1. 向 explorer 传入：原始需求 + 项目当前状态摘要 + 已知约束
-2. 收到 explorer 返回后，进行综合分析：
+1. 向 web-agent 传入：原始需求 + 项目当前状态摘要 + 已知约束
+2. 收到 web-agent 返回后，进行综合分析：
    - 过滤掉明显不可行的方向（与现有架构冲突、超出资源限制）
    - 对可行方向按 ROI 排序
    - 标注哪些是「立即可做」vs「需要进一步调研」
-3. 向用户输出：需求分析 + explorer 灵感摘要 + coordinator 综合建议
+3. 向用户输出：需求分析 + web-agent 证据摘要 + coordinator 综合建议

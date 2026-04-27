@@ -52,6 +52,21 @@ class RepoHygieneAndSourceWatcherTests(unittest.TestCase):
             self.assertTrue(conflict_file.exists())
             self.assertTrue(Path(summary["report_path"]).exists())
 
+    def test_repo_hygiene_conflict_marker_scan_ignores_inline_examples(self):
+        module = load_module("repo_hygiene_reviewer_test_inline", HYGIENE_PATH)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            source_file = repo / "example.py"
+            source_file.write_text(
+                'markers = ("<<<<<<< ", "=======", ">>>>>>> ")\n'
+                'example = "<<<<<<< ours\\nvalue\\n=======\\nother\\n>>>>>>> theirs\\n"\n',
+                encoding="utf-8",
+            )
+
+            findings = module.scan_text_conflict_markers(repo, [source_file], 10)
+
+            self.assertEqual([], findings)
+
     def test_source_registry_watcher_honors_base_path(self):
         module = load_module("source_registry_watcher_test", SOURCE_WATCHER_PATH)
         with tempfile.TemporaryDirectory() as tmpdir:

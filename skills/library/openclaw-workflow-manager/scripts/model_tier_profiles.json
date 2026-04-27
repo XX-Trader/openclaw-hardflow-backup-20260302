@@ -12,14 +12,16 @@
         "codex",
         "xhigh"
       ],
-      "primary_model": "openai-codex/gpt-5.4",
+      "primary_model": "openai-codex/gpt-5.5",
       "fallback_models": [
+        "openai-codex/gpt-5.4",
         "openai-codex/gpt-5.3-codex",
         "openai-codex/gpt-5.3-codex-spark",
         "glmcode/glm-5",
         "glmcode/glm-4.7"
       ],
       "model_thinking_overrides": {
+        "openai-codex/gpt-5.5": "xhigh",
         "openai-codex/gpt-5.4": "xhigh",
         "openai-codex/gpt-5.3-codex": "xhigh",
         "openai-codex/gpt-5.3-codex-spark": "xhigh",
@@ -38,29 +40,29 @@
         "高级",
         "default"
       ],
-      "primary_model": "openai-codex/gpt-5.4",
+      "primary_model": "openai-codex/gpt-5.5",
       "fallback_models": [
+        "openai-codex/gpt-5.4",
         "openai-codex/gpt-5.3-codex",
         "openai-codex/gpt-5.3-codex-spark",
         "glmcode/glm-5",
         "glmcode/glm-4.7"
       ],
       "agent_model_overrides": {
-        "main": "openai-codex/gpt-5.4",
-        "coordinator": "openai-codex/gpt-5.4",
-        "reviewer": "openai-codex/gpt-5.4",
-        "agent-factory": "openai-codex/gpt-5.3-codex",
-        "backend-dev": "openai-codex/gpt-5.3-codex",
-        "frontend-dev": "openai-codex/gpt-5.3-codex",
-        "optimization-agent": "openai-codex/gpt-5.3-codex",
-        "project-agent": "openai-codex/gpt-5.3-codex",
-        "doc-writer": "glmcode/glm-4.7",
-        "deployer": "glmcode/glm-4.7",
-        "ops-agent": "glmcode/glm-4.7",
-        "tester": "glmcode/glm-4.7",
-        "web-agent": "glmcode/glm-4.7"
+        "coordinator": "openai-codex/gpt-5.5",
+        "project-agent": "openai-codex/gpt-5.5",
+        "web-agent": "openai-codex/gpt-5.5",
+        "reviewer": "openai-codex/gpt-5.5",
+        "backend-dev": "openai-codex/gpt-5.5",
+        "frontend-dev": "openai-codex/gpt-5.5",
+        "tester": "openai-codex/gpt-5.5",
+        "deployer": "openai-codex/gpt-5.5",
+        "doc-writer": "openai-codex/gpt-5.5",
+        "ops-agent": "openai-codex/gpt-5.5",
+        "optimization-agent": "openai-codex/gpt-5.5"
       },
       "model_thinking_overrides": {
+        "openai-codex/gpt-5.5": "xhigh",
         "openai-codex/gpt-5.4": "xhigh",
         "openai-codex/gpt-5.3-codex": "xhigh",
         "openai-codex/gpt-5.3-codex-spark": "xhigh",
@@ -84,27 +86,28 @@
       ],
       "primary_model": "kimicode/doubao-seed-2.0-pro",
       "fallback_models": [
+        "openai-codex/gpt-5.5",
+        "openai-codex/gpt-5.4",
         "openai-codex/gpt-5.3-codex",
         "openai-codex/gpt-5.3-codex-spark",
         "glmcode/glm-5",
         "glmcode/glm-4.7"
       ],
       "agent_model_overrides": {
-        "main": "kimicode/doubao-seed-2.0-pro",
         "coordinator": "kimicode/doubao-seed-2.0-pro",
+        "project-agent": "openai-codex/gpt-5.5",
+        "web-agent": "openai-codex/gpt-5.5",
         "reviewer": "kimicode/doubao-seed-2.0-pro",
-        "agent-factory": "openai-codex/gpt-5.3-codex",
-        "backend-dev": "openai-codex/gpt-5.3-codex",
-        "frontend-dev": "openai-codex/gpt-5.3-codex",
-        "optimization-agent": "openai-codex/gpt-5.3-codex",
-        "project-agent": "openai-codex/gpt-5.3-codex",
-        "doc-writer": "glmcode/glm-4.7",
-        "deployer": "glmcode/glm-4.7",
-        "ops-agent": "glmcode/glm-4.7",
-        "tester": "glmcode/glm-4.7",
-        "web-agent": "glmcode/glm-4.7"
+        "backend-dev": "openai-codex/gpt-5.5",
+        "frontend-dev": "openai-codex/gpt-5.5",
+        "tester": "openai-codex/gpt-5.5",
+        "deployer": "openai-codex/gpt-5.5",
+        "doc-writer": "openai-codex/gpt-5.5",
+        "ops-agent": "openai-codex/gpt-5.5",
+        "optimization-agent": "openai-codex/gpt-5.5"
       },
       "model_thinking_overrides": {
+        "openai-codex/gpt-5.5": "xhigh",
         "openai-codex/gpt-5.4": "xhigh",
         "openai-codex/gpt-5.3-codex": "xhigh",
         "openai-codex/gpt-5.3-codex-spark": "xhigh",
