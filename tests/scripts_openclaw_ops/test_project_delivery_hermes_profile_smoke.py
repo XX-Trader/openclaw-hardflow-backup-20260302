@@ -99,8 +99,13 @@ class ProjectDeliveryHermesProfileSmokeTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            wrapper = root / "fake-hermes.cmd"
-            wrapper.write_text(f'@echo off\r\n"{sys.executable}" "{fake}" %*\r\n', encoding="utf-8")
+            if os.name == "nt":
+                wrapper = root / "fake-hermes.cmd"
+                wrapper.write_text(f'@echo off\r\n"{sys.executable}" "{fake}" %*\r\n', encoding="utf-8")
+            else:
+                wrapper = root / "fake-hermes"
+                wrapper.write_text(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n', encoding="utf-8")
+                wrapper.chmod(0o755)
             old_env = os.environ.get("FAKE_HERMES_CALLS")
             os.environ["FAKE_HERMES_CALLS"] = str(calls)
             try:
