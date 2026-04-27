@@ -22,8 +22,17 @@ python3 skills/library/project-delivery-pipeline/scripts/runtime_installer.py in
   --task-center-db /home/arbops/.hermes/ops/task-center/task_center.db \
   --emit-json
 ```
-最后验证：2026-04-27 15:01
+最后验证：2026-04-27 16:39
 复用建议：安装前先 `git fetch` 和 `git status --short --branch`；如有脏改动先 `git stash push -u -m pre-pull-hardflow-install-<timestamp>`，再 `git pull --ff-only origin main`。安装后至少检查 runtime installer JSON、`compileall`、定向单测、`/home/arbops/.hermes/ops` 文件、cron jobs、gateway state、内控 API smoke 和 echo smoke。
+
+## 2026-04-27 - 安装提交 429ce994
+
+类型：deploy
+范围：nofx hardflow runtime、Hermes ops、Discord profile `SOUL.md`、SmartMultiPlatformArbitrage 主工作区、内控 API
+事实：nofx hardflow 仓库已拉到 `429ce994` 并重装 runtime，修复工作流自修循环、失败补丁回滚、requirements/solution artifact 泛化和 Hermes smoke 跨平台夹具问题。两个 live profile `SOUL.md` 已同步“工作流自修例外”，用户明确说“不要走工作流”或目标是修复 pipeline/bridge/profile/dual-review/auto-repair/git_publish 时，不再从 Discord profile 启动新的 `smart-arb-pipeline` 自修 run，而是只读诊断并提示外部 operator/Codex 通过 SSH 修复 hardflow。`arbitrageagent` 与 `spreadagent` gateway 已重启并恢复 connected。
+证据：远端 `runtime_installer.py install --emit-json` 返回 `ok=true`、`changed=true`；远端 `python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；远端 75 项定向 unittest OK；`/home/arbops/.hermes/ops/pipeline_runner.py` 命中 `Resolved Requirement`、`overlapping_dirty_paths`、`rollback_cleanup`；live `SOUL.md` 命中 `auto-repair` 与 `git_publish` 自修例外；`arbitrageagent` PID `667702`、`spreadagent` PID `667704`，gateway 均为 `running` / Discord `connected`；SmartMulti 主工作区为 `## main...origin/main` clean；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`。
+最后验证：2026-04-27 16:39
+复用建议：后续修 hardflow runtime / Discord profile / pipeline 自身时，先走本仓库修改、测试、code-reviewer、push、nofx pull/install/smoke，再同步 live profile 并重启 gateway；不要让 nofx profile 自己调用同一个 pipeline 修自身。
 
 ## 2026-04-27 - 安装提交 578b3f0
 
