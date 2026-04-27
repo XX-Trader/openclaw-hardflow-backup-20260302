@@ -1,15 +1,15 @@
-# 多 Agent 体系 — 权威注册中心
+# 多 Agent 体系 — 历史注册中心
 
-> **⚠️ 本文档是 Agent 注册的单一权威来源 (Single Source of Truth)**
-> 新增、变更、下线任何 Agent 必须在此文档中更新，运行时配置从本文档派生。
+> **范围说明（2026-04-27）**：本文档记录的是 2026-03 OpenClaw 14 Agent 注册表快照，保留用于理解旧控制面和历史 Skill 绑定；它不代表 nofx 当前 Hermes workflow runtime。
+> nofx 当前 live 入口只有 `arbitrageagent` / `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`。项目交付工作流里的 `project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 等是阶段 owner / workspace 标签，不是 nofx 上 14 个常驻 agent。
 >
-> 最后更新：2026-03-31
+> 最后更新：2026-04-27
 
 ---
 
 ## 1. 架构概述
 
-OpenClaw 采用 **14 Agent 协作架构**，按职责分为 4 层。另有 1 个路由别名（`self-evolution-agent` → 实际由 `optimization-agent` 处理）。
+本历史快照描述 **14 Agent 协作架构**，按职责分为 4 层。另有 1 个路由别名（`self-evolution-agent` → 实际由 `optimization-agent` 处理）。如果问题指向 nofx 当前服务器，请以 `docs/核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md` 和 `memory/RUNBOOK.md` 的实时口径为准。
 
 ```
 ┌─────────────── 调度层 ───────────────┐

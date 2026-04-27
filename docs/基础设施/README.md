@@ -1,6 +1,6 @@
 # 基础设施
 
-> 最后更新：2026-03-29
+> 最后更新：2026-04-27
 
 工作流之外的基础设施文档：部署运维、Agent 体系、协议规范。
 
@@ -9,7 +9,7 @@
 | 分类 | 入口 | 说明 |
 |------|------|------|
 | [部署与运维](部署与运维/README.md) | 安装/部署/推广/排障 | 含 Linux/Windows 部署说明、Gateway 守护、服务器模板 |
-| [多Agent体系](多Agent体系/README.md) | 14 Agent 角色与能力绑定 | Agent 清单、模型配置、能力 manifest |
+| [多Agent体系](多Agent体系/README.md) | 历史 OpenClaw 14 Agent 注册表；nofx 当前为 2 个 Hermes profile + workflow owner 标签 | Agent 清单、模型配置、能力 manifest |
 | [协议与规范](协议与规范/README.md) | 全链路协议与输出规范 | trace_id、任务派发、错误进化、TG 输出 |
 | [记忆蒸馏](记忆蒸馏/README.md) | 多源会话蒸馏、热记忆、技能候选 | 含 Hermes 风格记忆蒸馏升级方案 |
 

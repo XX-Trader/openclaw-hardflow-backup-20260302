@@ -7,6 +7,7 @@
 > 2026-04-24 Hermes 验证：WSL `/home/ubuntu/.hermes` 已完成 `hermes_profile_smoke.py --agent-mode hybrid --provider zai` 非 dry-run smoke；新 `hybrid-single-chat` 路径用一次 Hermes chat 生成 AI 阶段 bundle，run_id=`hermes-profile-smoke-20260424T135014Z`。
 > 2026-04-25 nofx 验证：SmartMultiPlatformArbitrage Discord live 入口已补齐外部研究、双 AI 需求讨论、代码执行、验证、代码审查、内部 deployment 与记忆写回证据桥，详见 [Smart Arb nofx live evidence bridge](smart-arb-nofx-live-evidence-bridge.md)。
 > 2026-04-27 治理增强：流水线在验收和记忆回写通过后可进入 `git_publish` 受控发布阶段，提交说明/备注必须使用中文；`source_registry_watcher` 与仓库精简巡检均调整为每 2 天一次，仓库精简由 `optimization-agent` 只读生成候选报告并进入人工确认。
+> 2026-04-27 nofx 运行态口径：服务器 live 入口是 `arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`；`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 等是 workflow 阶段 owner / workspace 标签，不是 nofx 上 14 个常驻 agent。
 
 ## 功能概述
 
@@ -66,6 +67,7 @@
 11. **Task Center 可观测性**：每次流水线可镜像到 `task_center.db`，统一查看状态、阶段、agent 通信、输出和 incident。
 12. **仓库精简巡检**：`optimization-agent` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和人工确认候选，不自动删除。
 13. **受控 Git 发布**：只有验证、代码审查、deployment（如有）、验收和记忆回写通过后才允许 `git_publish`；发布输入优先采用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码与文档/记忆写回作为同一个已验收变更集发布且不夹带未验收脏改动；提交说明、备注和变更描述必须使用中文并脱敏，禁止 force push 和含密钥 diff。
+14. **运行态 agent 口径分层**：nofx 当前只有两个 live Hermes profile；阶段 owner 只负责隔离 workspace、状态卡展示和 Task Center 交接，不等于独立常驻模型进程。判断是否真正 native fan-out，必须看独立 session/run id。
 
 ## 可控性与可维护性裁决
 

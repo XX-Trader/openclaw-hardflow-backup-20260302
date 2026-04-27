@@ -14,6 +14,7 @@
 ## 当前重点
 
 - nofx 上 SmartMultiPlatformArbitrage 的项目交付入口由本仓库提供：`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`pipeline_runner.py` 和 runtime installer。
+- nofx 当前 agent/model 口径已修正：live 入口只有两个 Hermes Discord profile：`arbitrageagent` 与 `spreadagent`；2026-04-27 服务器实测两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`、`gateway_state=running`。`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master`、`optimization-agent` 等在项目交付链路里是阶段 owner、cron 责任标签或隔离 workspace 标签，不等于 nofx 上 14 个常驻 agent 进程。
 - nofx 两个 Discord Hermes profile 已按本机 WSL 的有效模式改为 profile 级 `approvals.mode: 'off'`；遇到 `Command Approval Required` 先查 `/home/arbops/.hermes/profiles/<profile>/config.yaml`，不要只看全局配置。
 - nofx Discord profile 的 SOUL 现在使用绝对入口 `/home/arbops/.local/bin/smart-arb-pipeline`；gateway 通过 profile `start-gateway.sh` 加载 `.env`，`.env` 必须是 `arbops:arbops` 且 `0600`。
 - nofx live verification 默认收敛为 `git diff --check` + `compileall -q scripts strategy_runtime`，并通过 `--verification-command-timeout-seconds` 显式记录单命令超时；不要再把全量 `unittest discover` 当 Discord live 默认门禁。
@@ -25,6 +26,7 @@
 - 自动修复风险扫描按分句剥离“不得泄露凭证 / 不启动真实交易 / 不下单不划转”等纯否定式安全边界；已脱敏字段如果表达 `Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]` 或 `Need session_id=[REDACTED]` 仍按高风险停人工确认，`No need for ...` / `Do not need ...` 这类否定噪音可自动回流。混合句里只要仍有正向要求读取凭证、启用实盘、资金操作或破坏性命令，就会停人工确认。
 - 需求明确 memory/docs-only、no service control、no deployment 或 no restart 时，entry 不注入 deployment command；如果同一需求后续明确要求重启/部署，正向 deployment 动作优先，普通 API/服务改动也会注入 deployment bridge 做内控 FastAPI smoke。
 - 最新 nofx 安装记录：2026-04-26 17:03 已把提交 `edd05e23` 拉到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 并运行 runtime installer；安装态入口 smoke `cli-arbitrageagent-20260426T090250542271Z` 14/14 completed，详见 `RUNBOOK.md`。
+- 2026-04-27 服务器复核：nofx hardflow 仓库当前仍在 `44b4dae`，安装态 `/home/arbops/.hermes/ops` 还没有 `repo_hygiene_reviewer.py`，cron 中 `source_registry_watcher` 仍是每周日；本仓库最新 `e45e0af` 的 `git_publish`、2 天 `source_registry_watcher` 和 `repo_hygiene_reviewer_2d` 需要再次 pull + runtime installer 后才会成为 nofx 运行态。
 - 前序 artifact 注入后续 Hermes prompt 前会做敏感信息脱敏，覆盖常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key、AWS access key 等形态。
 - `code_execution` 在 `backend-dev` workspace 产出 diff，runner 会把 diff 应用回主项目目录，并注入后续 tester/reviewer/deployer workspace。
 - `git_publish` 是可选发布门禁，只在验证、代码审查、deployment（如有）、验收和记忆回写通过后执行；提交说明、备注和变更描述必须使用中文，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态，失败回流为 `fix_git_publish`。

@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-26 | SmartMultiPlatformArbitrage nofx live bridge 已补齐 chat 状态卡、session 输出恢复、风险误判修复和 memory/docs-only 跳过 deployment 边界
+> 最后更新：2026-04-27 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ workflow owner 标签；14 Agent 文档仅保留为历史 OpenClaw 注册表快照
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -28,7 +28,7 @@
 | 分类 | 入口 | 文档数 |
 |------|------|--------|
 | [部署与运维](基础设施/部署与运维/README.md) | Linux/Windows部署、Gateway守护、排障 | 8篇 |
-| [多Agent体系](基础设施/多Agent体系/README.md) | 14 Agent 角色绑定、能力 manifest | 1篇 |
+| [多Agent体系](基础设施/多Agent体系/README.md) | 历史 14 Agent 注册表；nofx 当前为 2 个 Hermes profile + workflow owner 标签 | 1篇 |
 | [协议与规范](基础设施/协议与规范/README.md) | trace_id、任务派发、错误进化、TG输出 | 4篇 |
 | [记忆蒸馏](基础设施/记忆蒸馏/README.md) | 多源会话蒸馏、热记忆、技能候选 | 4篇 |
 | [技能化架构](基础设施/技能化架构/README.md) | Skill 标准化、HardFlow 迁移、评分三步流水线 | 3篇 |

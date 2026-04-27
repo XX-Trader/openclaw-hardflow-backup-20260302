@@ -1,6 +1,6 @@
 # SmartMultiPlatformArbitrage nofx live evidence bridge
 
-> 最后验证：2026-04-26 16:00 Asia/Shanghai
+> 最后验证：2026-04-27 10:30 Asia/Shanghai
 > 适用范围：nofx 上 SmartMultiPlatformArbitrage 的 Discord 需求入口、Hermes runtime、项目交付优先工作流 live 证据桥。
 
 ## 归属边界
@@ -21,6 +21,23 @@
 | 标准入口 | `/home/arbops/.local/bin/smart-arb-pipeline` |
 | 内控 FastAPI | `tmux` 会话 `smart-arb-api`，监听 `127.0.0.1:18080` |
 | nofx profile SOUL 模板 | `config/nofx-hermes-profiles/<profile>/SOUL.md` |
+
+## 当前 agent/model 口径
+
+2026-04-27 远程核对后，nofx 当前运行态按三层理解：
+
+1. **live 入口**：只有两个 Hermes Discord profile，`arbitrageagent` 与 `spreadagent`。
+2. **workflow 阶段 owner**：`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 等用于阶段分工、隔离 workspace 和 Task Center 留痕，不是独立常驻 agent 进程。
+3. **cron 责任标签**：`ops-agent`、`optimization-agent` 等用于定时任务归属；是否真的有运行中的 agent，要继续看具体 profile、tmux、session/run id 或命令证据。
+
+| profile | 入口类型 | 模型 provider | 默认模型 | gateway |
+|---------|----------|---------------|----------|---------|
+| `arbitrageagent` | Hermes Discord profile | `openai-codex` | `gpt-5.5` | `running` |
+| `spreadagent` | Hermes Discord profile | `openai-codex` | `gpt-5.5` | `running` |
+
+服务器当前还没有可解释为“14 个常驻 agent”的注册目录：`/home/arbops/.hermes/agents`、`/home/arbops/.openclaw/agents`、`/root/.openclaw/agents`、`/home/arbops/.codex/agents`、`/root/.codex/agents` 均未作为 live agent 注册表存在。2026-03 的 14 Agent 文档仅保留为历史 OpenClaw 注册表快照，不代表 nofx 当前 Hermes workflow runtime。
+
+安装态版本也要分层：2026-04-27 核对时 nofx hardflow 仓库仍在 `44b4dae`，安装态 `/home/arbops/.hermes/ops/repo_hygiene_reviewer.py` 尚不存在，`source_registry_watcher` cron 仍是每周日；本仓库最新 `e45e0af` 的 2 天来源监控、仓库精简巡检和 `git_publish` 需要再次 pull + runtime installer 后才会成为服务器运行态。
 
 ## 安装产物
 

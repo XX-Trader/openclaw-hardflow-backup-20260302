@@ -185,7 +185,7 @@ scripts/openclaw-ops/
 
 ### Step 6.2 — 索引文件四方同步 ✅
 
-- `agent_to_skills.json`：14 个 Agent 全覆盖（无空数组）
+- `agent_to_skills.json`：历史 OpenClaw 注册表 14 个 Agent 全覆盖（无空数组）；不作为 nofx 当前 Hermes runtime 的常驻 agent 数量依据
 - `skill_to_agents.json`：反向补齐 + 新增条目
 - `skills_by_domain.json`：新增 `ops_infra`（8技能）和 `intelligence`（2技能）域
 - `skills/by_agent/`：6 个文件重写 + `explorer.md` 新建

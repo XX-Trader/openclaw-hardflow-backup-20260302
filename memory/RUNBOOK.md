@@ -24,6 +24,15 @@
 
 注意：当前 live bridge 已证明 workspace 隔离和阶段命令执行；2026-04-25 22:06 的 nofx smoke `codex-arbitrageagent-20260425T140605083467Z` 里，命令阶段均记录为 `runtime-agent-workspace` / `isolated-agent-workspace`。native 多 agent fan-out 仍需以独立宿主 session/run id 为准。
 
+## 2026-04-27 - nofx agent/model 实时口径
+
+类型：runbook
+范围：`/home/arbops/.hermes/profiles`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/cron/jobs.json`、项目交付优先工作流阶段 owner
+事实：nofx 当前不是 14 个常驻 agent。服务器 live 入口是两个 Hermes Discord profile：`arbitrageagent` 和 `spreadagent`；两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`，且 `gateway_state=running`。服务器没有可作为 14 个常驻 agent 注册表解释的 `/home/arbops/.hermes/agents`、`/home/arbops/.openclaw/agents`、`/root/.openclaw/agents`、`/home/arbops/.codex/agents`、`/root/.codex/agents` 目录。项目交付流水线里的 `project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 是阶段 owner / worktree / Task Center 标签；cron 里的 `ops-agent` 与 `optimization-agent` 是定时任务责任标签，不等于常驻模型进程。
+证据：2026-04-27 通过 nofx 远程核对：`tmux ls` 包含 `hermes-discord-arbitrage`、`hermes-discord-spread`、`hermes-tg`、`smart-arb-api`；两个 profile 的 `config.yaml` 均显示 `openai-codex/gpt-5.5`；`gateway_state.json` 均为 `running`。同时复核 nofx hardflow 仓库 `HEAD=44b4dae`，安装态 `/home/arbops/.hermes/ops/repo_hygiene_reviewer.py` 尚不存在，cron 仍有 11 个 job，其中 `source_registry_watcher` 仍是每周日运行。
+最后验证：2026-04-27 10:30
+复用建议：以后回答“服务器上有多少 agent、什么模型”时按三层区分：第一层是两个 live Hermes profile 与模型；第二层是 workflow stage owner / workspace 标签；第三层是 cron job 责任标签。不要把 2026-03 OpenClaw 14 Agent 注册表当成 nofx 当前运行态。若要把本仓库最新 2 天巡检和 Git 发布门禁同步到 nofx，先拉取 `e45e0af` 或更新后的 `main`，再运行 runtime installer。
+
 ## nofx hardflow 拉取与安装记录
 
 ### 2026-04-26 17:03 - Discord pipeline evidence 修复安装

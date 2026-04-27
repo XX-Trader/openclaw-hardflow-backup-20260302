@@ -129,14 +129,23 @@
 
 ## Agent 模型配置
 
-> ✅ 2026-03-29 已全部更新
+> ✅ 2026-04-27 已按 nofx 当前运行态修正。不要再把 2026-03 OpenClaw 14 Agent 注册表当成 nofx live agent 数量。
 
-| Agent | 配置 | 状态 |
-|-------|------|------|
-| coordinator | `openai-codex/gpt-5.4` | ✅ |
-| tester | `kimicode/Doubao-Seed-2.0-pro` | ✅ |
-| doc-writer | `kimicode/Doubao-Seed-2.0-pro` | ✅ |
-| explorer | `openai-codex/gpt-5.4-mini` | ✅ 新增 |
+### nofx 当前 live 入口
+
+| 入口/profile | 类型 | 模型 | 状态 |
+|--------------|------|------|------|
+| `arbitrageagent` | Hermes Discord profile | `openai-codex/gpt-5.5` | ✅ gateway running |
+| `spreadagent` | Hermes Discord profile | `openai-codex/gpt-5.5` | ✅ gateway running |
+
+### workflow / cron 标签口径
+
+| 标签 | 类型 | 当前模型口径 |
+|------|------|--------------|
+| `project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` | workflow 阶段 owner / 隔离 workspace / Task Center 标签 | 由当前 live profile 承载，不是独立常驻模型 |
+| `ops-agent`、`optimization-agent` | cron 责任标签 | 由调度入口执行命令，不等于服务器上常驻 14 个 agent |
+
+> 服务器安装态提示：2026-04-27 核对时 nofx hardflow 仓库仍在 `44b4dae`，尚未安装本仓库最新 `e45e0af`；`source_registry_watcher` 在服务器 cron 中仍是每周日，`repo_hygiene_reviewer.py` 尚未安装到 `/home/arbops/.hermes/ops`。
 
 ---
 ## 参考文档

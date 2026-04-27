@@ -1,7 +1,8 @@
 # OpenClaw 控制面全景 — 系统运行架构手册
 
-> **最后更新：2026-03-31**
-> 本文档是 OpenClaw 多 Agent 系统的全局运行指南，涵盖：谁在运行、怎么调度、工作流如何流转、配置在哪里改。
+> **最后更新：2026-04-27**
+> 本文档是 OpenClaw 历史控制面的全局运行指南，涵盖：谁在运行、怎么调度、工作流如何流转、配置在哪里改。
+> nofx 当前 Hermes workflow runtime 已精简为 `arbitrageagent` / `spreadagent` 两个 live profile，模型均为 `openai-codex/gpt-5.5`；本文中 14 Agent 口径仅代表历史 OpenClaw 注册表，不代表 nofx 当前运行态。
 
 ---
 
@@ -9,7 +10,7 @@
 
 | 问题 | 现状 | 位置 |
 |------|------|------|
-| **有哪些 Agent** | 14 个 Agent + 1 路由别名 | [多Agent体系/README.md](file:///H:/GitHub/openclaw-hardflow-backup-20260302/docs/基础设施/多Agent体系/README.md) |
+| **有哪些 Agent** | 历史 OpenClaw 注册表：14 个 Agent + 1 路由别名；nofx 当前运行态：2 个 Hermes profile + workflow stage owner 标签 | [多Agent体系/README.md](file:///H:/GitHub/openclaw-hardflow-backup-20260302/docs/基础设施/多Agent体系/README.md) |
 | **Agent 用什么能力/技能** | `agent_capability_manifest.json` | `~/agents/agent_capability_manifest.json` |
 | **工作流有哪些** | 5 个 Profile（4 个编码 + 1 个治理） | `~/.openclaw/ops/policy/workflow-profile-registry.json` |
 | **整个流程是什么** | 见下方 §3. 端到端流程图 | — |

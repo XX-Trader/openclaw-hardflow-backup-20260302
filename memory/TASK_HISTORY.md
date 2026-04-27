@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-04-27 - nofx agent 口径与模型快照修正
+
+类型：task
+范围：`memory/INDEX.md`、`memory/RUNBOOK.md`、`docs/核心主工作流/项目交付优先工作流/`、`docs/基础设施/多Agent体系/README.md`、`todo.md`
+事实：修正关于 nofx “14 个常驻 agent”的误导口径。当前 nofx live 入口只有两个 Hermes Discord profile：`arbitrageagent` 与 `spreadagent`，两者模型均为 `openai-codex/gpt-5.5` 且 gateway running；项目交付链路中的 `project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 等是阶段 owner / workspace / Task Center 标签，不是独立常驻 agent。2026-03 的 14 Agent 文档保留为历史 OpenClaw 注册表快照，不再作为 nofx 运行态结论。
+证据：2026-04-27 nofx 远程核对 profile config、gateway_state、tmux 会话、缺失常驻 agent 目录、cron/jobs 和 hardflow 仓库 HEAD；文档已同步标注当前 server runtime 仍在 `44b4dae`，尚未安装本仓库最新 `e45e0af` 的 `repo_hygiene_reviewer_2d` 与 2 天 `source_registry_watcher` 运行态。
+最后验证：2026-04-27 10:30
+复用建议：后续沟通一律使用“三层口径”：live profile、workflow owner 标签、cron 责任标签；模型只对真实 profile 或明确 provider command 声明，不把标签误写成独立模型。
+
 ## 2026-04-27 - 2 天仓库精简巡检与 Git 发布门禁
 
 类型：task

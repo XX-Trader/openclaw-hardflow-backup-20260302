@@ -7,6 +7,11 @@
 
 ## 2026-04-27 已完成
 
+- [x] [2026-04-27] **nofx agent/model 口径修正**
+  - 远程复核 nofx 当前运行态：`arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile 均为 `openai-codex/gpt-5.5`，gateway running。
+  - 修正“14 个 agent”误导口径：2026-03 的 14 Agent 文档仅保留为历史 OpenClaw 注册表快照；nofx 当前项目交付链路中的 `project-agent`、`web-agent`、`reviewer`、`backend-dev`、`tester`、`git-master` 是阶段 owner / workspace / Task Center 标签，不是独立常驻 agent。
+  - 同步 `memory/`、项目交付工作流文档、基础设施索引和 `todo.md` 的模型配置说明。
+
 - [x] [2026-04-27] **仓库精简巡检与 Git 发布门禁**
   - 新增 `repo_hygiene_reviewer.py`，由 `optimization-agent` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和 Task Center 人工确认候选，不自动删除、不自动推送。
   - `source_registry_watcher（API来源监控）` 调整为每 2 天执行，并修复 `--base-path`，确保安装态读取 runtime 项目记忆目录。
