@@ -170,10 +170,10 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_action`：
 
-0. 运行中每 60 秒输出一次 `# nofx 任务执行进度`，从 `pipeline_state.json` 和 `command-runs/*.json` 读取已完成阶段、当前阶段、最近 agent 输出和证据目录；`--emit-json` / `--no-chat-summary` 会关闭进度卡，保持机器可读原始输出。
+0. 运行中每 60 秒输出一次 `# nofx 任务执行进度`，从 `pipeline_state.json` 和 `command-runs/*.json` 读取已完成阶段、当前阶段、最近命令状态和证据目录；默认不展开 command stdout/stderr/error；`--emit-json` / `--no-chat-summary` 会关闭进度卡，保持机器可读原始输出。
 1. `agent 分工与完成情况` 展示每个阶段对应 owner、状态、verdict、score 和证据文件。
-2. `agent 输出摘要` 从 `command-runs/*.json` 读取 stdout/stderr/error，展示每个 stage command 的 agent、returncode 和关键输出。
-3. `阻塞原因` 展示失败阶段、stage detail、命令输出和 artifact 摘要。
+2. `阶段命令状态` 从 `command-runs/*.json` 读取 stage、agent、returncode 和证据文件，默认只显示命令状态行；失败时才追加脱敏摘要。
+3. `阻塞原因` 展示失败阶段、stage detail、脱敏命令摘要或 artifact 摘要，不直接贴原始命令输出。
 4. `自动修复判断` 记录是否回流、回流次数、风险分类和每次结果。
 
 默认自动修复策略：
@@ -181,8 +181,9 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 - `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`、`fix_git_publish`：最多自动回流 2 次。
 - 自动回流仍重新执行 `/home/arbops/.local/bin/smart-arb-pipeline`，每次使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 自动回流会把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并同时通过内联 `PIPELINE_REPAIR_CONTEXT` 注入后续 Hermes stage prompt；即使文件写入失败，也不会丢失失败上下文。
-- 状态卡默认展开最多 24 条 `command-runs/*.json` 摘要；需要更多可设置 `SMART_ARB_CHAT_COMMAND_LIMIT` 或传 `--chat-command-limit`。profile SOUL 要求把完整中文状态卡分段回传到聊天频道，不允许只回 run id、失败阶段和证据目录。
+- 状态卡默认展示最多 24 条 `command-runs/*.json` 状态行；需要更多可设置 `SMART_ARB_CHAT_COMMAND_LIMIT` 或传 `--chat-command-limit`。默认不展示 reviewer/tester/terminal 原始输出；排障时如需脱敏命令摘要，可设置 `SMART_ARB_CHAT_INCLUDE_COMMAND_OUTPUT=1` 或传 `--chat-include-command-output`；如需旧版“关键证据”列表，可设置 `SMART_ARB_CHAT_SHOW_KEY_ARTIFACTS=1` 或传 `--chat-show-key-artifacts`。profile SOUL 要求把中文状态卡分段回传到聊天频道，不允许只回 run id、失败阶段和证据目录。
 - 进度卡默认 60 秒一次；需要调整可设置 `SMART_ARB_PROGRESS_INTERVAL_SECONDS` 或传 `--progress-interval-seconds`，最近阶段和最近命令条数分别由 `SMART_ARB_PROGRESS_STAGE_LIMIT` / `--progress-stage-limit`、`SMART_ARB_PROGRESS_COMMAND_LIMIT` / `--progress-command-limit` 控制。
+- nofx profile 模板通过 `agent.gateway_notify_interval: 0`、`display.tool_progress: off`、`display.background_process_notifications: off` 关闭 Hermes 通用 `Still working...` 心跳、tool progress 和 `[Background process ...]` wrapper；聊天里的长任务反馈由 `smart-arb-pipeline` 中文状态卡负责。
 - 如果 Hermes CLI stdout/stderr 只有 `session_id: ...`，但对应 profile session 文件已有 assistant 输出，live bridge 会从 `/home/arbops/.hermes/profiles/<profile>/sessions/session_<id>.json` 恢复最新 assistant 内容，先做脱敏，再用于 `external_research` local-only pass 判定和状态卡输出。
 - 非代码 Hermes 阶段只返回 stdout/final answer 证据，不直接编辑 `research_report.md`、`requirements_discussion.md`、`patch_summary.md` 等 pipeline artifacts；bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，这些文件由 runner 负责持久化。
 - `external_research` 如果不需要互联网检索，必须在输出里写明 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据；这属于有效 research evidence，不应因缺少 browser lookup 被判失败。

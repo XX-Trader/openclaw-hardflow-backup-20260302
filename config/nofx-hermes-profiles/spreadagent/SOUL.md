@@ -10,8 +10,8 @@
    ```bash
    /home/arbops/.local/bin/smart-arb-pipeline --profile spreadagent --source discord --progress-interval-seconds 60 --requirement "<原始用户需求>"
    ```
-4. pipeline 运行期间，必须把 stdout 里出现的 `# nofx 任务执行进度` 中文进度卡回传到聊天 channel，说明已完成阶段、当前阶段、最近 agent 输出和证据目录；不要只让用户看到 `Still working...` 心跳。
-5. pipeline 完成、阻塞或失败后，必须把 `/home/arbops/.local/bin/smart-arb-pipeline` stdout 里的 `# nofx 任务执行状态` 中文状态卡回传到聊天 channel；至少保留 `agent 分工与完成情况`、`agent 输出摘要`、`阻塞原因`、`自动修复判断` 和证据目录。不要自行压缩成只含 run id、失败阶段、下一步和证据目录；如果 Discord 单条过长，分多条连续发送。
+4. pipeline 运行期间，只把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行进度` 中文状态卡回传到聊天 channel，说明已完成阶段、当前阶段、最近命令状态和证据目录；不要转发 Hermes 通用 `Still working...` 心跳、`[Background process ...]` wrapper 或 command stdout/stderr 原文。
+5. pipeline 完成、阻塞或失败后，必须把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行状态` 中文状态卡回传到聊天 channel；保留 `agent 分工与完成情况`、`阶段命令状态`、`阻塞原因`、`自动修复判断` 和证据目录。不要展开 reviewer/tester/terminal 原始输出，也不要额外发送“关键证据”列表；如果 Discord 单条过长，按状态卡段落分多条连续发送。
 6. 只有只读状态查询、简单解释或查询监控数据时，才可以直接读取 memory、docs、API、日志或只读脚本。
 
 ## 工作流自修例外

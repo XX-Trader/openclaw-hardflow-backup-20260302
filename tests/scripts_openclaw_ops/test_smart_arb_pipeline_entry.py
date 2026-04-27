@@ -112,10 +112,52 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("内部部署: deployer -> 完成", text)
         self.assertIn("记忆写回: doc-writer -> 完成", text)
         self.assertIn("Git 发布: coordinator -> 完成", text)
-        self.assertIn("## agent 输出摘要", text)
-        self.assertIn("代码执行: backend-dev -> 通过", text)
-        self.assertIn("changed files", text)
-        self.assertIn("关键证据: requirements_discussion, verification, code_review, deployment, acceptance, writeback, git_publish", text)
+        self.assertIn("## 阶段命令状态", text)
+        self.assertIn("代码执行: backend-dev -> 通过；returncode=0；证据=code_execution-1.json", text)
+        self.assertNotIn("changed files", text)
+        self.assertNotIn("关键证据:", text)
+
+    def test_render_chat_summary_can_include_command_output_for_debug(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            command_report = Path(tmp) / "code_execution-1.json"
+            command_report.write_text(
+                json.dumps(
+                    {
+                        "stage": "code_execution",
+                        "agent_id": "backend-dev",
+                        "returncode": 0,
+                        "ok": True,
+                        "stdout": "changed files: scripts/openclaw-ops/smart_arb_pipeline_entry.py",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "run_id": "discord-arbitrageagent-test",
+                "status": "completed",
+                "next_action": "none",
+                "failed_stage": None,
+                "run_dir": tmp,
+                "artifacts": {
+                    "command_code_execution_1": str(command_report),
+                    "verification": "/tmp/verification_report.md",
+                },
+                "stages": [{"name": "code_execution", "status": "completed", "artifact": "/tmp/patch_summary.md"}],
+            }
+
+            text = module.render_chat_summary(
+                state,
+                source="discord",
+                profile="arbitrageagent",
+                returncode=0,
+                include_command_output=True,
+                show_key_artifacts=True,
+            )
+
+        self.assertIn("摘要=changed files", text)
+        self.assertIn("关键证据: verification", text)
 
     def test_render_chat_summary_shows_block_reason_and_repair_decision(self):
         module = load_module()
@@ -235,19 +277,29 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 profile="spreadagent",
                 elapsed_seconds=125,
             )
+            text_with_output = module.render_progress_update(
+                state,
+                source="discord",
+                profile="spreadagent",
+                elapsed_seconds=125,
+                include_command_output=True,
+            )
 
         self.assertIn("# nofx 任务执行进度", text)
         self.assertIn("总状态: 运行中", text)
         self.assertIn("已运行: 2分5秒", text)
         self.assertIn("阶段进度: 2/3 完成", text)
         self.assertIn("当前阶段: 代码执行: backend-dev -> running", text)
-        self.assertIn("## 最近 agent 输出", text)
-        self.assertIn("代码执行: backend-dev -> 通过", text)
-        self.assertIn("api_key=[REDACTED]", text)
+        self.assertIn("## 最近命令状态", text)
+        self.assertIn("代码执行: backend-dev -> 通过；returncode=0；证据=code_execution-1.json", text)
+        self.assertNotIn("api_key=[REDACTED]", text)
         self.assertNotIn("short-secret-value", text)
         self.assertNotIn("json-live-secret", text)
         self.assertNotIn("json-local-doc-example", text)
         self.assertNotIn("toml-local-doc-example", text)
+
+        self.assertIn("api_key=[REDACTED]", text_with_output)
+        self.assertNotIn("short-secret-value", text_with_output)
 
     def test_latest_command_reports_orders_by_command_timestamps(self):
         module = load_module()

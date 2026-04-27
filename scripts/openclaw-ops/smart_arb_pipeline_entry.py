@@ -430,14 +430,32 @@ def report_excerpt(report: dict, limit: int = 260, *, redact: bool = True) -> st
     return "没有可用输出"
 
 
-def report_line(report: dict) -> str:
+def report_artifact_name(report: dict) -> str:
+    path = str(report.get("_artifact_path") or "").strip()
+    if path:
+        return Path(path).name
+    key = str(report.get("_artifact_key") or "").strip()
+    match = COMMAND_ARTIFACT_RE.match(key)
+    if match:
+        return f"{match.group('stage')}-{match.group('index')}.json"
+    return ""
+
+
+def report_line(report: dict, *, include_output: bool = False) -> str:
     stage = str(report.get("stage") or "").strip()
     label = STAGE_LABELS.get(stage, stage or "命令")
     agent = str(report.get("agent_id") or STAGE_AGENT_MAP.get(stage, "agent")).strip()
     returncode = report.get("returncode")
     ok = "通过" if report.get("ok") else "失败"
-    output = report_excerpt(report)
-    return f"- {label}: {agent} -> {ok}；returncode={returncode}；输出={output}"
+    parts = [f"{label}: {agent} -> {ok}", f"returncode={returncode}"]
+    artifact = report_artifact_name(report)
+    if artifact:
+        parts.append(f"证据={artifact}")
+    if include_output or not report.get("ok"):
+        output = report_excerpt(report)
+        if output and output != "没有可用输出":
+            parts.append(f"摘要={output}")
+    return "- " + "；".join(parts)
 
 
 def run_state_path(run_id: str) -> Path:
@@ -499,7 +517,7 @@ def render_progress_start(run_id: str, *, source: str, profile: str) -> str:
             f"- Run ID: {run_id}",
             "- 状态: 已启动 coordinator pipeline，等待第一份阶段状态",
             f"- 证据目录: {run_dir}",
-            "- 说明: 后续会按阶段输出已完成内容、当前卡点和最近 agent 输出；最终仍会返回完整状态卡。",
+            "- 说明: 后续只输出工作流阶段状态、当前卡点和证据位置；不会展开命令原始输出。",
         ]
     )
 
@@ -512,6 +530,7 @@ def render_progress_update(
     elapsed_seconds: float,
     stage_limit: int = 8,
     command_limit: int = 3,
+    include_command_output: bool = False,
 ) -> str:
     if not isinstance(state, dict) or not state:
         return ""
@@ -549,9 +568,9 @@ def render_progress_update(
     reports = latest_command_reports(state, command_limit)
     if reports:
         lines.append("")
-        lines.append("## 最近 agent 输出")
+        lines.append("## 最近命令状态")
         for report in reports:
-            lines.append(report_line(report))
+            lines.append(report_line(report, include_output=include_command_output))
     return "\n".join(lines)
 
 
@@ -689,6 +708,8 @@ def render_chat_summary(
     raw_stderr: str = "",
     stage_limit: int = 20,
     command_limit: int = 24,
+    include_command_output: bool = False,
+    show_key_artifacts: bool = False,
 ) -> str:
     if not state:
         tail = compact_text((raw_stderr or raw_stdout or "pipeline runner 没有返回可解析状态"), 360)
@@ -735,12 +756,12 @@ def render_chat_summary(
     reports = command_reports(state)
     if reports:
         lines.append("")
-        lines.append("## agent 输出摘要")
+        lines.append("## 阶段命令状态")
         visible_command_limit = max(1, int(command_limit or 24))
         for report in reports[:visible_command_limit]:
-            lines.append(report_line(report))
+            lines.append(report_line(report, include_output=include_command_output))
         if len(reports) > visible_command_limit:
-            lines.append(f"- 还有 {len(reports) - visible_command_limit} 条命令输出未展开，详见 command-runs/")
+            lines.append(f"- 还有 {len(reports) - visible_command_limit} 条命令状态未展开，详见 command-runs/")
 
     auto_repair = state.get("auto_repair") if isinstance(state.get("auto_repair"), dict) else {}
     if auto_repair:
@@ -781,24 +802,25 @@ def render_chat_summary(
         else:
             lines.append(f"- 处理: 暂无自动修复路径，下一步={next_action or 'none'}。")
 
-    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
-    key_artifacts = [
-        key
-        for key in (
-            "requirements_discussion",
-            "verification",
-            "code_review",
-            "deployment",
-            "acceptance",
-            "delivery_evidence",
-            "writeback",
-            "git_publish",
-        )
-        if key in artifacts
-    ]
-    if key_artifacts:
-        lines.append("")
-        lines.append(f"关键证据: {', '.join(key_artifacts)}")
+    if show_key_artifacts:
+        artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+        key_artifacts = [
+            key
+            for key in (
+                "requirements_discussion",
+                "verification",
+                "code_review",
+                "deployment",
+                "acceptance",
+                "delivery_evidence",
+                "writeback",
+                "git_publish",
+            )
+            if key in artifacts
+        ]
+        if key_artifacts:
+            lines.append("")
+            lines.append(f"关键证据: {', '.join(key_artifacts)}")
     return "\n".join(lines)
 
 
@@ -819,6 +841,7 @@ def run_pipeline_command(
     progress_interval_seconds: int = 0,
     progress_stage_limit: int = 8,
     progress_command_limit: int = 3,
+    include_command_output: bool = False,
     source: str = "",
     profile: str = "",
 ) -> subprocess.CompletedProcess[str]:
@@ -866,6 +889,7 @@ def run_pipeline_command(
                     elapsed_seconds=now - started_at,
                     stage_limit=progress_stage_limit,
                     command_limit=progress_command_limit,
+                    include_command_output=include_command_output,
                 )
                 if progress:
                     print(progress, flush=True)
@@ -1071,6 +1095,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chat-stage-limit", type=int, default=int(os.environ.get("SMART_ARB_CHAT_STAGE_LIMIT", "20")))
     parser.add_argument("--chat-command-limit", type=int, default=int(os.environ.get("SMART_ARB_CHAT_COMMAND_LIMIT", "24")))
     parser.add_argument(
+        "--chat-include-command-output",
+        action="store_true",
+        default=env_flag("SMART_ARB_CHAT_INCLUDE_COMMAND_OUTPUT", False),
+        help="include compact command stdout/stderr excerpts in chat cards; disabled by default",
+    )
+    parser.add_argument(
+        "--chat-show-key-artifacts",
+        action="store_true",
+        default=env_flag("SMART_ARB_CHAT_SHOW_KEY_ARTIFACTS", False),
+        help="append the legacy key artifact name list to the final chat card",
+    )
+    parser.add_argument(
         "--progress-interval-seconds",
         type=int,
         default=int(os.environ.get("SMART_ARB_PROGRESS_INTERVAL_SECONDS", "60")),
@@ -1143,6 +1179,7 @@ def main(argv: list[str] | None = None) -> int:
         "progress_interval_seconds": progress_interval_seconds,
         "progress_stage_limit": int(args.progress_stage_limit or 0),
         "progress_command_limit": int(args.progress_command_limit or 0),
+        "include_command_output": bool(args.chat_include_command_output),
         "source": args.source,
         "profile": profile,
     }
@@ -1224,6 +1261,8 @@ def main(argv: list[str] | None = None) -> int:
                 raw_stderr=proc.stderr,
                 stage_limit=args.chat_stage_limit,
                 command_limit=args.chat_command_limit,
+                include_command_output=bool(args.chat_include_command_output),
+                show_key_artifacts=bool(args.chat_show_key_artifacts),
             )
         )
     return int(proc.returncode)

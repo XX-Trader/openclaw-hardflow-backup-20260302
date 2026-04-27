@@ -83,6 +83,11 @@ ENV_FUNCTION_LOOKUP_RE = re.compile(r"(?i)\b(?:os\.getenv|os\.environ\.get|geten
 CODE_EXPRESSION_RE = re.compile(r"(?i)^[A-Za-z_][A-Za-z0-9_.]*\s*\(")
 CODE_FILE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 GENERIC_DIFF_ASSIGNMENT_RE = re.compile(r"(?<![A-Za-z0-9_])['\"`]?[A-Za-z_][A-Za-z0-9_.-]*['\"`]?\s*[:=]\s*(.+)$")
+INLINE_HEADER_PLACEHOLDER_RE = re.compile(
+    r"(?i)(?:\bbasic\s+auth\b|\bbearer\s+(?:<[^>]+>|\[[^\]]+\]|\btoken\b))"
+)
+AUTH_PAYLOAD_RE = re.compile(r"(?i)\b(?:basic\s+auth|bearer)\s+([A-Za-z0-9][A-Za-z0-9._~+/=-]{6,})")
+HEADER_VALUE_BOUNDARY_RE = re.compile(r"[`。；;，,]|(?:\s+-\s+)|(?:\s+[A-Z][A-Za-z]+:)")
 ARTIFACT_PATH_ENV_NAMES = {
     "PIPELINE_RESEARCH_REPORT_FILE",
     "PIPELINE_REQUIREMENTS_FILE",
@@ -787,6 +792,45 @@ def is_code_expression_value(value: str, file_path: str) -> bool:
     return stripped.startswith(("{", "[", "(", "lambda "))
 
 
+def is_inline_header_placeholder_value(value: str, file_path: str) -> bool:
+    suffix = Path(file_path or "").suffix.lower()
+    if suffix not in {".md", ".markdown", ".txt", ".rst"}:
+        return False
+    text = normalize_secret_value(value).strip("'\"`").strip()
+    match = INLINE_HEADER_PLACEHOLDER_RE.match(text)
+    if not match:
+        return False
+    first_segment = HEADER_VALUE_BOUNDARY_RE.split(text, maxsplit=1)[0].strip()
+    if INLINE_HEADER_PLACEHOLDER_RE.fullmatch(first_segment):
+        return True
+    trailing_text = text[match.end() :].strip()
+    if not trailing_text:
+        return True
+    if AUTH_PAYLOAD_RE.match(text):
+        return False
+    if KNOWN_SECRET_RE.search(trailing_text) or SENSITIVE_VALUE_RE.search(trailing_text):
+        return False
+    return bool(SECRET_CONTEXT_PLACEHOLDER_RE.search(trailing_text))
+
+
+def is_sensitive_header_key(key: str) -> bool:
+    key_lower = (key or "").lower()
+    return any(name in key_lower for name in ("authorization", "cookie", "x-api-key", "x-auth-token", "x-csrf-token"))
+
+
+def is_safe_sensitive_header_value(value: str, file_path: str) -> bool:
+    stripped = normalize_secret_value(value).strip("'\"`").strip()
+    if not stripped:
+        return True
+    if SECRET_PLACEHOLDER_RE.fullmatch(stripped):
+        return True
+    if is_inline_header_placeholder_value(stripped, file_path):
+        return True
+    if ENV_LOOKUP_RE.search(stripped):
+        return is_safe_env_lookup_value(stripped)
+    return False
+
+
 def sensitive_assignment_has_secret(key: str, value: str) -> bool:
     return secret_assignment_finding(key, value, "", "", None)["blocking"]
 
@@ -813,7 +857,6 @@ def secret_assignment_finding(
     line_number: int | None,
 ) -> dict[str, Any]:
     text = normalize_secret_value(value)
-    key_lower = (key or "").lower()
     base = {
         "file": file_path or "unknown",
         "line": line_number,
@@ -826,6 +869,10 @@ def secret_assignment_finding(
         return {**base, "risk": "high", "rule": "known_secret_pattern", "blocking": True}
     if SENSITIVE_VALUE_RE.search(text):
         return {**base, "risk": "high", "rule": "high_entropy_secret_value", "blocking": True}
+    if is_sensitive_header_key(key):
+        if is_safe_sensitive_header_value(text, file_path):
+            return {**base, "risk": "low", "rule": "secret_placeholder", "blocking": False}
+        return {**base, "risk": "high", "rule": "sensitive_header_assignment", "blocking": True}
     if ENV_LOOKUP_RE.search(text):
         if is_safe_env_lookup_value(text):
             return {**base, "risk": "low", "rule": "secret_placeholder", "blocking": False}
@@ -834,8 +881,6 @@ def secret_assignment_finding(
         return {**base, "risk": "low", "rule": "secret_placeholder", "blocking": False}
     if is_code_expression_value(text, file_path):
         return {**base, "risk": "low", "rule": "code_expression", "blocking": False}
-    if any(name in key_lower for name in ("authorization", "cookie", "x-api-key", "x-auth-token", "x-csrf-token")):
-        return {**base, "risk": "high", "rule": "sensitive_header_assignment", "blocking": True}
     return {**base, "risk": "high", "rule": "sensitive_assignment", "blocking": True}
 
 

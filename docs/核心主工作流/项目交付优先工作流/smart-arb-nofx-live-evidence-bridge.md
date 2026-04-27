@@ -60,9 +60,9 @@ Discord 入口默认就是真实执行：
 /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --requirement "<需求文本>"
 ```
 
-默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况、agent 输出摘要、阻塞证据、自动修复判断和关键证据。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`。
+默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况、阶段命令状态、阻塞证据、自动修复判断和证据目录。默认不展开 reviewer/tester/terminal stdout/stderr，也不额外输出“关键证据”列表。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`；需要脱敏命令摘要时，加 `--chat-include-command-output`。
 
-聊天输出还会在运行中默认每 60 秒打印 `# nofx 任务执行进度`，从 `pipeline_state.json` 与最近 `command-runs/*.json` 汇总已完成阶段、当前阶段、最近 agent 输出和证据目录，避免 Discord 只显示 `Still working...` 心跳。`--emit-json` / `--no-chat-summary` 会关闭运行中进度卡；间隔和摘要条数可用 `--progress-interval-seconds`、`--progress-stage-limit`、`--progress-command-limit` 调整。
+聊天输出还会在运行中默认每 60 秒打印 `# nofx 任务执行进度`，从 `pipeline_state.json` 与最近 `command-runs/*.json` 汇总已完成阶段、当前阶段、最近命令状态和证据目录。Hermes 通用 `Still working...` 心跳、tool progress 和 `[Background process ...]` wrapper 由 profile 配置关闭，长任务反馈只走 pipeline 中文状态卡。`--emit-json` / `--no-chat-summary` 会关闭运行中进度卡；间隔和摘要条数可用 `--progress-interval-seconds`、`--progress-stage-limit`、`--progress-command-limit` 调整。
 
 live 默认注入以下命令证据：
 
@@ -89,7 +89,7 @@ Discord 状态卡必须回答三个问题：
 2. 达到了什么结果，关键输出是什么。
 3. 如果卡住，具体因为什么卡住，系统是否已自行回流修复。
 
-当前入口会读取 `command-runs/*.json`，从 stage command 的 stdout、stderr、error 中抽取摘要写入 `agent 输出摘要`。如果 pipeline 进入 `blocked`，状态卡会追加 `阻塞原因`，包含失败阶段、stage detail、命令输出或 artifact 摘要。
+当前入口会读取 `command-runs/*.json`，从 stage command 中抽取 stage、agent、returncode 和证据文件写入 `阶段命令状态`。默认不展示 stdout/stderr/error；只有失败命令或显式开启 `--chat-include-command-output` 时才追加脱敏摘要。如果 pipeline 进入 `blocked`，状态卡会追加 `阻塞原因`，包含失败阶段、stage detail、脱敏命令摘要或 artifact 摘要。
 
 自动修复策略：
 
@@ -130,7 +130,7 @@ nofx 两个 Discord Hermes profile 的 `SOUL.md` 使用本仓库模板维护：
 1. 执行类请求先创建 `smart-arb-pipeline` run。
 2. 不允许在 profile 会话里直接实现、部署、安装依赖、修改代码或提交 Git。
 3. 只有只读状态查询、简单解释或监控数据查询可以直接处理。
-4. 运行期间必须回传 `# nofx 任务执行进度`，完成后必须回传 `# nofx 任务执行状态`。
+4. 运行期间必须回传 `# nofx 任务执行进度`，完成后必须回传 `# nofx 任务执行状态`；不要转发 Hermes 通用心跳、background wrapper 或 command 原始输出。
 5. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
 
 2026-04-25 19:20 已按上述模板刷新 nofx 两个 profile，并重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。2026-04-25 23:45 再次刷新为绝对入口命令，并改用 profile `start-gateway.sh` 加载 `.env` 后启动。验证结果：

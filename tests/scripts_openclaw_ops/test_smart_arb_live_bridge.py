@@ -298,6 +298,50 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         self.assertTrue(findings)
         self.assertTrue(all(not finding["blocking"] for finding in findings))
 
+    def test_staged_diff_secret_scan_allows_markdown_inline_basic_auth_placeholder(self):
+        bridge = self._load_bridge_module()
+        diff = "\n".join(
+            [
+                "diff --git a/memory/PITFALLS.md b/memory/PITFALLS.md",
+                "+++ b/memory/PITFALLS.md",
+                "@@ -0,0 +1,2 @@",
+                "+" + "事实：README 占位说明：" + "Authorization" + ": Basic Auth 测试说明不应误报。",
+                "+" + "说明：`" + "Authorization" + ": Bearer <token>` 只是文档占位，不是真实 token。",
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertFalse(bridge.staged_diff_has_secret(diff))
+        self.assertTrue(findings)
+        self.assertTrue(all(not finding["blocking"] for finding in findings))
+
+    def test_staged_diff_secret_scan_blocks_markdown_inline_real_authorization_value(self):
+        bridge = self._load_bridge_module()
+        cases = [
+            "+" + "说明：" + "Authorization" + ": Bearer live-real-short-token 不应进入文档。",
+            "+" + "说明：" + "Authorization" + ": Bearer live-real-short-token test only 也必须阻断。",
+            "+" + "说明：" + "Authorization" + ": Bearer live-real-short-token example only 也必须阻断。",
+            "+" + "说明：" + "Authorization" + ": Basic Auth live-real-short-token test only 也必须阻断。",
+            "+" + "说明：" + "Authorization" + ": Basic Auth live-real-short-token example only 也必须阻断。",
+        ]
+        for line in cases:
+            with self.subTest(line=line):
+                diff = "\n".join(
+                    [
+                        "diff --git a/README.md b/README.md",
+                        "+++ b/README.md",
+                        "@@ -0,0 +1 @@",
+                        line,
+                    ]
+                )
+                findings = bridge.staged_diff_secret_findings(diff)
+
+                self.assertTrue(bridge.staged_diff_has_secret(diff))
+                self.assertEqual(1, len(findings))
+                self.assertEqual("sensitive_header_assignment", findings[0]["rule"])
+                self.assertTrue(findings[0]["blocking"])
+
     def test_redact_text_handles_quoted_sensitive_assignments(self):
         bridge = self._load_bridge_module()
         field_one = "api" + "_key"

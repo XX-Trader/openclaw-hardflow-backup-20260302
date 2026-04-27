@@ -7,11 +7,13 @@
 
 ## 2026-04-27 已完成
 
-- [x] [2026-04-27] **nofx Discord 运行中进度卡与敏感输出脱敏**
-  - `smart-arb-pipeline` 默认不再只等子进程结束后输出最终状态；入口会轮询 `pipeline_state.json`，每 60 秒输出 `# nofx 任务执行进度`，展示已完成阶段、当前阶段、最近 agent 输出和证据目录。
-  - `pipeline_runner.py` 在长命令启动前写入 `running` stage，阶段完成后刷新状态，避免 Discord 只显示 Hermes `Still working...` 心跳。
+- [x] [2026-04-27] **nofx Discord 输出降噪与工作流状态卡**
+  - `smart-arb-pipeline` 默认不再只等子进程结束后输出最终状态；入口会轮询 `pipeline_state.json`，每 60 秒输出 `# nofx 任务执行进度`，展示已完成阶段、当前阶段、最近命令状态和证据目录。
+  - 聊天状态卡默认不展开 reviewer/tester/terminal stdout/stderr，也不额外发送“关键证据”列表；需要调试时才用 `SMART_ARB_CHAT_INCLUDE_COMMAND_OUTPUT=1` / `--chat-include-command-output` 展开脱敏摘要。
+  - 两个 nofx profile 模板关闭 Hermes 通用 `Still working...` 心跳、tool progress 和 `[Background process ...]` wrapper，长任务反馈由 pipeline 中文状态卡负责。
+  - `pipeline_runner.py` 在长命令启动前写入 `running` stage，阶段完成后刷新状态，避免 Discord 只显示 Hermes 通用心跳。
   - 进度卡和 live bridge 输出脱敏覆盖普通赋值、header、JSON/TOML quoted sensitive key、长 token 和常见短 secret；`api_key=[REDACTED]` 等需要凭证的失败上下文仍保持 high-risk，不会自动回流。
-  - 验证：完整相关 unittest 通过；`python -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；code-reviewer 独立复审 APPROVED。
+  - 验证：`python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 32 项 OK；`python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 64 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；`git diff --check` 通过。本轮尚未部署到 nofx。
 
 - [x] [2026-04-27] **nofx Git 发布门禁分级与 fix_git_publish 自动回流**
   - `git_publish` secret scan 改为结构化 findings：只扫描 staged diff 新增行，并输出脱敏文件、行号、规则、风险等级和片段。

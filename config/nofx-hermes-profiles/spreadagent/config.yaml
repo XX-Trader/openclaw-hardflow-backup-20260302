@@ -12,6 +12,7 @@ terminal:
   timeout: 180
 agent:
   max_turns: 90
+  gateway_notify_interval: 0
 discord:
   require_mention: true
   free_response_channels: "1494595527181078578"
@@ -27,7 +28,8 @@ session_reset:
   idle_minutes: 1440
   at_hour: 4
 display:
-  tool_progress: new
+  tool_progress: off
+  background_process_notifications: off
 model:
   provider: openai-codex
   default: gpt-5.5
