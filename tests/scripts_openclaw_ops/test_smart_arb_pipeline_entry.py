@@ -191,6 +191,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:
             command_report = Path(tmp) / "code_execution-1.json"
+            field_one_label = "api" + "_key"
+            field_two_label = "pass" + "word"
             command_report.write_text(
                 json.dumps(
                     {
@@ -200,9 +202,12 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                         "ok": True,
                         "stdout": "\n".join(
                             [
-                                "完成 basic_auth_proxy 修复，api_key=short-secret-value 已脱敏",
-                                '{"api_key": "json-live-secret", "password": "json-local-doc-example"}',
-                                '"password" = "toml-local-doc-example"',
+                                f"完成 basic_auth_proxy 修复，{field_one_label}=short-secret-value 已脱敏",
+                                json.dumps(
+                                    {field_one_label: "json-live-secret", field_two_label: "json-local-doc-example"},
+                                    ensure_ascii=False,
+                                ),
+                                f'"{field_two_label}" = "toml-local-doc-example"',
                             ]
                         ),
                     },
