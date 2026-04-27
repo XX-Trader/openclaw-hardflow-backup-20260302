@@ -42,6 +42,7 @@ OPS_SCRIPT_MAP = {
     "memtidy_runner.py": "skills/library/memtidy/scripts/memtidy_runner.py",
     "config_watchdog.py": "skills/library/config-watchdog/scripts/config_watchdog.py",
     "source_registry_watcher.py": "scripts/openclaw-ops/source_registry_watcher.py",
+    "repo_hygiene_reviewer.py": "scripts/openclaw-ops/repo_hygiene_reviewer.py",
     "project_memory_writer.py": "scripts/openclaw-ops/project_memory_writer.py",
     "project_memory_injector.py": "scripts/openclaw-ops/project_memory_injector.py",
     "smart_arb_live_bridge.py": "scripts/openclaw-ops/smart_arb_live_bridge.py",

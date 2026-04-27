@@ -5,6 +5,15 @@
 
 ---
 
+## 2026-04-27 已完成
+
+- [x] [2026-04-27] **仓库精简巡检与 Git 发布门禁**
+  - 新增 `repo_hygiene_reviewer.py`，由 `optimization-agent` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和 Task Center 人工确认候选，不自动删除、不自动推送。
+  - `source_registry_watcher（API来源监控）` 调整为每 2 天执行，并修复 `--base-path`，确保安装态读取 runtime 项目记忆目录。
+  - 项目交付流水线新增 `git_publish` 阶段：验证、代码审查、deployment（如有）、验收和记忆回写通过后才执行；提交说明、备注和变更描述必须中文；疑似密钥、远端冲突、认证失败或 push 失败会阻塞为 `fix_git_publish`。
+  - `smart_arb_pipeline_entry.py` 默认注入 Git 发布命令，也支持 `--skip-git-publish-command` / `SMART_ARB_SKIP_GIT_PUBLISH_COMMAND=1` 临时关闭。
+  - 同步文档：项目交付 README/架构设计、nofx live evidence bridge、Cron 索引、治理清单、项目记忆和 todo。
+
 ## 2026-04-26 已完成
 
 - [x] [2026-04-26] **nofx 拉取最新 hardflow 代码并安装**

@@ -1,7 +1,7 @@
 # TODO
 
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
-> 更新时间：2026-04-24
+> 更新时间：2026-04-27
 
 ## P0 — 项目交付优先工作流（核心战略落地）
 
@@ -75,6 +75,8 @@
 - [x] [🟡 P1] 用 `hybrid-single-chat` 替代多次冷启动 Hermes smoke，避免每阶段 `hermes chat` 超时
 - [x] [🟡 P1] 为 nofx Smart Arb live bridge 补齐每阶段 owner 的独立 agent workspace、`PIPELINE_AGENT_REPO_DIR` 注入、code workspace diff 回流和 Task Center workspace 留痕
 - [x] [🟡 P1] 修复 nofx Discord 状态卡回显、Hermes `session_id` 输出恢复、否定式敏感词误判和 memory/docs-only 写回误触发 deployment
+- [x] [🟡 P1] 增加 `git_publish` 受控发布阶段，中文提交说明，疑似密钥/远端冲突/push 失败回流 `fix_git_publish`
+- [x] [🟡 P1] 增加 `repo_hygiene_reviewer.py` 两天一次仓库精简巡检，`source_registry_watcher` 同步调整为两天一次
 - [ ] [🟡 P1] 将 nofx Smart Arb live bridge 继续升级为宿主 native agent dispatch，并在 Task Center 记录独立 agent session/run id
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
 

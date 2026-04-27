@@ -17,6 +17,7 @@
 | `code_review` | `code_review.md` | `Final verdict: pass` from file or `--code-review-command` |
 | `acceptance` | `delivery_evidence.md` | acceptance status `pass` |
 | `writeback` | `writeback_report.md` | live memory writeback completed or dry-run recommendation present |
+| `git_publish` | `git_publish_report.md` | optional publish command completed after all prior gates |
 
 ## Gate Rules
 
@@ -28,8 +29,18 @@
 - In live mode, do not proceed without research, coding, verification, code
   review, and memory-writeback evidence.
 - Do not accept until tests and code review pass.
+- Do not run Git publish until verification, code review, optional deployment,
+  acceptance, and memory writeback all pass.
+- Git publish must consume the accepted writeback-aware patch: use the
+  `memory_writeback` workspace patch when present, otherwise use the accepted
+  `code_execution` workspace patch. Do not publish arbitrary dirty files from
+  `command_cwd`.
+- Git publish must use Chinese commit messages/notes, must not force push, and
+  must block on suspected secret-bearing diffs.
 - If acceptance proves the requirement was wrong, return to `requirements_package`.
 - If acceptance proves implementation was wrong, return to `code_execution`.
+- If Git publish fails, return to `fix_git_publish` instead of bypassing the
+  publish gate.
 - If project-agent cannot identify a likely owning module/file, return to
   `requirements_package` or `solution_package` instead of guessing.
 
@@ -73,6 +84,8 @@ runtime:
 - `--code-review-command`: reviewer command that must emit `Final verdict: pass`.
 - `--memory-write-command`: custom project memory writeback command.
 - `--write-project-memory`: built-in `project_memory_writer.py` writeback.
+- `--git-publish-command`: safe commit/push command that only runs after all
+  prior gates pass.
 
 Every command writes `command-runs/<stage>-<n>.json` with command, cwd,
 timestamps, return code, stdout, and stderr. Non-zero exit routes to the owning

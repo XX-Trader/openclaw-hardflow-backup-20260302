@@ -76,6 +76,7 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertTrue((runtime_home / "ops" / "hermes_profile_smoke.py").exists())
             self.assertTrue((runtime_home / "ops" / "deadline_to_task_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "exception_to_task_bridge.py").exists())
+            self.assertTrue((runtime_home / "ops" / "repo_hygiene_reviewer.py").exists())
             self.assertTrue((runtime_home / "ops" / "project_memory_writer.py").exists())
             self.assertTrue((runtime_home / "ops" / "smart_arb_live_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "smart_arb_pipeline_entry.py").exists())
@@ -94,7 +95,19 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
     def test_installed_ops_smoke_resolves_ops_policy_dir(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmpdir:
-            runtime_home = Path(tmpdir) / "hermes"
+            tmp = Path(tmpdir)
+            runtime_home = tmp / "hermes"
+            fixture_repo = tmp / "repo"
+            fixture_repo.mkdir()
+            (fixture_repo / "README.md").write_text("# Smoke\n", encoding="utf-8")
+            import subprocess
+
+            git_kwargs = {"cwd": fixture_repo, "check": True, "capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+            subprocess.run(["git", "init", "-b", "main"], **git_kwargs)
+            subprocess.run(["git", "config", "user.name", "HardFlow Test"], **git_kwargs)
+            subprocess.run(["git", "config", "user.email", "hardflow-test@example.invalid"], **git_kwargs)
+            subprocess.run(["git", "add", "."], **git_kwargs)
+            subprocess.run(["git", "commit", "-m", "初始化"], **git_kwargs)
             config = module.InstallConfig(
                 runtime_home=runtime_home,
                 runtime_name="hermes",
@@ -126,11 +139,11 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
                 installed_smoke.SmokeConfig(
                     project_key="demo",
                     runtime_home=runtime_home,
-                    workspace_root=runtime_home / ".workflow" / "pipeline-runs",
+                    workspace_root=tmp / "runs",
                     project_memory_root=runtime_home / ".workflow" / "project-memory",
                     task_center_db=runtime_home / "ops" / "task-center" / "task_center.db",
-                    run_id="installed-ops-smoke",
-                    command_cwd=ROOT,
+                    run_id="s",
+                    command_cwd=fixture_repo,
                     agent_mode="echo",
                 )
             )

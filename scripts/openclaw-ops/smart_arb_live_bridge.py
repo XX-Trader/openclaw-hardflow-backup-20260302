@@ -55,6 +55,7 @@ ARTIFACT_PATH_ENV_NAMES = {
     "PIPELINE_CODE_REVIEW_FILE",
     "PIPELINE_DEPLOYMENT_REPORT_FILE",
     "PIPELINE_WRITEBACK_REPORT_FILE",
+    "PIPELINE_GIT_PUBLISH_REPORT_FILE",
 }
 NON_CODE_HERMES_STAGES = {
     "external_research",
@@ -161,7 +162,7 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
             "solution.md",
             "solution_review.md",
         )
-    if stage in {"verification", "code_review", "deployment", "memory_writeback"}:
+    if stage in {"verification", "code_review", "deployment", "memory_writeback", "git_publish"}:
         return (
             "research_report.md",
             "requirements_discussion.md",
@@ -169,6 +170,7 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
             "patch_summary.md",
             "verification_report.md",
             "code_review.md",
+            "writeback_report.md",
         )
     return ()
 
@@ -572,6 +574,159 @@ def run_memory_writeback(args: argparse.Namespace) -> int:
     return proc.returncode
 
 
+def build_chinese_commit_message() -> str:
+    requirement = " ".join(redact_text(requirement_text()).split())
+    if len(requirement) > 160:
+        requirement = requirement[:157].rstrip() + "..."
+    if not requirement:
+        requirement = "未提供需求摘要"
+    run_dir = redact_text(os.environ.get("PIPELINE_RUN_DIR", "").strip()) or "未记录"
+    return "\n".join(
+        [
+            "交付: 提交已审核的项目变更",
+            "",
+            "变更说明:",
+            "- 本次提交来自项目交付流水线，已通过验证和代码审查后进入发布阶段。",
+            f"- 需求摘要: {requirement}",
+            "",
+            "验证:",
+            "- 已通过验证阶段记录的验证命令。",
+            "- 已通过代码审查阶段的独立审核。",
+            "",
+            "审查:",
+            "- 代码审查员: 通过",
+            "",
+            "备注:",
+            "- 提交说明与发布备注使用中文。",
+            "- 禁止 force push；如远端冲突或凭证问题，停止并回流人工处理。",
+            f"- 证据目录: {run_dir}",
+            "",
+        ]
+    )
+
+
+def staged_diff_has_secret(diff: str) -> bool:
+    if KNOWN_SECRET_RE.search(diff or ""):
+        return True
+    if SENSITIVE_LINE_RE.search(diff or ""):
+        return True
+    return False
+
+
+def run_git_publish(args: argparse.Namespace) -> int:
+    sections = ["# Smart Arb Git Publish"]
+    remote = str(args.git_remote or "origin").strip() or "origin"
+    branch = str(args.git_branch or "main").strip() or "main"
+    sections.append(f"- Remote: {remote}")
+    sections.append(f"- Branch: {branch}")
+    sections.append("- Commit language: Chinese")
+    sections.append("- Force push: disabled")
+
+    inside = run_command(["git", "rev-parse", "--is-inside-work-tree"], cwd=args.project_dir)
+    sections.append(command_block("Git check 1", ["git", "rev-parse", "--is-inside-work-tree"], inside))
+    if inside.returncode != 0 or "true" not in (inside.stdout or "").lower():
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 2
+
+    diff_check = run_command(["git", "diff", "--check"], cwd=args.project_dir)
+    sections.append(command_block("Git check 2", ["git", "diff", "--check"], diff_check))
+    if diff_check.returncode != 0:
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 3
+
+    status_before = run_command(["git", "status", "--porcelain"], cwd=args.project_dir)
+    sections.append(command_block("Git status before add", ["git", "status", "--porcelain"], status_before))
+    if status_before.returncode != 0:
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 4
+    if not (status_before.stdout or "").strip():
+        sections.append("- No repository changes to publish.")
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: pass")
+        print("\n\n".join(sections))
+        return 0
+
+    add_proc = run_command(["git", "add", "-A"], cwd=args.project_dir)
+    sections.append(command_block("Git add", ["git", "add", "-A"], add_proc))
+    if add_proc.returncode != 0:
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 5
+
+    staged_check = run_command(["git", "diff", "--cached", "--check"], cwd=args.project_dir)
+    sections.append(command_block("Git staged check", ["git", "diff", "--cached", "--check"], staged_check))
+    if staged_check.returncode != 0:
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 6
+
+    staged_stat = run_command(["git", "diff", "--cached", "--stat"], cwd=args.project_dir)
+    sections.append(command_block("Git staged diff summary", ["git", "diff", "--cached", "--stat"], staged_stat))
+    if staged_stat.returncode != 0:
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 7
+    staged_diff = run_command(["git", "diff", "--cached", "--no-ext-diff"], cwd=args.project_dir)
+    if staged_diff.returncode != 0:
+        redacted = subprocess.CompletedProcess(
+            staged_diff.args,
+            staged_diff.returncode,
+            "",
+            staged_diff.stderr,
+        )
+        sections.append(command_block("Git staged diff scan", ["git", "diff", "--cached", "--no-ext-diff"], redacted))
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 8
+    if not (staged_diff.stdout or "").strip():
+        sections.append("- No staged changes after git add.")
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: pass")
+        print("\n\n".join(sections))
+        return 0
+    if staged_diff_has_secret(staged_diff.stdout or ""):
+        sections.append("- Secret-like content detected in staged diff; publish is blocked.")
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 9
+
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".commit-message", delete=False) as handle:
+        handle.write(build_chinese_commit_message())
+        message_file = Path(handle.name)
+    try:
+        commit_proc = run_command(["git", "commit", "-F", str(message_file)], cwd=args.project_dir)
+    finally:
+        try:
+            message_file.unlink()
+        except OSError:
+            pass
+    sections.append(command_block("Git commit", ["git", "commit", "-F", "<chinese-message-file>"], commit_proc))
+    if commit_proc.returncode != 0:
+        sections.append("LIVE_BRIDGE_STAGE: git_publish")
+        sections.append("LIVE_BRIDGE_STATUS: fail")
+        print("\n\n".join(sections))
+        return 10
+
+    push_command = ["git", "push", remote, f"HEAD:{branch}"]
+    push_proc = run_command(push_command, cwd=args.project_dir, timeout=max(1, int(args.git_push_timeout_seconds)))
+    sections.append(command_block("Git push", push_command, push_proc))
+    sections.append("LIVE_BRIDGE_STAGE: git_publish")
+    sections.append(f"LIVE_BRIDGE_STATUS: {'pass' if push_proc.returncode == 0 else 'fail'}")
+    print("\n\n".join(sections))
+    return 0 if push_proc.returncode == 0 else 11
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Smart arbitrage live pipeline evidence bridge")
     parser.add_argument("--stage", required=True, choices=[
@@ -582,6 +737,7 @@ def build_parser() -> argparse.ArgumentParser:
         "code_review",
         "deployment",
         "memory_writeback",
+        "git_publish",
     ])
     parser.add_argument("--agent-mode", choices=["hermes", "echo"], default=os.environ.get("SMART_ARB_LIVE_BRIDGE_AGENT_MODE", "hermes"))
     parser.add_argument("--profile", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROFILE", "arbitrageagent"))
@@ -609,6 +765,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--api-cwd", type=Path, default=env_path("SMART_ARB_API_CWD", PROJECT_DIR / API_SUBDIR))
     parser.add_argument("--uvicorn-bin", type=Path, default=env_path("SMART_ARB_UVICORN_BIN", VENV_BIN / "uvicorn"))
     parser.add_argument("--deploy-wait-seconds", type=int, default=int(os.environ.get("SMART_ARB_DEPLOY_WAIT_SECONDS", "30")))
+    parser.add_argument("--git-remote", default=os.environ.get("SMART_ARB_GIT_REMOTE", "origin"))
+    parser.add_argument("--git-branch", default=os.environ.get("SMART_ARB_GIT_BRANCH", "main"))
+    parser.add_argument("--git-push-timeout-seconds", type=int, default=int_env("SMART_ARB_GIT_PUSH_TIMEOUT_SECONDS", 120))
     return parser
 
 
@@ -633,6 +792,10 @@ def main(argv: list[str] | None = None) -> int:
         return run_deployment(args)
     if args.stage == "memory_writeback":
         return run_memory_writeback(args)
+    if args.stage == "git_publish":
+        if args.agent_mode == "echo":
+            return run_echo_stage(args.stage)
+        return run_git_publish(args)
     if args.agent_mode == "echo":
         return run_echo_stage(args.stage)
     return run_hermes_stage(args.stage, args)

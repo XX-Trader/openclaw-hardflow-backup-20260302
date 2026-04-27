@@ -80,6 +80,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                     "deployment": "/tmp/deployment_report.md",
                     "acceptance": "/tmp/delivery_evidence.md",
                     "writeback": "/tmp/writeback_report.md",
+                    "git_publish": "/tmp/git_publish_report.md",
                 },
                 "stages": [
                     {"name": "intake", "status": "completed", "artifact": "/tmp/run_meta.json"},
@@ -89,6 +90,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                     {"name": "code_review", "status": "completed", "verdict": "pass", "artifact": "/tmp/code_review.md"},
                     {"name": "deployment", "status": "completed", "verdict": "pass", "artifact": "/tmp/deployment_report.md"},
                     {"name": "writeback", "status": "completed", "artifact": "/tmp/writeback_report.md"},
+                    {"name": "git_publish", "status": "completed", "verdict": "pass", "artifact": "/tmp/git_publish_report.md"},
                 ],
             }
 
@@ -109,10 +111,11 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("代码审查: reviewer -> 完成", text)
         self.assertIn("内部部署: deployer -> 完成", text)
         self.assertIn("记忆写回: doc-writer -> 完成", text)
+        self.assertIn("Git 发布: git-master -> 完成", text)
         self.assertIn("## agent 输出摘要", text)
         self.assertIn("代码执行: backend-dev -> 通过", text)
         self.assertIn("changed files", text)
-        self.assertIn("关键证据: requirements_discussion, verification, code_review, deployment, acceptance, writeback", text)
+        self.assertIn("关键证据: requirements_discussion, verification, code_review, deployment, acceptance, writeback, git_publish", text)
 
     def test_render_chat_summary_shows_block_reason_and_repair_decision(self):
         module = load_module()
@@ -216,6 +219,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertNotIn("--dry-run", runner_cmd)
         self.assertIn("--code-command", runner_cmd)
         self.assertIn("--deployment-command", runner_cmd)
+        self.assertIn("--git-publish-command", runner_cmd)
         self.assertNotIn("--agent-workspace-mode", runner_cmd)
         self.assertEqual("", err.getvalue())
 
@@ -245,6 +249,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         runner_cmd = run_mock.call_args.args[0]
         self.assertIn("--code-review-command", runner_cmd)
         self.assertIn("--memory-write-command", runner_cmd)
+        self.assertIn("--git-publish-command", runner_cmd)
         self.assertNotIn("--deployment-command", runner_cmd)
         self.assertNotIn("--allow-internal-api-restart", " ".join(runner_cmd))
         self.assertEqual("", err.getvalue())
@@ -275,6 +280,32 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         runner_cmd = run_mock.call_args.args[0]
         self.assertIn("--deployment-command", runner_cmd)
         self.assertIn("--allow-internal-api-restart", " ".join(runner_cmd))
+        self.assertEqual("", err.getvalue())
+
+    def test_main_can_skip_git_publish_command(self):
+        module = load_module()
+        payload = {
+            "run_id": "discord-spreadagent-test",
+            "status": "completed",
+            "next_action": "none",
+            "failed_stage": None,
+            "run_dir": "/tmp/discord-spreadagent-test",
+            "artifacts": {},
+            "stages": [],
+        }
+        out = io.StringIO()
+        err = io.StringIO()
+
+        with mock.patch.object(
+            module.subprocess,
+            "run",
+            return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
+        ) as run_mock, redirect_stdout(out), redirect_stderr(err):
+            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--skip-git-publish-command", "--requirement", "demo"])
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        self.assertNotIn("--git-publish-command", runner_cmd)
         self.assertEqual("", err.getvalue())
 
     def test_main_auto_repairs_low_risk_blocked_run(self):

@@ -187,6 +187,7 @@ def check_all() -> list[dict]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global DATA_DIR
     parser = argparse.ArgumentParser(description="第三方来源注册表监控器")
     parser.add_argument("--project-key", help="检查指定项目")
     parser.add_argument("--scan-all", action="store_true", help="检查所有项目")
@@ -194,6 +195,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--notify-on-change", action="store_true")
     args = parser.parse_args(argv)
 
+    DATA_DIR = Path(args.base_path).expanduser().resolve()
     logger = setup_logging()
 
     if args.scan_all:

@@ -1,6 +1,6 @@
 # Cron 基线裁剪执行清单
 
-> 版本：v1.0 | 2026-04-22
+> 版本：v1.1 | 2026-04-27
 > 关联文档：[项目交付优先工作流架构设计](../核心主工作流/项目交付优先工作流/项目交付优先工作流架构设计.md)
 
 ---
@@ -19,7 +19,8 @@
 | `config_watchdog` | 基础设施 | 保留 |
 | `memtidy_runner` | 基础设施 | 保留 |
 | `unified_exception_logger` | 基础设施 | 保留 |
-| `source_registry_watcher` | 项目交付 | 保留（每周） |
+| `source_registry_watcher` | 项目交付 | 保留（每 2 天） |
+| `repo_hygiene_reviewer_2d` | 项目交付治理 | 新增保留（每 2 天，`optimization-agent` 只读扫描 + 人工确认候选） |
 
 ## 3. 移除清单（自进化 + 泛化扫描）
 
@@ -37,7 +38,8 @@
 
 1. 删除所有移除清单中的 job 条目
 2. 验证保留清单中的 job 配置正确
-3. 确保 `source_registry_watcher` 频率为 `weekly`
+3. 确保 `source_registry_watcher` 频率为每 2 天
+4. 确保 `repo_hygiene_reviewer_2d` 只读扫描，不自动删除、不自动 Git 发布
 
 ### 4.2 修改安装器默认 profile
 
@@ -48,7 +50,7 @@
 ### 4.3 更新文档
 
 1. 更新 `CRON_TASK_INDEX.md`
-2. 更新 [cron-治理方案](cron-治理方案.md)
+2. 更新 [Cron 任务治理说明](cron-任务治理说明.md)
 3. 在 `项目交付优先工作流架构设计.md` 中同步
 
 ### 4.4 验证
@@ -70,3 +72,4 @@
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | v1.0 | 2026-04-22 | 初始版本，定义 cron 裁剪保留/移除清单 |
+| v1.1 | 2026-04-27 | 将 API 来源监控调为每 2 天，并新增只读仓库精简巡检 |

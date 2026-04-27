@@ -126,10 +126,10 @@ The runner injects these variables into every stage command:
 
 For isolated `code_execution`, the runner exports the agent workspace diff to
 `command-runs/code_execution-1.patch`, applies it back to `--command-cwd`, and
-then applies the same patch to later verification, review, and deployment
-workspaces. Command reports and Task Center details must record the workspace and
-patch refs. A runtime still needs native session/run ids to claim true host-level
-multi-agent fan-out.
+then applies the same patch to later verification, review, deployment, and
+publish workspaces. Command reports and Task Center details must record the
+workspace and patch refs. A runtime still needs native session/run ids to claim
+true host-level multi-agent fan-out.
 
 ### Hermes Profile Smoke
 

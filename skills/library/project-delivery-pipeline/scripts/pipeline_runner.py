@@ -59,6 +59,7 @@ STAGE_AGENT_MAP = {
     "deployment": "deployer",
     "acceptance": "tester",
     "writeback": "doc-writer",
+    "git_publish": "git-master",
 }
 SIMULATED_FAILURES = {
     "requirements",
@@ -67,6 +68,7 @@ SIMULATED_FAILURES = {
     "code_review",
     "acceptance_requirement",
     "acceptance_implementation",
+    "git_publish",
 }
 VERDICT_RE = re.compile(
     r"(?im)^\s*(?:Final verdict|final_verdict|verdict)\s*:\s*([a-z_]+)"
@@ -101,6 +103,7 @@ class PipelineConfig:
     code_review_file: Path | None = None
     deployment_command: str | None = None
     memory_write_command: str | None = None
+    git_publish_command: str | None = None
     write_project_memory: bool = False
     command_cwd: Path = Path(".")
     agent_workspace_root: Path | None = None
@@ -604,13 +607,16 @@ def render_solution(runtime: dict[str, Any]) -> str:
         10. code_execution
         11. verification
         12. code_review
-        13. acceptance
-        14. writeback
+        13. deployment (when supplied)
+        14. acceptance
+        15. writeback
+        16. git_publish (when supplied)
 
         ## Failure Routing
         - Requirement defects route to revise_requirements.
         - Solution defects route to revise_solution.
         - Implementation, verification, and code review defects route to return_to_code_execution.
+        - Git publish defects route to fix_git_publish and do not force push.
         """
     )
 
@@ -795,6 +801,7 @@ def command_env(
             "PIPELINE_CODE_REVIEW_FILE": str(run_dir / "code_review.md"),
             "PIPELINE_DEPLOYMENT_REPORT_FILE": str(run_dir / "deployment_report.md"),
             "PIPELINE_WRITEBACK_REPORT_FILE": str(run_dir / "writeback_report.md"),
+            "PIPELINE_GIT_PUBLISH_REPORT_FILE": str(run_dir / "git_publish_report.md"),
         }
     )
     if stage_name:
@@ -868,14 +875,18 @@ def run_stage_command(
         error = f"timeout after {config.command_timeout_seconds}s"
 
     if (
-        stage_name == "code_execution"
+        stage_name in {"code_execution", "memory_writeback"}
         and returncode == 0
         and not timed_out
         and primary_workspace.isolated
     ):
         patch_file = run_dir / "command-runs" / f"{stage_name}-{index}.patch"
         workspace_patch = export_workspace_patch(primary_workspace.repo_dir, patch_file)
-        if workspace_patch.get("ok") and workspace_patch.get("has_changes"):
+        if (
+            stage_name == "code_execution"
+            and workspace_patch.get("ok")
+            and workspace_patch.get("has_changes")
+        ):
             apply_result = apply_patch_file(base_cwd, patch_file)
             workspace_patch["applied_to_command_cwd"] = apply_result
             if not apply_result.get("ok"):
@@ -1106,6 +1117,31 @@ def render_deployment_report(command_report: dict[str, Any] | None) -> str:
     )
 
 
+def render_git_publish_report(command_report: dict[str, Any]) -> str:
+    passed = bool(command_report.get("ok"))
+    input_patch = command_report.get("input_patch") or {}
+    input_patch_file = input_patch.get("patch_file") or "none"
+    input_patch_source = input_patch.get("source") or "unknown"
+    return dedent(
+        f"""
+        # Git Publish Report
+
+        ## Result
+        - Status: {"pass" if passed else "fail"}
+        - Return code: {command_report.get("returncode")}
+        - Command evidence: `command-runs/git_publish-1.json`
+        - Input patch: `{input_patch_file}` ({input_patch_source})
+
+        ## Contract
+        - Git publish runs only after verification, code review, deployment if supplied, acceptance, and memory writeback.
+        - Commit message and publish notes must be written in Chinese.
+        - Force push and secret-bearing diffs are not allowed.
+
+        {command_markdown("Git Publish Command", [command_report])}
+        """
+    )
+
+
 def render_delivery_evidence(score: int, status: str, next_action: str) -> str:
     return dedent(
         f"""
@@ -1123,6 +1159,7 @@ def render_delivery_evidence(score: int, status: str, next_action: str) -> str:
         - Verification report
         - Code review
         - Deployment report when a deployment command is supplied
+        - Git publish report when a git publish command is supplied
         - Pipeline state
         """
     )
@@ -1492,11 +1529,12 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
         "requirements_discussion_agents": "project-agent,reviewer",
         "acceptance_thresholds": (
             "requirements_review=ready_for_solution,"
-            "solution_review=ready_for_implement,verification=pass,code_review=pass,acceptance=pass"
+            "solution_review=ready_for_implement,verification=pass,code_review=pass,"
+            "acceptance=pass,git_publish=pass_when_supplied"
         ),
-        "required_capabilities": "project_memory_retrieval,external_research,coding,verification,code_review",
+        "required_capabilities": "project_memory_retrieval,external_research,coding,verification,code_review,git_publish",
         "required_skills": "project-delivery-pipeline",
-        "allowed_agents": "coordinator,project-agent,web-agent,backend-dev,frontend-dev,reviewer,tester,ops-agent,deployer,doc-writer",
+        "allowed_agents": "coordinator,project-agent,web-agent,backend-dev,frontend-dev,reviewer,tester,ops-agent,deployer,doc-writer,git-master",
         "workflow_profile_id": "project-delivery-pipeline@stable",
         "workflow_channel": "stable",
         "selection_reason": "single controlled coding delivery pipeline",
@@ -2096,6 +2134,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 requirement,
                 "memory_writeback",
                 config.memory_write_command,
+                input_patch_file=code_workspace_patch_file,
             )
         )
     elif config.write_project_memory:
@@ -2126,6 +2165,113 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 "fix_memory_writeback",
                 "live mode requires successful project memory writeback",
                 "writeback_report.md",
+                "fail",
+                70,
+            ),
+            requirement,
+        )
+
+    if config.git_publish_command:
+        git_publish_input_patch_file: Path | None = None
+        git_publish_input_patch_report: dict[str, Any] = {
+            "ok": True,
+            "source": "none",
+            "patch_file": "",
+            "has_changes": False,
+        }
+        for memory_report in reversed(memory_reports):
+            candidate_text = str(memory_report.get("workspace_patch_file") or "")
+            candidate = Path(candidate_text) if candidate_text else None
+            if candidate is not None and candidate.exists() and candidate.stat().st_size > 0:
+                git_publish_input_patch_file = candidate
+                git_publish_input_patch_report = {
+                    "ok": True,
+                    "source": "memory_writeback_workspace_patch",
+                    "patch_file": str(candidate),
+                    "has_changes": True,
+                }
+                break
+        if git_publish_input_patch_file is None:
+            if code_workspace_patch_file is not None and code_workspace_patch_file.exists():
+                git_publish_input_patch_file = code_workspace_patch_file
+                git_publish_input_patch_report = {
+                    "ok": True,
+                    "source": "code_execution_workspace_patch",
+                    "patch_file": str(code_workspace_patch_file),
+                    "has_changes": code_workspace_patch_file.stat().st_size > 0,
+                }
+            else:
+                git_publish_input_patch_report = {
+                    "ok": True,
+                    "source": "no_accepted_patch",
+                    "patch_file": "",
+                    "has_changes": False,
+                }
+        git_publish_input_patch_report_path = run_dir / "command-runs" / "git_publish-input-patch.json"
+        write_json(git_publish_input_patch_report_path, git_publish_input_patch_report)
+        artifacts["git_publish_input_patch_report"] = str(git_publish_input_patch_report_path)
+        if git_publish_input_patch_file:
+            artifacts["git_publish_input_patch"] = str(git_publish_input_patch_file)
+        git_publish_report = run_stage_command(
+            config,
+            run_dir,
+            runtime,
+            artifacts,
+            requirement,
+            "git_publish",
+            config.git_publish_command,
+            input_patch_file=git_publish_input_patch_file,
+        )
+        git_publish_report["input_patch"] = git_publish_input_patch_report
+        git_publish_command_report_path = artifacts.get("command_git_publish_1")
+        if git_publish_command_report_path:
+            write_json(Path(git_publish_command_report_path), git_publish_report)
+        git_publish_failed = not git_publish_report.get("ok")
+        record(
+            "git_publish",
+            "git_publish_report.md",
+            render_git_publish_report(git_publish_report),
+            verdict="fail" if git_publish_failed else "pass",
+        )
+        if git_publish_failed:
+            return finalize_pipeline_state(
+                config,
+                block_pipeline(
+                    config,
+                    run_id,
+                    run_dir,
+                    runtime,
+                    stages,
+                    artifacts,
+                    "git_publish",
+                    "fix_git_publish",
+                    "git publish command failed and requires human-safe repair",
+                    "git_publish_report.md",
+                    "fail",
+                    70,
+                ),
+                requirement,
+            )
+    elif config.simulate_failure_stage == "git_publish":
+        record(
+            "git_publish",
+            "git_publish_report.md",
+            "# Git Publish Report\n\nFinal verdict: fail\n\nNo git publish command was supplied.",
+            verdict="fail",
+        )
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "git_publish",
+                "fix_git_publish",
+                "simulated git publish failure",
+                "git_publish_report.md",
                 "fail",
                 70,
             ),
@@ -2165,6 +2311,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--code-review-file", type=Path)
     parser.add_argument("--deployment-command", help="trusted command that deploys an accepted implementation")
     parser.add_argument("--memory-write-command", help="trusted command that writes project memory after acceptance")
+    parser.add_argument("--git-publish-command", help="trusted command that commits and pushes accepted changes after writeback")
     parser.add_argument("--write-project-memory", action="store_true", help="call project_memory_writer.py for accepted runs")
     parser.add_argument("--command-cwd", type=Path, default=Path("."))
     parser.add_argument("--agent-workspace-root", type=Path, help="root for per-run agent workspaces")
@@ -2202,6 +2349,7 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         code_review_file=args.code_review_file,
         deployment_command=args.deployment_command,
         memory_write_command=args.memory_write_command,
+        git_publish_command=args.git_publish_command,
         write_project_memory=bool(args.write_project_memory),
         command_cwd=args.command_cwd,
         agent_workspace_root=args.agent_workspace_root,
@@ -2299,7 +2447,16 @@ def render_view_text(payload: dict[str, Any]) -> str:
     artifacts = state.get("artifacts", {})
     if artifacts:
         lines.append("- key artifacts:")
-        for key in ("project_memory_context", "requirements_package", "requirements_discussion", "solution_package", "verification", "code_review", "acceptance"):
+        for key in (
+            "project_memory_context",
+            "requirements_package",
+            "requirements_discussion",
+            "solution_package",
+            "verification",
+            "code_review",
+            "acceptance",
+            "git_publish",
+        ):
             if key in artifacts:
                 lines.append(f"  {key}: {artifacts[key]}")
     return "\n".join(lines)

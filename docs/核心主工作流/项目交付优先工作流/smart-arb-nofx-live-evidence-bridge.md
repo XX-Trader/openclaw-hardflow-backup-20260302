@@ -55,6 +55,7 @@ live 默认注入以下命令证据：
 | `code_review` | reviewer 做代码审查 | `command_code_review_*` |
 | `deployment` | 普通服务/API 改动时重启内控 FastAPI 并做状态接口 smoke；memory/docs-only 或 no service control/no deployment/no restart 需求会跳过该命令 | `command_deployment_*` |
 | `memory_writeback` | 写项目记忆 changelog | `command_memory_writeback_*` |
+| `git_publish` | 在验证、代码审查、deployment、验收和 memory writeback 通过后，使用中文提交说明执行受控 commit/push；禁止 force push 和含密钥 diff | `command_git_publish_*` |
 
 缺少任一关键阶段真实命令证据时，pipeline runner 会阻断并写入 `failed_stage` 与 `next_action`。
 
@@ -73,7 +74,7 @@ Discord 状态卡必须回答三个问题：
 - `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback` 默认自动回流，最多 2 次，可用 `--auto-repair-attempts` 或 `SMART_ARB_AUTO_REPAIR_ATTEMPTS` 调整。
 - 每次回流使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 每次回流前，入口把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并通过 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT` 传给 live bridge；后续 Hermes stage prompt 会看到上一轮失败原因。
-- 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署或记忆写回。
+- 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署、记忆写回或 Git 发布。
 - 状态卡默认展开最多 24 条命令摘要，可用 `SMART_ARB_CHAT_COMMAND_LIMIT` 或 `--chat-command-limit` 调整；Discord profile 必须把中文状态卡回传到聊天频道，长消息分段发送，不能只给 run id、失败阶段和证据目录。
 - 非代码 Hermes 阶段不允许直接编辑 `research_report.md`、`requirements_discussion.md`、`verification_report.md` 等 pipeline artifacts；stage evidence 必须通过 stdout/final answer 返回，由 runner 持久化。bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，避免 agent 通过环境变量直接定位并覆盖 artifact。
 - `external_research` 对本地记忆蒸馏、环境基线、权限修复这类不依赖互联网的问题，可以输出 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据，作为有效 research evidence。
@@ -88,7 +89,8 @@ Discord 状态卡必须回答三个问题：
 - `pipeline_runner.py` 固定按阶段 owner 创建 Git worktree：`agent-workspaces/<stage>/<agent>/repo`，并把 `PIPELINE_AGENT_ID`、`PIPELINE_AGENT_WORKSPACE`、`PIPELINE_AGENT_REPO_DIR`、`PIPELINE_AGENT_WORKSPACES_JSON` 注入 stage command。
 - `--command-cwd` 必须是有 `HEAD` 的 Git 仓库，agent workspace root 必须在该仓库外部；不再提供 `shared` / `copy` 模式。
 - `smart_arb_live_bridge.py` 默认使用 `PIPELINE_AGENT_REPO_DIR` 作为 Hermes 阶段项目目录，避免所有阶段都在主项目目录里运行。
-- `code_execution` 阶段在 `backend-dev` workspace 中修改代码；成功后 runner 导出 `command-runs/code_execution-1.patch`，再应用回主项目目录，然后把同一 patch 注入后续 `tester`、`reviewer`、`deployer` workspace。
+- `code_execution` 阶段在 `backend-dev` workspace 中修改代码；成功后 runner 导出 `command-runs/code_execution-1.patch`，再应用回主项目目录，然后把同一 patch 注入后续 `tester`、`reviewer`、`deployer`、`git-master` workspace。
+- `git_publish` 只在前序门禁通过后执行，发布输入优先使用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码变更和写回变更一起进入发布工作区且不夹带未验收脏改动；默认提交信息为中文并脱敏，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态；远端冲突、认证失败、疑似密钥或 push 失败都会阻塞为 `fix_git_publish`，不做 force push。
 - `command-runs/*.json`、`agent-workspaces/manifest.json`、Task Center `stage_runs.details_json` / `module_communications.details_json` 会记录 agent id、workspace、repo dir、dispatch mode 和 patch 文件。
 - Task Center 中的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`tester` 等字段仍然是阶段 owner 与交接记录；是否真正启动多个宿主 native session，要以 command evidence 中的独立 session/run id 为准。
 
@@ -212,6 +214,7 @@ curl -fsS http://127.0.0.1:18080/api/strategy/status
 ## 安全要求
 
 - 不把 Discord token、模型 key、auth JSON、SQLite 运行库提交到 Git。
+- Git 发布阶段的提交说明、备注和变更描述必须使用中文；如需跳过 Git 发布，可传 `--skip-git-publish-command` 或设置 `SMART_ARB_SKIP_GIT_PUBLISH_COMMAND=1`。
 - `--live-bridge-no-yolo` 可关闭 headless 代码执行的 yolo 模式。
 - profile 配置必须归属运行用户 `arbops`；如果 `config.yaml` 被 root 写成 `0600`，Discord `/sethome` 会因为无法写入 profile 配置而失败。
 - nofx 当前按早期高信任模式配置：两个 Discord profile 关闭命令审批和 security scan，`arbops` 通过 `/etc/sudoers.d/90-arbops-hermes` 获得无密码 sudo，用于服务器级修复和部署。

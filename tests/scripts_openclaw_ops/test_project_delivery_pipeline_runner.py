@@ -320,11 +320,13 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             verify_second_script = scripts_dir / "verify_second.py"
             review_script = scripts_dir / "review.py"
             deploy_script = scripts_dir / "deploy.py"
+            git_publish_script = scripts_dir / "git_publish.py"
             research_script.write_text("print('# Research\\n- Source: official docs checked')\n", encoding="utf-8")
             code_script.write_text("print('# Patch Summary\\n- Implemented by live command adapter')\n", encoding="utf-8")
             verify_script.write_text("print('verification passed')\n", encoding="utf-8")
             review_script.write_text("print('Final verdict: pass\\nConfidence: high')\n", encoding="utf-8")
             deploy_script.write_text("print('deployment passed')\n", encoding="utf-8")
+            git_publish_script.write_text("print('git publish passed 中文备注')\n", encoding="utf-8")
 
             def py_cmd(path: Path) -> str:
                 return f'"{sys.executable}" "{path}"'
@@ -343,6 +345,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     verification_commands=(py_cmd(verify_script),),
                     code_review_command=py_cmd(review_script),
                     deployment_command=py_cmd(deploy_script),
+                    git_publish_command=py_cmd(git_publish_script),
                     write_project_memory=True,
                     command_cwd=ROOT,
                 )
@@ -354,10 +357,14 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertIn("command_verification_1", state["artifacts"])
             self.assertIn("command_code_review_1", state["artifacts"])
             self.assertIn("command_deployment_1", state["artifacts"])
+            self.assertIn("command_git_publish_1", state["artifacts"])
             self.assertIn("deployment", state["artifacts"])
             self.assertIn("memory_writeback", state["artifacts"])
+            self.assertIn("git_publish", state["artifacts"])
             review = Path(state["artifacts"]["code_review"]).read_text(encoding="utf-8")
             self.assertIn("Final verdict: pass", review)
+            git_publish = Path(state["artifacts"]["git_publish"]).read_text(encoding="utf-8")
+            self.assertIn("Git publish runs only after verification", git_publish)
             command_report = json.loads(Path(state["artifacts"]["command_verification_1"]).read_text(encoding="utf-8"))
             self.assertTrue(command_report["ok"])
             changelog = root / "memory" / "demo" / "CHANGELOG.ndjson"
@@ -519,6 +526,195 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("return_to_deployment", state["next_action"])
             self.assertIn("deployment", state["artifacts"])
             self.assertNotIn("acceptance", state["artifacts"])
+
+    def test_git_publish_command_failure_blocks_after_writeback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            review_script = scripts_dir / "review.py"
+            git_publish_script = scripts_dir / "git_publish.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            review_script.write_text("print('Final verdict: pass')\n", encoding="utf-8")
+            git_publish_script.write_text("import sys\nprint('git push failed')\nsys.exit(9)\n", encoding="utf-8")
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Publish after passing review and writeback.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="git-publish-failure",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    code_command=py_cmd(pass_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_command=py_cmd(review_script),
+                    memory_write_command=py_cmd(pass_script),
+                    git_publish_command=py_cmd(git_publish_script),
+                    command_cwd=ROOT,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("git_publish", state["failed_stage"])
+            self.assertEqual("fix_git_publish", state["next_action"])
+            self.assertIn("writeback", state["artifacts"])
+            self.assertIn("git_publish", state["artifacts"])
+
+    def test_git_publish_receives_memory_writeback_workspace_patch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            review_script = scripts_dir / "review.py"
+            code_script = scripts_dir / "code.py"
+            memory_write_script = scripts_dir / "memory_write.py"
+            git_publish_script = scripts_dir / "git_publish.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            review_script.write_text("print('Final verdict: pass')\n", encoding="utf-8")
+            code_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "(repo / 'feature.txt').write_text('implemented\\n', encoding='utf-8')\n"
+                "print('implemented')\n",
+                encoding="utf-8",
+            )
+            memory_write_script.write_text(
+                "import os, pathlib, sys\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "feature = repo / 'feature.txt'\n"
+                "if not feature.exists():\n"
+                "    print('missing code patch before writeback')\n"
+                "    sys.exit(2)\n"
+                "path = repo / 'memory' / 'demo' / 'WRITEBACK.md'\n"
+                "path.parent.mkdir(parents=True, exist_ok=True)\n"
+                "path.write_text('写回证据\\n', encoding='utf-8')\n"
+                "print('memory writeback passed')\n",
+                encoding="utf-8",
+            )
+            git_publish_script.write_text(
+                "import os, pathlib, sys\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "checks = [repo / 'feature.txt', repo / 'memory' / 'demo' / 'WRITEBACK.md']\n"
+                "missing = [str(path.relative_to(repo)) for path in checks if not path.exists()]\n"
+                "if missing:\n"
+                "    print('missing publish inputs: ' + ', '.join(missing))\n"
+                "    sys.exit(3)\n"
+                "print('git publish sees writeback 中文备注')\n",
+                encoding="utf-8",
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Publish code and writeback as one accepted change set.",
+                    workspace_root=root / "runs",
+                    project_memory_root=repo / ".workflow" / "project-memory",
+                    run_id="git-publish-writeback",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    code_command=py_cmd(code_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_command=py_cmd(review_script),
+                    memory_write_command=py_cmd(memory_write_script),
+                    git_publish_command=py_cmd(git_publish_script),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("completed", state["status"])
+            self.assertIn("git_publish_input_patch_report", state["artifacts"])
+            input_report = json.loads(Path(state["artifacts"]["git_publish_input_patch_report"]).read_text(encoding="utf-8"))
+            self.assertEqual("memory_writeback_workspace_patch", input_report["source"])
+            git_publish_report = json.loads(Path(state["artifacts"]["command_git_publish_1"]).read_text(encoding="utf-8"))
+            self.assertEqual("memory_writeback_workspace_patch", git_publish_report["input_patch"]["source"])
+            self.assertIn("git publish sees writeback", git_publish_report["stdout"])
+
+    def test_git_publish_does_not_publish_unaccepted_dirty_command_cwd_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (repo / "dirty.txt").write_text("not accepted by pipeline\n", encoding="utf-8")
+
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            review_script = scripts_dir / "review.py"
+            git_publish_script = scripts_dir / "git_publish.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            review_script.write_text("print('Final verdict: pass')\n", encoding="utf-8")
+            git_publish_script.write_text(
+                "import os, pathlib, sys\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "if (repo / 'dirty.txt').exists():\n"
+                "    print('dirty command cwd file leaked into publish workspace')\n"
+                "    sys.exit(4)\n"
+                "print('git publish input is clean')\n",
+                encoding="utf-8",
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Publish only accepted pipeline changes.",
+                    workspace_root=root / "runs",
+                    project_memory_root=repo / ".workflow" / "project-memory",
+                    run_id="git-publish-no-dirty",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    code_command=py_cmd(pass_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_command=py_cmd(review_script),
+                    memory_write_command=py_cmd(pass_script),
+                    git_publish_command=py_cmd(git_publish_script),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("completed", state["status"])
+            input_report = json.loads(Path(state["artifacts"]["git_publish_input_patch_report"]).read_text(encoding="utf-8"))
+            self.assertEqual("no_accepted_patch", input_report["source"])
+            git_publish_report = json.loads(Path(state["artifacts"]["command_git_publish_1"]).read_text(encoding="utf-8"))
+            self.assertIn("git publish input is clean", git_publish_report["stdout"])
 
 
 if __name__ == "__main__":

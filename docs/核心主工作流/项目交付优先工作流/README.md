@@ -6,6 +6,7 @@
 > 2026-04-24 需求收束：真实目标不是“把某个工作流装进 Hermes”，而是完善一整套编码流水线：自动探索需求、生成需求包、生成方案、编码、测试、代码审核、修复、验收、文档和记忆回写。
 > 2026-04-24 Hermes 验证：WSL `/home/ubuntu/.hermes` 已完成 `hermes_profile_smoke.py --agent-mode hybrid --provider zai` 非 dry-run smoke；新 `hybrid-single-chat` 路径用一次 Hermes chat 生成 AI 阶段 bundle，run_id=`hermes-profile-smoke-20260424T135014Z`。
 > 2026-04-25 nofx 验证：SmartMultiPlatformArbitrage Discord live 入口已补齐外部研究、双 AI 需求讨论、代码执行、验证、代码审查、内部 deployment 与记忆写回证据桥，详见 [Smart Arb nofx live evidence bridge](smart-arb-nofx-live-evidence-bridge.md)。
+> 2026-04-27 治理增强：流水线在验收和记忆回写通过后可进入 `git_publish` 受控发布阶段，提交说明/备注必须使用中文；`source_registry_watcher` 与仓库精简巡检均调整为每 2 天一次，仓库精简由 `optimization-agent` 只读生成候选报告并进入人工确认。
 
 ## 功能概述
 
@@ -27,6 +28,7 @@
 → 修复循环
 → 最终验收
 → 文档、项目记忆、Task Center 状态回写
+→ 受控 Git 发布（可选，中文提交说明）
 ```
 
 它解决的不是单点工具问题，而是主流程错位问题：
@@ -39,7 +41,7 @@
 
 ## 核心目标
 
-1. **端到端编码交付**：把需求探索、方案、编码、测试、审核、修复、验收、回写串成一条可重复执行的流水线。
+1. **端到端编码交付**：把需求探索、方案、编码、测试、审核、修复、验收、回写和受控 Git 发布串成一条可重复执行的流水线。
 2. **检索是第一反应**：任何新需求、新功能、新技术选型，第一反应就是直接去网上查，借鉴成熟方案再改，不浪费时间和 token 自己从零研究。
 3. **双 AI 对抗式审查**：不是 1 个 AI 审核就完了，要 2 个 AI 互相探讨、互相质疑，得出最优方案。审查覆盖需求、方案、代码三个阶段。
 4. **失败学习 → 文档回写**：如果某个模型对某类任务总是完成得不好，不要继续让它瞎做——去修改需求文档，明确告诉 AI 该怎么做，必要时去网上查方案补充到文档里。
@@ -60,14 +62,16 @@
 7. **失败学习与文档回写闭环**：当某个模型/某条流程反复做不好某类任务时，分析根因 → 去网上查正确做法 → 回写到需求文档/方案文档 → 下次执行时按新规则走。
 8. **项目维护中枢**：`project-agent` 维护项目介绍、架构图、模块边界、API surface、外部依赖、规划与历史决策，每个项目独立记忆模块。
 9. **项目级长期记忆**：按项目拆分的事实记忆、经验记忆、第三方来源、API watch 列表和影响面索引，超出上下文的长期知识存在项目记忆模块中。
-10. **第三方 API 持续跟踪**：定期更新第三方库的 API，随时保持最新状态，只跟踪项目声明过的官方 docs / changelog / repo。
+10. **第三方 API 持续跟踪**：每 2 天检查第三方库来源，只跟踪项目声明过的官方 docs / changelog / repo。
 11. **Task Center 可观测性**：每次流水线可镜像到 `task_center.db`，统一查看状态、阶段、agent 通信、输出和 incident。
+12. **仓库精简巡检**：`optimization-agent` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和人工确认候选，不自动删除。
+13. **受控 Git 发布**：只有验证、代码审查、deployment（如有）、验收和记忆回写通过后才允许 `git_publish`；发布输入优先采用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码与文档/记忆写回作为同一个已验收变更集发布且不夹带未验收脏改动；提交说明、备注和变更描述必须使用中文并脱敏，禁止 force push 和含密钥 diff。
 
 ## 可控性与可维护性裁决
 
 | 要求 | 实现方式 |
 |------|----------|
-| 流程清晰 | 固定一条状态机：需求 → 项目记忆定位 → research → 需求包 → 方案包 → 编码 → 测试 → 审查 → 验收 → 回写 |
+| 流程清晰 | 固定一条状态机：需求 → 项目记忆定位 → research → 需求包 → 方案包 → 编码 → 测试 → 审查 → 验收 → 回写 → Git 发布（可选） |
 | 功能可追踪 | 每次运行生成 `.workflow/pipeline-runs/<run_id>/pipeline_state.json`，并可写入 Task Center |
 | 问题可定位 | `project_memory_context.md` 和 `IMPACT_MAP.json` 必须说明候选修改位置、测试和文档 |
 | 执行可控 | 每个阶段都有 pass signal 和失败回退动作，不允许跳过审查或测试 |
@@ -107,7 +111,9 @@
 | 到期 TODO 入队确认 | `deadline_to_task_bridge.py` 将到期 TODO 转为 `need_human_confirm=true` 的候选任务 | ✅ 已实现 |
 | 异常日志自动建任务 | `exception_to_task_bridge.py` 扫描增量日志并按指纹去重创建运维任务/incident | ✅ 已实现 |
 | 人工处理队列 | `human_inbox.py` 统一查看/确认/拒绝/澄清待人工处理、已升级和需确认任务 | ✅ 已实现 |
-| 第三方 API watch | 项目维度维护官方来源和更新检查 | 🟡 方案已定义 |
+| 第三方 API watch | 项目维度维护官方来源和更新检查；默认每 2 天执行一次 | ✅ 已实现 |
+| 仓库精简巡检 | `repo_hygiene_reviewer.py` 每 2 天只读扫描冗余、冲突、缓存、重复文件并创建人工确认候选 | ✅ 已实现 |
+| Git 发布门禁 | `git_publish` 在前序门禁通过后执行中文 commit/push，失败回流 `fix_git_publish` | ✅ 已实现 |
 | 联网 research 接入 | 接入 researcher/web agent 或外部命令，写入 `research_report.md` | ✅ `--research-command` live 适配已实现 |
 | 项目记忆真实写回 | 验收后调用 `project_memory_writer.py` 写入项目记忆 | ✅ `--write-project-memory` 已实现 |
 | 通用 runtime 宿主适配 | 同一流水线可安装到任意显式 runtime home，OpenClaw/Hermes 只是示例 | ✅ runtime adapter + installer + Hermes hybrid smoke 已实现 |
@@ -134,6 +140,7 @@
 → reviewer 双 AI 审代码
 → 修复循环或 tester 最终验收
 → project-agent 回写项目记忆
+→ git-master 受控 Git 发布
 ```
 
 ### 与通用运营工作流的关系
@@ -168,7 +175,7 @@
 1. 新功能在进入实现前，必须有明确的外部来源证据和方案审查结论。
 2. 每个需求都有 `Coding Pipeline Run`，能追踪当前状态、产物、失败原因和下一步。
 3. `reviewer` 不再只在代码完成后出现，而是在需求、方案、代码三个阶段都有阻断能力。
-4. 编码完成后必须经过测试、代码审核、验收和文档/记忆回写，不能只以“代码已改”作为完成。
+4. 编码完成后必须经过测试、代码审核、验收和文档/记忆回写；启用发布命令时还必须完成中文提交说明的受控 Git 发布，不能只以“代码已改”作为完成。
 5. 每个活跃项目都有独立的项目画像、API 注册表、第三方来源和项目记忆模块。
 6. 默认常驻 job 中，不再以“自动进化 OpenClaw 自身”为主目标。
 7. 项目问题的修复经验、依赖更新和架构裁决能回写到项目事实源，而不是散落在聊天上下文里。

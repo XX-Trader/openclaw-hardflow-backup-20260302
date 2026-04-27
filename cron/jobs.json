@@ -312,14 +312,14 @@
       "id": "s1a2b3c4-source-registry-watcher-0001",
       "agentId": "ops-agent",
       "name": "source_registry_watcher（API来源监控）",
-      "description": "每周检查项目声明的第三方依赖来源（官方docs/changelog/repo）是否有更新，仅检查已注册来源，不做泛化扫描",
+      "description": "每2天检查项目声明的第三方依赖来源（官方docs/changelog/repo）是否有更新，仅检查已注册来源，不做泛化扫描",
       "enabled": true,
       "createdAtMs": 1772643600000,
       "updatedAtMs": 1772643600000,
       "schedule": {
-        "kind": "cron",
-        "expr": "0 0 * * 0",
-        "tz": "Asia/Shanghai"
+        "kind": "every",
+        "everyMs": 172800000,
+        "anchorMs": 1772643600000
       },
       "sessionTarget": "isolated",
       "wakeMode": "now",
@@ -340,6 +340,45 @@
       },
       "state": {},
       "skill_ref": "api-registry-manager"
+    },
+    {
+      "id": "r1h2g3f4-repo-hygiene-reviewer-0008",
+      "agentId": "optimization-agent",
+      "name": "repo_hygiene_reviewer_2d（仓库精简巡检）",
+      "description": "每2天只读扫描仓库精简候选：冗余文件、失效缓存、冲突残留、重复文件和可清理项；只生成报告和人工确认任务，不自动删除或推送",
+      "enabled": true,
+      "createdAtMs": 1774800000000,
+      "updatedAtMs": 1774800000000,
+      "schedule": {
+        "kind": "every",
+        "everyMs": 172800000,
+        "anchorMs": 1774800000000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 repo-hygiene 子agent，由 optimization-agent 执行。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/repo_hygiene_reviewer.py --repo-path ${HARDFLOW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302} --output-dir ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/repo-hygiene --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task-center/task_center.db --task-id cron:repo-hygiene-reviewer-2d --actor optimization-agent --assignee human-inbox --max-findings 80。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 600,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 3600000,
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {},
+      "skill_ref": "project-delivery-pipeline"
     },
     {
       "id": "f5e6f7a8-deadline-checker-daily-0005",

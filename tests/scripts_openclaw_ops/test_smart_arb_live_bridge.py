@@ -102,6 +102,149 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
             record = json.loads(changelog.read_text(encoding="utf-8").splitlines()[0])
             self.assertIn("Bridge memory test", record["content"])
 
+    def test_git_publish_commits_with_chinese_message_and_pushes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            repo = tmp / "repo"
+            remote = tmp / "remote.git"
+            repo.mkdir()
+            git_kwargs = {"cwd": repo, "check": True, "capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+            subprocess.run(["git", "init", "-b", "main"], **git_kwargs)
+            subprocess.run(["git", "config", "user.name", "Test"], **git_kwargs)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], **git_kwargs)
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], **git_kwargs)
+            subprocess.run(["git", "commit", "-m", "初始化"], **git_kwargs)
+            subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            subprocess.run(["git", "remote", "add", "origin", str(remote)], **git_kwargs)
+            subprocess.run(["git", "push", "origin", "main"], **git_kwargs)
+            (repo / "feature.txt").write_text("published\n", encoding="utf-8")
+            requirement_file = tmp / "requirement.txt"
+            requirement_file.write_text("提交已经审核通过的代码变更", encoding="utf-8")
+
+            env = dict(os.environ)
+            env.update(
+                {
+                    "PIPELINE_REQUIREMENT_FILE": str(requirement_file),
+                    "PIPELINE_RUN_DIR": str(tmp / "run"),
+                }
+            )
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(BRIDGE),
+                    "--stage",
+                    "git_publish",
+                    "--agent-mode",
+                    "hermes",
+                    "--project-dir",
+                    str(repo),
+                    "--git-remote",
+                    "origin",
+                    "--git-branch",
+                    "main",
+                ],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(0, proc.returncode, proc.stderr + proc.stdout)
+            self.assertIn("LIVE_BRIDGE_STATUS: pass", proc.stdout)
+            message = subprocess.run(
+                ["git", "log", "-1", "--pretty=%B"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            ).stdout
+            self.assertIn("交付: 提交已审核的项目变更", message)
+            self.assertIn("变更说明:", message)
+            remote_log = subprocess.run(
+                ["git", "--git-dir", str(remote), "log", "-1", "--pretty=%B", "main"],
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            ).stdout
+            self.assertIn("交付: 提交已审核的项目变更", remote_log)
+
+    def test_git_publish_redacts_requirement_secrets_from_commit_message(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            repo = tmp / "repo"
+            remote = tmp / "remote.git"
+            repo.mkdir()
+            git_kwargs = {"cwd": repo, "check": True, "capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+            subprocess.run(["git", "init", "-b", "main"], **git_kwargs)
+            subprocess.run(["git", "config", "user.name", "Test"], **git_kwargs)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], **git_kwargs)
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], **git_kwargs)
+            subprocess.run(["git", "commit", "-m", "初始化"], **git_kwargs)
+            subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
+            subprocess.run(["git", "remote", "add", "origin", str(remote)], **git_kwargs)
+            subprocess.run(["git", "push", "origin", "main"], **git_kwargs)
+            (repo / "feature.txt").write_text("published\n", encoding="utf-8")
+            fake_pat = "ghp_" + "123456789012345678901234567890123456"
+            requirement_file = tmp / "requirement.txt"
+            requirement_file.write_text(
+                "请发布代码\n"
+                f"api_key={fake_pat}\n"
+                "password=should-not-leak\n",
+                encoding="utf-8",
+            )
+
+            env = dict(os.environ)
+            env.update(
+                {
+                    "PIPELINE_REQUIREMENT_FILE": str(requirement_file),
+                    "PIPELINE_RUN_DIR": str(tmp / "run"),
+                }
+            )
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(BRIDGE),
+                    "--stage",
+                    "git_publish",
+                    "--agent-mode",
+                    "hermes",
+                    "--project-dir",
+                    str(repo),
+                    "--git-remote",
+                    "origin",
+                    "--git-branch",
+                    "main",
+                ],
+                cwd=ROOT,
+                env=env,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(0, proc.returncode, proc.stderr + proc.stdout)
+            message = subprocess.run(
+                ["git", "log", "-1", "--pretty=%B"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+            ).stdout
+            self.assertIn("需求摘要:", message)
+            self.assertIn("[REDACTED]", message)
+            self.assertNotIn(fake_pat, message)
+            self.assertNotIn("should-not-leak", message)
+
     def test_external_research_prompt_forbids_file_edits_and_allows_local_only_pass(self):
         bridge = self._load_bridge_module()
         args = SimpleNamespace(project_dir=ROOT, profile="spreadagent")

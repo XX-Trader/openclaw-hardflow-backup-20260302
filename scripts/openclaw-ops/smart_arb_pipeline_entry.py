@@ -39,6 +39,7 @@ STAGE_AGENT_MAP = {
     "deployment": "deployer",
     "acceptance": "tester",
     "writeback": "doc-writer",
+    "git_publish": "git-master",
 }
 STAGE_LABELS = {
     "intake": "任务接入",
@@ -56,6 +57,7 @@ STAGE_LABELS = {
     "deployment": "内部部署",
     "acceptance": "验收",
     "writeback": "记忆写回",
+    "git_publish": "Git 发布",
 }
 STATUS_LABELS = {
     "completed": "完成",
@@ -460,7 +462,7 @@ def repair_context_markdown(state: dict, attempt: int, risk: str, reasons: list[
             evidence or "No detailed failure evidence was available.",
             "",
             "## Repair Contract",
-            "- Repair through the normal pipeline stages; do not bypass verification, code review, deployment, or memory writeback.",
+            "- Repair through the normal pipeline stages; do not bypass verification, code review, deployment, memory writeback, or git publish.",
             "- Fix the root cause if it is within the repository/runtime permissions.",
             "- Stop and report if the next step requires secrets, real trading authorization, fund movement, or destructive data operations.",
         ]
@@ -621,6 +623,7 @@ def render_chat_summary(
             "acceptance",
             "delivery_evidence",
             "writeback",
+            "git_publish",
         )
         if key in artifacts
     ]
@@ -701,6 +704,17 @@ def requirement_disables_deployment(requirement: str) -> bool:
     return any(pattern.search(text) for pattern in MEMORY_DOC_ONLY_PATTERNS)
 
 
+def env_flag(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    if raw in {"1", "true", "yes", "on"}:
+        return True
+    if raw in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def bridge_command(stage: str, args: argparse.Namespace) -> str:
     command = [
         sys.executable,
@@ -751,6 +765,8 @@ def default_live_bridge_args(args: argparse.Namespace, passthrough: list[str]) -
     ]
     if inject_deployment:
         command_options.insert(5, ("--deployment-command", "deployment"))
+    if not args.skip_git_publish_command:
+        command_options.append(("--git-publish-command", "git_publish"))
     for option, stage in command_options:
         if not option_present(passthrough, option):
             injected.extend([option, bridge_command(stage, args)])
@@ -781,6 +797,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--live-bridge-no-yolo", action="store_true", help="do not let Hermes bypass command approvals for code execution")
     parser.add_argument("--no-internal-api-restart", action="store_true", help="do not restart the internal FastAPI tmux service in deployment stage")
     parser.add_argument("--skip-deployment-command", action="store_true", help="do not inject the deployment stage live bridge command")
+    parser.add_argument(
+        "--skip-git-publish-command",
+        action="store_true",
+        default=env_flag("SMART_ARB_SKIP_GIT_PUBLISH_COMMAND", False),
+        help="do not inject the gated git publish stage",
+    )
     parser.add_argument("--emit-json", action="store_true", help="print raw pipeline JSON instead of the chat summary")
     parser.add_argument("--no-chat-summary", action="store_true", help="print raw runner output without the chat summary")
     parser.add_argument("--chat-stage-limit", type=int, default=int(os.environ.get("SMART_ARB_CHAT_STAGE_LIMIT", "20")))

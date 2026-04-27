@@ -1,8 +1,8 @@
 # source_registry_watcher.py — 接口规范
 
-> 版本：v1.0 | 2026-04-22
-> 实现者：待分配
-> 审核者：Claude Code
+> 版本：v1.1 | 2026-04-27
+> 实现者：HardFlow
+> 审核者：code-reviewer
 
 ---
 
@@ -28,6 +28,8 @@ python source_registry_watcher.py \
   --base-path .workflow/project-memory/ \
   [--notify-on-change]
 ```
+
+`--base-path` 是安装态事实源入口；传入 runtime 项目记忆目录时，脚本必须按该目录扫描，不能回落到脚本默认目录。
 
 ## 3. 检查逻辑
 
@@ -107,7 +109,7 @@ for source in SOURCE_REGISTRY.sources:
 // cron/jobs.json
 {
   "job_id": "source_registry_watcher",
-  "schedule": "0 0 * * 0",
+  "schedule": "every 2 days",
   "command": "python scripts/openclaw-ops/source_registry_watcher.py --scan-all --base-path .workflow/project-memory/ --notify-on-change",
   "enabled": true
 }

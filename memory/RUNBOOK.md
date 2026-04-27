@@ -119,6 +119,26 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 如果需求明确是 memory/docs-only、只写长期事实、no service control、no deployment 或 no restart，entry 会跳过 deployment command，不重启 `smart-arb-api`。如果同一需求后续明确要求 restart/deploy/重启/部署，正向 deployment 动作优先；普通 API/服务代码改动仍会注入 deployment bridge，重启内控 FastAPI 并做 `/health` 与 `/api/strategy/status` smoke。
 
+### 2026-04-27 - Git 发布门禁
+
+类型：runbook
+范围：`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`pipeline_runner.py`
+事实：默认 live 入口会注入 `git_publish` 命令。runner 只在 verification、code review、deployment（如有）、acceptance 和 memory writeback 全部通过后执行该阶段；`git_publish` 优先接收 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保不发布 `command_cwd` 的未验收脏改动；失败时阻塞为 `failed_stage=git_publish`、`next_action=fix_git_publish`。
+证据：`pipeline_runner.py` 会写入 `git_publish_input_patch_report`；`smart_arb_live_bridge.py --stage git_publish` 会先执行 `git diff --check`，再 `git add -A`，随后执行 `git diff --cached --check`，打印 staged diff 统计，不打印完整 diff；随后扫描 staged diff 中的密钥形态，确认安全后生成脱敏中文提交说明并执行 `git push <remote> HEAD:<branch>`。该阶段不使用 force push。
+最后验证：2026-04-27 相关单元测试 62 项 OK
+复用建议：如远端冲突、认证失败、疑似密钥或 push 失败，先处理 `command-runs/git_publish-*.json` 与 `git_publish_report.md`，不要绕过 reviewer 或直接 force push。需要临时关闭发布时使用 `--skip-git-publish-command` 或 `SMART_ARB_SKIP_GIT_PUBLISH_COMMAND=1`。
+
+## 定时仓库治理
+
+### 2026-04-27 - 两天一次来源监控与仓库精简巡检
+
+类型：runbook
+范围：`cron/jobs.json`、`source_registry_watcher.py`、`repo_hygiene_reviewer.py`
+事实：`source_registry_watcher（API来源监控）` 与 `repo_hygiene_reviewer_2d（仓库精简巡检）` 默认每 2 天执行一次。来源监控只检查项目记忆中声明过的官方来源；仓库精简巡检由 `optimization-agent` 执行，只读生成报告并创建 `repo_hygiene_candidate` 人工确认任务。
+证据：`cron/jobs.json` 中两项任务均为 `kind=every`、`everyMs=172800000`；`source_registry_watcher.py` 会按传入 `--base-path` 读取 runtime 项目记忆目录；`repo_hygiene_reviewer.py` 只扫描并写报告，不删除、不提交、不推送。
+最后验证：2026-04-27 相关单元测试 62 项 OK
+复用建议：仓库精简候选必须先人工确认，再进入正常项目交付流水线；涉及删除、合并或修复冲突的改动仍需测试、code reviewer 和 `git_publish` 门禁。
+
 ## nofx Discord 输出与自动修复
 
 Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_action`：

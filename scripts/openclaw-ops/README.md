@@ -20,6 +20,7 @@
 | `project_memory_writer.py` | 项目记忆回写 |
 | `project_memory_injector.py` | 项目记忆注入 |
 | `source_registry_watcher.py` | 项目第三方来源 watch |
+| `repo_hygiene_reviewer.py` | 仓库精简巡检，只读生成冗余/冲突/缓存/重复文件报告，并把候选清理项送入人工确认 |
 | `shared/` | 少量共享工具 |
 | `policy/` | 技能化前遗留的控制面策略代码，后续应逐步迁移或删除 |
 

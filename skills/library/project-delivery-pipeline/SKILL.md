@@ -3,7 +3,8 @@ name: project-delivery-pipeline
 description: >
   End-to-end coding delivery pipeline. It turns one user requirement into a
   reviewed requirement package, researched solution, coding handoff, tests,
-  score, code review, acceptance evidence, repair loop, and memory writeback.
+  score, code review, acceptance evidence, repair loop, memory writeback, and
+  optional controlled Git publish.
 metadata:
   runtime:
     hosts: ["generic", "hermes", "openclaw", "custom"]
@@ -28,6 +29,7 @@ system to carry it through the whole delivery lifecycle:
 - code review
 - repair loops
 - project memory writeback
+- optional Git publish after all gates pass
 
 OpenClaw and Hermes are runtime host examples only. The workflow must stay the
 same and host-specific paths belong in the runtime adapter or installer config.
@@ -36,9 +38,10 @@ same and host-specific paths belong in the runtime adapter or installer config.
 
 The included runner is a deterministic state-machine MVP. It can generate and
 verify all orchestration artifacts in `--dry-run` mode. In live mode it can run
-trusted runtime commands for research, coding, verification, code review, and
-project memory writeback; if a required live command or artifact is missing, it
-blocks at the correct stage instead of pretending completion.
+trusted runtime commands for research, coding, verification, code review,
+project memory writeback, and controlled Git publish; if a required live command
+or artifact is missing, it blocks at the correct stage instead of pretending
+completion.
 
 It also bootstraps the project memory module for the selected `project_key` and
 can mirror the run into the existing SQLite Task Center. The `.workflow` run
@@ -91,6 +94,7 @@ python skills/library/project-delivery-pipeline/scripts/pipeline_runner.py run \
   --verification-command "<lint/typecheck/unit-command>" \
   --verification-command "<smoke-command>" \
   --code-review-command "<review-agent-command>" \
+  --git-publish-command "<safe-git-publish-command>" \
   --write-project-memory
 ```
 
@@ -155,7 +159,11 @@ python skills/library/project-delivery-pipeline/scripts/pipeline_runner.py run \
     implementation-caused failures to coding agents.
 14. Write final `delivery_evidence.md`, `pipeline_state.json`, and execute
     `--write-project-memory` or `--memory-write-command` for live runs.
-15. If enabled, mirror the run into Task Center with stage runs, communications,
+15. If `--git-publish-command` is supplied, publish only after verification,
+    code review, optional deployment, acceptance, and memory writeback pass.
+    Commit messages and publish notes must be Chinese; force push and
+    secret-bearing diffs are forbidden.
+16. If enabled, mirror the run into Task Center with stage runs, communications,
     final output, and incidents.
 
 ## Project Memory Gate
@@ -186,6 +194,13 @@ boundary.
 | Code review fails | `return_to_code_execution` |
 | Acceptance fails because requirement is wrong | `revise_requirements` |
 | Acceptance fails because implementation is wrong | `return_to_code_execution` |
+| Git publish fails | `fix_git_publish` |
+
+When `git_publish` is enabled, the publish command must receive the accepted
+writeback-aware patch. Prefer the `memory_writeback` workspace patch; fall back
+to the accepted `code_execution` workspace patch only when memory writeback
+produced no workspace patch. Never publish arbitrary dirty files from
+`command_cwd`.
 
 ## External Research Rule
 
@@ -209,6 +224,8 @@ Any host runtime should treat this skill as the workflow state surface:
   adapter-provided runtime memory path
 - pass `--record-task-center --task-center-db <db>` when Task Center is available
 - let runtime agents fill the implementation and review artifacts
+- when enabled, let a dedicated publish command handle safe commit/push after
+  all gates pass
 - re-run the state machine after each repaired artifact
 - never fork the workflow just because the runtime host changes
 

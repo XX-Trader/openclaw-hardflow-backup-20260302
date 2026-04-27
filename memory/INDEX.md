@@ -1,13 +1,15 @@
 # 项目记忆索引
 
-最后更新：2026-04-26
+最后更新：2026-04-27
 
 ## 阅读顺序
 
 1. `RUNBOOK.md`：本仓库工作流、runtime 安装和远程巡检命令。
 2. `PITFALLS.md`：已确认的排障结论、历史坑和避免误判的边界。
-3. `../docs/INDEX.md`：长期文档导航与工作流事实源。
-4. `../todo.md` / `../done.md`：当前任务盘和完成记录。
+3. `DECISIONS.md`：近期架构裁决和被拒方案。
+4. `TASK_HISTORY.md`：重要任务完成记录、验证证据和关联文件。
+5. `../docs/INDEX.md`：长期文档导航与工作流事实源。
+6. `../todo.md` / `../done.md`：当前任务盘和完成记录。
 
 ## 当前重点
 
@@ -25,6 +27,8 @@
 - 最新 nofx 安装记录：2026-04-26 17:03 已把提交 `edd05e23` 拉到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 并运行 runtime installer；安装态入口 smoke `cli-arbitrageagent-20260426T090250542271Z` 14/14 completed，详见 `RUNBOOK.md`。
 - 前序 artifact 注入后续 Hermes prompt 前会做敏感信息脱敏，覆盖常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key、AWS access key 等形态。
 - `code_execution` 在 `backend-dev` workspace 产出 diff，runner 会把 diff 应用回主项目目录，并注入后续 tester/reviewer/deployer workspace。
+- `git_publish` 是可选发布门禁，只在验证、代码审查、deployment（如有）、验收和记忆回写通过后执行；提交说明、备注和变更描述必须使用中文，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态，失败回流为 `fix_git_publish`。
+- `source_registry_watcher` 与 `repo_hygiene_reviewer` 默认每 2 天执行一次；前者只检查已注册来源，后者由 `optimization-agent` 只读扫描冗余、冲突、缓存、重复文件并创建人工确认候选，不自动删除、不自动推送。
 - 最后远端 smoke：`codex-arbitrageagent-20260425T140605083467Z`，Task Center 为 `passed`；命令阶段 `model_id=runtime-agent-workspace`，`dispatch_mode=isolated-agent-workspace`。
 - Task Center 中的 agent 字段仍表示责任标签和交接记录；要声称真正 native fan-out，仍需 command evidence 中出现独立宿主 session/run id。
 - 如果要让任务真正转发到 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`tester` 等宿主 native agent，需要继续在 runtime adapter 增加 session dispatch 能力，而不是只修改 stage prompt。
