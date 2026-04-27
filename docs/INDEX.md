@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-27 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个 active workflow owner；cron 只挂 `coordinator/project-agent`；低风险到期 TODO 进入 backlog runner，高风险进人工队列；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
+> 最后更新：2026-04-27 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个 active workflow owner；cron 只挂 `coordinator/project-agent`；低风险到期 TODO 进入 backlog runner，高风险进人工队列；工作流自身修复不再通过同一个 Discord pipeline 自修；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---

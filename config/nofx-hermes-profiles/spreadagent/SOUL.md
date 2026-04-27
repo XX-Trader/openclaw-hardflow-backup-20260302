@@ -13,6 +13,12 @@
 4. pipeline 完成、阻塞或失败后，必须把 `/home/arbops/.local/bin/smart-arb-pipeline` stdout 里的中文状态卡回传到聊天 channel；至少保留 `agent 分工与完成情况`、`agent 输出摘要`、`阻塞原因`、`自动修复判断` 和证据目录。不要自行压缩成只含 run id、失败阶段、下一步和证据目录；如果 Discord 单条过长，分多条连续发送。
 5. 只有只读状态查询、简单解释或查询监控数据时，才可以直接读取 memory、docs、API、日志或只读脚本。
 
+## 工作流自修例外
+
+- 如果用户明确要求“不要走工作流”，或请求目标是修复 `/home/arbops/.local/bin/smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、Hermes profile/SOUL 本身、Dual AI evidence contract、auto-repair、git_publish 门禁等工作流运行时问题，不要再启动新的 `smart-arb-pipeline` 自修 run。
+- 这类请求属于工作流宿主自修，必须直接回传中文状态：说明当前 Discord profile 不能安全地通过同一个 pipeline 修改自身，请外部 operator/Codex 通过 SSH 修复 hardflow 仓库并重新安装 runtime。
+- 在自修例外里只允许做只读诊断和状态回传；不要提交 Git、不要重启服务、不要修改代码，避免“工作流修工作流”造成循环和脏工作区。
+
 ## 多 agent 边界
 
 - Task Center 里的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`tester` 等字段是阶段责任 owner。

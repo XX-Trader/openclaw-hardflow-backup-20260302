@@ -80,8 +80,10 @@
 - [x] [🟡 P1] 增加 `backlog_runner.py` 与 `backlog_runner_30m`，从 Task Center 持续推进低风险、无需人工确认的待办
 - [x] [🟡 P1] 收敛 active agent 配置为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`
 - [x] [🟡 P1] 将需求/方案/代码审查升级为两条独立 reviewer command report 门禁
+- [x] [🟡 P1] 修复 nofx Discord 工作流自修循环：工作流自身修复不再套进同一条 pipeline，review 失败补丁自动回滚并隔离旧业务漂移
+- [ ] [🟡 P1] 请用户在 `本地项目/#常规` 再发一句不带 @ 的消息，验证“多核电脑”Discord bot 已加载旧 TG SOUL/记忆且不再自称趋势回测 agent
 - [ ] [🟡 P1] 将 nofx Smart Arb live bridge 继续升级为宿主 native agent dispatch，并在 Task Center 记录独立 agent session/run id
-- [ ] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
+- [x] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
 
 ---
@@ -149,7 +151,7 @@
 | `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` | workflow 阶段 owner / 隔离 workspace / Task Center 标签 | 由当前 live profile 承载，不是独立常驻模型 |
 | `coordinator`、`project-agent` | cron / Task Center 责任标签 | 由 active workflow owner 执行定时命令；仓库精简巡检由 `coordinator` 只读创建候选，不再注册 `ops-agent/optimization-agent` |
 
-> 服务器安装态提示：2026-04-27 核对时 nofx hardflow 仓库仍在 `44b4dae`，尚未安装本仓库最新 `main` 变更；`source_registry_watcher` 在服务器 cron 中仍是每周日，`repo_hygiene_reviewer.py` 与 `backlog_runner.py` 尚未安装到 `/home/arbops/.hermes/ops`。
+> 服务器安装态提示：2026-04-27 15:01 已把 nofx hardflow 仓库 fast-forward 到 `578b3f0` 并运行 runtime installer；`source_registry_watcher`、`repo_hygiene_reviewer_2d`、`backlog_runner_30m` 已安装到 `/home/arbops/.hermes`，echo smoke `install-smoke-arbitrageagent-20260427T065537Z` 已写入 Task Center 且 `passed`；受控 backlog runner smoke `todo-hardflow-install-smoke-20260427T070123Z` 已写入 1 条 `backlog_runner_attempt`。
 
 ---
 ## 参考文档

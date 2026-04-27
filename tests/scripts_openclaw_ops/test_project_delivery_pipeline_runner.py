@@ -120,6 +120,32 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             memory_dir = Path(tmp) / "project-memory" / "demo"
             self.assertTrue((memory_dir / "RETRIEVAL_MANIFEST.json").exists())
 
+    def test_requirement_and_solution_artifacts_preserve_specific_request(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            requirement = (
+                "修复 nofx smart-arb-pipeline 的 Dual AI evidence contract，"
+                "不要继续业务第五切片，也不要提交 _close_position 漂移。"
+            )
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement=requirement,
+                    workspace_root=Path(tmp),
+                    run_id="specific-requirement",
+                    dry_run=True,
+                )
+            )
+
+            requirements = Path(state["artifacts"]["requirements_package"]).read_text(encoding="utf-8")
+            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
+            self.assertIn("修复 nofx smart-arb-pipeline", requirements)
+            self.assertIn("不要继续业务第五切片", requirements)
+            self.assertIn("Deliver the user request above exactly as written", requirements)
+            self.assertNotIn("Build an end-to-end coding delivery pipeline that can", requirements)
+            self.assertIn("## Target Requirement", solution)
+            self.assertIn("修复 nofx smart-arb-pipeline", solution)
+            self.assertIn("Use `requirements_discussion.md`", solution)
+
     def test_code_agent_can_select_frontend_stage_owner(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = run_pipeline(
@@ -571,6 +597,267 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("requirements_review", state["failed_stage"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Distinct commands: false", review)
+
+    def test_code_review_failure_rolls_back_applied_workspace_patch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            code_script = scripts_dir / "code.py"
+            review_a = scripts_dir / "review_a.py"
+            review_b = scripts_dir / "review_b.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            code_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "(repo / 'bad_feature.txt').write_text('not accepted yet', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            self._write_stage_review_script(review_a, reviewer_role="reviewer-a")
+            review_b.write_text(
+                "import os\n"
+                "stage = os.environ.get('PIPELINE_STAGE_NAME', '')\n"
+                "verdicts = {\n"
+                "    'requirements_review': 'ready_for_solution',\n"
+                "    'solution_review': 'ready_for_implement',\n"
+                "    'code_review': 'requires_revision',\n"
+                "}\n"
+                "print(f\"Final verdict: {verdicts.get(stage, 'requires_revision')}\")\n"
+                "print('Reviewer role: reviewer-b')\n",
+                encoding="utf-8",
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Create a feature that code review must reject.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="rollback-code-review",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    code_command=py_cmd(code_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("code_review", state["failed_stage"])
+            self.assertFalse((repo / "bad_feature.txt").exists())
+            status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, check=True, capture_output=True, text=True)
+            self.assertEqual("", status.stdout.strip())
+            rollback_keys = [key for key in state["artifacts"] if key.startswith("rollback_code_review_failed")]
+            self.assertEqual(1, len(rollback_keys))
+            rollback_report = json.loads(Path(state["artifacts"][rollback_keys[0]]).read_text(encoding="utf-8"))
+            self.assertTrue(rollback_report["ok"])
+            self.assertTrue(rollback_report["reverted"])
+
+    def test_verification_failure_rolls_back_applied_workspace_patch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            code_script = scripts_dir / "code.py"
+            fail_verify = scripts_dir / "fail_verify.py"
+            review_a, review_b = self._write_review_pair(scripts_dir)
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            code_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "(repo / 'feature.txt').write_text('pending verification', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            fail_verify.write_text("import sys\nprint('verification failed')\nsys.exit(7)\n", encoding="utf-8")
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Create a feature that verification must reject.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="rollback-verification",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    code_command=py_cmd(code_script),
+                    verification_commands=(py_cmd(fail_verify),),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("verification", state["failed_stage"])
+            self.assertFalse((repo / "feature.txt").exists())
+            status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, check=True, capture_output=True, text=True)
+            self.assertEqual("", status.stdout.strip())
+            rollback_keys = [key for key in state["artifacts"] if key.startswith("rollback_verification_failed")]
+            self.assertEqual(1, len(rollback_keys))
+
+    def test_code_workspace_patch_refuses_dirty_command_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (repo / "feature.txt").write_text("user change", encoding="utf-8")
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            code_script = scripts_dir / "code.py"
+            review_a, review_b = self._write_review_pair(scripts_dir)
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            code_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "(repo / 'feature.txt').write_text('pending review', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Do not apply code patch into a dirty command cwd.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="dirty-command-cwd",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    code_command=py_cmd(code_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertEqual("user change", (repo / "feature.txt").read_text(encoding="utf-8"))
+            report = json.loads(Path(state["artifacts"]["command_code_execution_1"]).read_text(encoding="utf-8"))
+            self.assertTrue(report["workspace_patch"]["command_cwd_preflight"]["dirty"])
+            self.assertEqual(["feature.txt"], report["workspace_patch"]["command_cwd_preflight"]["overlapping_dirty_paths"])
+            self.assertFalse(report["workspace_patch"]["applied_to_command_cwd"]["applied"])
+
+    def test_rollback_failure_blocks_for_manual_cleanup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            code_script = scripts_dir / "code.py"
+            mutate_and_fail = scripts_dir / "mutate_and_fail.py"
+            review_a, review_b = self._write_review_pair(scripts_dir)
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            code_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "(repo / 'feature.txt').write_text('pending verification', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            mutate_and_fail.write_text(
+                "import pathlib, sys\n"
+                f"repo = pathlib.Path({str(repo)!r})\n"
+                "(repo / 'feature.txt').write_text('changed after apply', encoding='utf-8')\n"
+                "sys.exit(7)\n",
+                encoding="utf-8",
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Expose rollback failure as manual cleanup.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="rollback-failure",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    code_command=py_cmd(code_script),
+                    verification_commands=(py_cmd(mutate_and_fail),),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("rollback_cleanup", state["failed_stage"])
+            self.assertEqual("manual_cleanup_required", state["next_action"])
+            self.assertEqual("changed after apply", (repo / "feature.txt").read_text(encoding="utf-8"))
+            rollback_keys = [key for key in state["artifacts"] if key.startswith("rollback_verification_failed")]
+            self.assertEqual(1, len(rollback_keys))
+            rollback_report = json.loads(Path(state["artifacts"][rollback_keys[0]]).read_text(encoding="utf-8"))
+            self.assertFalse(rollback_report["ok"])
 
     def test_live_agent_worktree_isolates_code_and_applies_diff_for_verification(self):
         with tempfile.TemporaryDirectory() as tmp:

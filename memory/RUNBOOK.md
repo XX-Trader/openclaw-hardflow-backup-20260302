@@ -35,6 +35,15 @@
 
 ## nofx hardflow 拉取与安装记录
 
+### 2026-04-27 15:01 - 最新 runtime installer 同步到 nofx
+
+类型：deploy
+范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/cron/jobs.json`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`
+事实：nofx hardflow 仓库已从 `44b4dae` fast-forward 到 `578b3f0`，本次 `git status --porcelain` 为空，`STASH_NAME=none`。runtime installer 返回 `ok=true`、`changed=true`，已安装 `repo_hygiene_reviewer.py`、`backlog_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 等 ops 脚本；runtime cron 已包含 `backlog_runner_30m（持续推进待办）`、`repo_hygiene_reviewer_2d（仓库精简巡检）` 和 `source_registry_watcher（API来源监控）`。
+证据：`python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol` 通过；定向单测 `test_backlog_runner`、`test_project_delivery_runtime_installer`、`test_repo_hygiene_and_source_watcher`、`test_active_agent_registry`、`test_smart_arb_pipeline_entry`、`test_smart_arb_live_bridge` 共 53 项 OK；两个 Discord gateway 重启后 `gateway_state=running`、`discord=connected`；`curl http://127.0.0.1:18080/health` 返回 `{"status":"ok","strategy_running":false,"ipc_connected":false}`，`/api/strategy/status` 返回 `{"running":false,"pid":null}`；echo smoke run `install-smoke-arbitrageagent-20260427T065537Z` 为 `ok=true`、Task Center `passed`；受控 backlog runner smoke 任务 `todo-hardflow-install-smoke-20260427T070123Z` 被标记 `passed`，并写入 1 条 `backlog_runner_attempt`。
+最后验证：2026-04-27 15:01
+复用建议：安装完成后要额外核对 `smart-arb-api` tmux pane cwd，确认仍为 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`，避免 live bridge deployment 单测或手工 smoke 把内控 API 留在临时目录。
+
 ### 2026-04-26 17:03 - Discord pipeline evidence 修复安装
 
 类型：deploy
@@ -179,6 +188,15 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 - bridge 会在前序 artifact 注入后续 prompt 前脱敏常见 header、assignment、长 token 和 GitHub PAT / OpenAI `sk-` / Slack / HF / Google / AWS access key 等短格式 secret；排障时不要把原始 token 放进 artifact。
 - 排障时优先看最终状态卡，再看原 run 与 `-repair<n>` run 各自的 `command-runs/*.json`，以及原 run 下的 `auto_repair_context_<n>.md`。
 
+### 2026-04-27 - 工作流自修与未通过 review 补丁清理
+
+类型：runbook
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、nofx Discord profile `SOUL.md`、SmartMultiPlatformArbitrage 主工作区
+事实：工作流自身修复不能继续通过同一个 Discord profile 无限启动 `smart-arb-pipeline`。两个 nofx profile 模板已增加“工作流自修例外”：用户明确说“不要走工作流”，或目标是修复 pipeline/bridge/profile/dual-review/auto-repair/git_publish 时，profile 只做只读诊断和状态回传，提示外部 operator/Codex 通过 SSH 修复 hardflow 并重新安装 runtime。`pipeline_runner.py` 会在 requirements review 通过后写 `resolved_requirement.md`，并让 `solution.md` 消费该 handoff。应用 code workspace patch 前会检查主工作区脏路径是否与补丁路径重叠，重叠则拒绝应用；`verification` 或 `code_review` 阻塞时对已应用到主项目目录的 patch 执行 `git apply -R` 并写入 `command-runs/rollback-<reason>.json`；如果回滚失败，pipeline 以 `failed_stage=rollback_cleanup`、`next_action=manual_cleanup_required` 阻塞，避免假装只是普通实现失败。
+证据：本地测试 `python -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 共 68 项 OK；新增测试覆盖 requirement/solution artifact 保留具体用户请求、resolved requirement handoff、code review 失败回滚、verification 失败回滚、主工作区重叠脏路径拒绝应用、回滚失败升级为 manual cleanup。nofx 上旧业务漂移已保存到 `stash@{0}: pre-workflow-fix-rejected-business-drift-20260427T075431Z`，包含 `_close_position` / `execution_orchestration` 相关未通过 review 改动、`.workflow/` 和 `memory/smart-arb/`。
+最后验证：2026-04-27 15:54
+复用建议：遇到“修工作流本身”“不要走工作流”时，不要再让 Discord profile 自己调用 pipeline；先 SSH 到 nofx 停活跃 self-repair run，再改 hardflow 仓库、跑测试、安装 runtime。遇到 SmartMulti 主仓库残留未通过 review 的业务改动，优先 `git stash push -u -m pre-workflow-fix-rejected-business-drift-<timestamp>` 隔离，不要直接删除。
+
 ## nofx workflow 服务器级权限
 
 早期不做细粒度权限划分时，nofx 采用高信任配置：
@@ -195,3 +213,12 @@ runuser -u arbops -- sudo -n id
 ```
 
 后期要收紧时，先把 sudoers 改成命令 allowlist，再重新打开 profile security scan。
+
+## 2026-04-27 - 本机 WSL `trend-backtest` 接入 Discord 多核电脑 bot
+
+类型：runbook
+范围：`/home/ubuntu/.hermes/profiles/trend-backtest/{config.yaml,.env,SOUL.md,start-gateway.sh,memories/,sessions/}`、tmux `trend-backtest-gateway`
+事实：本机 WSL `trend-backtest` profile 已从旧 Discord bot 切到用户新建的“多核电脑”bot，但该入口的语义不是“趋势回测专职 agent”，而是旧 Telegram 群“全自动策略研发回测”的 Discord 替代入口。2026-04-27 16:13 已把 profile `SOUL.md` 改为继承全局旧 TG `~/.hermes/SOUL.md`，并把 `~/.hermes/memories/{MEMORY.md,USER.md}` 合并进 profile memories；原 `trend-backtest` 回测专项记忆作为次级上下文保留。profile 级配置仍固定为 `approvals.mode: 'off'`、`security.tirith_enabled: false`、`discord.auto_thread: false`；为避免 bot 在所有可见频道无条件响应，采用 `discord.require_mention: true` + `discord.free_response_channels: '1498225531923988562'`，即 `本地项目 / #常规` 频道免 @，其它频道仍需 @。敏感 token 只写入 profile `.env`，不得写入仓库、记忆或聊天摘要。
+证据：迁移备份位于 `/home/ubuntu/.hermes/profiles/trend-backtest/backups/tg-inherit-20260427161320` 与 `encoding-fix-20260427161441`；已删除新 Discord 频道在旧趋势回测 SOUL 下生成的 session `20260427_160858_715e39ff`，下条消息会重建 session。重启后 `gateway_state.json` 显示 PID `56155`、`gateway_state=running`、`platforms.discord.state=connected`；`/proc/56155/cwd` 为 `/home/ubuntu`，不再是 `/home/ubuntu/projects/SmartTrendTracker`。`SOUL.md` 头部明确禁止自称 trend backtest agent，且禁止声明 SmartTrendTracker 是唯一默认工作目录。
+最后验证：2026-04-27 16:15
+复用建议：后续若用户说“这个 Discord bot 是替代 TG 的”，不要只改 Discord token 或 profile `.env`；必须同时核对 `SOUL.md`、profile memories、`start-gateway.sh`、`terminal.cwd` 和新频道 session 是否由旧 prompt 污染。若 bot 在线但不回复，再查频道权限与 Message Content Intent。

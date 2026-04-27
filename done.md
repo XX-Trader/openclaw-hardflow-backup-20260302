@@ -7,6 +7,16 @@
 
 ## 2026-04-27 已完成
 
+- [x] [2026-04-27] **本机 WSL 多核电脑 Discord 入口继承旧 TG 记忆**
+  - `trend-backtest` profile 已从“趋势回测专职 SOUL”纠偏为旧 Telegram 群“全自动策略研发回测”的 Discord 替代入口；`SOUL.md` 继承全局 TG SOUL，并明确不再自称趋势回测 agent、不再声明 SmartTrendTracker 是唯一默认工作目录。
+  - 已把全局 `~/.hermes/memories/MEMORY.md` 与 `USER.md` 合并进 profile memories，原 `trend-backtest` 回测专项记忆作为次级上下文保留。
+  - 已删除新 Discord 频道在旧 SOUL 下创建的 session `20260427_160858_715e39ff`，重启 `trend-backtest-gateway` 后 `gateway_state=running`、Discord `connected`，真实进程 cwd 为 `/home/ubuntu`。
+
+- [x] [2026-04-27] **nofx 拉取并安装最新 hardflow runtime**
+  - nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302` 已从 `44b4dae` fast-forward 到 `578b3f0`，本次远端工作区无脏改动，未创建 stash。
+  - `runtime_installer.py install` 已把最新 ops 脚本与 cron jobs 安装到 `/home/arbops/.hermes`，包括 `backlog_runner.py`、`repo_hygiene_reviewer.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`backlog_runner_30m` 和 `repo_hygiene_reviewer_2d`。
+  - 验证：远端 `compileall` 通过；定向单测 53 项 OK；两个 Discord gateway 为 `running/connected`；内控 API `/health` 与 `/api/strategy/status` 通过；echo smoke `install-smoke-arbitrageagent-20260427T065537Z` 写入 Task Center 且 `passed`；受控 backlog runner smoke `todo-hardflow-install-smoke-20260427T070123Z` 写入 1 条 `backlog_runner_attempt`。
+
 - [x] [2026-04-27] **工作流合规收敛：低风险自动推进、9 个 active owner、双 reviewer 门禁**
   - `deadline_to_task_bridge.py` 改为按 TODO 文本和优先级推断风险：低风险到期项直接创建 `dispatch_pipeline` 候选并交给 `coordinator/backlog_runner`，高风险、部署、资金、凭证、删除、生产操作等仍进入 `human_inbox.py` 等待人工确认。
   - `pipeline_runner.py` 的需求审查、方案审查、代码审查均要求至少两条独立 reviewer command report，且各自输出预期 `Final verdict` 后才放行；live entry 默认注入 `reviewer-a/reviewer-b` 两条命令。
@@ -360,3 +370,4 @@
 - 2026-04-24: 修复 project delivery runtime 安装器的 ops 根目录 runner 命名兼容；`runtime_installer.py` 现在同时安装 `pipeline_runner.py` 与 `project_delivery_pipeline.py`，`pipeline_runner.py` 会在安装态优先解析同级 `ops/policy`，确保安装到 Hermes runtime 后的 `ops/hermes_profile_smoke.py` 可以按同目录加载 runner 并完成 echo smoke，新增回归断言覆盖两个入口文件与安装态 smoke。
 - 2026-04-25: 将 SmartMultiPlatformArbitrage nofx Discord live evidence bridge 的归属文档迁入 hardflow：新增 `docs/核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md`，明确工作流代码归 hardflow、套利业务代码归 SmartMultiPlatformArbitrage，并记录 nofx runtime 路径、live 阶段证据、deployment 边界和验收 run id。
 - 2026-04-25: 修复 nofx Discord Hermes live pipeline 卡顿与入口不稳：profile SOUL 改为绝对 `/home/arbops/.local/bin/smart-arb-pipeline`，`smart_arb_live_bridge.py` verification 默认收敛为 `git diff --check` + `compileall -q scripts strategy_runtime`，新增显式 `--verification-command-timeout-seconds`，并在 nofx 安装态通过 echo live smoke `codex-spreadagent-20260425T154609125415Z` 与真实 verification smoke。
+- 2026-04-27: 修复 nofx Discord 工作流自修循环和未验收业务补丁残留：需求/方案 artifact 保留用户具体目标，不再泛化为通用 pipeline 模板；`verification` / `code_review` 阻塞时自动反向撤回已应用到主项目目录的 code workspace patch；两个 nofx profile SOUL 增加“工作流自修例外”，用户明确说“不要走工作流”或目标是修 pipeline/bridge/profile 时只做只读诊断并提示外部 SSH/operator 修复。

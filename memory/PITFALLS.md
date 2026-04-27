@@ -1,5 +1,32 @@
 # PITFALLS
 
+## 2026-04-27 - 部署重启 gateway 前必须检查是否有活跃 Discord pipeline
+
+类型：pitfall
+范围：nofx `/home/arbops/.hermes/pipeline-runs`、`hermes-discord-arbitrage`、`hermes-discord-spread`、`smart-arb-pipeline`
+事实：Discord 里反复出现 `Still working...` 通常是 gateway 正在等待后台 `smart-arb-pipeline` 子进程完成；它不是业务结论，只是等待心跳。2026-04-27 14:43 的 `discord-spreadagent-20260427T064306800586Z` 在 14:56 阻塞于 `code_review`，随后自动 repair run `discord-spreadagent-20260427T064306800586Z-repair1` 在 15:02 阻塞于 `requirements_review`。本次 14:55 部署重启了 `hermes-discord-spread`，正好发生在该任务等待期间，因此最终阻塞状态卡可能没有回到 Discord，用户只看到多轮 `Still working...`。
+证据：远端 `pipeline_state.json` 显示原 run `status=blocked failed_stage=code_review next_action=return_to_code_execution updated_at=2026-04-27T06:56:13Z`，repair1 显示 `status=blocked failed_stage=requirements_review next_action=revise_requirements updated_at=2026-04-27T07:02:32Z`；`ps` 复核时已无 `smart-arb-pipeline` 活跃进程，两个 Discord gateway 均为 `running/connected`。
+最后验证：2026-04-27 15:15
+复用建议：部署或重启 gateway 前，先查 `ps -ef | grep smart-arb-pipeline` 和最近 `/home/arbops/.hermes/pipeline-runs/*/pipeline_state.json`；如有 running/新近未完成 run，先等它完成或手工记录 run id，再重启。遇到用户只看到 `Still working...`，先按 run id 打开 `pipeline_state.json` 和 `command-runs/*.json`，不要把心跳当成最终失败原因。
+
+## 2026-04-27 - nofx 上跑 live bridge deployment 相关单测后要复核 smart-arb-api cwd
+
+类型：pitfall
+范围：`tests/scripts_openclaw_ops/test_smart_arb_live_bridge.py`、nofx tmux `smart-arb-api`、`scripts/openclaw-ops/smart_arb_live_bridge.py`
+事实：在 nofx 安装态执行 `test_smart_arb_live_bridge` 的定向单测时，deployment 相关测试会输出并演练 `tmux has-session/kill-session/new-session -s smart-arb-api` 以及 `curl` smoke。虽然本次最终核对 `smart-arb-api` 的 pane cwd 仍是 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`，但这类测试后必须显式复核，不能只看 HTTP smoke。
+证据：2026-04-27 远端安装验证中，53 项定向单测 OK；随后通过 `tmux list-panes -t smart-arb-api -F '#{pane_pid}|#{pane_current_path}|#{pane_start_command}'` 确认 cwd 为 SmartMultiPlatformArbitrage 的 `智能多平台套利` 目录，进程命令为 `/home/arbops/.venvs/smart-arbitrage/bin/uvicorn api.main:app --host 127.0.0.1 --port 18080`。
+最后验证：2026-04-27 14:58
+复用建议：nofx 服务器上验证 live bridge 时，优先用 `compileall`、安装器测试和 echo smoke；如运行包含 deployment 的单测，测试后必须检查 tmux pane cwd、uvicorn 进程 cwd 和 `/health`，必要时按 `smart-arb-nofx-live-evidence-bridge.md` 的标准命令重启内控 API。
+
+## 2026-04-27 - 工作流自身不能通过同一个 Discord pipeline 自修
+
+类型：pitfall
+范围：nofx `spreadagent` / `arbitrageagent` SOUL、`smart-arb-pipeline`、`pipeline_runner.py`、SmartMultiPlatformArbitrage 主工作区
+事实：用户明确说“不要走工作流，直接修工作流”时，旧 SOUL 仍把请求包装成新的 coordinator pipeline，导致 `discord-spreadagent-20260427T072912161741Z` 与后续 `discord-spreadagent-20260427T074448323797Z` 继续自修。该模式会在旧 runtime 上反复读取/生成 artifact，并可能把未通过 review 的业务补丁留在 SmartMulti 主工作区。
+证据：远端进程曾显示两个 self-repair run 仍在执行；SmartMulti 工作区残留 `multi_exchange_arbitrage.py`、`execution_orchestration.py`、`tests/test_execution_orchestration.py`、`.workflow/`、`memory/smart-arb/`。本次已终止活跃 self-repair run，并把残留业务漂移保存为 `stash@{0}: pre-workflow-fix-rejected-business-drift-20260427T075431Z`。
+最后验证：2026-04-27 15:54
+复用建议：工作流宿主自修必须由外部 operator/Codex 经 SSH 修改 hardflow 仓库和安装态；Discord profile 只允许只读诊断并回传状态。后续若看到 `Still working...` 对应的 run 目标是修 `smart-arb-pipeline` / `pipeline_runner.py` / `smart_arb_live_bridge.py`，先停止该 self-repair run，再部署修复后的 runtime。
+
 ## 2026-04-26 - P0 记忆写回不应被否定式敏感词或 session_id 输出卡住
 
 类型：pitfall
@@ -107,3 +134,20 @@
 证据：两个 profile 的 `gateway.log` 曾出现 `PermissionError: [Errno 13] Permission denied: '/home/arbops/.hermes/profiles/<profile>/.env'`；修正属主后 `hermes-discord-arbitrage`、`hermes-discord-spread` 均在 tmux 中存在，`gateway_state.json` 显示 `running updated_at=2026-04-25T15:45:14/15Z`。
 最后验证：2026-04-25 23:45
 复用建议：profile `.env` 含凭证，不打印内容；只检查属主和 mode。通过 root 修改后必须 `chown arbops:arbops`，然后再重启对应 tmux gateway。
+## 2026-04-27 - Hermes Discord connected 但频道发言 403
+
+类型：pitfall
+范围：本机 WSL `/home/ubuntu/.hermes/profiles/trend-backtest`、Discord bot “多核电脑”、`本地项目 / #常规`
+事实：`gateway_state.json` 显示 Discord `connected` 只能证明 bot token 有效且 gateway websocket 已连上；它不证明 bot 对目标频道有发送消息权限。2026-04-27 将 `trend-backtest` 接到新 bot 后，Hermes 日志显示 `[Discord] Connected as 多核电脑#8868`，但用 bot token 向 `1498225531923988562` 发消息返回 `403 Forbidden`。
+证据：`hermes -p trend-backtest status` 显示 Discord home channel 为 `1498225531923988562` 且 gateway running；`POST https://discord.com/api/v10/channels/1498225531923988562/messages` 返回 HTTP 403。
+最后验证：2026-04-27 16:03
+复用建议：遇到“online/connected 但聊天不回”时不要只查 `hermes status`。先查 channel 发送权限，再查 Message Content Intent。免 @ 最小安全配置是 `require_mention: true` + `free_response_channels=<目标频道>`，不要为了免 @ 直接把 `require_mention=false` 放到多频道 guild，除非这是专用单频道服务器。
+
+## 2026-04-27 - 替代 TG 入口不能沿用专项 profile SOUL
+
+类型：pitfall
+范围：本机 WSL `/home/ubuntu/.hermes/profiles/trend-backtest`、旧 TG 全局 Hermes、Discord “多核电脑”入口
+事实：把新 Discord bot 接到现有 `trend-backtest` profile 后，若只替换 token 和频道，bot 会继续加载该 profile 原有“趋势回测机器人 SOUL”，从而在新频道开场自称趋势回测 agent，并固定宣称默认工作目录 `/home/ubuntu/projects/SmartTrendTracker`。这与“替代之前 TG 频道、沿用 TG 记忆”的目标冲突。
+证据：2026-04-27 用户在 Discord 看到回复“我是趋势回测 agent，默认工作目录是 /home/ubuntu/projects/SmartTrendTracker”；随后核对发现全局 `~/.hermes/SOUL.md` 是旧 Telegram 的 Hermes SDLC 总协调官提示词，全局 `~/.hermes/memories/MEMORY.md` 是旧 TG 记忆，而 profile `SOUL.md` 是趋势回测专项提示词。
+最后验证：2026-04-27 16:15
+复用建议：做“渠道替换”时必须迁移 identity、SOUL、memory、session 四件套；只改 platform token 会造成入口身份漂移。迁移后要删除新频道在旧 SOUL 下创建的 session，让下一条消息重建上下文。

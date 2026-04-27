@@ -593,18 +593,24 @@ def render_requirements(requirement: str) -> str:
         {requirement}
 
         ## Normalized Requirement
-        Build an end-to-end coding delivery pipeline that can:
-        - explore and refine requirements with multiple AI reviewers
-        - retrieve project memory before selecting a change location
-        - research external implementation options before coding
-        - route coding work to implementation agents
-        - run verification and code review gates
-        - return implementation failures to coding agents
-        - return requirement-caused failures to the requirement package
-        - write final delivery evidence and memory updates
+        Deliver the user request above exactly as written, preserving its target
+        files, non-goals, safety boundaries, deployment expectations, and publish
+        requirements. If later discussion narrows or corrects the scope, the
+        refined requirement must stay tied to this original request instead of
+        falling back to a generic pipeline template.
+
+        ## Scope Guard
+        - Keep implementation scoped to the original request and the accepted
+          requirements discussion.
+        - Do not continue unrelated feature slices when the request is about
+          workflow repair, deployment, cleanup, documentation, or diagnosis.
+        - If the request names files, services, run ids, artifacts, dirty
+          worktree entries, or safety constraints, treat them as acceptance inputs.
 
         ## Acceptance Criteria
         - Requirements review must return ready_for_solution.
+        - The requirement package and discussion must preserve the user-specific
+          objective, explicit non-goals, and safety constraints.
         - Project memory context must name likely change locations or force revision.
         - Solution review must return ready_for_implement.
         - Verification must pass before acceptance.
@@ -665,14 +671,50 @@ def render_requirements_discussion(requirement: str) -> str:
     )
 
 
-def render_solution(runtime: dict[str, Any]) -> str:
+def render_resolved_requirement(requirement: str, artifacts: dict[str, str]) -> str:
+    discussion = read_optional_file(Path(artifacts.get("requirements_discussion", "")), "")
+    review = read_optional_file(Path(artifacts.get("requirements_review", "")), "")
+    return dedent(
+        f"""
+        # Resolved Requirement
+
+        ## Original Requirement
+        {requirement}
+
+        ## Accepted Requirement Source
+        The accepted implementation scope is the original requirement plus the
+        completed requirements discussion and requirements review below. Downstream
+        stages must use this artifact as the handoff contract and must not fall
+        back to a generic pipeline template.
+
+        ## Requirements Discussion
+        {discussion}
+
+        ## Requirements Review
+        {review}
+        """
+    )
+
+
+def render_solution(runtime: dict[str, Any], requirement: str) -> str:
     return dedent(
         f"""
         # Solution Package
 
+        ## Target Requirement
+        {requirement}
+
         ## Architecture
         The pipeline is a deterministic state machine with runtime adapters.
         OpenClaw and Hermes are hosts, not separate workflow definitions.
+
+        ## Implementation Source Of Truth
+        - Use `requirements_discussion.md` and `requirements_review.md` for the
+          concrete scope of this run.
+        - Use `research_report.md` and `project_memory_context.md` for local or
+          external evidence.
+        - Do not implement the generic stage-order description below as a new
+          feature unless the user explicitly requested workflow architecture work.
 
         ## Runtime Adapter
         - Host: {runtime["host"]}
@@ -779,6 +821,110 @@ def apply_patch_file(repo_dir: Path, patch_file: Path) -> dict[str, Any]:
         "stdout": clip_text(proc.stdout),
         "stderr": clip_text(proc.stderr),
     }
+
+
+def git_status_porcelain(repo_dir: Path) -> dict[str, Any]:
+    proc = run_git(["status", "--porcelain"], repo_dir)
+    status = proc.stdout or ""
+    return {
+        "ok": proc.returncode == 0 and not status.strip(),
+        "returncode": proc.returncode,
+        "dirty": bool(status.strip()),
+        "stdout": clip_text(status),
+        "stderr": clip_text(proc.stderr),
+    }
+
+
+def status_paths(porcelain: str) -> set[str]:
+    paths: set[str] = set()
+    for line in str(porcelain or "").splitlines():
+        if not line.strip() or len(line) < 4:
+            continue
+        raw = line[3:].strip()
+        if " -> " in raw:
+            raw = raw.rsplit(" -> ", 1)[-1].strip()
+        paths.add(raw.strip('"'))
+    return paths
+
+
+def patch_paths(patch_file: Path) -> set[str]:
+    paths: set[str] = set()
+    try:
+        content = patch_file.read_text(encoding="utf-8")
+    except OSError:
+        return paths
+    for line in content.splitlines():
+        if not line.startswith("diff --git "):
+            continue
+        parts = line.split()
+        if len(parts) >= 4:
+            path = parts[3]
+            if path.startswith("b/"):
+                path = path[2:]
+            paths.add(path.strip('"'))
+    return paths
+
+
+def command_cwd_patch_preflight(repo_dir: Path, patch_file: Path) -> dict[str, Any]:
+    status = git_status_porcelain(repo_dir)
+    dirty_paths = status_paths(str(status.get("stdout") or ""))
+    changed_paths = patch_paths(patch_file)
+    overlapping = sorted(dirty_paths & changed_paths)
+    return {
+        "ok": status.get("returncode") == 0 and not overlapping,
+        "returncode": status.get("returncode", 0),
+        "dirty": bool(dirty_paths),
+        "dirty_paths": sorted(dirty_paths),
+        "patch_paths": sorted(changed_paths),
+        "overlapping_dirty_paths": overlapping,
+        "stdout": status.get("stdout", ""),
+        "stderr": status.get("stderr", ""),
+    }
+
+
+def reverse_patch_file(repo_dir: Path, patch_file: Path) -> dict[str, Any]:
+    if not patch_file.exists() or patch_file.stat().st_size == 0:
+        return {"ok": True, "reverted": False, "returncode": 0, "stderr": ""}
+    proc = run_git(["apply", "-R", "--whitespace=nowarn", str(patch_file)], repo_dir)
+    return {
+        "ok": proc.returncode == 0,
+        "reverted": proc.returncode == 0,
+        "returncode": proc.returncode,
+        "stdout": clip_text(proc.stdout),
+        "stderr": clip_text(proc.stderr),
+    }
+
+
+def rollback_applied_code_patch(
+    config: PipelineConfig,
+    run_dir: Path,
+    artifacts: dict[str, str],
+    patch_file: Path | None,
+    reason: str,
+) -> dict[str, Any]:
+    if patch_file is None:
+        return {"ok": True, "reverted": False, "reason": reason, "patch_file": ""}
+    report = reverse_patch_file(config.command_cwd.expanduser().resolve(), patch_file)
+    report["reason"] = reason
+    report["patch_file"] = str(patch_file)
+    report_file = run_dir / "command-runs" / f"rollback-{slugify(reason)}.json"
+    report["report_file"] = str(report_file)
+    write_json(report_file, report)
+    artifacts[f"rollback_{slugify(reason)}"] = str(report_file)
+    return report
+
+
+def rollback_failed(report: dict[str, Any]) -> bool:
+    return bool(report.get("patch_file")) and not bool(report.get("ok"))
+
+
+def rollback_failure_detail(report: dict[str, Any]) -> str:
+    stderr = str(report.get("stderr") or "").strip()
+    return (
+        "failed to rollback an unaccepted code workspace patch from command cwd; "
+        "manual cleanup is required before continuing"
+        + (f": {clip_text(stderr, 600)}" if stderr else "")
+    )
 
 
 def export_workspace_patch(repo_dir: Path, patch_file: Path) -> dict[str, Any]:
@@ -981,11 +1127,26 @@ def run_stage_command(
             and workspace_patch.get("ok")
             and workspace_patch.get("has_changes")
         ):
-            apply_result = apply_patch_file(base_cwd, patch_file)
-            workspace_patch["applied_to_command_cwd"] = apply_result
-            if not apply_result.get("ok"):
-                returncode = int(apply_result.get("returncode") or 1)
-                error = f"failed to apply code workspace diff to command cwd: {apply_result.get('stderr', '')}"
+            preflight = command_cwd_patch_preflight(base_cwd, patch_file)
+            workspace_patch["command_cwd_preflight"] = preflight
+            if not preflight.get("ok"):
+                returncode = 1
+                error = (
+                    "command cwd has uncommitted changes overlapping the code workspace diff; "
+                    "refusing to apply patch before verification and code review"
+                )
+                workspace_patch["applied_to_command_cwd"] = {
+                    "ok": False,
+                    "applied": False,
+                    "returncode": int(preflight.get("returncode") or 1),
+                    "stderr": preflight.get("stderr", ""),
+                }
+            else:
+                apply_result = apply_patch_file(base_cwd, patch_file)
+                workspace_patch["applied_to_command_cwd"] = apply_result
+                if not apply_result.get("ok"):
+                    returncode = int(apply_result.get("returncode") or 1)
+                    error = f"failed to apply code workspace diff to command cwd: {apply_result.get('stderr', '')}"
         elif not workspace_patch.get("ok"):
             returncode = 1
             error = f"failed to export code workspace diff: {workspace_patch.get('stderr', '')}"
@@ -1944,7 +2105,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
         )
 
-    record("solution_package", "solution.md", render_solution(runtime))
+    resolved_requirement = record(
+        "resolved_requirement",
+        "resolved_requirement.md",
+        render_resolved_requirement(requirement, artifacts),
+        verdict="pass",
+    )
+
+    record("solution_package", "solution.md", render_solution(runtime, resolved_requirement.read_text(encoding="utf-8")))
     sol_review_reports = run_stage_commands(
         config,
         run_dir,
@@ -2071,6 +2239,32 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         verdict="fail" if verification_failed else "pass",
     )
     if verification_failed:
+        rollback_report = rollback_applied_code_patch(
+            config,
+            run_dir,
+            artifacts,
+            code_workspace_patch_file,
+            "verification_failed",
+        )
+        if rollback_failed(rollback_report):
+            return finalize_pipeline_state(
+                config,
+                block_pipeline(
+                    config,
+                    run_id,
+                    run_dir,
+                    runtime,
+                    stages,
+                    artifacts,
+                    "rollback_cleanup",
+                    "manual_cleanup_required",
+                    rollback_failure_detail(rollback_report),
+                    Path(str(rollback_report.get("report_file") or "")).name or None,
+                    "fail",
+                    20,
+                ),
+                requirement,
+            )
         return finalize_pipeline_state(
             config,
             block_pipeline(
@@ -2121,6 +2315,32 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     )
     gate_ok, parsed_verdict = gate_result("code_review", code_review)
     if not gate_ok:
+        rollback_report = rollback_applied_code_patch(
+            config,
+            run_dir,
+            artifacts,
+            code_workspace_patch_file,
+            "code_review_failed",
+        )
+        if rollback_failed(rollback_report):
+            return finalize_pipeline_state(
+                config,
+                block_pipeline(
+                    config,
+                    run_id,
+                    run_dir,
+                    runtime,
+                    stages,
+                    artifacts,
+                    "rollback_cleanup",
+                    "manual_cleanup_required",
+                    rollback_failure_detail(rollback_report),
+                    Path(str(rollback_report.get("report_file") or "")).name or None,
+                    "fail",
+                    20,
+                ),
+                requirement,
+            )
         return finalize_pipeline_state(
             config,
             block_pipeline(

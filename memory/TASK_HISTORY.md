@@ -1,5 +1,23 @@
 # TASK_HISTORY
 
+## 2026-04-27 - nofx 工作流自修闭环修复
+
+类型：task
+范围：`pipeline_runner.py`、`tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py`、`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、nofx SmartMultiPlatformArbitrage 工作区
+事实：修复 nofx Discord 工作流自修循环与未验收业务补丁残留问题。`requirements.md` 保留本轮用户具体需求、禁止范围和安全边界，不再泛化成“构建端到端 pipeline”模板；requirements review 通过后新增 `resolved_requirement.md` 作为下游 handoff，`solution.md` 消费该 handoff；主工作区脏路径与 code patch 路径重叠时拒绝应用，`verification` 或 `code_review` 阻塞时会反向撤回已应用到主项目目录的 code workspace patch 并记录 rollback artifact，回滚失败会升级为 `rollback_cleanup/manual_cleanup_required`；两个 profile SOUL 增加工作流自修例外，避免“修 pipeline 本身”请求再次进入同一个 pipeline。远端 SmartMulti 主工作区中 `_close_position` / `execution_orchestration` 相关未通过 review 的业务漂移已隔离到 stash。
+证据：本地 `python -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 共 68 项 OK；`python -m unittest tests.scripts_openclaw_ops.test_project_delivery_runtime_installer tests.scripts_openclaw_ops.test_project_delivery_hermes_profile_smoke tests.scripts_openclaw_ops.test_active_agent_registry` 共 7 项 OK；`python -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；nofx SmartMulti `git status --short --branch` 回到 `## main...origin/main`，最新 stash 为 `pre-workflow-fix-rejected-business-drift-20260427T075431Z`。
+最后验证：2026-04-27 15:54
+复用建议：后续 workflow runtime 自修先走外部 SSH/operator，不让 Discord profile 自己改自身；业务 patch 只有 verification/code_review 通过后才允许进入发布链路，失败时应检查 `rollback_*` artifact 和主工作区状态。
+
+## 2026-04-27 - nofx 拉取并安装最新 hardflow runtime
+
+类型：deploy
+范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/cron/jobs.json`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、Task Center
+事实：nofx hardflow 仓库已从 `44b4dae` fast-forward 到 `578b3f0`；本次远端工作区无脏改动，未创建 stash。runtime installer 已把最新项目交付 runtime 安装到 `/home/arbops/.hermes`，包括 `backlog_runner.py`、`repo_hygiene_reviewer.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 和 cron jobs。`arbitrageagent` / `spreadagent` gateway 已重启并恢复 connected。
+证据：runtime installer JSON 返回 `ok=true`、`changed=true`；`compileall` 通过；定向单测 53 项 OK；cron 检查命中 `backlog_runner_30m`、`repo_hygiene_reviewer_2d`、`source_registry_watcher`；内控 API `/health` 与 `/api/strategy/status` smoke 通过；echo smoke `install-smoke-arbitrageagent-20260427T065537Z` 写入 Task Center 且状态 `passed`；受控 backlog runner smoke 任务 `todo-hardflow-install-smoke-20260427T070123Z` 被标记 `passed`，并写入 1 条 `backlog_runner_attempt`；`smart-arb-api` 最终 cwd 核对为 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`。
+最后验证：2026-04-27 15:01
+复用建议：以后用户说“进入服务器安装最新代码”时，默认按 `DEPLOYMENT.md` 的 nofx 安装命令执行，并在测试后复核 gateway state、cron jobs、Task Center smoke 和 `smart-arb-api` cwd。
+
 ## 2026-04-27 - Task Center 待办持续推进 runner
 
 类型：task
