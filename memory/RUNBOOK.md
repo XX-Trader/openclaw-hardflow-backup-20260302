@@ -28,10 +28,10 @@
 
 类型：runbook
 范围：`/home/arbops/.hermes/profiles`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/cron/jobs.json`、项目交付优先工作流阶段 owner
-事实：nofx 当前不是 14 个常驻 agent。服务器 live 入口是两个 Hermes Discord profile：`arbitrageagent` 和 `spreadagent`；两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`，且 `gateway_state=running`。服务器没有可作为 14 个常驻 agent 注册表解释的 `/home/arbops/.hermes/agents`、`/home/arbops/.openclaw/agents`、`/root/.openclaw/agents`、`/home/arbops/.codex/agents`、`/root/.codex/agents` 目录。真正执行链路是 `/home/arbops/.local/bin/smart-arb-pipeline` 调用 `/home/arbops/.hermes/ops/pipeline_runner.py`，阶段为 `research -> 需求讨论 -> 方案 -> 编码 -> 测试 -> review -> deployment -> memory_writeback`。工作流阶段 owner 为 `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer`；cron / Task Center 责任标签主要是 `ops-agent`、`project-agent`，本仓库最新方案新增 `optimization-agent` 做 2 天仓库精简巡检。`git_publish` 是 `coordinator` 负责的发布门禁，不再单独建 `git-master` agent。
+事实：nofx 当前不是 14 个常驻 agent。服务器 live 入口是两个 Hermes Discord profile：`arbitrageagent` 和 `spreadagent`；两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`，且 `gateway_state=running`。服务器没有可作为 14 个常驻 agent 注册表解释的 `/home/arbops/.hermes/agents`、`/home/arbops/.openclaw/agents`、`/root/.openclaw/agents`、`/home/arbops/.codex/agents`、`/root/.codex/agents` 目录。真正执行链路是 `/home/arbops/.local/bin/smart-arb-pipeline` 调用 `/home/arbops/.hermes/ops/pipeline_runner.py`，阶段为 `research -> 需求讨论 -> 方案 -> 编码 -> 测试 -> review -> deployment -> memory_writeback`。本仓库 active workflow owner 严格为 9 个：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer`；cron / Task Center 定时任务只挂 `coordinator/project-agent`。`git_publish` 是 `coordinator` 负责的发布门禁，不再单独建 `git-master` agent。
 证据：2026-04-27 通过 nofx 远程核对：`tmux ls` 包含 `hermes-discord-arbitrage`、`hermes-discord-spread`、`hermes-tg`、`smart-arb-api`；两个 profile 的 `config.yaml` 均显示 `openai-codex/gpt-5.5`；`gateway_state.json` 均为 `running`。同时复核 nofx hardflow 仓库 `HEAD=44b4dae`，安装态 `/home/arbops/.hermes/ops/repo_hygiene_reviewer.py` 尚不存在，cron 仍有 11 个 job，其中 `source_registry_watcher` 仍是每周日运行。
 最后验证：2026-04-27 10:30
-复用建议：以后回答“服务器上有多少 agent、什么模型”时按四层区分：入口层是两个 live Hermes profile 与模型；工作流层是 `smart-arb-pipeline -> pipeline_runner.py`；逻辑 owner 层是 9 个阶段责任标签；定时任务层是 `ops-agent`、`project-agent`、`optimization-agent` 等任务责任标签。不要把 2026-03 OpenClaw 14 Agent 注册表当成 nofx 当前运行态。若要把本仓库最新 2 天巡检和 Git 发布门禁同步到 nofx，先拉取 `e45e0af` 或更新后的 `main`，再运行 runtime installer。
+复用建议：以后回答“服务器上有多少 agent、什么模型”时按四层区分：入口层是两个 live Hermes profile 与模型；工作流层是 `smart-arb-pipeline -> pipeline_runner.py`；逻辑 owner 层是 9 个 active owner 标签；定时任务层只允许 active owner 承载，当前为 `coordinator/project-agent`。不要把 2026-03 OpenClaw 14 Agent 注册表当成 nofx 当前运行态。若要把本仓库最新 2 天巡检和 Git 发布门禁同步到 nofx，先拉取最新 `main`，再运行 runtime installer。
 
 ## nofx hardflow 拉取与安装记录
 
@@ -152,7 +152,7 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 类型：runbook
 范围：`cron/jobs.json`、`source_registry_watcher.py`、`repo_hygiene_reviewer.py`
-事实：`source_registry_watcher（API来源监控）` 与 `repo_hygiene_reviewer_2d（仓库精简巡检）` 默认每 2 天执行一次。来源监控只检查项目记忆中声明过的官方来源；仓库精简巡检由 `optimization-agent` 执行，只读生成报告并创建 `repo_hygiene_candidate` 人工确认任务。
+事实：`source_registry_watcher（API来源监控）` 与 `repo_hygiene_reviewer_2d（仓库精简巡检）` 默认每 2 天执行一次。来源监控只检查项目记忆中声明过的官方来源；仓库精简巡检由 `coordinator` 执行，只读生成报告并创建 `repo_hygiene_candidate` 人工确认任务。
 证据：`cron/jobs.json` 中两项任务均为 `kind=every`、`everyMs=172800000`；`source_registry_watcher.py` 会按传入 `--base-path` 读取 runtime 项目记忆目录；`repo_hygiene_reviewer.py` 只扫描并写报告，不删除、不提交、不推送。
 最后验证：2026-04-27 相关单元测试 62 项 OK
 复用建议：仓库精简候选必须先人工确认，再进入正常项目交付流水线；涉及删除、合并或修复冲突的改动仍需测试、code reviewer 和 `git_publish` 门禁。

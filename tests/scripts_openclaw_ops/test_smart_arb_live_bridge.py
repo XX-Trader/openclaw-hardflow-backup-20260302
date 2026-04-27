@@ -39,6 +39,27 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         self.assertIn("Final verdict: pass", proc.stdout)
         self.assertIn("LIVE_BRIDGE_STATUS: pass", proc.stdout)
 
+    def test_echo_requirements_and_solution_review_output_required_verdicts(self):
+        cases = {
+            "requirements_review": "Final verdict: ready_for_solution",
+            "solution_review": "Final verdict: ready_for_implement",
+        }
+        for stage, expected in cases.items():
+            with self.subTest(stage=stage):
+                proc = subprocess.run(
+                    [sys.executable, str(BRIDGE), "--stage", stage, "--agent-mode", "echo"],
+                    cwd=ROOT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    capture_output=True,
+                    check=False,
+                )
+
+                self.assertEqual(0, proc.returncode, proc.stderr)
+                self.assertIn(expected, proc.stdout)
+                self.assertIn("LIVE_BRIDGE_STATUS: pass", proc.stdout)
+
     def test_project_dir_defaults_to_pipeline_agent_repo_dir(self):
         bridge = self._load_bridge_module()
         with tempfile.TemporaryDirectory() as tmpdir, mock.patch.dict(
@@ -329,11 +350,15 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
             clear=True,
         ):
             research_env = bridge.bridge_env(args, profile_dir, "external_research")
+            req_review_env = bridge.bridge_env(args, profile_dir, "requirements_review")
+            sol_review_env = bridge.bridge_env(args, profile_dir, "solution_review")
             review_env = bridge.bridge_env(args, profile_dir, "code_review")
             code_env = bridge.bridge_env(args, profile_dir, "code_execution")
 
         self.assertNotIn("PIPELINE_RESEARCH_REPORT_FILE", research_env)
         self.assertNotIn("PIPELINE_PATCH_SUMMARY_FILE", research_env)
+        self.assertNotIn("PIPELINE_RESEARCH_REPORT_FILE", req_review_env)
+        self.assertNotIn("PIPELINE_PATCH_SUMMARY_FILE", sol_review_env)
         self.assertNotIn("PIPELINE_CODE_REVIEW_FILE", review_env)
         self.assertEqual("/tmp/run/research_report.md", code_env["PIPELINE_RESEARCH_REPORT_FILE"])
         self.assertEqual("/tmp/run/patch_summary.md", code_env["PIPELINE_PATCH_SUMMARY_FILE"])

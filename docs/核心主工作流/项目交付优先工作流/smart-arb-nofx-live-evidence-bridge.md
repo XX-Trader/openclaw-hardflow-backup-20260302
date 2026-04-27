@@ -27,9 +27,9 @@
 2026-04-27 远程核对后，nofx 当前运行态按三层理解：
 
 1. **live 入口**：只有两个 Hermes Discord profile，`arbitrageagent` 与 `spreadagent`。
-2. **workflow 层**：`/home/arbops/.local/bin/smart-arb-pipeline` 调用 `/home/arbops/.hermes/ops/pipeline_runner.py`，主阶段为 `research -> 需求讨论 -> 方案 -> 编码 -> 测试 -> review -> deployment -> memory_writeback`。
+2. **workflow 层**：`/home/arbops/.local/bin/smart-arb-pipeline` 调用 `/home/arbops/.hermes/ops/pipeline_runner.py`，主阶段为 `context_snapshot -> project_memory_context -> external_research -> requirements_discussion -> requirements_review -> solution_review -> code_execution -> verification -> code_review -> deployment -> writeback -> git_publish`。
 3. **逻辑 owner 层**：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 用于阶段分工、隔离 workspace 和 Task Center 留痕，不是独立常驻 agent 进程。
-4. **cron 责任标签**：`ops-agent`、`project-agent`、`optimization-agent` 等用于定时任务归属；是否真的有运行中的 agent，要继续看具体 profile、tmux、session/run id 或命令证据。
+4. **cron 责任标签**：当前只允许 `coordinator` / `project-agent`；`ops-agent`、`optimization-agent` 已退出 active cron 配置。是否真的有运行中的 agent，要继续看具体 profile、tmux、session/run id 或命令证据。
 
 | profile | 入口类型 | 模型 provider | 默认模型 | gateway |
 |---------|----------|---------------|----------|---------|
@@ -68,9 +68,11 @@ live 默认注入以下命令证据：
 |------|------|------|
 | `external_research` | Hermes / web-agent 查外部资料和项目事实 | `command_external_research_*` |
 | `requirements_discussion` | project-agent 与 reviewer 双 AI 讨论需求 | `command_requirements_discussion_*` |
+| `requirements_review` | reviewer-a / reviewer-b 双审需求，均需 `ready_for_solution` | `command_requirements_review_1/2` |
+| `solution_review` | reviewer-a / reviewer-b 双审方案，均需 `ready_for_implement` | `command_solution_review_1/2` |
 | `code_execution` | Hermes headless 执行代码改动 | `command_code_execution_*` |
 | `verification` | 固定命令验证，默认 `git diff --check` 与 `compileall -q scripts strategy_runtime`，单命令超时默认 300 秒 | `command_verification_*` |
-| `code_review` | reviewer 做代码审查 | `command_code_review_*` |
+| `code_review` | reviewer-a / reviewer-b 双审代码，均需 `pass` | `command_code_review_1/2` |
 | `deployment` | 普通服务/API 改动时重启内控 FastAPI 并做状态接口 smoke；memory/docs-only 或 no service control/no deployment/no restart 需求会跳过该命令 | `command_deployment_*` |
 | `memory_writeback` | 写项目记忆 changelog | `command_memory_writeback_*` |
 | `git_publish` | 在验证、代码审查、deployment、验收和 memory writeback 通过后，使用中文提交说明执行受控 commit/push；禁止 force push 和含密钥 diff | `command_git_publish_*` |

@@ -41,10 +41,10 @@
 
 | Cron 任务 | Agent | 频率 |
 |-----------|-------|------|
-| optimize 自我进化总结 | optimization-agent | 每日 04:37 |
-| agent_self_evolution | ops-agent | 每周一 04:00 |
-| ops_self_evolution_weekly_todo | ops-agent | 每周一 03:30 |
-| ops_governance_evolution_incremental | optimization-agent | 每6小时（⏸ 当前禁用） |
+| optimize 自我进化总结 | coordinator | 每日 04:37 |
+| agent_self_evolution | coordinator | 每周一 04:00 |
+| ops_self_evolution_weekly_todo | coordinator | 每周一 03:30 |
+| ops_governance_evolution_incremental | coordinator | 每6小时（⏸ 当前禁用） |
 
 ## 数据流
 

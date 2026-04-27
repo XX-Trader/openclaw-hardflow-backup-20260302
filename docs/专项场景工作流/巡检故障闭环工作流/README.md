@@ -29,8 +29,8 @@
 
 | Cron 任务 | Agent | 频率 |
 |-----------|-------|------|
-| system_exception_patrol | ops-agent | 每6小时 |
-| claim_verification_audit | ops-agent | 每日 05:00 |
+| system_exception_patrol | coordinator | 每6小时 |
+| claim_verification_audit | coordinator | 每日 05:00 |
 
 ## 数据流
 

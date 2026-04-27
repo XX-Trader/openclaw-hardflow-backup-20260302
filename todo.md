@@ -54,7 +54,7 @@
 - [x] [🔴 P0] 定义 `.workflow/pipeline-runs/<run_id>/` 产物目录
 - [x] [🔴 P0] 定义 `run_meta.json`、`context_snapshot.md`、`research_report.md`
 - [x] [🔴 P0] 定义 `requirements.md`、`solution.md`（含 implementation plan）、`patch_summary.md`
-- [x] [🔴 P0] 固化双 AI 需求/方案/代码审查产物契约与 verdict gate
+- [x] [🔴 P0] 固化双 AI 需求/方案/代码审查产物契约与 verdict gate（两条不同 reviewer role/command）
 - [x] [🔴 P0] 接入 HardFlow Core / ACP 可配置编码命令适配（`--code-command`）
 - [x] [🔴 P0] 接入 lint、typecheck、unit、integration、smoke、部署验证命令证据收集（`--verification-command`）
 - [x] [🔴 P0] 实现失败回退和 failure-learning 触发产物
@@ -65,7 +65,7 @@
 - [x] [🔴 P0] 增加项目记忆定位门禁，生成 `.workflow/project-memory/<project_key>/`
 - [x] [🔴 P0] 增加 Task Center 镜像，记录状态、阶段、通信、输出和 incident
 - [x] [🔴 P0] 增加 `pipeline_runner.py view` 人工查看入口
-- [x] [🔴 P0] 增加到期 TODO → Task Center 候选任务桥接（人工确认后执行）
+- [x] [🔴 P0] 增加到期 TODO → Task Center 风险分流桥接（低风险自动推进，高风险人工确认）
 - [x] [🔴 P0] 增加异常日志 → 运维任务/incident 桥接（critical 默认转人工确认）
 - [x] [🔴 P0] 增加 `human_inbox.py` 人工队列，统一处理确认、拒绝、澄清和升级任务
 - [x] [🔴 P0] 接入 runtime/Hermes 可配置 agent 命令适配（research/code/verify/review/writeback）
@@ -78,6 +78,8 @@
 - [x] [🟡 P1] 增加 `git_publish` 受控发布阶段，中文提交说明，疑似密钥/远端冲突/push 失败回流 `fix_git_publish`
 - [x] [🟡 P1] 增加 `repo_hygiene_reviewer.py` 两天一次仓库精简巡检，`source_registry_watcher` 同步调整为两天一次
 - [x] [🟡 P1] 增加 `backlog_runner.py` 与 `backlog_runner_30m`，从 Task Center 持续推进低风险、无需人工确认的待办
+- [x] [🟡 P1] 收敛 active agent 配置为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`
+- [x] [🟡 P1] 将需求/方案/代码审查升级为两条独立 reviewer command report 门禁
 - [ ] [🟡 P1] 将 nofx Smart Arb live bridge 继续升级为宿主 native agent dispatch，并在 Task Center 记录独立 agent session/run id
 - [ ] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
@@ -106,7 +108,7 @@
 - [x] [🔴 P0] jobs.json 21 个 Job 全部 skill_ref 绑定
 - [x] [🔴 P0] 98 个脚本 + 13 目录归并为自包含 Skill
 - [x] [🔴 P0] 旧 Bash 脚本(14个) + 旧安装器(11个) + scripts/hardflow/ 物理删除
-- [x] [🔴 P0] coordinator / reviewer / ops-agent manifest 绑定
+- [x] [🔴 P0] coordinator / reviewer / project-agent manifest 绑定
 - [x] [🔴 P0] docs 三件套 v3.0 + INDEX.md 同步
 - [ ] [🟡 P1] 端到端验证三条调用路径
 - [ ] [🟡 P1] 远程服务器部署（4台）
@@ -145,9 +147,9 @@
 | 标签 | 类型 | 当前模型口径 |
 |------|------|--------------|
 | `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` | workflow 阶段 owner / 隔离 workspace / Task Center 标签 | 由当前 live profile 承载，不是独立常驻模型 |
-| `ops-agent`、`project-agent`、`optimization-agent` | cron / Task Center 责任标签 | 由调度入口执行命令；`optimization-agent` 负责 2 天仓库精简巡检，不等于服务器上常驻 14 个 agent |
+| `coordinator`、`project-agent` | cron / Task Center 责任标签 | 由 active workflow owner 执行定时命令；仓库精简巡检由 `coordinator` 只读创建候选，不再注册 `ops-agent/optimization-agent` |
 
-> 服务器安装态提示：2026-04-27 核对时 nofx hardflow 仓库仍在 `44b4dae`，尚未安装本仓库最新 `e45e0af` 之后的变更；`source_registry_watcher` 在服务器 cron 中仍是每周日，`repo_hygiene_reviewer.py` 与 `backlog_runner.py` 尚未安装到 `/home/arbops/.hermes/ops`。
+> 服务器安装态提示：2026-04-27 核对时 nofx hardflow 仓库仍在 `44b4dae`，尚未安装本仓库最新 `main` 变更；`source_registry_watcher` 在服务器 cron 中仍是每周日，`repo_hygiene_reviewer.py` 与 `backlog_runner.py` 尚未安装到 `/home/arbops/.hermes/ops`。
 
 ---
 ## 参考文档

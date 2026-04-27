@@ -23,7 +23,7 @@ VENV_BIN = Path("/home/arbops/.venvs/smart-arbitrage/bin")
 API_SUBDIR = "\u667a\u80fd\u591a\u5e73\u53f0\u5957\u5229"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 STATUS_RE = re.compile(r"(?im)^\s*LIVE_BRIDGE_STATUS\s*:\s*(pass|fail)\s*$")
-FINAL_VERDICT_RE = re.compile(r"(?im)^\s*Final verdict\s*:\s*pass\s*$")
+FINAL_VERDICT_RE = re.compile(r"(?im)^\s*Final verdict\s*:\s*([a-z_]+)\s*$")
 SESSION_ID_RE = re.compile(r"(?im)^\s*session_id\s*:\s*([A-Za-z0-9_-]+)\s*$")
 SENSITIVE_VALUE_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9][A-Za-z0-9_-]{47,}(?![A-Za-z0-9])")
 KNOWN_SECRET_RE = re.compile(
@@ -60,7 +60,14 @@ ARTIFACT_PATH_ENV_NAMES = {
 NON_CODE_HERMES_STAGES = {
     "external_research",
     "requirements_discussion",
+    "requirements_review",
+    "solution_review",
     "code_review",
+}
+EXPECTED_REVIEW_VERDICTS = {
+    "requirements_review": "ready_for_solution",
+    "solution_review": "ready_for_implement",
+    "code_review": "pass",
 }
 
 
@@ -153,6 +160,10 @@ def repair_context_text() -> str:
 def stage_context_files(stage: str) -> tuple[str, ...]:
     if stage == "requirements_discussion":
         return ("research_report.md", "project_memory_context.md")
+    if stage == "requirements_review":
+        return ("research_report.md", "project_memory_context.md", "requirements.md", "requirements_discussion.md")
+    if stage == "solution_review":
+        return ("requirements.md", "requirements_review.md", "solution.md")
     if stage == "code_execution":
         return (
             "research_report.md",
@@ -190,6 +201,11 @@ def pipeline_context_text(stage: str, limit_per_file: int = 2200) -> str:
             text = text[:limit_per_file].rstrip() + "\n...[truncated]"
         sections.append(f"## {name}\n{text.strip()}")
     return "\n\n".join(sections) if sections else "not_applicable"
+
+
+def final_verdict(text: str) -> str | None:
+    match = FINAL_VERDICT_RE.search(text or "")
+    return match.group(1).strip().lower() if match else None
 
 
 def run_command(
@@ -326,23 +342,45 @@ Implement the smallest safe change that satisfies the refined requirement.
 Run the most relevant local checks you can run in this environment.
 Return a patch summary with changed files, commands run, and remaining risk.
 """.format(role=role, focus=focus)
-    elif stage == "code_review":
+    elif stage in {"requirements_review", "solution_review", "code_review"}:
+        role = str(args.reviewer_role or "").strip() or "reviewer-a"
+        if stage == "requirements_review":
+            expected = "ready_for_solution"
+            focus = "requirements clarity, scope, acceptance criteria, risk routing, and human confirmation boundaries"
+        elif stage == "solution_review":
+            expected = "ready_for_implement"
+            focus = "implementation plan, reuse of existing runtime skills, dependency risk, and deployment boundaries"
+        else:
+            expected = "pass"
+            focus = "bugs, regressions, missing tests, unsafe behavior, and doc or memory drift"
         specific = """
-Act as reviewer. Review the current diff and the pipeline artifacts for bugs, regressions, missing tests, unsafe behavior, and doc drift.
-If the change is acceptable, include exactly this line:
-Final verdict: pass
+Act as {role}. Review the pipeline artifacts for {focus}.
+You are one side of a dual-AI review gate. Produce your own independent verdict and evidence.
+Include exactly this reviewer role line:
+Reviewer role: {role}
+If the material is acceptable, include exactly this line:
+Final verdict: {expected}
 If it is not acceptable, include:
 Final verdict: requires_revision
-"""
+""".format(role=role, focus=focus, expected=expected)
     else:
         specific = "Return concise stage evidence."
     return common.strip() + "\n\n" + specific.strip()
 
 
-def run_echo_stage(stage: str) -> int:
-    if stage == "code_review":
+def run_echo_stage(stage: str, reviewer_role: str = "") -> int:
+    if stage == "requirements_review":
+        print("# Smart Arb Live Bridge Echo Requirements Review")
+        print("Final verdict: ready_for_solution")
+        print(f"Reviewer role: {reviewer_role or 'reviewer-a'}")
+    elif stage == "solution_review":
+        print("# Smart Arb Live Bridge Echo Solution Review")
+        print("Final verdict: ready_for_implement")
+        print(f"Reviewer role: {reviewer_role or 'reviewer-a'}")
+    elif stage == "code_review":
         print("# Smart Arb Live Bridge Echo Review")
         print("Final verdict: pass")
+        print(f"Reviewer role: {reviewer_role or 'reviewer-a'}")
     elif stage == "deployment":
         print("# Smart Arb Live Bridge Echo Deployment")
         print("- Internal API restart skipped in echo mode.")
@@ -405,7 +443,8 @@ def run_hermes_stage(stage: str, args: argparse.Namespace) -> int:
         print(f"LIVE_BRIDGE_STAGE: {stage}")
         print("LIVE_BRIDGE_STATUS: fail")
         return 2
-    if stage == "code_review" and not FINAL_VERDICT_RE.search(plain):
+    expected_verdict = EXPECTED_REVIEW_VERDICTS.get(stage)
+    if expected_verdict and final_verdict(plain) != expected_verdict:
         print("Final verdict: requires_revision")
         print(f"LIVE_BRIDGE_STAGE: {stage}")
         print("LIVE_BRIDGE_STATUS: fail")
@@ -738,6 +777,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stage", required=True, choices=[
         "external_research",
         "requirements_discussion",
+        "requirements_review",
+        "solution_review",
         "code_execution",
         "verification",
         "code_review",
@@ -757,6 +798,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--hermes-bin", type=Path, default=env_path("SMART_ARB_HERMES_BIN", HERMES_BIN))
     parser.add_argument("--provider", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROVIDER", "openai-codex"))
     parser.add_argument("--model", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_MODEL", "gpt-5.5"))
+    parser.add_argument("--reviewer-role", choices=["reviewer-a", "reviewer-b"], default=os.environ.get("PIPELINE_REVIEWER_ROLE", "reviewer-a"))
     parser.add_argument("--max-turns", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_MAX_TURNS", "24")))
     parser.add_argument("--allow-yolo", action="store_true")
     parser.add_argument("--skip-tests", action="store_true")
@@ -790,20 +832,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.stage == "verification":
         if args.agent_mode == "echo":
-            return run_echo_stage(args.stage)
+            return run_echo_stage(args.stage, args.reviewer_role)
         return run_verification(args)
     if args.stage == "deployment":
         if args.agent_mode == "echo":
-            return run_echo_stage(args.stage)
+            return run_echo_stage(args.stage, args.reviewer_role)
         return run_deployment(args)
     if args.stage == "memory_writeback":
         return run_memory_writeback(args)
     if args.stage == "git_publish":
         if args.agent_mode == "echo":
-            return run_echo_stage(args.stage)
+            return run_echo_stage(args.stage, args.reviewer_role)
         return run_git_publish(args)
     if args.agent_mode == "echo":
-        return run_echo_stage(args.stage)
+        return run_echo_stage(args.stage, args.reviewer_role)
     return run_hermes_stage(args.stage, args)
 
 

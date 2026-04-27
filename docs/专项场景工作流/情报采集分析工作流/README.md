@@ -29,9 +29,9 @@
 
 | Cron 任务 | Agent | 频率 |
 |-----------|-------|------|
-| auto_update_daily | ops-agent | 每日 03:00 |
-| web_intel_collect_daily | ops-agent | 每日 03:30 |
-| github_web_evolution_daily | optimization-agent | 每日 04:00 |
+| auto_update_daily | coordinator | 每日 03:00 |
+| web_intel_collect_daily | coordinator | 每日 03:30 |
+| github_web_evolution_daily | coordinator | 每日 04:00 |
 
 ## 三通道架构
 

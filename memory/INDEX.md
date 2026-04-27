@@ -14,7 +14,7 @@
 ## 当前重点
 
 - nofx 上 SmartMultiPlatformArbitrage 的项目交付入口由本仓库提供：`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`pipeline_runner.py` 和 runtime installer。
-- nofx 当前 agent/model 口径已修正：live 入口只有两个 Hermes Discord profile：`arbitrageagent` 与 `spreadagent`；2026-04-27 服务器实测两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`、`gateway_state=running`。工作流阶段 owner 为 `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer`；cron / Task Center 责任标签主要是 `ops-agent`、`project-agent`，本仓库最新方案新增 `optimization-agent` 做 2 天仓库精简巡检。以上都不是 nofx 上 14 个常驻 agent 进程；`git_publish` 是 `coordinator` 负责的发布门禁，不再单独建 `git-master` agent。
+- nofx 当前 agent/model 口径已修正：live 入口只有两个 Hermes Discord profile：`arbitrageagent` 与 `spreadagent`；2026-04-27 服务器实测两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`、`gateway_state=running`。本仓库 active workflow owner 严格为 9 个：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer`；cron / Task Center 定时任务只挂 `coordinator/project-agent`，不再注册 `ops-agent/optimization-agent`。以上都不是 nofx 上 14 个常驻 agent 进程；`git_publish` 是 `coordinator` 负责的发布门禁，不再单独建 `git-master` agent。
 - nofx 两个 Discord Hermes profile 已按本机 WSL 的有效模式改为 profile 级 `approvals.mode: 'off'`；遇到 `Command Approval Required` 先查 `/home/arbops/.hermes/profiles/<profile>/config.yaml`，不要只看全局配置。
 - nofx Discord profile 的 SOUL 现在使用绝对入口 `/home/arbops/.local/bin/smart-arb-pipeline`；gateway 通过 profile `start-gateway.sh` 加载 `.env`，`.env` 必须是 `arbops:arbops` 且 `0600`。
 - nofx live verification 默认收敛为 `git diff --check` + `compileall -q scripts strategy_runtime`，并通过 `--verification-command-timeout-seconds` 显式记录单命令超时；不要再把全量 `unittest discover` 当 Discord live 默认门禁。
@@ -31,7 +31,9 @@
 - 前序 artifact 注入后续 Hermes prompt 前会做敏感信息脱敏，覆盖常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key、AWS access key 等形态。
 - `code_execution` 默认在 `backend-dev` workspace 产出 diff；前端/UI/页面/交互类需求可通过 `--code-agent frontend-dev` 或入口自动推断切到 `frontend-dev` workspace。runner 会把 diff 应用回主项目目录，并注入后续 tester/reviewer/deployer workspace。
 - `git_publish` 是可选发布门禁，只在验证、代码审查、deployment（如有）、验收和记忆回写通过后执行；提交说明、备注和变更描述必须使用中文，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态，失败回流为 `fix_git_publish`。
-- `source_registry_watcher` 与 `repo_hygiene_reviewer` 默认每 2 天执行一次；前者只检查已注册来源，后者由 `optimization-agent` 只读扫描冗余、冲突、缓存、重复文件并创建人工确认候选，不自动删除、不自动推送。
+- `source_registry_watcher` 与 `repo_hygiene_reviewer` 默认每 2 天执行一次；前者只检查已注册来源，后者由 `coordinator` 只读扫描冗余、冲突、缓存、重复文件并创建人工确认候选，不自动删除、不自动推送。
+- 到期 TODO 已改为风险分流：低风险进入 `dispatch_pipeline` 自动候选并由 backlog runner 推进；高风险、生产、部署、资金、凭证、删除等候选仍停 `human_inbox.py` 等待人工确认。
+- 双 AI 审核现在有真实产物门禁：需求、方案、代码三个 review 阶段都需要两条不同命令、不同 `reviewer_role`（`reviewer-a`/`reviewer-b`）的 reviewer command report，且都输出对应 `Final verdict` 才放行。
 - 最后远端 smoke：`codex-arbitrageagent-20260425T140605083467Z`，Task Center 为 `passed`；命令阶段 `model_id=runtime-agent-workspace`，`dispatch_mode=isolated-agent-workspace`。
 - Task Center 中的 agent 字段仍表示责任标签和交接记录；要声称真正 native fan-out，仍需 command evidence 中出现独立宿主 session/run id。
 - 如果要让任务真正转发到 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester` 等宿主 native agent，需要继续在 runtime adapter 增加 session dispatch 能力，而不是只修改 stage prompt。

@@ -7,6 +7,10 @@ home can host the same pipeline when the installer is given an explicit
 `--runtime-home` and `--runtime-name`. The adapter only resolves paths, job
 payloads, state directories, and agent dispatch mechanics.
 
+Dual review hooks are treated as real A/B evidence: use two distinct commands
+and make each command report expose a distinct `reviewer_role`
+(`reviewer-a` / `reviewer-b`), either in command arguments or stdout.
+
 ## Host Defaults
 
 | Host | Default runtime home | Pipeline state directory |
@@ -88,7 +92,12 @@ python skills/library/project-delivery-pipeline/scripts/pipeline_runner.py run \
   --research-command "<hermes research agent command>" \
   --code-command "<hermes/hardflow coding command>" \
   --verification-command "<test command>" \
-  --code-review-command "<review agent command>" \
+  --requirements-review-command "<reviewer-a command>" \
+  --requirements-review-command "<reviewer-b command>" \
+  --solution-review-command "<reviewer-a command>" \
+  --solution-review-command "<reviewer-b command>" \
+  --code-review-command "<reviewer-a command>" \
+  --code-review-command "<reviewer-b command>" \
   --write-project-memory
 ```
 
@@ -107,7 +116,8 @@ python skills/library/project-delivery-pipeline/scripts/pipeline_runner.py run \
   --requirement-file <requirement_file> \
   --code-command "<backend-dev command>" \
   --verification-command "<tester command>" \
-  --code-review-command "<reviewer command>"
+  --code-review-command "<reviewer-a command>" \
+  --code-review-command "<reviewer-b command>"
 ```
 
 The runner always creates `agent-workspaces/<stage>/<agent>/repo` using

@@ -14,7 +14,7 @@ metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 - 检测过期或长期未动的任务
 - 生成待办摘要推送给用户
 - 自动将完成项从 todo.md 移到 done.md
-- 将到期 TODO 转成 Task Center 候选任务，并等待人工确认后执行
+- 将到期 TODO 转成 Task Center 候选任务：低风险自动进入 backlog runner，高风险等待人工确认
 
 ## 操作流程
 
@@ -50,10 +50,10 @@ python3 ~/scripts/openclaw-ops/todo_patrol.py --archive
 |------|------|
 | `todo_patrol.py` | TODO 巡检引擎 |
 | `todo_deadline_checker.py` | TODO 截止时间检测与标记 |
-| `deadline_to_task_bridge.py` | 到期 TODO → Task Center 人工确认候选任务 |
+| `deadline_to_task_bridge.py` | 到期 TODO → Task Center 风险分流候选任务 |
 
 ## 约束
 
 - 只读扫描，不自动修改 todo.md（归档需确认）
-- 到期 TODO 只能先进入 `need_human_confirm=true` 的候选任务，不能绕过人工确认直接执行
+- 到期 TODO 必须先做风险分流：低风险可创建 `need_human_confirm=false` / `action=dispatch_pipeline` 候选，高风险必须创建 `need_human_confirm=true` 人工候选
 - 巡检报告格式化为 Markdown 摘要

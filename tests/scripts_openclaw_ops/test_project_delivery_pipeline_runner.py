@@ -51,6 +51,38 @@ def load_policy_workflow_module():
 
 
 class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
+    def _write_stage_review_script(
+        self,
+        path: Path,
+        code_review_check: str = "",
+        reviewer_role: str = "reviewer-a",
+    ) -> None:
+        check_body = "\n".join(f"    {line}" for line in code_review_check.strip().splitlines()) or "    pass"
+        path.write_text(
+            (
+                "import os, pathlib\n"
+                "stage = os.environ.get('PIPELINE_STAGE_NAME', '')\n"
+                "if stage == 'code_review':\n"
+                f"{check_body}\n"
+                "verdicts = {\n"
+                "    'requirements_review': 'ready_for_solution',\n"
+                "    'solution_review': 'ready_for_implement',\n"
+                "    'code_review': 'pass',\n"
+                "}\n"
+                "print(f\"Final verdict: {verdicts.get(stage, 'pass')}\")\n"
+                "print('Confidence: high')\n"
+                f"print('Reviewer role: {reviewer_role}')\n"
+            ),
+            encoding="utf-8",
+        )
+
+    def _write_review_pair(self, scripts_dir: Path, code_review_check: str = "") -> tuple[Path, Path]:
+        review_a = scripts_dir / "review_a.py"
+        review_b = scripts_dir / "review_b.py"
+        self._write_stage_review_script(review_a, code_review_check, "reviewer-a")
+        self._write_stage_review_script(review_b, code_review_check, "reviewer-b")
+        return review_a, review_b
+
     def test_dry_run_happy_path_creates_required_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = run_pipeline(
@@ -330,19 +362,30 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
     def test_live_command_adapters_complete_and_write_project_memory(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
             scripts_dir = root / "cmds"
             scripts_dir.mkdir()
             research_script = scripts_dir / "research.py"
             code_script = scripts_dir / "code.py"
             verify_script = scripts_dir / "verify.py"
             verify_second_script = scripts_dir / "verify_second.py"
-            review_script = scripts_dir / "review.py"
             deploy_script = scripts_dir / "deploy.py"
             git_publish_script = scripts_dir / "git_publish.py"
             research_script.write_text("print('# Research\\n- Source: official docs checked')\n", encoding="utf-8")
             code_script.write_text("print('# Patch Summary\\n- Implemented by live command adapter')\n", encoding="utf-8")
             verify_script.write_text("print('verification passed')\n", encoding="utf-8")
-            review_script.write_text("print('Final verdict: pass\\nConfidence: high')\n", encoding="utf-8")
+            review_a, review_b = self._write_review_pair(scripts_dir)
             deploy_script.write_text("print('deployment passed')\n", encoding="utf-8")
             git_publish_script.write_text("print('git publish passed 中文备注')\n", encoding="utf-8")
 
@@ -359,9 +402,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     dry_run=False,
                     research_commands=(py_cmd(research_script),),
                     requirements_discussion_commands=(py_cmd(research_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     code_command=py_cmd(code_script),
                     verification_commands=(py_cmd(verify_script),),
-                    code_review_command=py_cmd(review_script),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     deployment_command=py_cmd(deploy_script),
                     git_publish_command=py_cmd(git_publish_script),
                     write_project_memory=True,
@@ -374,6 +419,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertIn("command_code_execution_1", state["artifacts"])
             self.assertIn("command_verification_1", state["artifacts"])
             self.assertIn("command_code_review_1", state["artifacts"])
+            self.assertIn("command_code_review_2", state["artifacts"])
+            self.assertIn("command_requirements_review_1", state["artifacts"])
+            self.assertIn("command_requirements_review_2", state["artifacts"])
+            self.assertIn("command_solution_review_1", state["artifacts"])
+            self.assertIn("command_solution_review_2", state["artifacts"])
             self.assertIn("command_deployment_1", state["artifacts"])
             self.assertIn("command_git_publish_1", state["artifacts"])
             self.assertIn("deployment", state["artifacts"])
@@ -381,13 +431,146 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertIn("git_publish", state["artifacts"])
             review = Path(state["artifacts"]["code_review"]).read_text(encoding="utf-8")
             self.assertIn("Final verdict: pass", review)
+            self.assertIn("Reviewer roles: reviewer-a, reviewer-b", review)
+            self.assertIn("Distinct commands: true", review)
             git_publish = Path(state["artifacts"]["git_publish"]).read_text(encoding="utf-8")
             self.assertIn("Git publish runs only after verification", git_publish)
             command_report = json.loads(Path(state["artifacts"]["command_verification_1"]).read_text(encoding="utf-8"))
             self.assertTrue(command_report["ok"])
+            review_report_1 = json.loads(Path(state["artifacts"]["command_code_review_1"]).read_text(encoding="utf-8"))
+            review_report_2 = json.loads(Path(state["artifacts"]["command_code_review_2"]).read_text(encoding="utf-8"))
+            self.assertEqual("reviewer-a", review_report_1["reviewer_role"])
+            self.assertEqual("reviewer-b", review_report_2["reviewer_role"])
             changelog = root / "memory" / "demo" / "CHANGELOG.ndjson"
             self.assertTrue(changelog.exists())
             self.assertIn("project-delivery:live-adapter", changelog.read_text(encoding="utf-8"))
+
+    def test_live_requirements_review_requires_two_independent_reports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            review_script = scripts_dir / "review.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            self._write_stage_review_script(review_script)
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Run live mode with only one requirements reviewer.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="single-reviewer-blocked",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_script),),
+                    command_cwd=ROOT,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("requirements_review", state["failed_stage"])
+            self.assertEqual("revise_requirements", state["next_action"])
+            self.assertIn("command_requirements_review_1", state["artifacts"])
+            self.assertNotIn("command_requirements_review_2", state["artifacts"])
+
+    def test_live_requirements_review_rejects_duplicate_reviewer_roles(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            review_1 = scripts_dir / "review_1.py"
+            review_2 = scripts_dir / "review_2.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            self._write_stage_review_script(review_1, reviewer_role="reviewer-a")
+            self._write_stage_review_script(review_2, reviewer_role="reviewer-a")
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Run live mode with duplicated reviewer roles.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="duplicate-reviewer-role-blocked",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_1), py_cmd(review_2)),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("requirements_review", state["failed_stage"])
+            review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
+            self.assertIn("Reviewer roles: reviewer-a, reviewer-a", review)
+
+    def test_live_requirements_review_rejects_duplicate_review_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            review_script = scripts_dir / "review.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            self._write_stage_review_script(review_script, reviewer_role="reviewer-a")
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            duplicated_command = py_cmd(review_script)
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Run live mode with duplicated reviewer command.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="duplicate-review-command-blocked",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(duplicated_command, duplicated_command),
+                    command_cwd=repo,
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("requirements_review", state["failed_stage"])
+            review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
+            self.assertIn("Distinct commands: false", review)
 
     def test_live_agent_worktree_isolates_code_and_applies_diff_for_verification(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -411,7 +594,6 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             code_script = scripts_dir / "code.py"
             verify_script = scripts_dir / "verify.py"
             verify_second_script = scripts_dir / "verify_second.py"
-            review_script = scripts_dir / "review.py"
             pass_script.write_text("print('ok')\n", encoding="utf-8")
             code_script.write_text(
                 "import os, pathlib\n"
@@ -434,12 +616,10 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 "print('verified second workspace', repo)\n",
                 encoding="utf-8",
             )
-            review_script.write_text(
-                "import os, pathlib\n"
+            review_a, review_b = self._write_review_pair(
+                scripts_dir,
                 "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
-                "assert (repo / 'feature.txt').exists()\n"
-                "print('Final verdict: pass')\n",
-                encoding="utf-8",
+                "assert (repo / 'feature.txt').exists()",
             )
 
             def py_cmd(path: Path) -> str:
@@ -455,9 +635,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     dry_run=False,
                     research_commands=(py_cmd(pass_script),),
                     requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     code_command=py_cmd(code_script),
                     verification_commands=(py_cmd(verify_script), py_cmd(verify_second_script)),
-                    code_review_command=py_cmd(review_script),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     memory_write_command=py_cmd(pass_script),
                     command_cwd=repo,
                 )
@@ -471,10 +653,12 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 Path(state["artifacts"]["command_verification_2"]).read_text(encoding="utf-8")
             )
             review_report = json.loads(Path(state["artifacts"]["command_code_review_1"]).read_text(encoding="utf-8"))
+            review_second_report = json.loads(Path(state["artifacts"]["command_code_review_2"]).read_text(encoding="utf-8"))
             self.assertEqual("backend-dev", code_report["agent_id"])
             self.assertEqual("tester", verify_report["agent_id"])
             self.assertEqual("tester", verify_second_report["agent_id"])
             self.assertEqual("reviewer", review_report["agent_id"])
+            self.assertEqual("reviewer", review_second_report["agent_id"])
             self.assertNotEqual(str(repo), code_report["cwd"])
             self.assertNotEqual(str(repo), verify_report["cwd"])
             self.assertEqual(verify_report["cwd"], verify_second_report["cwd"])
@@ -511,10 +695,9 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             scripts_dir = root / "cmds"
             scripts_dir.mkdir()
             pass_script = scripts_dir / "pass.py"
-            review_script = scripts_dir / "review.py"
             deploy_script = scripts_dir / "deploy.py"
             pass_script.write_text("print('ok')\n", encoding="utf-8")
-            review_script.write_text("print('Final verdict: pass')\n", encoding="utf-8")
+            review_a, review_b = self._write_review_pair(scripts_dir)
             deploy_script.write_text("import sys\nprint('deployment failed')\nsys.exit(7)\n", encoding="utf-8")
 
             def py_cmd(path: Path) -> str:
@@ -530,9 +713,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     dry_run=False,
                     research_commands=(py_cmd(pass_script),),
                     requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     code_command=py_cmd(pass_script),
                     verification_commands=(py_cmd(pass_script),),
-                    code_review_command=py_cmd(review_script),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     deployment_command=py_cmd(deploy_script),
                     write_project_memory=True,
                     command_cwd=ROOT,
@@ -551,10 +736,9 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             scripts_dir = root / "cmds"
             scripts_dir.mkdir()
             pass_script = scripts_dir / "pass.py"
-            review_script = scripts_dir / "review.py"
             git_publish_script = scripts_dir / "git_publish.py"
             pass_script.write_text("print('ok')\n", encoding="utf-8")
-            review_script.write_text("print('Final verdict: pass')\n", encoding="utf-8")
+            review_a, review_b = self._write_review_pair(scripts_dir)
             git_publish_script.write_text("import sys\nprint('git push failed')\nsys.exit(9)\n", encoding="utf-8")
 
             def py_cmd(path: Path) -> str:
@@ -570,9 +754,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     dry_run=False,
                     research_commands=(py_cmd(pass_script),),
                     requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     code_command=py_cmd(pass_script),
                     verification_commands=(py_cmd(pass_script),),
-                    code_review_command=py_cmd(review_script),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     memory_write_command=py_cmd(pass_script),
                     git_publish_command=py_cmd(git_publish_script),
                     command_cwd=ROOT,
@@ -604,12 +790,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             scripts_dir = root / "cmds"
             scripts_dir.mkdir()
             pass_script = scripts_dir / "pass.py"
-            review_script = scripts_dir / "review.py"
             code_script = scripts_dir / "code.py"
             memory_write_script = scripts_dir / "memory_write.py"
             git_publish_script = scripts_dir / "git_publish.py"
             pass_script.write_text("print('ok')\n", encoding="utf-8")
-            review_script.write_text("print('Final verdict: pass')\n", encoding="utf-8")
+            review_a, review_b = self._write_review_pair(scripts_dir)
             code_script.write_text(
                 "import os, pathlib\n"
                 "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
@@ -655,9 +840,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     dry_run=False,
                     research_commands=(py_cmd(pass_script),),
                     requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     code_command=py_cmd(code_script),
                     verification_commands=(py_cmd(pass_script),),
-                    code_review_command=py_cmd(review_script),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     memory_write_command=py_cmd(memory_write_script),
                     git_publish_command=py_cmd(git_publish_script),
                     command_cwd=repo,
@@ -692,10 +879,9 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             scripts_dir = root / "cmds"
             scripts_dir.mkdir()
             pass_script = scripts_dir / "pass.py"
-            review_script = scripts_dir / "review.py"
             git_publish_script = scripts_dir / "git_publish.py"
             pass_script.write_text("print('ok')\n", encoding="utf-8")
-            review_script.write_text("print('Final verdict: pass')\n", encoding="utf-8")
+            review_a, review_b = self._write_review_pair(scripts_dir)
             git_publish_script.write_text(
                 "import os, pathlib, sys\n"
                 "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
@@ -719,9 +905,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     dry_run=False,
                     research_commands=(py_cmd(pass_script),),
                     requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     code_command=py_cmd(pass_script),
                     verification_commands=(py_cmd(pass_script),),
-                    code_review_command=py_cmd(review_script),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     memory_write_command=py_cmd(pass_script),
                     git_publish_command=py_cmd(git_publish_script),
                     command_cwd=repo,

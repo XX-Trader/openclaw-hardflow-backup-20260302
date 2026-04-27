@@ -39,12 +39,12 @@ OpenClaw 的日常运营中枢，负责任务调度、监控巡检、需求对�
 
 | Cron 任务 | Agent | 频率 |
 |-----------|-------|------|
-| TODO 巡检（15分钟） | ops-agent | 每15分钟 |
-| daily_todo_digest_daily | ops-agent | 每日 00:00 |
+| TODO 巡检（15分钟） | coordinator | 每15分钟 |
+| daily_todo_digest_daily | coordinator | 每日 00:00 |
 | coordinator 心跳 | coordinator | 每5分钟 |
 | coordinator_daily_plan | coordinator | 每日 04:00 |
 | coordinator_weekly_retrospective | coordinator | 每周日 05:00 |
-| todo_deadline_checker_daily | ops-agent | 每日 00:00 |
+| todo_deadline_checker_daily | coordinator | 每日 00:00 |
 
 ## 详细文档
 

@@ -7,6 +7,12 @@
 
 ## 2026-04-27 已完成
 
+- [x] [2026-04-27] **工作流合规收敛：低风险自动推进、9 个 active owner、双 reviewer 门禁**
+  - `deadline_to_task_bridge.py` 改为按 TODO 文本和优先级推断风险：低风险到期项直接创建 `dispatch_pipeline` 候选并交给 `coordinator/backlog_runner`，高风险、部署、资金、凭证、删除、生产操作等仍进入 `human_inbox.py` 等待人工确认。
+  - `pipeline_runner.py` 的需求审查、方案审查、代码审查均要求至少两条独立 reviewer command report，且各自输出预期 `Final verdict` 后才放行；live entry 默认注入 `reviewer-a/reviewer-b` 两条命令。
+  - `openclaw.json` 与 `openclaw/openclaw.json` active agent 清单收敛为 9 个 workflow owner；`cron/jobs.json` 的定时任务 owner 改为 `coordinator/project-agent`，不再注册 `ops-agent/optimization-agent`。
+  - 新增/更新测试覆盖低风险 TODO 自动队列、高风险 TODO 人工确认、双 reviewer 数量门禁、重复 reviewer role/command 阻断、live bridge review verdict、Hermes smoke 同步、active agent registry 和 cron owner 合规。
+
 - [x] [2026-04-27] **Task Center 待办持续推进 runner**
   - 新增 `scripts/openclaw-ops/backlog_runner.py`：每次从 Task Center 选择最多 1 个低风险、无需人工确认、无需澄清的 pending 待办，或允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进。
   - 注册 `backlog_runner_30m（持续推进待办）` cron，每 30 分钟运行一次；高风险、需确认、需澄清和人工升级任务仍停在 `human_inbox.py`。
@@ -20,7 +26,7 @@
   - 同步 `memory/`、项目交付工作流文档、基础设施索引和 `todo.md` 的模型配置说明。
 
 - [x] [2026-04-27] **仓库精简巡检与 Git 发布门禁**
-  - 新增 `repo_hygiene_reviewer.py`，由 `optimization-agent` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和 Task Center 人工确认候选，不自动删除、不自动推送。
+  - 新增 `repo_hygiene_reviewer.py`，由 `coordinator` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和 Task Center 人工确认候选，不自动删除、不自动推送。
   - `source_registry_watcher（API来源监控）` 调整为每 2 天执行，并修复 `--base-path`，确保安装态读取 runtime 项目记忆目录。
   - 修复仓库精简巡检对内联冲突标记示例的误报；删除已跟踪的 `cron/jobs.json.bak.20260422220950` 备份文件。
   - 项目交付流水线新增 `git_publish` 阶段：验证、代码审查、deployment（如有）、验收和记忆回写通过后才执行；提交说明、备注和变更描述必须中文；疑似密钥、远端冲突、认证失败或 push 失败会阻塞为 `fix_git_publish`。
@@ -97,7 +103,7 @@
   - 新增单元测试覆盖完整 live command adapter happy path
 
 - [x] [2026-04-24] **运营事件入任务中心 + 人工队列闭环**
-  - 新增 `deadline_to_task_bridge.py`：到期/超期 TODO 自动生成 `todo_deadline_candidate`，默认 `need_human_confirm=true`，等待用户确认后才执行
+  - 新增 `deadline_to_task_bridge.py`：到期/超期 TODO 自动生成 `todo_deadline_candidate`；2026-04-27 起按风险分流，低风险自动进入 coordinator pipeline，高风险才 `need_human_confirm=true` 等待用户确认
   - 新增 `exception_to_task_bridge.py`：增量扫描日志异常，按 fingerprint 去重创建 `ops_exception` 运维任务，并写入 `task_incidents`
   - 新增 `human_inbox.py`：统一列出、确认、拒绝、澄清 `need_human_confirm`、`needs_clarification`、`escalated`、`escalate_human` 任务
   - 更新 `cron/jobs.json`：注册 `todo_deadline_to_task_bridge_daily` 与 `system_exception_to_task_bridge`

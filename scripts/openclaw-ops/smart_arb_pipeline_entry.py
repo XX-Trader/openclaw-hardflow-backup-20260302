@@ -762,7 +762,7 @@ def env_flag(name: str, default: bool = False) -> bool:
     return default
 
 
-def bridge_command(stage: str, args: argparse.Namespace) -> str:
+def bridge_command(stage: str, args: argparse.Namespace, reviewer_role: str | None = None) -> str:
     command = [
         sys.executable,
         str(BRIDGE),
@@ -777,10 +777,12 @@ def bridge_command(stage: str, args: argparse.Namespace) -> str:
         "--model",
         args.live_bridge_model,
     ]
+    if reviewer_role:
+        command.extend(["--reviewer-role", reviewer_role])
     if stage == "code_execution" and not args.live_bridge_no_yolo:
         command.append("--allow-yolo")
         command.extend(["--max-turns", str(args.live_bridge_code_max_turns)])
-    elif stage in {"external_research", "requirements_discussion", "code_review"}:
+    elif stage in {"external_research", "requirements_discussion", "requirements_review", "solution_review", "code_review"}:
         command.extend(["--max-turns", str(args.live_bridge_agent_max_turns)])
     elif stage == "verification":
         command.extend(
@@ -807,8 +809,15 @@ def default_live_bridge_args(args: argparse.Namespace, passthrough: list[str]) -
         ("--requirements-discussion-command", "requirements_discussion"),
         ("--code-command", "code_execution"),
         ("--verification-command", "verification"),
-        ("--code-review-command", "code_review"),
         ("--memory-write-command", "memory_writeback"),
+    ]
+    review_command_options = [
+        ("--requirements-review-command", "requirements_review", "reviewer-a"),
+        ("--requirements-review-command", "requirements_review", "reviewer-b"),
+        ("--solution-review-command", "solution_review", "reviewer-a"),
+        ("--solution-review-command", "solution_review", "reviewer-b"),
+        ("--code-review-command", "code_review", "reviewer-a"),
+        ("--code-review-command", "code_review", "reviewer-b"),
     ]
     if inject_deployment:
         command_options.insert(5, ("--deployment-command", "deployment"))
@@ -817,6 +826,9 @@ def default_live_bridge_args(args: argparse.Namespace, passthrough: list[str]) -
     for option, stage in command_options:
         if not option_present(passthrough, option):
             injected.extend([option, bridge_command(stage, args)])
+    for option, stage, reviewer_role in review_command_options:
+        if not option_present(passthrough, option):
+            injected.extend([option, bridge_command(stage, args, reviewer_role=reviewer_role)])
     if not option_present(passthrough, "--command-timeout-seconds"):
         injected.extend(["--command-timeout-seconds", str(args.live_bridge_timeout_seconds)])
     return injected

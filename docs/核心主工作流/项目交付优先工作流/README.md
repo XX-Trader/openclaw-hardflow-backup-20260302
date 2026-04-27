@@ -6,9 +6,9 @@
 > 2026-04-24 需求收束：真实目标不是“把某个工作流装进 Hermes”，而是完善一整套编码流水线：自动探索需求、生成需求包、生成方案、编码、测试、代码审核、修复、验收、文档和记忆回写。
 > 2026-04-24 Hermes 验证：WSL `/home/ubuntu/.hermes` 已完成 `hermes_profile_smoke.py --agent-mode hybrid --provider zai` 非 dry-run smoke；新 `hybrid-single-chat` 路径用一次 Hermes chat 生成 AI 阶段 bundle，run_id=`hermes-profile-smoke-20260424T135014Z`。
 > 2026-04-25 nofx 验证：SmartMultiPlatformArbitrage Discord live 入口已补齐外部研究、双 AI 需求讨论、代码执行、验证、代码审查、内部 deployment 与记忆写回证据桥，详见 [Smart Arb nofx live evidence bridge](smart-arb-nofx-live-evidence-bridge.md)。
-> 2026-04-27 治理增强：流水线在验收和记忆回写通过后可进入 `git_publish` 受控发布阶段，提交说明/备注必须使用中文；`source_registry_watcher` 与仓库精简巡检均调整为每 2 天一次，仓库精简由 `optimization-agent` 只读生成候选报告并进入人工确认。
+> 2026-04-27 治理增强：流水线在验收和记忆回写通过后可进入 `git_publish` 受控发布阶段，提交说明/备注必须使用中文；`source_registry_watcher` 与仓库精简巡检均调整为每 2 天一次，仓库精简由 `coordinator` 触发只读候选报告并进入人工确认。
 > 2026-04-27 nofx 运行态口径：服务器 live 入口是 `arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`；执行链路是 `/home/arbops/.local/bin/smart-arb-pipeline -> /home/arbops/.hermes/ops/pipeline_runner.py`；`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是 workflow 阶段 owner / workspace 标签，不是 nofx 上 14 个常驻 agent。
-> 2026-04-27 持续推进补齐：新增 `backlog_runner.py` 与 `backlog_runner_30m` cron。它从 Task Center 选择低风险、无需人工确认、无需澄清的 pending 待办，或带允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进；高风险、需确认、需澄清任务仍停在 `human_inbox.py`。
+> 2026-04-27 持续推进补齐：新增 `backlog_runner.py` 与 `backlog_runner_30m` cron。到期 TODO 会先按风险分流：低风险直接进入可调度队列，高风险仍停在 `human_inbox.py`；runner 只选择低风险、无需人工确认、无需澄清的 pending 待办，或带允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进。
 
 ## 功能概述
 
@@ -55,9 +55,9 @@
 1. **自动需求探索**：自动读取仓库、现有文档、项目记忆、测试、日志、接口契约和官方资料，形成 `research_report.md` 与未知项清单。
 2. **需求包生成**：把用户原始需求整理为范围、非目标、验收标准、风险、外部来源、影响面和待确认项。
 3. **双 AI 对抗式审查（需求 + 方案 + 代码）**：
-   - 需求审查：2 个 AI 互相质疑范围、边界、验收标准、成熟方案引用是否充分。
-   - 方案审查：2 个 AI 互相探讨技术路径、模型/工具/依赖选择是否合理，得出最优方案。
-   - 代码审查：审核代码是否按照预定方案和规则执行，发现偏差立即阻断。
+   - 需求审查：`reviewer-a` 与 `reviewer-b` 两条不同命令、不同 `reviewer_role` 的 command report 均输出 `Final verdict: ready_for_solution` 才放行。
+   - 方案审查：两条不同命令、不同 `reviewer_role` 的 reviewer command report 均输出 `Final verdict: ready_for_implement` 才进入实现。
+   - 代码审查：两条不同命令、不同 `reviewer_role` 的 reviewer command report 均输出 `Final verdict: pass` 才允许进入验收/写回/发布。
 4. **编码执行编排**：通过 `--code-command` 接入 HardFlow Core / ACP / runtime agent 编码链，保证实现者只按通过审查的需求包和方案包工作。
 5. **测试与验收编排**：通过多个 `--verification-command` 统一收集 lint、typecheck、unit、integration、smoke、部署验证和人工验收证据。
 6. **修复循环**：测试失败或代码审查失败时，自动回到实现阶段；如果失败反复出现，则触发失败学习。
@@ -66,7 +66,7 @@
 9. **项目级长期记忆**：按项目拆分的事实记忆、经验记忆、第三方来源、API watch 列表和影响面索引，超出上下文的长期知识存在项目记忆模块中。
 10. **第三方 API 持续跟踪**：每 2 天检查第三方库来源，只跟踪项目声明过的官方 docs / changelog / repo。
 11. **Task Center 可观测性**：每次流水线可镜像到 `task_center.db`，统一查看状态、阶段、agent 通信、输出和 incident。
-12. **仓库精简巡检**：`optimization-agent` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和人工确认候选，不自动删除。
+12. **仓库精简巡检**：`coordinator` 每 2 天只读触发冗余文件、失效缓存、冲突残留、重复文件和测试残留扫描；只生成报告和人工确认候选，不自动删除。
 13. **受控 Git 发布**：只有验证、代码审查、deployment（如有）、验收和记忆回写通过后才允许 `git_publish`；发布输入优先采用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码与文档/记忆写回作为同一个已验收变更集发布且不夹带未验收脏改动；提交说明、备注和变更描述必须使用中文并脱敏，禁止 force push 和含密钥 diff。
 14. **运行态 agent 口径分层**：nofx 当前只有两个 live Hermes profile；阶段 owner 只负责隔离 workspace、状态卡展示和 Task Center 交接，不等于独立常驻模型进程。判断是否真正 native fan-out，必须看独立 session/run id。
 15. **低风险待办持续推进**：`backlog_runner.py` 每 30 分钟最多推进 1 个 Task Center 项；只选择 `todo_patrol`、`todo-deadline-bridge`、`repo_hygiene_reviewer` 或 `todo-*` pending 项，以及允许 `next_action` 的 failed 项；每个任务默认只尝试 1 次，避免无限循环。
@@ -112,7 +112,7 @@
 | 项目级记忆模块 | 为每个项目建立独立记忆目录与摘要注入策略 | 🟡 方案已定义 |
 | 项目记忆定位门禁 | 编码前定位模块、文件、测试、文档和历史决策 | ✅ MVP 已实现 |
 | Task Center 镜像 | 将流水线状态、阶段、通信、输出、incident 写入任务中心 | ✅ MVP 已实现 |
-| 到期 TODO 入队确认 | `deadline_to_task_bridge.py` 将到期 TODO 转为 `need_human_confirm=true` 的候选任务 | ✅ 已实现 |
+| 到期 TODO 风险分流 | `deadline_to_task_bridge.py` 将低风险到期 TODO 转为 `dispatch_pipeline` 候选，高风险到期 TODO 转为 `need_human_confirm=true` 人工候选 | ✅ 已实现 |
 | 异常日志自动建任务 | `exception_to_task_bridge.py` 扫描增量日志并按指纹去重创建运维任务/incident | ✅ 已实现 |
 | 人工处理队列 | `human_inbox.py` 统一查看/确认/拒绝/澄清待人工处理、已升级和需确认任务 | ✅ 已实现 |
 | 第三方 API watch | 项目维度维护官方来源和更新检查；默认每 2 天执行一次 | ✅ 已实现 |

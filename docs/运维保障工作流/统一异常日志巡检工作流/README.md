@@ -69,7 +69,7 @@ python3 unified_exception_logger.py --log-dirs /dir1 /dir2 --dry-run
 
 | Cron 任务 | Agent | 频率 |
 |-----------|-------|------|
-| system_exception_patrol | ops-agent | 每6小时 |
+| system_exception_patrol | coordinator | 每6小时 |
 
 ## 产物目录
 

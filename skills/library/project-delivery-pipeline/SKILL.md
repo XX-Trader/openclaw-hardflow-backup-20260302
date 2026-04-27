@@ -93,7 +93,12 @@ python skills/library/project-delivery-pipeline/scripts/pipeline_runner.py run \
   --code-command "<hardflow-or-agent-code-command>" \
   --verification-command "<lint/typecheck/unit-command>" \
   --verification-command "<smoke-command>" \
-  --code-review-command "<review-agent-command>" \
+  --requirements-review-command "<reviewer-a-command>" \
+  --requirements-review-command "<reviewer-b-command>" \
+  --solution-review-command "<reviewer-a-command>" \
+  --solution-review-command "<reviewer-b-command>" \
+  --code-review-command "<reviewer-a-command>" \
+  --code-review-command "<reviewer-b-command>" \
   --git-publish-command "<safe-git-publish-command>" \
   --write-project-memory
 ```
@@ -146,15 +151,20 @@ python skills/library/project-delivery-pipeline/scripts/pipeline_runner.py run \
 4. Require project-agent to identify likely change locations before coding.
 5. Perform or require external research before solution design.
 6. Produce `requirements.md`.
-7. Run two independent reviewers and require `ready_for_solution`.
+7. Run two independent reviewers and require `ready_for_solution`; both command
+   reports must come from distinct commands and distinct `reviewer_role` values
+   (`reviewer-a` / `reviewer-b`).
 8. Produce `solution.md`.
-9. Run two independent reviewers and require `ready_for_implement`.
+9. Run two independent reviewers and require `ready_for_implement`; both command
+   reports must come from distinct commands and distinct `reviewer_role` values
+   (`reviewer-a` / `reviewer-b`).
 10. Dispatch coding agents. In dry-run this is simulated; in live mode provide
    `--code-command` or `--patch-summary-file`.
 11. Run tests and verification. In live mode provide one or more
    `--verification-command` values or attach `--verification-report-file`.
-12. Run code review and require `pass`. In live mode provide
-   `--code-review-command` or attach `--code-review-file`.
+12. Run code review and require `pass`. In live mode provide at least two
+   `--code-review-command` values with distinct `reviewer_role` values, or attach
+   `--code-review-file`.
 13. Run acceptance. Route requirement-caused failures to requirement revision and
     implementation-caused failures to coding agents.
 14. Write final `delivery_evidence.md`, `pipeline_state.json`, and execute

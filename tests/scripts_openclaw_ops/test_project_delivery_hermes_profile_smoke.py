@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -20,12 +21,33 @@ def load_module():
     return module
 
 
+def create_fixture_repo(root: Path) -> Path:
+    repo = root / "repo"
+    repo.mkdir()
+    (repo / "README.md").write_text("# Smoke\n", encoding="utf-8")
+    git_kwargs = {
+        "cwd": repo,
+        "check": True,
+        "capture_output": True,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+    }
+    subprocess.run(["git", "init", "-b", "main"], **git_kwargs)
+    subprocess.run(["git", "config", "user.name", "HardFlow Test"], **git_kwargs)
+    subprocess.run(["git", "config", "user.email", "hardflow-test@example.invalid"], **git_kwargs)
+    subprocess.run(["git", "add", "."], **git_kwargs)
+    subprocess.run(["git", "commit", "-m", "初始化"], **git_kwargs)
+    return repo
+
+
 class ProjectDeliveryHermesProfileSmokeTests(unittest.TestCase):
     def test_echo_mode_runs_non_dry_run_hermes_pipeline_and_writes_evidence(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             runtime_home = root / "hermes"
+            fixture_repo = create_fixture_repo(root)
             report = module.run_smoke(
                 module.SmokeConfig(
                     project_key="demo",
@@ -34,7 +56,7 @@ class ProjectDeliveryHermesProfileSmokeTests(unittest.TestCase):
                     project_memory_root=runtime_home / ".workflow" / "project-memory",
                     task_center_db=runtime_home / "ops" / "task-center" / "task_center.db",
                     run_id="smoke",
-                    command_cwd=ROOT,
+                    command_cwd=fixture_repo,
                     agent_mode="echo",
                 )
             )
@@ -54,6 +76,7 @@ class ProjectDeliveryHermesProfileSmokeTests(unittest.TestCase):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
+            fixture_repo = create_fixture_repo(root)
             fake = root / "fake_hermes.py"
             calls = root / "calls.txt"
             fake.write_text(
@@ -67,7 +90,9 @@ class ProjectDeliveryHermesProfileSmokeTests(unittest.TestCase):
                         "print(json.dumps({",
                         "    'research': '# Research\\n- bundled research\\n- Source URL: https://github.com/openai/codex',",
                         "    'code': '# Patch Summary\\n- bundled code',",
-                        "    'review': '# Code Review\\nFinal verdict: pass\\nConfidence: high',",
+                        "    'requirements_review': '# Requirements Review\\nFinal verdict: ready_for_solution\\nConfidence: high',",
+                        "    'solution_review': '# Solution Review\\nFinal verdict: ready_for_implement\\nConfidence: high',",
+                        "    'code_review': '# Code Review\\nFinal verdict: pass\\nConfidence: high',",
                         "}))",
                         "",
                     ]
@@ -88,7 +113,7 @@ class ProjectDeliveryHermesProfileSmokeTests(unittest.TestCase):
                         project_memory_root=runtime_home / ".workflow" / "project-memory",
                         task_center_db=runtime_home / "ops" / "task-center" / "task_center.db",
                         run_id="hybrid-smoke",
-                        command_cwd=ROOT,
+                        command_cwd=fixture_repo,
                         agent_mode="hybrid",
                         hermes_bin=str(wrapper),
                     )
@@ -106,9 +131,16 @@ class ProjectDeliveryHermesProfileSmokeTests(unittest.TestCase):
             bundle = json.loads(Path(report["ai_bundle_file"]).read_text(encoding="utf-8"))
             self.assertTrue(bundle["ok"])
             self.assertEqual("hybrid-single-chat", bundle["mode"])
+            self.assertIn("requirements_review", bundle["outputs"])
+            self.assertIn("solution_review", bundle["outputs"])
+            self.assertIn("code_review", bundle["outputs"])
             run_dir = Path(report["run_dir"])
             research_report = (run_dir / "research_report.md").read_text(encoding="utf-8")
             self.assertIn("bundled research", research_report)
+            review_report_1 = json.loads((run_dir / "command-runs" / "code_review-1.json").read_text(encoding="utf-8"))
+            review_report_2 = json.loads((run_dir / "command-runs" / "code_review-2.json").read_text(encoding="utf-8"))
+            self.assertEqual("reviewer-a", review_report_1["reviewer_role"])
+            self.assertEqual("reviewer-b", review_report_2["reviewer_role"])
 
 
 if __name__ == "__main__":

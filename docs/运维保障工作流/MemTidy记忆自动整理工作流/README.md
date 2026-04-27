@@ -40,7 +40,7 @@
 
 | Cron 任务 | Agent | 频率 |
 |-----------|-------|------|
-| memtidy_runner（每日记忆整理） | ops-agent | 每日 03:00 |
+| memtidy_runner（每日记忆整理） | coordinator | 每日 03:00 |
 
 ## 备份策略
 

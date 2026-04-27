@@ -19,6 +19,12 @@ from typing import Any
 
 SCHEMA_VERSION = "2026-04-24.hermes-profile-smoke"
 UTC = timezone.utc
+REVIEW_STAGE_VERDICTS = {
+    "requirements_review": "ready_for_solution",
+    "solution_review": "ready_for_implement",
+    "code_review": "pass",
+    "review": "pass",
+}
 
 
 class SmokeError(RuntimeError):
@@ -98,7 +104,7 @@ def resolve_paths(config: SmokeConfig) -> tuple[Path, Path, Path, Path, str]:
     return runtime_home, workspace_root, project_memory_root, task_center_db, run_id
 
 
-def echo_outputs(stage: str, config: SmokeConfig) -> str:
+def echo_outputs(stage: str, config: SmokeConfig, reviewer_role: str = "") -> str:
     if stage == "research":
         return "\n".join(
             [
@@ -125,19 +131,22 @@ def echo_outputs(stage: str, config: SmokeConfig) -> str:
                 "- smoke verification passed",
             ]
         )
-    if stage == "review":
-        return "\n".join(
-            [
-                "# Code Review",
-                "Final verdict: pass",
-                "Confidence: high",
-                "- Smoke output contains the required review gate verdict.",
-            ]
-        )
+    if stage in REVIEW_STAGE_VERDICTS:
+        title = "Code Review" if stage == "review" else stage.replace("_", " ").title()
+        verdict = REVIEW_STAGE_VERDICTS[stage]
+        lines = [
+            f"# {title}",
+            f"Final verdict: {verdict}",
+            "Confidence: high",
+        ]
+        if reviewer_role:
+            lines.append(f"Reviewer role: {reviewer_role}")
+        lines.append(f"- Smoke output contains the required {stage} gate verdict.")
+        return "\n".join(lines)
     raise SmokeError(f"unknown smoke stage: {stage}")
 
 
-def hermes_prompt(stage: str) -> tuple[str, str]:
+def hermes_prompt(stage: str, reviewer_role: str = "") -> tuple[str, str]:
     if stage == "research":
         return (
             "Return exactly this markdown and do not call tools:\n"
@@ -161,25 +170,32 @@ def hermes_prompt(stage: str) -> tuple[str, str]:
             "- Hermes chat verification stage passed.",
             "",
         )
-    if stage == "review":
+    if stage in REVIEW_STAGE_VERDICTS:
+        title = "Code Review" if stage == "review" else stage.replace("_", " ").title()
+        verdict = REVIEW_STAGE_VERDICTS[stage]
+        reviewer_line = f"Reviewer role: {reviewer_role}\n" if reviewer_role else ""
         return (
             "Return exactly this markdown and do not call tools:\n"
-            "# Code Review\n"
-            "Final verdict: pass\n"
+            f"# {title}\n"
+            f"Final verdict: {verdict}\n"
+            f"{reviewer_line}"
             "Confidence: high",
-            r"(?im)^\s*Final verdict\s*:\s*pass\b",
+            rf"(?im)^\s*Final verdict\s*:\s*{re.escape(verdict)}\b",
         )
     raise SmokeError(f"unknown smoke stage: {stage}")
 
 
 def hybrid_bundle_prompt() -> str:
     return (
-        "Return only a JSON object with exactly these string keys: research, code, review. "
+        "Return only a JSON object with exactly these string keys: research, code, "
+        "requirements_review, solution_review, code_review. "
         "Do not call tools. Do not wrap the JSON in markdown. Use these exact values:\n"
         "{\n"
         '  "research": "# Research\\n- Hermes profile smoke verified native hermes chat command dispatch.\\n- Source URL: https://github.com/openai/codex",\n'
         '  "code": "# Patch Summary\\n- Hermes chat coding stage command executed.\\n- No production code was modified by this smoke.",\n'
-        '  "review": "# Code Review\\nFinal verdict: pass\\nConfidence: high"\n'
+        '  "requirements_review": "# Requirements Review\\nFinal verdict: ready_for_solution\\nConfidence: high",\n'
+        '  "solution_review": "# Solution Review\\nFinal verdict: ready_for_implement\\nConfidence: high",\n'
+        '  "code_review": "# Code Review\\nFinal verdict: pass\\nConfidence: high"\n'
         "}"
     )
 
@@ -249,13 +265,15 @@ def run_hybrid_bundle(command_dir: Path, config: SmokeConfig) -> tuple[dict[str,
             parse_error = str(exc)
     outputs = {
         key: str(parsed.get(key, "")).strip()
-        for key in ("research", "code", "review")
+        for key in ("research", "code", "requirements_review", "solution_review", "code_review")
     }
     ok = (
         proc.returncode == 0
         and not parse_error
         and all(outputs.values())
-        and re.search(r"(?im)^\s*Final verdict\s*:\s*pass\b", outputs["review"]) is not None
+        and re.search(r"(?im)^\s*Final verdict\s*:\s*ready_for_solution\b", outputs["requirements_review"]) is not None
+        and re.search(r"(?im)^\s*Final verdict\s*:\s*ready_for_implement\b", outputs["solution_review"]) is not None
+        and re.search(r"(?im)^\s*Final verdict\s*:\s*pass\b", outputs["code_review"]) is not None
     )
     payload = {
         "mode": "hybrid-single-chat",
@@ -278,8 +296,8 @@ def run_hybrid_bundle(command_dir: Path, config: SmokeConfig) -> tuple[dict[str,
     return outputs, bundle_file
 
 
-def write_echo_agent(path: Path, stage: str, config: SmokeConfig) -> None:
-    output = echo_outputs(stage, config)
+def write_echo_agent(path: Path, stage: str, config: SmokeConfig, reviewer_role: str = "") -> None:
+    output = echo_outputs(stage, config, reviewer_role)
     path.write_text(
         "\n".join(
             [
@@ -294,8 +312,8 @@ def write_echo_agent(path: Path, stage: str, config: SmokeConfig) -> None:
     )
 
 
-def write_hermes_chat_agent(path: Path, stage: str, config: SmokeConfig) -> None:
-    prompt, expected_regex = hermes_prompt(stage)
+def write_hermes_chat_agent(path: Path, stage: str, config: SmokeConfig, reviewer_role: str = "") -> None:
+    prompt, expected_regex = hermes_prompt(stage, reviewer_role)
     hermes_cmd = [*hermes_base_command(config), "-q", prompt]
     path.write_text(
         "\n".join(
@@ -336,6 +354,14 @@ def write_hermes_chat_agent(path: Path, stage: str, config: SmokeConfig) -> None
     )
 
 
+def with_reviewer_role(output: str, reviewer_role: str) -> str:
+    if not reviewer_role:
+        return output
+    if re.search(r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:", output or ""):
+        return output
+    return str(output or "").rstrip() + f"\nReviewer role: {reviewer_role}"
+
+
 def write_cached_agent(path: Path, output: str) -> None:
     path.write_text(
         "\n".join(
@@ -355,17 +381,28 @@ def write_agent_scripts(command_dir: Path, config: SmokeConfig, stage_outputs: d
     command_dir.mkdir(parents=True, exist_ok=True)
     scripts: dict[str, Path] = {}
     stage_outputs = stage_outputs or {}
-    for stage in ("research", "code", "verify", "review"):
-        path = command_dir / f"{stage}_agent.py"
+    script_stages = {
+        "research": ("research", ""),
+        "code": ("code", ""),
+        "verify": ("verify", ""),
+        "requirements_review_a": ("requirements_review", "reviewer-a"),
+        "requirements_review_b": ("requirements_review", "reviewer-b"),
+        "solution_review_a": ("solution_review", "reviewer-a"),
+        "solution_review_b": ("solution_review", "reviewer-b"),
+        "code_review_a": ("code_review", "reviewer-a"),
+        "code_review_b": ("code_review", "reviewer-b"),
+    }
+    for script_key, (stage, reviewer_role) in script_stages.items():
+        path = command_dir / f"{script_key}_agent.py"
         if stage in stage_outputs:
-            write_cached_agent(path, stage_outputs[stage])
+            write_cached_agent(path, with_reviewer_role(stage_outputs[stage], reviewer_role))
         elif config.agent_mode == "echo" or (config.agent_mode == "hybrid" and stage == "verify"):
-            write_echo_agent(path, stage, config)
+            write_echo_agent(path, stage, config, reviewer_role)
         elif config.agent_mode in {"hermes-chat", "hybrid"}:
-            write_hermes_chat_agent(path, stage, config)
+            write_hermes_chat_agent(path, stage, config, reviewer_role)
         else:
             raise SmokeError(f"unsupported agent mode: {config.agent_mode}")
-        scripts[stage] = path
+        scripts[script_key] = path
     return scripts
 
 
@@ -411,9 +448,20 @@ def run_smoke(config: SmokeConfig) -> dict[str, Any]:
         source_urls=("https://github.com/openai/codex",),
         research_commands=(py_cmd(scripts["research"]),),
         requirements_discussion_commands=(py_cmd(scripts["research"]),),
+        requirements_review_commands=(
+            py_cmd(scripts["requirements_review_a"]),
+            py_cmd(scripts["requirements_review_b"]),
+        ),
+        solution_review_commands=(
+            py_cmd(scripts["solution_review_a"]),
+            py_cmd(scripts["solution_review_b"]),
+        ),
         code_command=py_cmd(scripts["code"]),
         verification_commands=(py_cmd(scripts["verify"]),),
-        code_review_command=py_cmd(scripts["review"]),
+        code_review_commands=(
+            py_cmd(scripts["code_review_a"]),
+            py_cmd(scripts["code_review_b"]),
+        ),
         write_project_memory=True,
         command_cwd=command_cwd,
         command_timeout_seconds=config.command_timeout_seconds,

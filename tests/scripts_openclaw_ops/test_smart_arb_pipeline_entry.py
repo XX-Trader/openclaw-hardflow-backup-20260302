@@ -220,6 +220,16 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("--code-command", runner_cmd)
         self.assertIn("--deployment-command", runner_cmd)
         self.assertIn("--git-publish-command", runner_cmd)
+        self.assertEqual(2, runner_cmd.count("--requirements-review-command"))
+        self.assertEqual(2, runner_cmd.count("--solution-review-command"))
+        self.assertEqual(2, runner_cmd.count("--code-review-command"))
+        review_commands = [
+            runner_cmd[index + 1]
+            for index, value in enumerate(runner_cmd)
+            if value in {"--requirements-review-command", "--solution-review-command", "--code-review-command"}
+        ]
+        self.assertTrue(any("--reviewer-role reviewer-a" in command for command in review_commands))
+        self.assertTrue(any("--reviewer-role reviewer-b" in command for command in review_commands))
         self.assertNotIn("--agent-workspace-mode", runner_cmd)
         self.assertEqual("", err.getvalue())
 

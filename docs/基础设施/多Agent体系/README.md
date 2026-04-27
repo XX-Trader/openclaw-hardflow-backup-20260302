@@ -1,7 +1,7 @@
 # 多 Agent / Workflow Owner 体系
 
 > 最后更新：2026-04-27
-> 本页是 nofx 当前 workflow 口径，不再使用 2026-03 的 14 Agent 注册表作为 active 事实源。
+> 本页是 nofx 当前 workflow 口径，不再使用 2026-03 的 14 Agent 注册表作为 active 事实源。当前 active owner 严格为 9 个。
 
 ## 当前结论
 
@@ -10,7 +10,7 @@ nofx 现在按四层理解：
 1. **入口层**：服务器对外运行两个 Hermes Discord profile：`arbitrageagent`、`spreadagent`。它们是入口，不是完整工作流本身；两者模型均为 `openai-codex/gpt-5.5`。
 2. **工作流层**：真正执行入口是 `/home/arbops/.local/bin/smart-arb-pipeline`，它调用 `/home/arbops/.hermes/ops/pipeline_runner.py`。
 3. **逻辑 owner 层**：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是 workflow 阶段责任人 / workspace 标签，不是常驻进程。
-4. **定时任务层**：cron/task-center 主要由 `ops-agent`、`project-agent` 执行；本地最新方案新增 `optimization-agent` 执行仓库精简巡检。
+4. **定时任务层**：cron/task-center 只挂在 active owner 上，当前为 `coordinator` 与 `project-agent`；`ops-agent`、`optimization-agent` 不再作为 active owner。
 
 ## 入口层
 
@@ -73,9 +73,8 @@ research
 
 | owner | 当前用途 |
 |-------|----------|
-| `ops-agent` | TODO 巡检、异常日志巡检、配置巡检、memtidy、claim audit、deadline bridge |
+| `coordinator` | TODO 巡检、异常日志巡检、配置巡检、memtidy、claim audit、deadline bridge、backlog runner、repo hygiene 候选巡检 |
 | `project-agent` | 项目索引维护、项目事实源相关定时任务 |
-| `optimization-agent` | 本地最新方案新增的 `repo_hygiene_reviewer_2d` 仓库精简巡检 |
 
 ## 已停用 / 不再 active 的旧标签
 
@@ -86,5 +85,7 @@ research
 - `agent-factory`
 - `self-evolution-agent`
 - `git-master`
+- `ops-agent`
+- `optimization-agent`
 
 若历史文档或旧会话中出现这些名称，只能作为 2026-03 OpenClaw 旧注册表或旧任务证据理解，不能作为当前运行态结论。

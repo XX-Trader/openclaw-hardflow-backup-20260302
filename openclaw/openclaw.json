@@ -242,27 +242,6 @@
         "runtimeRole": "workflow-stage-owner"
       },
       {
-        "id": "ops-agent",
-        "name": "ops-agent",
-        "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
-        "agentDir": "/home/ubuntu/.openclaw/agents/ops-agent/agent",
-        "model": "openai-codex/gpt-5.5",
-        "runtimeRole": "cron-task-owner",
-        "subagents": {
-          "allowAgents": [
-            "project-agent"
-          ]
-        }
-      },
-      {
-        "id": "optimization-agent",
-        "name": "optimization-agent",
-        "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
-        "agentDir": "/home/ubuntu/.openclaw/agents/optimization-agent/agent",
-        "model": "openai-codex/gpt-5.5",
-        "runtimeRole": "cron-task-owner"
-      },
-      {
         "id": "project-agent",
         "name": "project-agent",
         "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
@@ -298,8 +277,6 @@
         "deployer",
         "doc-writer",
         "frontend-dev",
-        "ops-agent",
-        "optimization-agent",
         "project-agent",
         "reviewer",
         "tester",

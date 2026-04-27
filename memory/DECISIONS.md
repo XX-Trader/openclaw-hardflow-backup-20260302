@@ -4,7 +4,7 @@
 
 类型：decision
 范围：`cron/jobs.json`、`scripts/openclaw-ops/repo_hygiene_reviewer.py`、项目交付流水线
-事实：代码精简、冗余文件、失效缓存、冲突残留和测试残留治理由 `repo_hygiene_reviewer.py` 承担定期只读扫描，cron 执行 agent 使用 `optimization-agent`。`reviewer` 仍负责需求、方案和代码审查裁决，不承担长期仓库清理执行。
+事实：代码精简、冗余文件、失效缓存、冲突残留和测试残留治理由 `repo_hygiene_reviewer.py` 承担定期只读扫描，cron 执行 owner 使用 `coordinator`。`reviewer` 仍负责需求、方案和代码审查裁决，不承担长期仓库清理执行。`optimization-agent` 不再作为 active agent 注册。
 证据：`cron/jobs.json` 的 `repo_hygiene_reviewer_2d` 每 2 天运行一次；脚本只生成报告和 `repo_hygiene_candidate` 人工确认候选，不自动删除、不自动提交。
 最后验证：2026-04-27
 复用建议：下次需要“仓库保持整洁”时，先看 repo hygiene 报告和 Task Center 候选；真正删除或重构必须单独进入交付流水线，并通过测试、code reviewer 和 Git 发布门禁。

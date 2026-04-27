@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-27 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个阶段 owner + cron 责任标签；新增 Task Center backlog runner 持续推进低风险待办；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
+> 最后更新：2026-04-27 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个 active workflow owner；cron 只挂 `coordinator/project-agent`；低风险到期 TODO 进入 backlog runner，高风险进人工队列；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -28,7 +28,7 @@
 | 分类 | 入口 | 文档数 |
 |------|------|--------|
 | [部署与运维](基础设施/部署与运维/README.md) | Linux/Windows部署、Gateway守护、排障 | 8篇 |
-| [多Agent体系](基础设施/多Agent体系/README.md) | nofx 当前四层口径：2 个 Hermes profile、`smart-arb-pipeline`、9 个 workflow owner、cron 责任标签 | 1篇 |
+| [多Agent体系](基础设施/多Agent体系/README.md) | nofx 当前四层口径：2 个 Hermes profile、`smart-arb-pipeline`、9 个 active workflow owner、cron 由 active owner 承载 | 1篇 |
 | [协议与规范](基础设施/协议与规范/README.md) | trace_id、任务派发、错误进化、TG输出 | 4篇 |
 | [记忆蒸馏](基础设施/记忆蒸馏/README.md) | 多源会话蒸馏、热记忆、技能候选 | 4篇 |
 | [技能化架构](基础设施/技能化架构/README.md) | Skill 标准化、HardFlow 迁移、评分三步流水线 | 3篇 |
@@ -93,7 +93,7 @@
 | [`skills/library/project-delivery-pipeline/scripts/hermes_profile_smoke.py`](../skills/library/project-delivery-pipeline/scripts/hermes_profile_smoke.py) | Hermes profile 非 dry-run smoke 验收入口 |
 | [`skills/library/project-delivery-pipeline/references/state-machine.md`](../skills/library/project-delivery-pipeline/references/state-machine.md) | 状态、产物、门禁、失败回退、Task Center 镜像规则 |
 | [`skills/library/project-delivery-pipeline/references/runtime-adapter.md`](../skills/library/project-delivery-pipeline/references/runtime-adapter.md) | 通用 runtime 宿主、任务中心与检索后端适配契约 |
-| [`skills/library/todo-patrol/scripts/deadline_to_task_bridge.py`](../skills/library/todo-patrol/scripts/deadline_to_task_bridge.py) | 到期 TODO 转 Task Center 候选任务，等待人工确认 |
+| [`skills/library/todo-patrol/scripts/deadline_to_task_bridge.py`](../skills/library/todo-patrol/scripts/deadline_to_task_bridge.py) | 到期 TODO 按风险分流：低风险进 Task Center 自动队列，高风险等待人工确认 |
 | [`skills/library/log-monitor/scripts/exception_to_task_bridge.py`](../skills/library/log-monitor/scripts/exception_to_task_bridge.py) | 增量异常日志转运维任务与 incident |
 | [`skills/library/control-plane-ops/scripts/policy/human_inbox.py`](../skills/library/control-plane-ops/scripts/policy/human_inbox.py) | 人工确认、拒绝、澄清、升级任务统一入口 |
 | [`scripts/openclaw-ops/backlog_runner.py`](../scripts/openclaw-ops/backlog_runner.py) | 每 30 分钟从 Task Center 选择低风险、无需人工确认或可续跑失败项，调用 `smart-arb-pipeline` 持续推进 |

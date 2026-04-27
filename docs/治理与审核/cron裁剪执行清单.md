@@ -20,7 +20,7 @@
 | `memtidy_runner` | 基础设施 | 保留 |
 | `unified_exception_logger` | 基础设施 | 保留 |
 | `source_registry_watcher` | 项目交付 | 保留（每 2 天） |
-| `repo_hygiene_reviewer_2d` | 项目交付治理 | 新增保留（每 2 天，`optimization-agent` 只读扫描 + 人工确认候选） |
+| `repo_hygiene_reviewer_2d` | 项目交付治理 | 新增保留（每 2 天，`coordinator` 只读扫描 + 人工确认候选） |
 
 ## 3. 移除清单（自进化 + 泛化扫描）
 

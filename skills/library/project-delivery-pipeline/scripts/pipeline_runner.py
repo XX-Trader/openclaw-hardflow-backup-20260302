@@ -73,6 +73,13 @@ SIMULATED_FAILURES = {
 VERDICT_RE = re.compile(
     r"(?im)^\s*(?:Final verdict|final_verdict|verdict)\s*:\s*([a-z_]+)"
 )
+DUAL_REVIEW_STAGES = {"requirements_review", "solution_review", "code_review"}
+REVIEWER_ROLE_ARG_RE = re.compile(
+    r"(?:^|\s)--reviewer-role(?:=|\s+)(?:\"([A-Za-z0-9_.-]+)\"|'([A-Za-z0-9_.-]+)'|([A-Za-z0-9_.-]+))"
+)
+REVIEWER_ROLE_OUTPUT_RE = re.compile(
+    r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:\s*([A-Za-z0-9_.-]+)\s*$"
+)
 
 
 class PipelineError(RuntimeError):
@@ -95,12 +102,15 @@ class PipelineConfig:
     research_report_file: Path | None = None
     research_commands: tuple[str, ...] = ()
     requirements_discussion_commands: tuple[str, ...] = ()
+    requirements_review_commands: tuple[str, ...] = ()
+    solution_review_commands: tuple[str, ...] = ()
     code_agent: str = "backend-dev"
     code_command: str | None = None
     patch_summary_file: Path | None = None
     verification_commands: tuple[str, ...] = ()
     verification_report_file: Path | None = None
     code_review_command: str | None = None
+    code_review_commands: tuple[str, ...] = ()
     code_review_file: Path | None = None
     deployment_command: str | None = None
     memory_write_command: str | None = None
@@ -238,6 +248,79 @@ def gate_result(stage_name: str, artifact_path: Path) -> tuple[bool, str | None]
     expected = EXPECTED_VERDICTS[stage_name]
     verdict = parse_verdict(artifact_path.read_text(encoding="utf-8"))
     return verdict == expected, verdict
+
+
+def command_report_verdict(report: dict[str, Any]) -> str | None:
+    text = "\n".join([str(report.get("stdout") or ""), str(report.get("stderr") or "")])
+    return parse_verdict(text)
+
+
+def normalize_reviewer_role(value: str | None) -> str:
+    role = str(value or "").strip().lower()
+    return role if re.fullmatch(r"[a-z0-9_.-]+", role) else ""
+
+
+def reviewer_role_from_command(command_text: str) -> str:
+    match = REVIEWER_ROLE_ARG_RE.search(str(command_text or ""))
+    if not match:
+        return ""
+    return normalize_reviewer_role(next((part for part in match.groups() if part), ""))
+
+
+def reviewer_role_from_output(stdout: str, stderr: str) -> str:
+    text = "\n".join([str(stdout or ""), str(stderr or "")])
+    match = REVIEWER_ROLE_OUTPUT_RE.search(text)
+    return normalize_reviewer_role(match.group(1) if match else "")
+
+
+def reviewer_role_for_report(report: dict[str, Any]) -> str:
+    explicit = normalize_reviewer_role(str(report.get("reviewer_role") or ""))
+    if explicit:
+        return explicit
+    command_role = reviewer_role_from_command(str(report.get("command") or ""))
+    if command_role:
+        return command_role
+    return reviewer_role_from_output(str(report.get("stdout") or ""), str(report.get("stderr") or ""))
+
+
+def dual_review_pass(stage_name: str, reports: list[dict[str, Any]]) -> bool:
+    expected = EXPECTED_VERDICTS[stage_name]
+    if len(reports) < 2:
+        return False
+    if not all(bool(item.get("ok")) and command_report_verdict(item) == expected for item in reports):
+        return False
+    commands = [str(item.get("command") or "").strip() for item in reports]
+    if len({command for command in commands if command}) != len(commands):
+        return False
+    roles = [reviewer_role_for_report(item) for item in reports]
+    if any(not role for role in roles):
+        return False
+    return len(set(roles)) >= 2
+
+
+def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdict: str) -> str:
+    expected = EXPECTED_VERDICTS[stage_name]
+    roles = [reviewer_role_for_report(item) or "missing" for item in reports]
+    commands = [str(item.get("command") or "").strip() for item in reports]
+    distinct_commands = len({command for command in commands if command}) == len(commands) if commands else False
+    return dedent(
+        f"""
+        # {stage_name.replace('_', ' ').title()}
+
+        Final verdict: {verdict}
+        Confidence: {"high" if verdict == expected else "medium"}
+
+        ## Dual AI Contract
+        - Expected verdict: {expected}
+        - Reviewer-A evidence: {"present" if "reviewer-a" in roles else "missing"}
+        - Reviewer-B evidence: {"present" if "reviewer-b" in roles else "missing"}
+        - Reviewer roles: {", ".join(roles) if roles else "missing"}
+        - Distinct commands: {str(distinct_commands).lower()}
+        - Independent command reports: {len(reports)}
+
+        {command_markdown("Dual AI Review Commands", reports)}
+        """
+    )
 
 
 def consensus_review(review_type: str, verdict: str, requirement: str) -> str:
@@ -802,7 +885,11 @@ def command_env(
             "PIPELINE_RUNTIME_HOME": str(runtime.get("runtime_home", "")),
             "PIPELINE_PROJECT_MEMORY_DIR": str(memory_dir),
             "PIPELINE_RESEARCH_REPORT_FILE": str(run_dir / "research_report.md"),
+            "PIPELINE_REQUIREMENTS_FILE": str(run_dir / "requirements.md"),
             "PIPELINE_REQUIREMENTS_DISCUSSION_FILE": str(run_dir / "requirements_discussion.md"),
+            "PIPELINE_REQUIREMENTS_REVIEW_FILE": str(run_dir / "requirements_review.md"),
+            "PIPELINE_SOLUTION_FILE": str(run_dir / "solution.md"),
+            "PIPELINE_SOLUTION_REVIEW_FILE": str(run_dir / "solution_review.md"),
             "PIPELINE_PATCH_SUMMARY_FILE": str(run_dir / "patch_summary.md"),
             "PIPELINE_VERIFICATION_REPORT_FILE": str(run_dir / "verification_report.md"),
             "PIPELINE_CODE_REVIEW_FILE": str(run_dir / "code_review.md"),
@@ -926,6 +1013,8 @@ def run_stage_command(
         report["workspace_patch"] = workspace_patch
         if workspace_patch.get("patch_file"):
             report["workspace_patch_file"] = workspace_patch["patch_file"]
+    if stage_name in DUAL_REVIEW_STAGES:
+        report["reviewer_role"] = reviewer_role_from_command(command_text) or reviewer_role_from_output(stdout, stderr)
     report_dir = run_dir / "command-runs"
     report_file = report_dir / f"{stage_name}-{index}.json"
     write_json(report_file, report)
@@ -1074,22 +1163,10 @@ def render_verification_report(
 def render_code_review(
     config: PipelineConfig,
     failed: bool,
-    command_report: dict[str, Any] | None = None,
+    command_reports: list[dict[str, Any]] | None = None,
 ) -> str:
-    if command_report is not None:
-        stdout = str(command_report.get("stdout", "")).strip()
-        if stdout:
-            return stdout
-        return dedent(
-            f"""
-            # Code Review
-
-            Final verdict: {"pass" if command_report.get("ok") else "requires_revision"}
-            Confidence: medium
-
-            {command_markdown("Code Review Command", [command_report])}
-            """
-        )
+    if command_reports is not None and command_reports:
+        return render_dual_ai_review("code_review", command_reports, "requires_revision" if failed else "pass")
     if config.code_review_file and not failed:
         return read_optional_file(config.code_review_file, "")
     verdict = "requires_revision" if failed else "pass"
@@ -1825,11 +1902,26 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
         )
 
+    req_review_reports = run_stage_commands(
+        config,
+        run_dir,
+        runtime,
+        artifacts,
+        requirement,
+        "requirements_review",
+        config.requirements_review_commands,
+    ) if config.requirements_review_commands else []
     req_verdict = "requires_revision" if config.simulate_failure_stage == "requirements" else "ready_for_solution"
+    if req_review_reports:
+        req_verdict = "ready_for_solution" if dual_review_pass("requirements_review", req_review_reports) else "requires_revision"
+    elif not config.dry_run:
+        req_verdict = "requires_revision"
     req_review = record(
         "requirements_review",
         "requirements_review.md",
-        consensus_review("requirements_review", req_verdict, requirement),
+        render_dual_ai_review("requirements_review", req_review_reports, req_verdict)
+        if req_review_reports or not config.dry_run
+        else consensus_review("requirements_review", req_verdict, requirement),
         verdict=req_verdict,
     )
     gate_ok, parsed_verdict = gate_result("requirements_review", req_review)
@@ -1853,11 +1945,26 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         )
 
     record("solution_package", "solution.md", render_solution(runtime))
+    sol_review_reports = run_stage_commands(
+        config,
+        run_dir,
+        runtime,
+        artifacts,
+        requirement,
+        "solution_review",
+        config.solution_review_commands,
+    ) if config.solution_review_commands else []
     sol_verdict = "requires_revision" if config.simulate_failure_stage == "solution" else "ready_for_implement"
+    if sol_review_reports:
+        sol_verdict = "ready_for_implement" if dual_review_pass("solution_review", sol_review_reports) else "requires_revision"
+    elif not config.dry_run:
+        sol_verdict = "requires_revision"
     sol_review = record(
         "solution_review",
         "solution_review.md",
-        consensus_review("solution_review", sol_verdict, requirement),
+        render_dual_ai_review("solution_review", sol_review_reports, sol_verdict)
+        if sol_review_reports or not config.dry_run
+        else consensus_review("solution_review", sol_verdict, requirement),
         verdict=sol_verdict,
     )
     gate_ok, parsed_verdict = gate_result("solution_review", sol_review)
@@ -1983,32 +2090,33 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
         )
 
-    code_review_command_report = None
-    if config.code_review_command:
-        code_review_command_report = run_stage_command(
-            config,
-            run_dir,
-            runtime,
-            artifacts,
-            requirement,
-            "code_review",
-            config.code_review_command,
-            input_patch_file=code_workspace_patch_file,
-        )
+    code_review_commands = config.code_review_commands or (
+        (config.code_review_command,) if config.code_review_command else ()
+    )
+    code_review_command_reports = run_stage_commands(
+        config,
+        run_dir,
+        runtime,
+        artifacts,
+        requirement,
+        "code_review",
+        code_review_commands,
+        input_patch_file=code_workspace_patch_file,
+    ) if code_review_commands else []
     missing_live_code_review = (
         not config.dry_run
         and not config.code_review_file
-        and code_review_command_report is None
+        and not code_review_command_reports
     )
     code_review_failed = (
         config.simulate_failure_stage == "code_review"
         or missing_live_code_review
-        or (code_review_command_report is not None and not code_review_command_report.get("ok"))
+        or (bool(code_review_command_reports) and not dual_review_pass("code_review", code_review_command_reports))
     )
     code_review = record(
         "code_review",
         "code_review.md",
-        render_code_review(config, code_review_failed, code_review_command_report),
+        render_code_review(config, code_review_failed, code_review_command_reports),
         verdict="requires_revision" if code_review_failed else "pass",
     )
     gate_ok, parsed_verdict = gate_result("code_review", code_review)
@@ -2314,12 +2422,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--research-report-file", type=Path)
     parser.add_argument("--research-command", action="append", default=[], help="trusted command that produces research evidence")
     parser.add_argument("--requirements-discussion-command", action="append", default=[], help="trusted command that makes project-agent and reviewer discuss/refine requirements")
+    parser.add_argument("--requirements-review-command", action="append", default=[], help="trusted independent reviewer command for requirements gate; supply at least two")
+    parser.add_argument("--solution-review-command", action="append", default=[], help="trusted independent reviewer command for solution gate; supply at least two")
     parser.add_argument("--code-agent", choices=["backend-dev", "frontend-dev"], default="backend-dev", help="workflow owner for code_execution")
     parser.add_argument("--code-command", help="trusted runtime/agent command that performs or dispatches implementation")
     parser.add_argument("--patch-summary-file", type=Path)
     parser.add_argument("--verification-command", action="append", default=[], help="trusted command used as verification evidence")
     parser.add_argument("--verification-report-file", type=Path)
-    parser.add_argument("--code-review-command", help="trusted runtime/agent command that produces code review output")
+    parser.add_argument("--code-review-command", action="append", default=[], help="trusted independent reviewer command that produces code review output; supply at least two")
     parser.add_argument("--code-review-file", type=Path)
     parser.add_argument("--deployment-command", help="trusted command that deploys an accepted implementation")
     parser.add_argument("--memory-write-command", help="trusted command that writes project memory after acceptance")
@@ -2353,12 +2463,14 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         research_report_file=args.research_report_file,
         research_commands=tuple(args.research_command or ()),
         requirements_discussion_commands=tuple(args.requirements_discussion_command or ()),
+        requirements_review_commands=tuple(args.requirements_review_command or ()),
+        solution_review_commands=tuple(args.solution_review_command or ()),
         code_agent=normalize_code_agent(args.code_agent),
         code_command=args.code_command,
         patch_summary_file=args.patch_summary_file,
         verification_commands=tuple(args.verification_command or ()),
         verification_report_file=args.verification_report_file,
-        code_review_command=args.code_review_command,
+        code_review_commands=tuple(args.code_review_command or ()),
         code_review_file=args.code_review_file,
         deployment_command=args.deployment_command,
         memory_write_command=args.memory_write_command,

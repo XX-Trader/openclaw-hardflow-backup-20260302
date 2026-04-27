@@ -41,8 +41,8 @@
 
 | Cron 任务 | Agent | 频率 |
 |-----------|-------|------|
-| config_watchdog（配置安全巡检） | ops-agent | 每4小时 |
-| local_config_snapshot | optimization-agent | 每1小时 |
+| config_watchdog（配置安全巡检） | coordinator | 每4小时 |
+| local_config_snapshot | coordinator | 每1小时 |
 
 ## CLI 用法
 

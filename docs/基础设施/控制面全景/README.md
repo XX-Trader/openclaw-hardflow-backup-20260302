@@ -12,7 +12,7 @@
 | 真正执行什么 | `/home/arbops/.local/bin/smart-arb-pipeline` | profile `SOUL.md` 与软链接 |
 | runner 在哪里 | `/home/arbops/.hermes/ops/pipeline_runner.py` | runtime installer 安装产物 |
 | 逻辑 owner 有哪些 | `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` | `pipeline_runner.py` / `smart_arb_pipeline_entry.py` |
-| 定时任务 owner | 主要是 `ops-agent`、`project-agent`；本地最新新增 `optimization-agent` 仓库精简巡检 | `/home/arbops/.hermes/cron/jobs.json` |
+| 定时任务 owner | `coordinator`、`project-agent`；仓库精简巡检也由 `coordinator` 承载 | `/home/arbops/.hermes/cron/jobs.json` |
 
 ## 运行链路
 

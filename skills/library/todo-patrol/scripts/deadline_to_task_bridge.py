@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create human-confirmed Task Center candidates for due TODO lines."""
+"""Create Task Center candidates for due TODO lines with risk-aware routing."""
 
 from __future__ import annotations
 
@@ -42,6 +42,16 @@ DEADLINE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 UNCHECKED_PATTERN = re.compile(r"^\s*-\s*\[\s*[ /]\s*\]\s*(?P<text>.+?)\s*$")
+PRIORITY_PATTERN = re.compile(r"\[(?P<tag>P[0-3]|🔴|🟡|🟢)\]", re.IGNORECASE)
+HIGH_RISK_PATTERN = re.compile(
+    r"(生产|线上|部署|重启|迁移|删除|drop|truncate|rm\s+-rf|force\s+push|"
+    r"凭证|密钥|token|api[_ -]?key|cookie|资金|提现|划转|下单|撤单|实盘|交易|权限|sudo|root)",
+    re.IGNORECASE,
+)
+LOW_RISK_PATTERN = re.compile(
+    r"(文档|docs?|readme|索引|说明|注释|格式|错别字|typo|只读|查询|整理|报告|csv|excel)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -113,42 +123,120 @@ def build_task_id(todo_file: Path, item: DueTodoItem) -> str:
     return f"todo-deadline-{fingerprint[:16]}"
 
 
+def infer_priority_and_risk(item: DueTodoItem) -> tuple[str, str, list[str]]:
+    text = item.raw_line + "\n" + item.text
+    priority_match = PRIORITY_PATTERN.search(text)
+    priority_tag = (priority_match.group("tag").upper() if priority_match else "").strip()
+    reasons: list[str] = []
+
+    if priority_tag in {"P0", "P1", "🔴"}:
+        priority = "high"
+        risk_level = "high"
+        reasons.append(f"priority_tag:{priority_tag}")
+    elif priority_tag in {"P2", "🟡"}:
+        priority = "medium"
+        risk_level = "low"
+        reasons.append(f"priority_tag:{priority_tag}")
+    elif priority_tag in {"P3", "🟢"}:
+        priority = "low"
+        risk_level = "low"
+        reasons.append(f"priority_tag:{priority_tag}")
+    else:
+        priority = "high" if item.days_until < 0 else "medium"
+        risk_level = "low"
+        reasons.append("deadline_due")
+
+    if HIGH_RISK_PATTERN.search(text):
+        risk_level = "high"
+        priority = "high"
+        reasons.append("high_risk_keyword")
+    elif LOW_RISK_PATTERN.search(text):
+        risk_level = "low"
+        reasons.append("low_risk_keyword")
+
+    return priority, risk_level, reasons
+
+
 def build_candidate_task(todo_file: Path, item: DueTodoItem, *, assignee: str) -> dict[str, Any]:
     overdue_text = "overdue" if item.days_until < 0 else item.state
+    priority, risk_level, risk_reasons = infer_priority_and_risk(item)
+    need_human_confirm = risk_level == "high"
+    effective_assignee = "human-inbox" if need_human_confirm else "coordinator"
+    action = "await_human_confirm" if need_human_confirm else "dispatch_pipeline"
+    requirement = (
+        "Ask the user whether this due TODO should become an executable Task Center item before any agent "
+        f"starts work. TODO: {item.text}"
+        if need_human_confirm
+        else (
+            "Execute this due low-risk TODO through the normal coordinator pipeline. "
+            "Do not bypass project memory, verification, code review, writeback, or Git publish gates. "
+            f"TODO: {item.text}"
+        )
+    )
+    result_output = (
+        "A confirmed executable task, a clarified task, or a cancelled candidate."
+        if need_human_confirm
+        else "Pipeline run evidence, changed files if any, tests, review result, and writeback status."
+    )
+    acceptance = (
+        "The user explicitly confirms, declines, or clarifies the due TODO candidate."
+        if need_human_confirm
+        else "The low-risk due TODO completes through the pipeline with verification and review gates passing."
+    )
+    observable_outputs = (
+        "human_inbox entry; task_center task row; human question output"
+        if need_human_confirm
+        else "pipeline_state.json; command-runs; Task Center outputs; final status card"
+    )
+    acceptance_thresholds = (
+        "Candidate remains blocked while need_human_confirm=true and human_confirmed=false."
+        if need_human_confirm
+        else "Task reaches passed/completed or blocks with a concrete next_action without bypassing safety gates."
+    )
     return {
         "task_id": build_task_id(todo_file, item),
         "pool": "todo",
         "task_type": "todo_deadline_candidate",
         "reason": f"TODO deadline {overdue_text}: line {item.line_no}",
         "source": "todo-deadline-bridge",
-        "request_source": "human",
-        "priority": "high" if item.days_until < 0 else "medium",
-        "risk_level": "high",
-        "assignee": assignee,
+        "request_source": "ai" if not need_human_confirm else "human",
+        "priority": priority,
+        "risk_level": risk_level,
+        "assignee": effective_assignee,
         "status": "pending",
-        "need_human_confirm": True,
+        "need_human_confirm": need_human_confirm,
         "human_confirmed": False,
-        "action": "await_human_confirm",
-        "requirement": (
-            "Ask the user whether this due TODO should become an executable Task Center item before any agent "
-            f"starts work. TODO: {item.text}"
-        ),
-        "result_output": "A confirmed executable task, a clarified task, or a cancelled candidate.",
-        "acceptance": "The user explicitly confirms, declines, or clarifies the due TODO candidate.",
-        "observable_outputs": "human_inbox entry; task_center task row; human question output",
-        "acceptance_thresholds": "Candidate remains blocked while need_human_confirm=true and human_confirmed=false.",
+        "action": action,
+        "requirement": requirement,
+        "result_output": result_output,
+        "acceptance": acceptance,
+        "observable_outputs": observable_outputs,
+        "acceptance_thresholds": acceptance_thresholds,
         "context_payload": {
             "bridge": "deadline_to_task_bridge",
-            "question": "Should this due TODO be added to the executable Task Center queue?",
+            "question": (
+                "Should this due TODO be added to the executable Task Center queue?"
+                if need_human_confirm
+                else ""
+            ),
             "source_file": str(todo_file),
             "line_no": item.line_no,
             "deadline": item.deadline.date().isoformat(),
             "days_until": item.days_until,
             "state": item.state,
             "raw_todo": item.raw_line,
+            "risk_reasons": risk_reasons,
         },
-        "allowed_agents": ["human-inbox", "project-agent", "ops-agent"],
-        "required_capabilities": ["human_confirmation", "task_routing"],
+        "allowed_agents": (
+            ["human-inbox", "project-agent", "coordinator"]
+            if need_human_confirm
+            else ["coordinator", "project-agent", "reviewer", "tester", "doc-writer"]
+        ),
+        "required_capabilities": (
+            ["human_confirmation", "task_routing"]
+            if need_human_confirm
+            else ["project_delivery_pipeline", "verification", "code_review"]
+        ),
         "required_skills": ["todo-patrol"],
     }
 
@@ -193,25 +281,42 @@ def create_due_candidates(
                 continue
             created = center.create_task(task, actor=actor)
             command_base = "python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/policy/human_inbox.py"
-            center.record_task_output(
-                task_id=task_id,
-                output_type="human_question",
-                audience="human",
-                channel="human_inbox",
-                status="prepared",
-                summary=f"Confirm due TODO candidate {task_id}",
-                payload={
-                    "question": "Add this due TODO to Task Center for execution?",
-                    "todo": item.raw_line,
-                    "deadline": item.deadline.date().isoformat(),
-                    "choices": ["confirm", "decline", "clarify"],
-                    "commands": {
-                        "confirm": f"{command_base} confirm --task-db {task_db} --task-id {task_id}",
-                        "decline": f"{command_base} decline --task-db {task_db} --task-id {task_id}",
+            if task.get("need_human_confirm"):
+                center.record_task_output(
+                    task_id=task_id,
+                    output_type="human_question",
+                    audience="human",
+                    channel="human_inbox",
+                    status="prepared",
+                    summary=f"Confirm due TODO candidate {task_id}",
+                    payload={
+                        "question": "Add this due TODO to Task Center for execution?",
+                        "todo": item.raw_line,
+                        "deadline": item.deadline.date().isoformat(),
+                        "choices": ["confirm", "decline", "clarify"],
+                        "commands": {
+                            "confirm": f"{command_base} confirm --task-db {task_db} --task-id {task_id}",
+                            "decline": f"{command_base} decline --task-db {task_db} --task-id {task_id}",
+                        },
                     },
-                },
-                actor=actor,
-            )
+                    actor=actor,
+                )
+            else:
+                center.record_task_output(
+                    task_id=task_id,
+                    output_type="deadline_auto_dispatch_ready",
+                    audience="machine",
+                    channel="task_center",
+                    status="prepared",
+                    summary=f"Low-risk due TODO ready for backlog runner task_id={task_id}",
+                    payload={
+                        "todo": item.raw_line,
+                        "deadline": item.deadline.date().isoformat(),
+                        "risk_level": task.get("risk_level"),
+                        "priority": task.get("priority"),
+                    },
+                    actor=actor,
+                )
             center.add_event(
                 task_id=task_id,
                 actor=actor,
@@ -226,12 +331,12 @@ def create_due_candidates(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Bridge due TODO lines into human-confirmed Task Center candidates.")
+    parser = argparse.ArgumentParser(description="Bridge due TODO lines into risk-aware Task Center candidates.")
     parser.add_argument("--todo-file", required=True)
     parser.add_argument("--task-db", default=str(default_task_db()))
     parser.add_argument("--task-id", default="cron:deadline-to-task-bridge")
     parser.add_argument("--actor", default="todo-deadline-bridge")
-    parser.add_argument("--assignee", default="human-inbox")
+    parser.add_argument("--assignee", default="coordinator")
     parser.add_argument("--include-upcoming-days", type=int, default=0)
     parser.add_argument("--max-items", type=int, default=20)
     parser.add_argument("--dry-run", action="store_true")
@@ -246,7 +351,7 @@ def main() -> int:
             todo_file=Path(args.todo_file).expanduser().resolve(),
             task_db=Path(args.task_db).expanduser().resolve(),
             actor=str(args.actor or args.task_id or "todo-deadline-bridge"),
-            assignee=str(args.assignee or "human-inbox"),
+            assignee=str(args.assignee or "coordinator"),
             include_upcoming_days=int(args.include_upcoming_days),
             max_items=int(args.max_items),
             dry_run=bool(args.dry_run),
@@ -266,7 +371,7 @@ def main() -> int:
         f"created={len(summary['created'])} existing={len(summary['existing'])} planned={len(summary['planned'])}"
     )
     for task_id in summary["created"]:
-        print(f"human_confirm_required task_id={task_id}")
+        print(f"deadline_candidate_created task_id={task_id}")
     return 0
 
 
