@@ -139,6 +139,15 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 ## 定时仓库治理
 
+### 2026-04-27 - Task Center 待办持续推进
+
+类型：runbook
+范围：`cron/jobs.json`、`scripts/openclaw-ops/backlog_runner.py`、`skills/library/project-delivery-pipeline/scripts/runtime_installer.py`
+事实：新增 `backlog_runner.py`，并注册 `backlog_runner_30m（持续推进待办）`。该 job 每 30 分钟最多选择 1 个 Task Center 中低风险、无需人工确认、无需澄清的 pending 待办，或显式允许 `next_action` 的 failed 项，调用 runtime 内安装的 `python3 <runtime_home>/ops/smart_arb_pipeline_entry.py --live --profile spreadagent --source backlog-runner` 继续推进。高风险、需确认、需澄清、`escalate_human` 任务会被跳过，继续由 `human_inbox.py` 处理；每个任务默认只记录 1 次 `backlog_runner_attempt`，避免无限重复续跑。若 pipeline 命令启动失败，runner 会记录 failed 输出并把任务转为 `failed`，不会卡在 `running`。
+证据：`scripts/openclaw-ops/backlog_runner.py` 实现安全选择、失败项 next_action allowlist、防循环、pipeline 调用和启动失败兜底；`cron/jobs.json` 新增 `b9c8d7e6-backlog-runner-0030`，`--pipeline-command` 指向 runtime `ops/smart_arb_pipeline_entry.py`，不再从 runtime home 反推 `~/.local/bin`；`runtime_installer.py` 会把脚本安装到 runtime `ops/backlog_runner.py`；本地测试 `python -m unittest tests.scripts_openclaw_ops.test_backlog_runner tests.scripts_openclaw_ops.test_project_delivery_runtime_installer tests.scripts_openclaw_ops.test_repo_hygiene_and_source_watcher` 共 9 项 OK。
+最后验证：2026-04-27 12:00
+复用建议：以后排查“很多 TODO 只有用户催才推进”时，先查 nofx 是否已安装 `ops/backlog_runner.py`，再查 `cron/jobs.json` 是否有 `backlog_runner_30m`，最后查 Task Center 中被跳过任务的 `need_human_confirm`、`needs_clarification`、`risk_level`、`source`、`next_action` 和 `backlog_runner_attempt` 输出。
+
 ### 2026-04-27 - 两天一次来源监控与仓库精简巡检
 
 类型：runbook

@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-27 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个阶段 owner + cron 责任标签；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
+> 最后更新：2026-04-27 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个阶段 owner + cron 责任标签；新增 Task Center backlog runner 持续推进低风险待办；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---
@@ -11,7 +11,7 @@
 |------------|-----------|------|----------|----------|
 | 🎯 核心主工作流 | [通用运营工作流](核心主工作流/通用运营工作流/README.md) | ✅ 已上线 | 人工/事件触发 | 任务调度、TODO巡检、日报、评分闭环 |
 | 🎯 核心主工作流 | [ACP全链路编码工作流](核心主工作流/ACP全链路编码工作流/README.md) | ✅ 已上线 | 人工触发 | G0-G6门禁、回流整改、部署验收 |
-| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🟡 Phase 6.3 已实现 | 人工触发 / 项目维护事件 / 运维事件 | 自动需求探索、项目记忆定位、编码执行、测试验收、代码审核、受控 Git 发布、Task Center 追踪、人工队列 |
+| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🟡 Phase 6.6 已实现 | 人工触发 / 项目维护事件 / 运维事件 / Task Center backlog runner | 自动需求探索、项目记忆定位、编码执行、测试验收、代码审核、受控 Git 发布、Task Center 追踪、人工队列、低风险待办持续推进 |
 | 📦 专项场景 | [巡检故障闭环工作流](专项场景工作流/巡检故障闭环工作流/README.md) | ✅ 已上线 | 每6小时/异常触发 | 异常分类→知识库匹配→自修复 |
 | 📦 专项场景 | [记忆知识沉淀工作流](专项场景工作流/记忆知识沉淀工作流/README.md) | ✅ 已上线 | 每日/每周 | 知识蒸馏、经验→技能封装 |
 | 📦 专项场景 | [情报采集分析工作流](专项场景工作流/情报采集分析工作流/README.md) | ✅ 已上线 | 每日自动 | 上游同步、网页爬取、GitHub扫描 |
@@ -96,6 +96,7 @@
 | [`skills/library/todo-patrol/scripts/deadline_to_task_bridge.py`](../skills/library/todo-patrol/scripts/deadline_to_task_bridge.py) | 到期 TODO 转 Task Center 候选任务，等待人工确认 |
 | [`skills/library/log-monitor/scripts/exception_to_task_bridge.py`](../skills/library/log-monitor/scripts/exception_to_task_bridge.py) | 增量异常日志转运维任务与 incident |
 | [`skills/library/control-plane-ops/scripts/policy/human_inbox.py`](../skills/library/control-plane-ops/scripts/policy/human_inbox.py) | 人工确认、拒绝、澄清、升级任务统一入口 |
+| [`scripts/openclaw-ops/backlog_runner.py`](../scripts/openclaw-ops/backlog_runner.py) | 每 30 分钟从 Task Center 选择低风险、无需人工确认或可续跑失败项，调用 `smart-arb-pipeline` 持续推进 |
 
 ### 双 AI 对抗审查 Skill
 

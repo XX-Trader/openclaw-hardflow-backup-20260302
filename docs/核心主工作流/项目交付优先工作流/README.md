@@ -1,6 +1,6 @@
 # 项目交付优先工作流
 
-> 状态：✅ Phase 6.5 已实现（dry-run 状态机 + Task Center 镜像 + 运营事件入队 + 人工队列 + live 命令适配层 + Hermes hybrid profile smoke） | 触发方式：人工触发 / 项目维护事件 / 运维事件
+> 状态：✅ Phase 6.6 已实现（dry-run 状态机 + Task Center 镜像 + 运营事件入队 + 人工队列 + live 命令适配层 + Hermes hybrid profile smoke + backlog runner 持续推进） | 触发方式：人工触发 / 项目维护事件 / 运维事件 / Task Center backlog runner
 > 上级目录：[核心主工作流](../README.md)
 > 2026-04-24 运行态说明：旧 `install_workflow_profile.py` / `workflow_setup.py` 已删除；新安装入口是 `skills/library/project-delivery-pipeline/scripts/runtime_installer.py`，支持任意 `--runtime-home/--runtime-name`。
 > 2026-04-24 需求收束：真实目标不是“把某个工作流装进 Hermes”，而是完善一整套编码流水线：自动探索需求、生成需求包、生成方案、编码、测试、代码审核、修复、验收、文档和记忆回写。
@@ -8,6 +8,7 @@
 > 2026-04-25 nofx 验证：SmartMultiPlatformArbitrage Discord live 入口已补齐外部研究、双 AI 需求讨论、代码执行、验证、代码审查、内部 deployment 与记忆写回证据桥，详见 [Smart Arb nofx live evidence bridge](smart-arb-nofx-live-evidence-bridge.md)。
 > 2026-04-27 治理增强：流水线在验收和记忆回写通过后可进入 `git_publish` 受控发布阶段，提交说明/备注必须使用中文；`source_registry_watcher` 与仓库精简巡检均调整为每 2 天一次，仓库精简由 `optimization-agent` 只读生成候选报告并进入人工确认。
 > 2026-04-27 nofx 运行态口径：服务器 live 入口是 `arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`；执行链路是 `/home/arbops/.local/bin/smart-arb-pipeline -> /home/arbops/.hermes/ops/pipeline_runner.py`；`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是 workflow 阶段 owner / workspace 标签，不是 nofx 上 14 个常驻 agent。
+> 2026-04-27 持续推进补齐：新增 `backlog_runner.py` 与 `backlog_runner_30m` cron。它从 Task Center 选择低风险、无需人工确认、无需澄清的 pending 待办，或带允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进；高风险、需确认、需澄清任务仍停在 `human_inbox.py`。
 
 ## 功能概述
 
@@ -68,6 +69,7 @@
 12. **仓库精简巡检**：`optimization-agent` 每 2 天只读扫描冗余文件、失效缓存、冲突残留、重复文件和测试残留；只生成报告和人工确认候选，不自动删除。
 13. **受控 Git 发布**：只有验证、代码审查、deployment（如有）、验收和记忆回写通过后才允许 `git_publish`；发布输入优先采用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码与文档/记忆写回作为同一个已验收变更集发布且不夹带未验收脏改动；提交说明、备注和变更描述必须使用中文并脱敏，禁止 force push 和含密钥 diff。
 14. **运行态 agent 口径分层**：nofx 当前只有两个 live Hermes profile；阶段 owner 只负责隔离 workspace、状态卡展示和 Task Center 交接，不等于独立常驻模型进程。判断是否真正 native fan-out，必须看独立 session/run id。
+15. **低风险待办持续推进**：`backlog_runner.py` 每 30 分钟最多推进 1 个 Task Center 项；只选择 `todo_patrol`、`todo-deadline-bridge`、`repo_hygiene_reviewer` 或 `todo-*` pending 项，以及允许 `next_action` 的 failed 项；每个任务默认只尝试 1 次，避免无限循环。
 
 ## 可控性与可维护性裁决
 
@@ -116,6 +118,7 @@
 | 第三方 API watch | 项目维度维护官方来源和更新检查；默认每 2 天执行一次 | ✅ 已实现 |
 | 仓库精简巡检 | `repo_hygiene_reviewer.py` 每 2 天只读扫描冗余、冲突、缓存、重复文件并创建人工确认候选 | ✅ 已实现 |
 | Git 发布门禁 | `git_publish` 在前序门禁通过后执行中文 commit/push，失败回流 `fix_git_publish` | ✅ 已实现 |
+| Task Center 持续推进 | `backlog_runner.py` 定时挑选安全待办并调用 `smart-arb-pipeline` 继续推进 | ✅ 已实现 |
 | 联网 research 接入 | 接入 researcher/web agent 或外部命令，写入 `research_report.md` | ✅ `--research-command` live 适配已实现 |
 | 项目记忆真实写回 | 验收后调用 `project_memory_writer.py` 写入项目记忆 | ✅ `--write-project-memory` 已实现 |
 | 通用 runtime 宿主适配 | 同一流水线可安装到任意显式 runtime home，OpenClaw/Hermes 只是示例 | ✅ runtime adapter + installer + Hermes hybrid smoke 已实现 |

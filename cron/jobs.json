@@ -381,6 +381,45 @@
       "skill_ref": "project-delivery-pipeline"
     },
     {
+      "id": "b9c8d7e6-backlog-runner-0030",
+      "agentId": "coordinator",
+      "name": "backlog_runner_30m（持续推进待办）",
+      "description": "每30分钟从 Task Center 选择一个低风险、无需人工确认、无需澄清的待办或可续跑失败项，调用 smart-arb-pipeline 继续推进；高风险和人工门禁任务只保留在 human inbox",
+      "enabled": true,
+      "createdAtMs": 1774800000000,
+      "updatedAtMs": 1774800000000,
+      "schedule": {
+        "kind": "every",
+        "everyMs": 1800000,
+        "anchorMs": 1774800000000
+      },
+      "sessionTarget": "isolated",
+      "wakeMode": "now",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "你是 backlog-runner 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/backlog_runner.py --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task-center/task_center.db --pipeline-command \"python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/smart_arb_pipeline_entry.py\" --profile spreadagent --source backlog-runner --include-failed --max-items 1 --max-attempts-per-task 1 --pipeline-timeout-seconds 3600。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "timeoutSeconds": 3900,
+        "toolsAllow": [
+          "exec",
+          "read"
+        ],
+        "lightContext": true
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "failureAlert": {
+        "after": 1,
+        "cooldownMs": 3600000,
+        "channel": "telegram",
+        "to": "-1003333097130"
+      },
+      "state": {},
+      "skill_ref": "project-delivery-pipeline"
+    },
+    {
       "id": "f5e6f7a8-deadline-checker-daily-0005",
       "agentId": "ops-agent",
       "name": "todo_deadline_checker_daily（截止时间检测）",

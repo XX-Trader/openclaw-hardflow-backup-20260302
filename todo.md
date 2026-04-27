@@ -77,7 +77,9 @@
 - [x] [🟡 P1] 修复 nofx Discord 状态卡回显、Hermes `session_id` 输出恢复、否定式敏感词误判和 memory/docs-only 写回误触发 deployment
 - [x] [🟡 P1] 增加 `git_publish` 受控发布阶段，中文提交说明，疑似密钥/远端冲突/push 失败回流 `fix_git_publish`
 - [x] [🟡 P1] 增加 `repo_hygiene_reviewer.py` 两天一次仓库精简巡检，`source_registry_watcher` 同步调整为两天一次
+- [x] [🟡 P1] 增加 `backlog_runner.py` 与 `backlog_runner_30m`，从 Task Center 持续推进低风险、无需人工确认的待办
 - [ ] [🟡 P1] 将 nofx Smart Arb live bridge 继续升级为宿主 native agent dispatch，并在 Task Center 记录独立 agent session/run id
+- [ ] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
 
 ---
@@ -145,7 +147,7 @@
 | `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` | workflow 阶段 owner / 隔离 workspace / Task Center 标签 | 由当前 live profile 承载，不是独立常驻模型 |
 | `ops-agent`、`project-agent`、`optimization-agent` | cron / Task Center 责任标签 | 由调度入口执行命令；`optimization-agent` 负责 2 天仓库精简巡检，不等于服务器上常驻 14 个 agent |
 
-> 服务器安装态提示：2026-04-27 核对时 nofx hardflow 仓库仍在 `44b4dae`，尚未安装本仓库最新 `e45e0af`；`source_registry_watcher` 在服务器 cron 中仍是每周日，`repo_hygiene_reviewer.py` 尚未安装到 `/home/arbops/.hermes/ops`。
+> 服务器安装态提示：2026-04-27 核对时 nofx hardflow 仓库仍在 `44b4dae`，尚未安装本仓库最新 `e45e0af` 之后的变更；`source_registry_watcher` 在服务器 cron 中仍是每周日，`repo_hygiene_reviewer.py` 与 `backlog_runner.py` 尚未安装到 `/home/arbops/.hermes/ops`。
 
 ---
 ## 参考文档

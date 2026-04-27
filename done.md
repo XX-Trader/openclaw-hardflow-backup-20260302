@@ -7,6 +7,12 @@
 
 ## 2026-04-27 已完成
 
+- [x] [2026-04-27] **Task Center 待办持续推进 runner**
+  - 新增 `scripts/openclaw-ops/backlog_runner.py`：每次从 Task Center 选择最多 1 个低风险、无需人工确认、无需澄清的 pending 待办，或允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进。
+  - 注册 `backlog_runner_30m（持续推进待办）` cron，每 30 分钟运行一次；高风险、需确认、需澄清和人工升级任务仍停在 `human_inbox.py`。
+  - `runtime_installer.py` 已同步安装 `ops/backlog_runner.py`；新增测试覆盖安全选择、pipeline 执行、任务状态回写和安装器同步。
+  - 同步文档：项目交付 README/架构/实施规划、docs 索引、Cron 索引、项目记忆、todo。
+
 - [x] [2026-04-27] **nofx agent/model 口径修正**
   - 远程复核 nofx 当前运行态：`arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile 均为 `openai-codex/gpt-5.5`，gateway running。
   - 修正“14 个 agent”误导口径：2026-03 的 14 Agent 文档仅保留为历史 OpenClaw 注册表快照；nofx 当前项目交付链路中的 `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是阶段 owner / workspace / Task Center 标签，不是独立常驻 agent；`git_publish` 是 `coordinator` 负责的发布门禁，不再单独建 `git-master` agent。

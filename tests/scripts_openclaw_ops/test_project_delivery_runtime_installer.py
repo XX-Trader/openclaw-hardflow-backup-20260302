@@ -64,7 +64,11 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
                 state_dir=runtime_home / ".workflow" / "pipeline-runs",
                 project_memory_dir=runtime_home / ".workflow" / "project-memory",
                 task_center_db=runtime_home / "ops" / "task-center" / "task_center.db",
-                job_names=("system_exception_to_task_bridge", "todo_deadline_to_task_bridge_daily"),
+                job_names=(
+                    "system_exception_to_task_bridge",
+                    "todo_deadline_to_task_bridge_daily",
+                    "backlog_runner_30m（持续推进待办）",
+                ),
             )
             report = module.install_runtime(config)
 
@@ -77,6 +81,7 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertTrue((runtime_home / "ops" / "deadline_to_task_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "exception_to_task_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "repo_hygiene_reviewer.py").exists())
+            self.assertTrue((runtime_home / "ops" / "backlog_runner.py").exists())
             self.assertTrue((runtime_home / "ops" / "project_memory_writer.py").exists())
             self.assertTrue((runtime_home / "ops" / "smart_arb_live_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "smart_arb_pipeline_entry.py").exists())
@@ -88,9 +93,16 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertIn("existing_job", names)
             self.assertIn("system_exception_to_task_bridge", names)
             self.assertIn("todo_deadline_to_task_bridge_daily", names)
+            self.assertIn("backlog_runner_30m（持续推进待办）", names)
             rendered = "\n".join(str((job.get("payload") or {}).get("message", "")) for job in jobs)
-            self.assertIn(str(runtime_home).replace("\\", "/"), rendered)
+            runtime_text = str(runtime_home).replace("\\", "/")
+            self.assertIn(runtime_text, rendered)
             self.assertNotIn("$HOME/.openclaw", rendered)
+            self.assertNotIn("../.local/bin/smart-arb-pipeline", rendered)
+            self.assertIn(
+                f'--pipeline-command "python3 {runtime_text}/ops/smart_arb_pipeline_entry.py"',
+                rendered,
+            )
 
     def test_installed_ops_smoke_resolves_ops_policy_dir(self):
         module = load_module()
