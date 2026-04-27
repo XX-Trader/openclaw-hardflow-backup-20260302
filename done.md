@@ -7,10 +7,11 @@
 
 ## 2026-04-27 已完成
 
-- [x] [2026-04-27] **本机 WSL 多核电脑 Discord 入口继承旧 TG 记忆**
-  - `trend-backtest` profile 已从“趋势回测专职 SOUL”纠偏为旧 Telegram 群“全自动策略研发回测”的 Discord 替代入口；`SOUL.md` 继承全局 TG SOUL，并明确不再自称趋势回测 agent、不再声明 SmartTrendTracker 是唯一默认工作目录。
-  - 已把全局 `~/.hermes/memories/MEMORY.md` 与 `USER.md` 合并进 profile memories，原 `trend-backtest` 回测专项记忆作为次级上下文保留。
-  - 已删除新 Discord 频道在旧 SOUL 下创建的 session `20260427_160858_715e39ff`，重启 `trend-backtest-gateway` 后 `gateway_state=running`、Discord `connected`，真实进程 cwd 为 `/home/ubuntu`。
+- [x] [2026-04-27] **本机 WSL 两个 Discord agent 独立 profile / workspace**
+  - `trend-backtest` 已恢复为旧 Discord bot“趋势回测机器人”与旧频道 `趋势回测测试`，SOUL 为趋势回测专职 agent，cwd 为 `/home/ubuntu/projects/SmartTrendTracker`。
+  - 新增 `multicore` profile 承接新 Discord bot“多核电脑”与 `本地项目/#常规`，SOUL 继承旧 Telegram 全局 Hermes 记忆，cwd 为 `/home/ubuntu/.hermes/profiles/multicore/workspace`。
+  - 两个 profile 都配置 `DISCORD_ALLOWED_CHANNELS=<各自频道>`、`DISCORD_ALLOW_DMS=false`，各自频道免 @，但不会跨频道或 DM 抢消息。
+  - `trend-backtest-gateway` 与 `multicore-gateway` 均已在 tmux 中运行，Discord API 与 Hermes `gateway_state` 均验证 connected。
 
 - [x] [2026-04-27] **nofx 拉取并安装最新 hardflow runtime**
   - nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302` 已从 `44b4dae` fast-forward 到 `578b3f0`，本次远端工作区无脏改动，未创建 stash。

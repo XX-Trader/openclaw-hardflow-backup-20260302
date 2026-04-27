@@ -22,10 +22,10 @@
 
 类型：pitfall
 范围：nofx `spreadagent` / `arbitrageagent` SOUL、`smart-arb-pipeline`、`pipeline_runner.py`、SmartMultiPlatformArbitrage 主工作区
-事实：用户明确说“不要走工作流，直接修工作流”时，旧 SOUL 仍把请求包装成新的 coordinator pipeline，导致 `discord-spreadagent-20260427T072912161741Z` 与后续 `discord-spreadagent-20260427T074448323797Z` 继续自修。该模式会在旧 runtime 上反复读取/生成 artifact，并可能把未通过 review 的业务补丁留在 SmartMulti 主工作区。
+事实：用户明确说“不要走工作流”“可以绕过”或“直接修工作流”时，旧 SOUL 仍把请求包装成新的 coordinator pipeline，导致 `discord-spreadagent-20260427T072912161741Z` 与后续 `discord-spreadagent-20260427T074448323797Z` 继续自修。该模式会在旧 runtime 上反复读取/生成 artifact，并可能把未通过 review 的业务补丁留在 SmartMulti 主工作区。
 证据：远端进程曾显示两个 self-repair run 仍在执行；SmartMulti 工作区残留 `multi_exchange_arbitrage.py`、`execution_orchestration.py`、`tests/test_execution_orchestration.py`、`.workflow/`、`memory/smart-arb/`。本次已终止活跃 self-repair run，并把残留业务漂移保存为 `stash@{0}: pre-workflow-fix-rejected-business-drift-20260427T075431Z`。
 最后验证：2026-04-27 15:54
-复用建议：工作流宿主自修必须由外部 operator/Codex 经 SSH 修改 hardflow 仓库和安装态；Discord profile 只允许只读诊断并回传状态。后续若看到 `Still working...` 对应的 run 目标是修 `smart-arb-pipeline` / `pipeline_runner.py` / `smart_arb_live_bridge.py`，先停止该 self-repair run，再部署修复后的 runtime。
+复用建议：工作流宿主自修必须由外部 operator/Codex 经 SSH 修改 hardflow 仓库和安装态；Discord profile 只允许只读诊断并回传状态。后续若用户说“可以绕过”“不要走工作流”或看到 `Still working...` 对应的 run 目标是修 `smart-arb-pipeline` / `pipeline_runner.py` / `smart_arb_live_bridge.py`，先停止该 self-repair run，再部署修复后的 runtime。
 
 ## 2026-04-26 - P0 记忆写回不应被否定式敏感词或 session_id 输出卡住
 
@@ -147,7 +147,16 @@
 
 类型：pitfall
 范围：本机 WSL `/home/ubuntu/.hermes/profiles/trend-backtest`、旧 TG 全局 Hermes、Discord “多核电脑”入口
-事实：把新 Discord bot 接到现有 `trend-backtest` profile 后，若只替换 token 和频道，bot 会继续加载该 profile 原有“趋势回测机器人 SOUL”，从而在新频道开场自称趋势回测 agent，并固定宣称默认工作目录 `/home/ubuntu/projects/SmartTrendTracker`。这与“替代之前 TG 频道、沿用 TG 记忆”的目标冲突。
+事实：把新 Discord bot 接到现有 `trend-backtest` profile 后，若只替换 token 和频道，bot 会继续加载该 profile 原有“趋势回测机器人 SOUL”，从而在新频道开场自称趋势回测 agent，并固定宣称默认工作目录 `/home/ubuntu/projects/SmartTrendTracker`。这与“替代之前 TG 频道、沿用 TG 记忆”的目标冲突。最终修正不是继续复用 `trend-backtest`，而是拆出独立 `multicore` profile，让 `trend-backtest` 回到旧趋势回测 bot/旧频道，让 `multicore` 承接新多核电脑 bot/新频道。
 证据：2026-04-27 用户在 Discord 看到回复“我是趋势回测 agent，默认工作目录是 /home/ubuntu/projects/SmartTrendTracker”；随后核对发现全局 `~/.hermes/SOUL.md` 是旧 Telegram 的 Hermes SDLC 总协调官提示词，全局 `~/.hermes/memories/MEMORY.md` 是旧 TG 记忆，而 profile `SOUL.md` 是趋势回测专项提示词。
-最后验证：2026-04-27 16:15
-复用建议：做“渠道替换”时必须迁移 identity、SOUL、memory、session 四件套；只改 platform token 会造成入口身份漂移。迁移后要删除新频道在旧 SOUL 下创建的 session，让下一条消息重建上下文。
+最后验证：2026-04-27 16:41
+复用建议：做“渠道替换”时必须迁移 identity、SOUL、memory、session 四件套；只改 platform token 会造成入口身份漂移。如果原 profile 还代表另一个 agent，不要覆盖它，应该新建 profile 并把旧 profile 恢复到原 bot、原频道、原 cwd。
+
+## 2026-04-27 - 两个 Discord agent 不能共用未隔离的 gateway
+
+类型：pitfall
+范围：本机 WSL Hermes Discord gateway、`/home/ubuntu/.hermes/profiles/{trend-backtest,multicore}`、`gateway/platforms/discord.py`
+事实：同一个 Discord bot token 默认只能被一个 gateway 进程持有；即使不同 profile 绑定不同频道，如果没有频道白名单和 DM 禁用，也可能出现抢消息或 DM 双回复。当前本机两个 agent 使用不同 bot token，并各自设置 `DISCORD_ALLOWED_CHANNELS`；Hermes Discord adapter 还补了受控开关：`DISCORD_ALLOW_SHARED_BOT_TOKEN=true` 只有在同时设置 `DISCORD_ALLOWED_CHANNELS` 时才允许共享 token 分锁，`DISCORD_ALLOW_DMS=false` 会让 profile 忽略 DM。
+证据：`gateway/platforms/discord.py` 在 `connect()` 中将共享 token 锁身份收敛为 `token:allowed_channels`，缺少 `DISCORD_ALLOWED_CHANNELS` 时返回 fatal；`_handle_message()` 在 DM 分支优先检查 `DISCORD_ALLOW_DMS=false` 并丢弃。相关回归测试 `test_discord_connect.py`、`test_discord_channel_controls.py`、`test_discord_reply_mode.py` 共 50 项通过。
+最后验证：2026-04-27 16:41
+复用建议：以后做多 Discord agent，不要只靠“频道不同”作为隔离。至少要有 profile 独立、session 独立、cwd 独立、`allowed_channels` 白名单、DM 策略；如果共享同一个 bot token，还必须有锁身份隔离。
