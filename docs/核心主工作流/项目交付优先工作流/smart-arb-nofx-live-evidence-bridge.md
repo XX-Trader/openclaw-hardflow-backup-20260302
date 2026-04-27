@@ -62,6 +62,8 @@ Discord 入口默认就是真实执行：
 
 默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况、agent 输出摘要、阻塞证据、自动修复判断和关键证据。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`。
 
+聊天输出还会在运行中默认每 60 秒打印 `# nofx 任务执行进度`，从 `pipeline_state.json` 与最近 `command-runs/*.json` 汇总已完成阶段、当前阶段、最近 agent 输出和证据目录，避免 Discord 只显示 `Still working...` 心跳。`--emit-json` / `--no-chat-summary` 会关闭运行中进度卡；间隔和摘要条数可用 `--progress-interval-seconds`、`--progress-stage-limit`、`--progress-command-limit` 调整。
+
 live 默认注入以下命令证据：
 
 | 阶段 | 责任 | 证据 |
@@ -91,7 +93,7 @@ Discord 状态卡必须回答三个问题：
 
 自动修复策略：
 
-- `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback` 默认自动回流，最多 2 次，可用 `--auto-repair-attempts` 或 `SMART_ARB_AUTO_REPAIR_ATTEMPTS` 调整。
+- `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`、`fix_git_publish` 默认自动回流，最多 2 次，可用 `--auto-repair-attempts` 或 `SMART_ARB_AUTO_REPAIR_ATTEMPTS` 调整。
 - 每次回流使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 每次回流前，入口把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并通过 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT` 传给 live bridge；后续 Hermes stage prompt 会看到上一轮失败原因。
 - 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署、记忆写回或 Git 发布。
@@ -110,7 +112,7 @@ Discord 状态卡必须回答三个问题：
 - `--command-cwd` 必须是有 `HEAD` 的 Git 仓库，agent workspace root 必须在该仓库外部；不再提供 `shared` / `copy` 模式。
 - `smart_arb_live_bridge.py` 默认使用 `PIPELINE_AGENT_REPO_DIR` 作为 Hermes 阶段项目目录，避免所有阶段都在主项目目录里运行。
 - `code_execution` 阶段默认在 `backend-dev` workspace 中修改代码；前端/UI/页面/交互类需求可通过 `--code-agent frontend-dev` 或入口推断切到 `frontend-dev` workspace。成功后 runner 导出 `command-runs/code_execution-1.patch`，再应用回主项目目录，然后把同一 patch 注入后续 `tester`、`reviewer`、`deployer` workspace。`git_publish` 不再对应独立 `git-master` agent，而是由 `coordinator` 负责的发布门禁。
-- `git_publish` 只在前序门禁通过后执行，发布输入优先使用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码变更和写回变更一起进入发布工作区且不夹带未验收脏改动；默认提交信息为中文并脱敏，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态；远端冲突、认证失败、疑似密钥或 push 失败都会阻塞为 `fix_git_publish`，不做 force push。
+- `git_publish` 只在前序门禁通过后执行，发布输入优先使用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码变更和写回变更一起进入发布工作区且不夹带未验收脏改动；默认提交信息为中文并脱敏，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态。secret scan 会输出 `## Secret Scan Findings`，包含脱敏后的文件、行号、规则、风险等级和片段；真实 secret/header/cookie/高熵值、hardcoded fallback secret、PEM private key hard block，测试假值、环境变量名、文档占位和 Basic Auth 说明不阻塞。远端冲突、认证失败或非密钥发布失败可阻塞为 `fix_git_publish` 并进入自动回流；真实 secret/high-risk evidence 仍停人工确认，不做 force push。
 - `command-runs/*.json`、`agent-workspaces/manifest.json`、Task Center `stage_runs.details_json` / `module_communications.details_json` 会记录 agent id、workspace、repo dir、dispatch mode 和 patch 文件。
 - Task Center 中的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester` 等字段仍然是阶段 owner 与交接记录；是否真正启动多个宿主 native session，要以 command evidence 中的独立 session/run id 为准。
 
@@ -128,7 +130,8 @@ nofx 两个 Discord Hermes profile 的 `SOUL.md` 使用本仓库模板维护：
 1. 执行类请求先创建 `smart-arb-pipeline` run。
 2. 不允许在 profile 会话里直接实现、部署、安装依赖、修改代码或提交 Git。
 3. 只有只读状态查询、简单解释或监控数据查询可以直接处理。
-4. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
+4. 运行期间必须回传 `# nofx 任务执行进度`，完成后必须回传 `# nofx 任务执行状态`。
+5. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
 
 2026-04-25 19:20 已按上述模板刷新 nofx 两个 profile，并重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。2026-04-25 23:45 再次刷新为绝对入口命令，并改用 profile `start-gateway.sh` 加载 `.env` 后启动。验证结果：
 

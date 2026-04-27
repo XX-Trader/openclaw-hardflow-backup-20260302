@@ -1,5 +1,23 @@
 # TASK_HISTORY
 
+## 2026-04-27 - nofx Discord 运行中进度卡
+
+类型：bugfix
+范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`、`tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py`
+事实：Discord 入口不再只依赖 Hermes 自带 `Still working...` 心跳。`smart-arb-pipeline` 默认每 60 秒输出 `# nofx 任务执行进度`，展示 run id、已运行时间、阶段进度、当前阶段、最近 agent 输出和证据目录；`--emit-json` / `--no-chat-summary` 会关闭运行中进度卡。runner 在长命令开始前写 `pipeline_state.json`，加入临时 `running` stage，命令完成后再刷新最终 stage record。进度卡输出会先脱敏，覆盖 header、普通赋值、JSON/TOML quoted sensitive key、常见短 secret 和长 token；预脱敏 `api_key=[REDACTED]` 等在“需要凭证”上下文仍保持 high-risk，不自动回流。
+证据：新增/更新 `test_render_progress_update_shows_current_stage_and_recent_output`、`test_live_command_writes_running_pipeline_state_before_completion`、`test_redact_text_handles_quoted_sensitive_assignments`、`test_redacted_secret_request_stays_high_risk`；完整相关 unittest 通过；`python -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；Codex code-reviewer 最终复审 `APPROVED`。
+最后验证：2026-04-27 19:10
+复用建议：后续 Discord 仍只显示 `Still working...` 时，先看 profile 是否调用了带 `--progress-interval-seconds` 的 `/home/arbops/.local/bin/smart-arb-pipeline`，再看对应 run 的 `pipeline_state.json` 是否在命令执行期间刷新，最后看 profile 是否把 stdout 分段回传到频道。不要把未脱敏的 `command-runs/*.json` 原文直接贴进聊天频道。
+
+## 2026-04-27 - git_publish secret scan 误报修复
+
+类型：bugfix
+范围：`scripts/openclaw-ops/smart_arb_live_bridge.py`、`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`tests/scripts_openclaw_ops/test_smart_arb_live_bridge.py`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`、`docs/核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md`
+事实：`git_publish` 的 staged diff secret scan 改为只检查新增行，并对 value 上下文做区分：真实 token 形态、真实 cookie / Authorization 值、OAuth secret、交易所 API key、`.env` 实值、高熵长随机串、PEM private key marker/material 仍 hard block；`DASHBOARD_BASIC_PASS`、`BASIC_PASS` 这类环境变量名、`os.getenv(...)` 空默认值、`rotatable-pass` 测试假密码、`Authorization: Basic Auth` 测试说明和“替换为实际强密码”文档占位不再误报。扫描器新增结构化 finding，包含脱敏 `file/line/rule/risk/blocking/snippet`；非占位的 `sample-*`、`*-example` 等敏感赋值仍按 high 阻断；`os.getenv(..., '真实 token')` 这类 hardcoded fallback secret 不会被环境变量上下文放行。`fix_git_publish` 自动回流会识别 `Secret Scan Findings` 中的 high/blocking finding，真实 secret evidence 仍停人工。
+证据：新增/更新测试 `test_staged_diff_secret_scan_allows_env_names_and_test_placeholders`、`test_staged_diff_secret_scan_blocks_real_secret_shapes`、`test_staged_diff_secret_scan_blocks_short_real_values_in_example_contexts`、`test_staged_diff_secret_scan_blocks_non_placeholder_example_assignments`、`test_staged_diff_secret_scan_blocks_hardcoded_getenv_fallback_secret`、`test_staged_diff_secret_scan_blocks_pem_private_key_lines`、`test_staged_diff_secret_scan_reports_redacted_file_line_and_rule`、`test_git_publish_blocks_real_secret_with_redacted_findings`、`test_staged_diff_secret_scan_allows_basic_auth_test_placeholders`、`test_staged_diff_secret_scan_ignores_removed_secret_lines`、`test_fix_git_publish_can_auto_repair_without_secret_evidence`、`test_fix_git_publish_stays_high_risk_with_secret_evidence`、`test_fix_git_publish_stays_high_risk_with_secret_scan_findings`；本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 59 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过。
+最后验证：2026-04-27 18:30
+复用建议：以后处理 `Secret-like content detected in staged diff` 时，先打开 `command-runs/git_publish-*.json` 与 staged diff finding，区分“新增真实密钥值”和“环境变量名/测试占位/文档说明”；不要通过关闭 `git_publish` 或移除安全扫描绕过真实 secret hard block。
+
 ## 2026-04-27 - nofx 工作流自修闭环修复
 
 类型：task

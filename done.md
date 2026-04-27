@@ -7,6 +7,18 @@
 
 ## 2026-04-27 已完成
 
+- [x] [2026-04-27] **nofx Discord 运行中进度卡与敏感输出脱敏**
+  - `smart-arb-pipeline` 默认不再只等子进程结束后输出最终状态；入口会轮询 `pipeline_state.json`，每 60 秒输出 `# nofx 任务执行进度`，展示已完成阶段、当前阶段、最近 agent 输出和证据目录。
+  - `pipeline_runner.py` 在长命令启动前写入 `running` stage，阶段完成后刷新状态，避免 Discord 只显示 Hermes `Still working...` 心跳。
+  - 进度卡和 live bridge 输出脱敏覆盖普通赋值、header、JSON/TOML quoted sensitive key、长 token 和常见短 secret；`api_key=[REDACTED]` 等需要凭证的失败上下文仍保持 high-risk，不会自动回流。
+  - 验证：完整相关 unittest 通过；`python -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；code-reviewer 独立复审 APPROVED。
+
+- [x] [2026-04-27] **nofx Git 发布门禁分级与 fix_git_publish 自动回流**
+  - `git_publish` secret scan 改为结构化 findings：只扫描 staged diff 新增行，并输出脱敏文件、行号、规则、风险等级和片段。
+  - 真实 token/header/cookie/高熵值、hardcoded fallback secret、PEM private key 继续 hard block；环境变量名、测试假值、文档占位和 Basic Auth 说明不再误阻断。
+  - `fix_git_publish` 纳入自动回流白名单；含真实 secret、凭证、资金、真实交易、破坏性操作或 secret scan high/blocking finding 时仍停人工确认。
+  - 验证：`python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 59 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过。
+
 - [x] [2026-04-27] **本机 WSL 两个 Discord agent 独立 profile / workspace**
   - `trend-backtest` 已恢复为旧 Discord bot“趋势回测机器人”与旧频道 `趋势回测测试`，SOUL 为趋势回测专职 agent，cwd 为 `/home/ubuntu/projects/SmartTrendTracker`。
   - 新增 `multicore` profile 承接新 Discord bot“多核电脑”与 `本地项目/#常规`，SOUL 继承旧 Telegram 全局 Hermes 记忆，cwd 为 `/home/ubuntu/.hermes/profiles/multicore/workspace`。

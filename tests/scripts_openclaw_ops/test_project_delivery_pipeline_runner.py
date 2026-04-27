@@ -5,6 +5,8 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -119,6 +121,82 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertTrue((run_dir / "pipeline_state.json").exists())
             memory_dir = Path(tmp) / "project-memory" / "demo"
             self.assertTrue((memory_dir / "RETRIEVAL_MANIFEST.json").exists())
+
+    def test_live_command_writes_running_pipeline_state_before_completion(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            scripts_dir = tmp_path / "scripts"
+            scripts_dir.mkdir()
+            slow_research = scripts_dir / "slow_research.py"
+            slow_research.write_text(
+                "import time\n"
+                "print('# Research')\n"
+                "time.sleep(1.5)\n"
+                "print('Final verdict: pass')\n",
+                encoding="utf-8",
+            )
+            command_repo = tmp_path / "command-repo"
+            command_repo.mkdir()
+            (command_repo / "README.md").write_text("fixture\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=command_repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "README.md"], cwd=command_repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                [
+                    "git",
+                    "-c",
+                    "user.name=Test Bot",
+                    "-c",
+                    "user.email=test@example.invalid",
+                    "commit",
+                    "-m",
+                    "fixture",
+                ],
+                cwd=command_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            result: dict[str, object] = {}
+
+            def run() -> None:
+                result["state"] = run_pipeline(
+                    PipelineConfig(
+                        project_key="demo",
+                        requirement="Run long research command.",
+                        workspace_root=tmp_path,
+                        run_id="running-state",
+                        research_commands=(f'"{sys.executable}" "{slow_research}"',),
+                        command_timeout_seconds=5,
+                        command_cwd=command_repo,
+                        force=True,
+                    )
+                )
+
+            thread = threading.Thread(target=run)
+            thread.start()
+            state_file = tmp_path / "running-state" / "pipeline_state.json"
+            running_state = None
+            try:
+                for _ in range(30):
+                    if state_file.exists():
+                        state = json.loads(state_file.read_text(encoding="utf-8"))
+                        if any(
+                            item.get("name") == "external_research" and item.get("status") == "running"
+                            for item in state.get("stages", [])
+                        ):
+                            running_state = state
+                            break
+                    time.sleep(0.1)
+            finally:
+                thread.join(timeout=10)
+
+            self.assertFalse(thread.is_alive())
+            self.assertIsNotNone(running_state)
+            assert running_state is not None
+            self.assertEqual("running", running_state["status"])
+            self.assertEqual("continue", running_state["next_action"])
+            self.assertIn("run_meta", running_state["artifacts"])
+            self.assertIn("state", result)
 
     def test_requirement_and_solution_artifacts_preserve_specific_request(self):
         with tempfile.TemporaryDirectory() as tmp:

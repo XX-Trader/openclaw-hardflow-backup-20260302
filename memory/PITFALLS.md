@@ -1,5 +1,23 @@
 # PITFALLS
 
+## 2026-04-27 - Discord 只显示 Still working 不是 agent 没产出
+
+类型：pitfall
+范围：nofx Discord Hermes profile、`smart_arb_pipeline_entry.py`、`pipeline_runner.py`
+事实：Discord 频道只看到 `Still working...` 通常是入口在同步等待长子进程，Hermes 只能发 runtime 心跳；不代表 pipeline 内部没有阶段进展。修复后入口默认轮询 `pipeline_state.json` 和 `command-runs/*.json` 输出 `# nofx 任务执行进度`，但 profile 必须实际调用新版 entry，并把 stdout 回传频道。进度卡只能输出脱敏摘要，不允许直接贴原始 agent stdout/stderr。
+证据：`run_pipeline_command()` 在 progress interval 大于 0 时用 `subprocess.Popen` 轮询 run state；`pipeline_runner.py` 在 stage command 开始前写入 running state；`render_progress_update()` 从 state 和 command reports 生成中文进度卡；测试覆盖长命令执行中 state 已落盘、进度卡展示当前阶段和最近输出、JSON/TOML quoted sensitive key 被脱敏。
+最后验证：2026-04-27 19:10
+复用建议：排查同类问题按三步走：1. 确认 profile SOUL/入口命令包含 `--progress-interval-seconds` 或默认未关闭进度；2. 看 run 目录 `pipeline_state.json` 是否持续刷新；3. 看 Discord gateway/profile 是否把 stdout 分段发回频道。不要只凭 Hermes 心跳判断卡死。
+
+## 2026-04-27 - git_publish secret scan 只应阻断真实新增密钥值
+
+类型：pitfall
+范围：`smart_arb_live_bridge.py --stage git_publish`、staged diff secret scan、nofx Discord workflow publish gate
+事实：`Secret-like content detected in staged diff` 不一定代表业务代码审查失败，也不一定代表存在真实密钥；旧扫描器会把 staged diff 里的 `DASHBOARD_BASIC_PASS`、`BASIC_PASS`、`rotatable-pass`、`Authorization: Basic Auth` 或“替换为实际强密码”等环境变量名、测试假密码和文档占位误判为 secret。修复后扫描器只看新增行，并按 value 上下文判断：真实 token、cookie、Authorization payload、OAuth secret、交易所 key、`.env` 实值、高熵随机串和 PEM private key 仍阻断；环境变量名、空值、`os.getenv(...)` 空默认、测试假密码和占位说明放行；`os.getenv(..., '真实 token')` 不放行。阻断报告必须输出脱敏的文件、行号、规则、风险等级和片段，不能只给笼统一句 secret-like。
+证据：`staged_diff_secret_findings()` 解析 staged diff 新增行，输出 `file/line/rule/risk/blocking/snippet`；`run_git_publish()` 在 `## Secret Scan Findings` 中展示脱敏 findings；测试覆盖误报放行、真 secret 阻断、docs/tests/.env.example 中短真实密钥阻断、非占位 example assignment 仍阻断、hardcoded getenv fallback secret 阻断、PEM private key marker/material 阻断、删除旧 secret 行不阻塞、阻断报告不泄露原 secret、Basic Auth 测试占位不阻塞、`fix_git_publish` 遇到 secret scan high/blocking finding 不自动回流。本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 59 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过。
+最后验证：2026-04-27 18:30
+复用建议：后续遇到 `git_publish/fix_git_publish`，先判断失败文本是否来自 secret scan；如果是，必须定位 staged diff 的新增行和 finding rule。真实 secret/high-risk evidence 仍停人工确认。只允许调整 allowlist/context-aware scan，不允许关闭 hard block 或发布含真实 secret 的 diff。
+
 ## 2026-04-27 - 部署重启 gateway 前必须检查是否有活跃 Discord pipeline
 
 类型：pitfall

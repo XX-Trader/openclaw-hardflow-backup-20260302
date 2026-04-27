@@ -20,7 +20,8 @@
 - nofx Discord profile 的 SOUL 现在使用绝对入口 `/home/arbops/.local/bin/smart-arb-pipeline`；gateway 通过 profile `start-gateway.sh` 加载 `.env`，`.env` 必须是 `arbops:arbops` 且 `0600`。
 - nofx live verification 默认收敛为 `git diff --check` + `compileall -q scripts strategy_runtime`，并通过 `--verification-command-timeout-seconds` 显式记录单命令超时；不要再把全量 `unittest discover` 当 Discord live 默认门禁。
 - nofx 当前 live bridge 固定使用每阶段 owner 的独立 Git worktree：runner 会创建 `agent-workspaces/<stage>/<agent>/repo`，并把 `PIPELINE_AGENT_REPO_DIR` 注入 Hermes bridge；不再暴露 `shared` / `copy` 模式。
-- nofx Discord 状态卡会读取 `command-runs/*.json`，展示 agent 输出摘要、阻塞证据和自动修复判断；`run_external_research` / `return_to_code_execution` / `return_to_deployment` / `fix_memory_writeback` 会自动回流最多 2 次，高风险凭证、真实交易、资金或破坏性数据操作仍停人工确认。
+- nofx Discord 状态卡会读取 `command-runs/*.json`，展示 agent 输出摘要、阻塞证据和自动修复判断；`run_external_research` / `return_to_code_execution` / `return_to_deployment` / `fix_memory_writeback` / `fix_git_publish` 会自动回流最多 2 次，高风险凭证、真实交易、资金或破坏性数据操作仍停人工确认。
+- nofx Discord 入口默认每 60 秒输出 `# nofx 任务执行进度`，从 `pipeline_state.json` 和最近 `command-runs/*.json` 展示已完成阶段、当前阶段、最近 agent 输出和证据目录；`--emit-json` / `--no-chat-summary` 会关闭该进度卡，保持机器输出原样。
 - 本仓库已新增 `backlog_runner.py` 与 `backlog_runner_30m` cron，用于从 Task Center 自动挑选低风险、无需人工确认或澄清的待办继续调用 `smart-arb-pipeline`。该能力解决“任务只有用户在聊天里触发才继续推进”的断点；高风险、需确认、需澄清任务仍必须停在 `human_inbox.py`。
 - 状态卡默认展开最多 24 条 command report，可用 `SMART_ARB_CHAT_COMMAND_LIMIT` / `--chat-command-limit` 调整；profile SOUL 要求失败时把完整中文状态卡发回聊天频道，不能只回 run id、失败阶段和证据目录。
 - Hermes CLI 有时只在 stdout/stderr 返回 `session_id`，实际 assistant 内容落在 `/home/arbops/.hermes/profiles/<profile>/sessions/session_<id>.json`；live bridge 会在固定 profile session 目录内恢复最新 assistant 输出并先脱敏，再用于 stage pass 判定和状态卡摘要。
@@ -30,7 +31,7 @@
 - 最新 nofx 安装记录：2026-04-27 16:39 已把提交 `429ce994` 拉到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 并运行 runtime installer；安装态 `/home/arbops/.hermes/ops` 已包含工作流自修、失败补丁回滚和 Hermes smoke 跨平台夹具修复。远端 `compileall`、75 项定向单测、API smoke、SmartMulti clean、gateway connected 均通过；两个 live profile `SOUL.md` 已同步“工作流自修例外”并重启，详见 `RUNBOOK.md` / `DEPLOYMENT.md`。
 - 前序 artifact 注入后续 Hermes prompt 前会做敏感信息脱敏，覆盖常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key、AWS access key 等形态。
 - `code_execution` 默认在 `backend-dev` workspace 产出 diff；前端/UI/页面/交互类需求可通过 `--code-agent frontend-dev` 或入口自动推断切到 `frontend-dev` workspace。runner 会把 diff 应用回主项目目录，并注入后续 tester/reviewer/deployer workspace。
-- `git_publish` 是可选发布门禁，只在验证、代码审查、deployment（如有）、验收和记忆回写通过后执行；提交说明、备注和变更描述必须使用中文，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态，失败回流为 `fix_git_publish`。
+- `git_publish` 是可选发布门禁，只在验证、代码审查、deployment（如有）、验收和记忆回写通过后执行；提交说明、备注和变更描述必须使用中文，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态。secret scan 会输出脱敏的文件、行号、规则和风险等级；真实 secret、hardcoded fallback secret、PEM private key hard block，测试/文档占位不阻塞，非密钥类发布失败回流为 `fix_git_publish`。
 - `source_registry_watcher` 与 `repo_hygiene_reviewer` 默认每 2 天执行一次；前者只检查已注册来源，后者由 `coordinator` 只读扫描冗余、冲突、缓存、重复文件并创建人工确认候选，不自动删除、不自动推送。
 - 到期 TODO 已改为风险分流：低风险进入 `dispatch_pipeline` 自动候选并由 backlog runner 推进；高风险、生产、部署、资金、凭证、删除等候选仍停 `human_inbox.py` 等待人工确认。
 - 双 AI 审核现在有真实产物门禁：需求、方案、代码三个 review 阶段都需要两条不同命令、不同 `reviewer_role`（`reviewer-a`/`reviewer-b`）的 reviewer command report，且都输出对应 `Final verdict` 才放行。

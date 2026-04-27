@@ -16,6 +16,14 @@ ROOT = Path(__file__).resolve().parents[2]
 BRIDGE = ROOT / "scripts/openclaw-ops/smart_arb_live_bridge.py"
 
 
+def diff_assignment_line(key: str, value: str) -> str:
+    return "+" + key + "=" + value
+
+
+def diff_json_assignment_line(key: str, value: str) -> str:
+    return '+"' + key + '": "' + value + '",'
+
+
 class SmartArbLiveBridgeTests(unittest.TestCase):
     def _load_bridge_module(self):
         spec = util.spec_from_file_location("smart_arb_live_bridge", BRIDGE)
@@ -265,6 +273,325 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
             self.assertIn("[REDACTED]", message)
             self.assertNotIn(fake_pat, message)
             self.assertNotIn("should-not-leak", message)
+
+    def test_staged_diff_secret_scan_allows_env_names_and_test_placeholders(self):
+        bridge = self._load_bridge_module()
+        diff = "\n".join(
+            [
+                "diff --git a/.env.example b/.env.example",
+                "+++ b/.env.example",
+                "+DASHBOARD_BASIC_PASS=rotatable-pass",
+                "+BASIC_PASS=rotatable-pass",
+                "+password: 替换为实际强密码",
+                "+Authorization: Basic Auth",
+                "+Authorization: Bearer <token>",
+                "+api_key=${EXCHANGE_API_KEY}",
+                diff_json_assignment_line("api_key", "${EXCHANGE_API_KEY}"),
+                diff_json_assignment_line("password", "replace-me"),
+                "+password = os.getenv('DASHBOARD_BASIC_PASS', '')",
+                "+README says BASIC_PASS is the env var name",
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+        self.assertFalse(bridge.staged_diff_has_secret(diff))
+        self.assertTrue(findings)
+        self.assertTrue(all(not finding["blocking"] for finding in findings))
+
+    def test_redact_text_handles_quoted_sensitive_assignments(self):
+        bridge = self._load_bridge_module()
+        field_one = "api" + "_key"
+        field_two = "pass" + "word"
+        field_three = "sec" + "ret"
+        text = "\n".join(
+            [
+                f'{{"{field_one}": "json-live-secret", "safe": true}}',
+                f'"{field_two}" = "toml-local-doc-example"',
+                f"`{field_three}` = `shell-local-doc-example`",
+            ]
+        )
+
+        redacted = bridge.redact_text(text)
+
+        self.assertIn("[REDACTED]", redacted)
+        self.assertNotIn("json-live-secret", redacted)
+        self.assertNotIn("toml-local-doc-example", redacted)
+        self.assertNotIn("shell-local-doc-example", redacted)
+
+    def test_staged_diff_secret_scan_blocks_real_secret_shapes(self):
+        bridge = self._load_bridge_module()
+        openai_value = "sk-" + "1234567890abcdefghijklmnop"
+        github_value = "ghp_" + "123456789012345678901234567890123456"
+        aws_value = "AKIA" + "1234567890ABCDEF"
+        slack_value = "xoxb-" + "1234567890-abcdef"
+        cases = [
+            diff_assignment_line("OPENAI_API_KEY", openai_value),
+            diff_assignment_line("GITHUB_TOKEN", github_value),
+            diff_assignment_line("AWS_ACCESS_KEY_ID", aws_value),
+            diff_assignment_line("SLACK_TOKEN", slack_value),
+            "+" + "Cookie" + ": " + "sessionid" + "=" + "short-real-value",
+            diff_assignment_line("EXCHANGE_API_KEY", "live-but-short"),
+            diff_assignment_line("OAUTH_SECRET", "abcdefghijklmno1234567890abcdefghijklmno123456"),
+        ]
+        for line in cases:
+            with self.subTest(line=line):
+                self.assertTrue(bridge.staged_diff_has_secret(f"diff --git a/x b/x\n+++ b/x\n{line}\n"))
+
+    def test_staged_diff_secret_scan_blocks_short_real_values_in_example_contexts(self):
+        bridge = self._load_bridge_module()
+        cases = [
+            (
+                "docs/leak.md",
+                diff_assignment_line("EXCHANGE_API_KEY", "live-but-short"),
+            ),
+            (
+                ".env.example",
+                diff_assignment_line("OAUTH_SECRET", "short-real-secret"),
+            ),
+            (
+                "tests/test_env.py",
+                diff_assignment_line("TEST_EXCHANGE_API_KEY", "live-but-short"),
+            ),
+            (
+                "config.json",
+                diff_json_assignment_line("api_key", "live-but-short"),
+            ),
+            (
+                "settings.toml",
+                '+"' + "password" + '" = "' + "local-doc-example" + '"',
+            ),
+        ]
+        for path, line in cases:
+            with self.subTest(path=path, line=line):
+                diff = f"diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n@@ -0,0 +1 @@\n{line}\n"
+                findings = bridge.staged_diff_secret_findings(diff)
+                self.assertTrue(bridge.staged_diff_has_secret(diff))
+                self.assertEqual(1, len(findings))
+                self.assertTrue(findings[0]["blocking"])
+                self.assertEqual("sensitive_assignment", findings[0]["rule"])
+
+    def test_staged_diff_secret_scan_blocks_hardcoded_getenv_fallback_secret(self):
+        bridge = self._load_bridge_module()
+        fake_value = "ghp_" + "123456789012345678901234567890123456"
+        diff = "\n".join(
+            [
+                "diff --git a/config.py b/config.py",
+                "--- a/config.py",
+                "+++ b/config.py",
+                "@@ -0,0 +1 @@",
+                "+password = os.getenv('DASHBOARD_BASIC_PASS', '" + fake_value + "')",
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertTrue(bridge.staged_diff_has_secret(diff))
+        self.assertEqual("known_secret_pattern", findings[0]["rule"])
+        self.assertTrue(findings[0]["blocking"])
+        self.assertIn("[REDACTED]", findings[0]["snippet"])
+        self.assertNotIn(fake_value, findings[0]["snippet"])
+
+    def test_staged_diff_secret_scan_blocks_short_getenv_fallback_secret(self):
+        bridge = self._load_bridge_module()
+        diff_line = "+" + "api" + "_key" + " = " + "os.getenv" + "('EXCHANGE_API_KEY', 'live-but-short')"
+        diff = "\n".join(
+            [
+                "diff --git a/config.py b/config.py",
+                "--- a/config.py",
+                "+++ b/config.py",
+                "@@ -0,0 +1 @@",
+                diff_line,
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertTrue(bridge.staged_diff_has_secret(diff))
+        self.assertEqual(1, len(findings))
+        self.assertEqual("sensitive_assignment", findings[0]["rule"])
+        self.assertTrue(findings[0]["blocking"])
+
+    def test_staged_diff_secret_scan_blocks_unquoted_high_entropy_assignment(self):
+        bridge = self._load_bridge_module()
+        long_value = "abcdefghijklmnopqrstuvwxyz" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "1234567890"
+        diff = "\n".join(
+            [
+                "diff --git a/.env b/.env",
+                "--- a/.env",
+                "+++ b/.env",
+                "@@ -0,0 +1 @@",
+                "+" + "SAFE_VALUE" + "=" + long_value,
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertTrue(bridge.staged_diff_has_secret(diff))
+        self.assertEqual(1, len(findings))
+        self.assertEqual("high_entropy_secret_value", findings[0]["rule"])
+        self.assertTrue(findings[0]["blocking"])
+
+    def test_staged_diff_secret_scan_blocks_pem_private_key_lines(self):
+        bridge = self._load_bridge_module()
+        begin_marker = "-----BEGIN " + "PRIVATE KEY" + "-----"
+        end_marker = "-----END " + "PRIVATE KEY" + "-----"
+        private_material = "MIIEvQIBADANBgkqhkiG9w0BAQEFAASC" + "A" * 24 + "=="
+        diff = "\n".join(
+            [
+                "diff --git a/secrets/private.key b/secrets/private.key",
+                "+++ b/secrets/private.key",
+                "@@ -0,0 +1,3 @@",
+                "+" + begin_marker,
+                "+" + private_material,
+                "+" + end_marker,
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertTrue(bridge.staged_diff_has_secret(diff))
+        self.assertIn("private_key_marker", {finding["rule"] for finding in findings})
+        self.assertIn("private_key_material", {finding["rule"] for finding in findings})
+        self.assertTrue(all(finding["blocking"] for finding in findings))
+        self.assertTrue(all(finding["snippet"] == "[REDACTED_PRIVATE_KEY]" for finding in findings))
+        self.assertNotIn(private_material, "\n".join(finding["snippet"] for finding in findings))
+
+    def test_staged_diff_secret_scan_reports_redacted_file_line_and_rule(self):
+        bridge = self._load_bridge_module()
+        fake_value = "sk-" + "1234567890abcdefghijklmnop"
+        diff = "\n".join(
+            [
+                "diff --git a/config.py b/config.py",
+                "--- a/config.py",
+                "+++ b/config.py",
+                "@@ -0,0 +1,2 @@",
+                diff_assignment_line("OPENAI_API_KEY", fake_value),
+                "+SAFE_VALUE=1",
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertEqual(1, len(findings))
+        self.assertEqual("config.py", findings[0]["file"])
+        self.assertEqual(1, findings[0]["line"])
+        self.assertEqual("known_secret_pattern", findings[0]["rule"])
+        self.assertEqual("high", findings[0]["risk"])
+        self.assertTrue(findings[0]["blocking"])
+        self.assertIn("[REDACTED]", findings[0]["snippet"])
+        self.assertNotIn(fake_value, findings[0]["snippet"])
+
+    def test_staged_diff_secret_scan_ignores_removed_secret_lines(self):
+        bridge = self._load_bridge_module()
+        fake_value = "sk-" + "1234567890abcdefghijklmnop"
+        diff = "\n".join(
+            [
+                "diff --git a/.env b/.env",
+                "--- a/.env",
+                "+++ b/.env",
+                "-" + "OPENAI_API_KEY" + "=" + fake_value,
+                "+OPENAI_API_KEY=${OPENAI_API_KEY}",
+            ]
+        )
+
+        self.assertFalse(bridge.staged_diff_has_secret(diff))
+
+    def test_git_publish_blocks_real_secret_with_redacted_findings(self):
+        fake_value = "sk-" + "1234567890abcdefghijklmnop"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir) / "repo"
+            repo.mkdir()
+            git_kwargs = {"cwd": repo, "check": True, "capture_output": True, "text": True, "encoding": "utf-8", "errors": "replace"}
+            subprocess.run(["git", "init", "-b", "main"], **git_kwargs)
+            subprocess.run(["git", "config", "user.name", "Test"], **git_kwargs)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], **git_kwargs)
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], **git_kwargs)
+            subprocess.run(["git", "commit", "-m", "初始化"], **git_kwargs)
+            (repo / "config.py").write_text(f"OPENAI_API_KEY={fake_value}\n", encoding="utf-8")
+
+            proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(BRIDGE),
+                    "--stage",
+                    "git_publish",
+                    "--agent-mode",
+                    "hermes",
+                    "--project-dir",
+                    str(repo),
+                ],
+                cwd=ROOT,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(9, proc.returncode, proc.stderr + proc.stdout)
+        self.assertIn("## Secret Scan Findings", proc.stdout)
+        self.assertIn("config.py:1", proc.stdout)
+        self.assertIn("known_secret_pattern", proc.stdout)
+        self.assertIn("[REDACTED]", proc.stdout)
+        self.assertNotIn(fake_value, proc.stdout)
+
+    def test_staged_diff_secret_scan_allows_basic_auth_test_placeholders(self):
+        bridge = self._load_bridge_module()
+        diff = "\n".join(
+            [
+                "diff --git a/tests/test_basic_auth_proxy.py b/tests/test_basic_auth_proxy.py",
+                "+++ b/tests/test_basic_auth_proxy.py",
+                "@@ -0,0 +1,3 @@",
+                "+DASHBOARD_BASIC_USER=test-user",
+                "+DASHBOARD_BASIC_PASS=test-pass",
+                "+Authorization: Basic Auth",
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertFalse(bridge.staged_diff_has_secret(diff))
+        self.assertTrue(findings)
+        self.assertTrue(all(not finding["blocking"] for finding in findings))
+
+    def test_staged_diff_secret_scan_blocks_non_placeholder_example_assignments(self):
+        bridge = self._load_bridge_module()
+        diff = "\n".join(
+            [
+                "diff --git a/docs/basic-auth.md b/docs/basic-auth.md",
+                "+++ b/docs/basic-auth.md",
+                "@@ -0,0 +1,2 @@",
+                "+" + "password" + " = " + "local-doc-example",
+                "+" + "api_key" + " = " + "sample-dashboard-key",
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertTrue(bridge.staged_diff_has_secret(diff))
+        self.assertEqual({"high"}, {finding["risk"] for finding in findings})
+        self.assertEqual({"sensitive_assignment"}, {finding["rule"] for finding in findings})
+        self.assertTrue(all(finding["blocking"] for finding in findings))
+
+    def test_staged_diff_secret_scan_allows_scanner_code_diff(self):
+        bridge = self._load_bridge_module()
+        diff = "\n".join(
+            [
+                "diff --git a/scripts/openclaw-ops/smart_arb_live_bridge.py b/scripts/openclaw-ops/smart_arb_live_bridge.py",
+                "+++ b/scripts/openclaw-ops/smart_arb_live_bridge.py",
+                "@@ -0,0 +1,4 @@",
+                "+SECRET_PLACEHOLDER_RE = re.compile(",
+                "+secret_findings = staged_diff_secret_findings(staged_diff.stdout or \"\")",
+                "+def test_staged_diff_secret_scan_blocks_non_placeholder_example_assignments(self):",
+                "+safe_value = \"a\" * 64",
+            ]
+        )
+
+        findings = bridge.staged_diff_secret_findings(diff)
+
+        self.assertFalse(bridge.staged_diff_has_secret(diff))
+        self.assertTrue(all(not finding["blocking"] for finding in findings))
 
     def test_external_research_prompt_forbids_file_edits_and_allows_local_only_pass(self):
         bridge = self._load_bridge_module()

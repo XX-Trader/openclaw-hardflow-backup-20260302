@@ -67,7 +67,7 @@
 10. **第三方 API 持续跟踪**：每 2 天检查第三方库来源，只跟踪项目声明过的官方 docs / changelog / repo。
 11. **Task Center 可观测性**：每次流水线可镜像到 `task_center.db`，统一查看状态、阶段、agent 通信、输出和 incident。
 12. **仓库精简巡检**：`coordinator` 每 2 天只读触发冗余文件、失效缓存、冲突残留、重复文件和测试残留扫描；只生成报告和人工确认候选，不自动删除。
-13. **受控 Git 发布**：只有验证、代码审查、deployment（如有）、验收和记忆回写通过后才允许 `git_publish`；发布输入优先采用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码与文档/记忆写回作为同一个已验收变更集发布且不夹带未验收脏改动；提交说明、备注和变更描述必须使用中文并脱敏，禁止 force push 和含密钥 diff。
+13. **受控 Git 发布**：只有验证、代码审查、deployment（如有）、验收和记忆回写通过后才允许 `git_publish`；发布输入优先采用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码与文档/记忆写回作为同一个已验收变更集发布且不夹带未验收脏改动；提交说明、备注和变更描述必须使用中文并脱敏，禁止 force push。发布前只扫描 staged diff 的新增行：真实 token、真实 cookie、OAuth secret、交易所 key、`.env` 实值和高熵随机串 hard block；环境变量名、空值、`os.getenv(...)`、README 占位说明和测试假密码不应误报。
 14. **运行态 agent 口径分层**：nofx 当前只有两个 live Hermes profile；阶段 owner 只负责隔离 workspace、状态卡展示和 Task Center 交接，不等于独立常驻模型进程。判断是否真正 native fan-out，必须看独立 session/run id。
 15. **低风险待办持续推进**：`backlog_runner.py` 每 30 分钟最多推进 1 个 Task Center 项；只选择 `todo_patrol`、`todo-deadline-bridge`、`repo_hygiene_reviewer` 或 `todo-*` pending 项，以及允许 `next_action` 的 failed 项；每个任务默认只尝试 1 次，避免无限循环。
 

@@ -187,6 +187,109 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertNotIn("short-session-value", text)
         self.assertNotIn("BEGIN PRIVATE KEY", text)
 
+    def test_render_progress_update_shows_current_stage_and_recent_output(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            command_report = Path(tmp) / "code_execution-1.json"
+            command_report.write_text(
+                json.dumps(
+                    {
+                        "stage": "code_execution",
+                        "agent_id": "backend-dev",
+                        "returncode": 0,
+                        "ok": True,
+                        "stdout": "\n".join(
+                            [
+                                "完成 basic_auth_proxy 修复，api_key=short-secret-value 已脱敏",
+                                '{"api_key": "json-live-secret", "password": "json-local-doc-example"}',
+                                '"password" = "toml-local-doc-example"',
+                            ]
+                        ),
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "run_id": "discord-spreadagent-test",
+                "status": "running",
+                "next_action": "none",
+                "failed_stage": None,
+                "run_dir": tmp,
+                "artifacts": {"command_code_execution_1": str(command_report)},
+                "stages": [
+                    {"name": "intake", "status": "completed", "artifact": "run_meta.json"},
+                    {"name": "requirements_review", "status": "completed", "verdict": "pass", "artifact": "requirements_review.md"},
+                    {"name": "code_execution", "status": "running", "detail": "正在修改代理脚本"},
+                ],
+            }
+
+            text = module.render_progress_update(
+                state,
+                source="discord",
+                profile="spreadagent",
+                elapsed_seconds=125,
+            )
+
+        self.assertIn("# nofx 任务执行进度", text)
+        self.assertIn("总状态: 运行中", text)
+        self.assertIn("已运行: 2分5秒", text)
+        self.assertIn("阶段进度: 2/3 完成", text)
+        self.assertIn("当前阶段: 代码执行: backend-dev -> running", text)
+        self.assertIn("## 最近 agent 输出", text)
+        self.assertIn("代码执行: backend-dev -> 通过", text)
+        self.assertIn("api_key=[REDACTED]", text)
+        self.assertNotIn("short-secret-value", text)
+        self.assertNotIn("json-live-secret", text)
+        self.assertNotIn("json-local-doc-example", text)
+        self.assertNotIn("toml-local-doc-example", text)
+
+    def test_latest_command_reports_orders_by_command_timestamps(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            older = tmp_path / "verification-1.json"
+            newer = tmp_path / "git_publish-1.json"
+            older.write_text(
+                json.dumps(
+                    {
+                        "stage": "verification",
+                        "index": 1,
+                        "ended_at": "2026-04-27T08:00:00+00:00",
+                        "returncode": 0,
+                        "ok": True,
+                        "stdout": "verification ok",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            newer.write_text(
+                json.dumps(
+                    {
+                        "stage": "git_publish",
+                        "index": 1,
+                        "ended_at": "2026-04-27T08:05:00+00:00",
+                        "returncode": 0,
+                        "ok": True,
+                        "stdout": "git publish ok",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "run_dir": tmp,
+                "artifacts": {
+                    "command_git_publish_1": str(newer),
+                    "command_verification_1": str(older),
+                },
+            }
+
+            reports = module.latest_command_reports(state, limit=1)
+
+        self.assertEqual("git_publish", reports[0]["stage"])
+
     def test_main_default_prints_chat_summary(self):
         module = load_module()
         payload = {
@@ -205,8 +308,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         err = io.StringIO()
 
         with mock.patch.object(
-            module.subprocess,
-            "run",
+            module,
+            "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
             rc = module.main(["--profile", "arbitrageagent", "--source", "discord", "--requirement", "demo"])
@@ -231,6 +334,9 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertTrue(any("--reviewer-role reviewer-a" in command for command in review_commands))
         self.assertTrue(any("--reviewer-role reviewer-b" in command for command in review_commands))
         self.assertNotIn("--agent-workspace-mode", runner_cmd)
+        self.assertEqual(60, run_mock.call_args.kwargs["progress_interval_seconds"])
+        self.assertEqual(8, run_mock.call_args.kwargs["progress_stage_limit"])
+        self.assertEqual(3, run_mock.call_args.kwargs["progress_command_limit"])
         self.assertEqual("", err.getvalue())
 
     def test_main_skips_deployment_when_requirement_forbids_service_control(self):
@@ -249,8 +355,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         err = io.StringIO()
 
         with mock.patch.object(
-            module.subprocess,
-            "run",
+            module,
+            "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
             rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", requirement])
@@ -280,8 +386,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         err = io.StringIO()
 
         with mock.patch.object(
-            module.subprocess,
-            "run",
+            module,
+            "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
             rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", requirement])
@@ -307,8 +413,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         err = io.StringIO()
 
         with mock.patch.object(
-            module.subprocess,
-            "run",
+            module,
+            "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
             rc = module.main(["--profile", "spreadagent", "--source", "discord", "--skip-git-publish-command", "--requirement", "demo"])
@@ -347,8 +453,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             err = io.StringIO()
 
             with mock.patch.object(
-                module.subprocess,
-                "run",
+                module,
+                "run_pipeline_command",
                 side_effect=[
                     completed_process(module, json.dumps(blocked, ensure_ascii=False), returncode=1),
                     completed_process(module, json.dumps(completed, ensure_ascii=False), returncode=0),
@@ -393,8 +499,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             }
 
             with mock.patch.object(
-                module.subprocess,
-                "run",
+                module,
+                "run_pipeline_command",
                 side_effect=[
                     completed_process(module, json.dumps(blocked, ensure_ascii=False), returncode=1),
                     completed_process(module, json.dumps(completed, ensure_ascii=False), returncode=0),
@@ -448,8 +554,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             }
 
             with mock.patch.object(
-                module.subprocess,
-                "run",
+                module,
+                "run_pipeline_command",
                 side_effect=[
                     completed_process(module, json.dumps(blocked_1, ensure_ascii=False), returncode=1),
                     completed_process(module, json.dumps(blocked_2, ensure_ascii=False), returncode=1),
@@ -727,6 +833,93 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 self.assertTrue(should_repair)
                 self.assertEqual("medium", repair_risk)
 
+    def test_fix_git_publish_can_auto_repair_without_secret_evidence(self):
+        module = load_module()
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "fix_git_publish",
+            "failed_stage": "git_publish",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "git_publish",
+                    "status": "blocked",
+                    "detail": "remote rejected non-fast-forward; rerun after pulling latest main",
+                    "next_action": "fix_git_publish",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流动作: fix_git_publish", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+        self.assertIn("可回流动作: fix_git_publish", repair_reasons)
+
+    def test_fix_git_publish_stays_high_risk_with_secret_evidence(self):
+        module = load_module()
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "fix_git_publish",
+            "failed_stage": "git_publish",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "git_publish",
+                    "status": "blocked",
+                    "detail": "Need api_key=[REDACTED] before retrying publish.",
+                    "next_action": "fix_git_publish",
+                },
+            ],
+        }
+
+        risk, _ = module.classify_repair_risk(state)
+        should_repair, repair_risk, _ = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("high", risk)
+        self.assertFalse(should_repair)
+        self.assertEqual("high", repair_risk)
+
+    def test_fix_git_publish_stays_high_risk_with_secret_scan_findings(self):
+        module = load_module()
+        detail = (
+            "## Secret Scan Findings\n"
+            "- Blocking findings: 1\n"
+            "- config.py:1 risk=high rule=known_secret_pattern blocking=true "
+            "snippet=OPENAI_API_KEY=[REDACTED]\n"
+            "LIVE_BRIDGE_STATUS: fail"
+        )
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "fix_git_publish",
+            "failed_stage": "git_publish",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "git_publish",
+                    "status": "blocked",
+                    "detail": detail,
+                    "next_action": "fix_git_publish",
+                },
+            ],
+        }
+
+        risk, _ = module.classify_repair_risk(state)
+        should_repair, repair_risk, _ = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("high", risk)
+        self.assertFalse(should_repair)
+        self.assertEqual("high", repair_risk)
+
     def test_redacts_short_known_secret_shapes_from_failure_evidence(self):
         module = load_module()
         fake_github_token = "ghp_" + "123456789012345678901234567890123456"
@@ -774,8 +967,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             out = io.StringIO()
 
             with mock.patch.object(
-                module.subprocess,
-                "run",
+                module,
+                "run_pipeline_command",
                 return_value=completed_process(module, json.dumps(blocked, ensure_ascii=False), returncode=1),
             ) as run_mock, redirect_stdout(out):
                 rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", "demo"])
@@ -801,15 +994,16 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         err = io.StringIO()
 
         with mock.patch.object(
-            module.subprocess,
-            "run",
+            module,
+            "run_pipeline_command",
             return_value=completed_process(module, raw, stderr="runner warning\n"),
-        ), redirect_stdout(out), redirect_stderr(err):
+        ) as run_mock, redirect_stdout(out), redirect_stderr(err):
             rc = module.main(["--emit-json", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         self.assertEqual(raw, out.getvalue())
         self.assertEqual("runner warning\n", err.getvalue())
+        self.assertEqual(0, run_mock.call_args.kwargs["progress_interval_seconds"])
 
     def test_main_no_chat_summary_prints_raw_runner_output(self):
         module = load_module()
@@ -817,15 +1011,16 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         err = io.StringIO()
 
         with mock.patch.object(
-            module.subprocess,
-            "run",
+            module,
+            "run_pipeline_command",
             return_value=completed_process(module, "runner raw output\n", stderr="runner err\n"),
-        ), redirect_stdout(out), redirect_stderr(err):
+        ) as run_mock, redirect_stdout(out), redirect_stderr(err):
             rc = module.main(["--no-chat-summary", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         self.assertEqual("runner raw output\n", out.getvalue())
         self.assertEqual("runner err\n", err.getvalue())
+        self.assertEqual(0, run_mock.call_args.kwargs["progress_interval_seconds"])
 
     def test_main_infers_frontend_code_agent_from_requirement(self):
         module = load_module()
@@ -833,8 +1028,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         out = io.StringIO()
 
         with mock.patch.object(
-            module.subprocess,
-            "run",
+            module,
+            "run_pipeline_command",
             return_value=completed_process(module, raw),
         ) as run_mock, redirect_stdout(out):
             rc = module.main(
@@ -856,8 +1051,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         raw = '{"status":"completed","stages":[]}\n'
 
         with mock.patch.object(
-            module.subprocess,
-            "run",
+            module,
+            "run_pipeline_command",
             return_value=completed_process(module, raw),
         ) as run_mock:
             rc = module.main(

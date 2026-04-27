@@ -10,6 +10,8 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -87,6 +89,8 @@ STAGE_LABELS = {
     "writeback": "记忆写回",
     "git_publish": "Git 发布",
 }
+STAGE_ORDER = {name: index for index, name in enumerate(STAGE_LABELS)}
+COMMAND_ARTIFACT_RE = re.compile(r"^command_(?P<stage>.+)_(?P<index>\d+)$")
 STATUS_LABELS = {
     "completed": "完成",
     "blocked": "阻塞",
@@ -98,6 +102,7 @@ REPAIRABLE_NEXT_ACTIONS = {
     "return_to_code_execution",
     "return_to_deployment",
     "fix_memory_writeback",
+    "fix_git_publish",
 }
 HIGH_RISK_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
@@ -105,6 +110,8 @@ HIGH_RISK_PATTERNS = [
         r"\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|jwt|(?:access|refresh|bearer|auth|api|csrf)[_ -]?tokens?)\b\s*[:=]",
         r"\b(?:need|needs|requires?|read|print|show|dump|export|upload|commit|use|modify|delete)\b.{0,60}\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|(?:access|refresh|bearer|auth|api|csrf)[_ -]?tokens?)\b",
         r"\b(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|x-csrf-token)\b\s*[:=]",
+        r"\b(?:risk=high.{0,120}blocking=true|blocking=true.{0,120}risk=high)\b",
+        r"\brule=(?:known_secret_pattern|high_entropy_secret_value|sensitive_header_assignment|sensitive_assignment|private_key_marker|private_key_material)\b",
         r"PRODUCTION_TRADING_ENABLED\s*=\s*true",
         r"\b(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?|enable\s+(?:real|live)\s+trading|start\s+(?:real|live)\s+trading)\b",
         r"\b(?:need|needs|requires?|start|enable|execute|place|submit|perform|allow)\b.{0,60}\b(?:withdrawals?|transfer\s+funds|funds?\s+(?:movement|operation|transfer)|place\s+orders?|real\s+trading|live\s+trading)\b",
@@ -229,8 +236,11 @@ KNOWN_SECRET_RE = re.compile(
     r")(?![A-Za-z0-9_])"
 )
 SENSITIVE_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(api[_ -]?key|secret|password|credential|session(?:id|_id)?|"
-    r"(?:access|refresh|bearer|auth|api|csrf)[_ -]?token)\b\s*[:=]\s*([^\s,;]+)"
+    r"(?i)(?<![A-Za-z0-9_])['\"`]?("
+    r"authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|x-csrf-token|"
+    r"[A-Z0-9_]*(?:API[_-]?KEY|SECRET|PASSWORD|PASS|TOKEN|COOKIE|OAUTH|PRIVATE[_-]?KEY|SESSION(?:ID|_ID)?|CREDENTIAL)[A-Z0-9_]*|"
+    r"api[_ -]?key|secret|password|credential|session(?:id|_id)?|"
+    r"(?:access|refresh|bearer|auth|api|csrf)[_ -]?token)['\"`]?\s*[:=]\s*([^\s,;]+)"
 )
 SENSITIVE_HEADER_RE = re.compile(
     r"(?im)\b(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|"
@@ -261,11 +271,21 @@ def compact_text(value: object, limit: int = 120) -> str:
 
 def redact_text(value: object) -> str:
     text = str(value or "")
+    held_markers: list[str] = []
+
+    def hold_marker(match: re.Match) -> str:
+        held_markers.append(match.group(0))
+        return f"__SMART_ARB_HELD_MARKER_{len(held_markers) - 1}__"
+
     text = PRIVATE_KEY_BLOCK_RE.sub("[REDACTED_PRIVATE_KEY]", text)
+    text = PRE_REDACTED_MARKER_RE.sub(hold_marker, text)
     text = SENSITIVE_HEADER_RE.sub(lambda match: f"{match.group(1)}: [REDACTED]", text)
     text = SENSITIVE_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}=[REDACTED]", text)
     text = KNOWN_SECRET_RE.sub("[REDACTED]", text)
-    return SENSITIVE_TOKEN_RE.sub("[REDACTED]", text)
+    text = SENSITIVE_TOKEN_RE.sub("[REDACTED]", text)
+    for index, marker in enumerate(held_markers):
+        text = text.replace(f"__SMART_ARB_HELD_MARKER_{index}__", marker)
+    return text
 
 
 def strip_safe_negated_fragments(text: str) -> str:
@@ -401,9 +421,10 @@ def failed_stage_record(state: dict | None) -> dict:
     return stage_record(state, failed_stage) if failed_stage else {}
 
 
-def report_excerpt(report: dict, limit: int = 260) -> str:
+def report_excerpt(report: dict, limit: int = 260, *, redact: bool = True) -> str:
     for key in ("error", "stderr", "stdout"):
-        text = compact_text(report.get(key), limit)
+        raw = report.get(key)
+        text = compact_text(redact_text(raw) if redact else raw, limit)
         if text:
             return text
     return "没有可用输出"
@@ -417,6 +438,121 @@ def report_line(report: dict) -> str:
     ok = "通过" if report.get("ok") else "失败"
     output = report_excerpt(report)
     return f"- {label}: {agent} -> {ok}；returncode={returncode}；输出={output}"
+
+
+def run_state_path(run_id: str) -> Path:
+    return WORKSPACE_ROOT / run_id / "pipeline_state.json"
+
+
+def human_duration(seconds: float | int) -> str:
+    total = max(0, int(seconds))
+    minutes, secs = divmod(total, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}小时{minutes}分"
+    if minutes:
+        return f"{minutes}分{secs}秒"
+    return f"{secs}秒"
+
+
+def latest_command_reports(state: dict | None, limit: int = 3) -> list[dict]:
+    reports = command_reports(state)
+    count = max(0, int(limit or 0))
+    if not reports or count <= 0:
+        return []
+    return sorted(reports, key=command_report_sort_key)[-count:]
+
+
+def command_report_sort_key(report: dict) -> tuple[str, int, int, str]:
+    timestamp = str(report.get("ended_at") or report.get("started_at") or "").strip()
+    stage = str(report.get("stage") or "").strip()
+    index = int(report.get("index") or 0)
+    artifact_key = str(report.get("_artifact_key") or "").strip()
+    match = COMMAND_ARTIFACT_RE.match(artifact_key)
+    if match:
+        stage = stage or match.group("stage")
+        index = index or int(match.group("index") or 0)
+    return (timestamp, STAGE_ORDER.get(stage, len(STAGE_ORDER)), index, artifact_key)
+
+
+def current_stage_record(state: dict | None) -> dict:
+    if not isinstance(state, dict):
+        return {}
+    failed_stage = str(state.get("failed_stage") or "").strip()
+    if failed_stage:
+        stage = stage_record(state, failed_stage)
+        if stage:
+            return stage
+    stages = [stage for stage in state.get("stages", []) if isinstance(stage, dict)]
+    for stage in stages:
+        if stage.get("status") != "completed":
+            return stage
+    return stages[-1] if stages else {}
+
+
+def render_progress_start(run_id: str, *, source: str, profile: str) -> str:
+    run_dir = WORKSPACE_ROOT / run_id
+    return "\n".join(
+        [
+            "# nofx 任务执行进度",
+            f"- 来源: {source}/{profile}",
+            f"- Run ID: {run_id}",
+            "- 状态: 已启动 coordinator pipeline，等待第一份阶段状态",
+            f"- 证据目录: {run_dir}",
+            "- 说明: 后续会按阶段输出已完成内容、当前卡点和最近 agent 输出；最终仍会返回完整状态卡。",
+        ]
+    )
+
+
+def render_progress_update(
+    state: dict | None,
+    *,
+    source: str,
+    profile: str,
+    elapsed_seconds: float,
+    stage_limit: int = 8,
+    command_limit: int = 3,
+) -> str:
+    if not isinstance(state, dict) or not state:
+        return ""
+    status = str(state.get("status") or "").strip()
+    status_label = "运行中" if status in {"", "running"} else STATUS_LABELS.get(status, status)
+    stages = [stage for stage in state.get("stages", []) if isinstance(stage, dict)]
+    completed = sum(1 for stage in stages if stage.get("status") == "completed")
+    current_stage = current_stage_record(state)
+    lines = [
+        "# nofx 任务执行进度",
+        f"- 来源: {source}/{profile}",
+        f"- Run ID: {state.get('run_id', '-')}",
+        f"- 总状态: {status_label or '运行中'}",
+        f"- 已运行: {human_duration(elapsed_seconds)}",
+        f"- 阶段进度: {completed}/{len(stages)} 完成",
+    ]
+    run_dir = str(state.get("run_dir") or "").strip()
+    if run_dir:
+        lines.append(f"- 证据目录: {run_dir}")
+    if current_stage:
+        lines.append(f"- 当前阶段: {render_stage_line(current_stage).lstrip('- ')}")
+    next_action = str(state.get("next_action") or "").strip()
+    failed_stage = str(state.get("failed_stage") or "").strip()
+    if next_action and next_action != "none":
+        failed_label = STAGE_LABELS.get(failed_stage, failed_stage or "none")
+        lines.append(f"- 下一步: {next_action}；失败阶段: {failed_label}")
+
+    if stages:
+        visible_stages = stages[-max(1, int(stage_limit or 8)) :]
+        lines.append("")
+        lines.append("## 最近阶段")
+        for stage in visible_stages:
+            lines.append(render_stage_line(stage, state.get("stage_agents") if isinstance(state.get("stage_agents"), dict) else None))
+
+    reports = latest_command_reports(state, command_limit)
+    if reports:
+        lines.append("")
+        lines.append("## 最近 agent 输出")
+        for report in reports:
+            lines.append(report_line(report))
+    return "\n".join(lines)
 
 
 def failure_evidence(state: dict | None, *, redact: bool = True) -> str:
@@ -666,17 +802,84 @@ def render_chat_summary(
     return "\n".join(lines)
 
 
-def run_pipeline_command(cmd: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        cmd,
-        cwd=str(PROJECT_DIR),
-        text=True,
+def option_value(cmd: list[str], option: str) -> str:
+    try:
+        index = cmd.index(option)
+    except ValueError:
+        return ""
+    if index + 1 >= len(cmd):
+        return ""
+    return str(cmd[index + 1])
+
+
+def run_pipeline_command(
+    cmd: list[str],
+    env: dict[str, str] | None = None,
+    *,
+    progress_interval_seconds: int = 0,
+    progress_stage_limit: int = 8,
+    progress_command_limit: int = 3,
+    source: str = "",
+    profile: str = "",
+) -> subprocess.CompletedProcess[str]:
+    interval = max(0, int(progress_interval_seconds or 0))
+    if interval <= 0:
+        return subprocess.run(
+            cmd,
+            cwd=str(PROJECT_DIR),
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+            env=env,
+        )
+
+    run_id = option_value(cmd, "--run-id")
+    started_at = time.monotonic()
+    if run_id:
+        print(render_progress_start(run_id, source=source or "unknown", profile=profile or "unknown"), flush=True)
+    with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stdout_file, tempfile.TemporaryFile(
+        mode="w+",
         encoding="utf-8",
         errors="replace",
-        capture_output=True,
-        check=False,
-        env=env,
-    )
+    ) as stderr_file:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(PROJECT_DIR),
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=env,
+        )
+        next_progress_at = started_at + interval
+        while proc.poll() is None:
+            now = time.monotonic()
+            if run_id and now >= next_progress_at:
+                state = read_json_file(run_state_path(run_id))
+                progress = render_progress_update(
+                    state,
+                    source=source or "unknown",
+                    profile=profile or "unknown",
+                    elapsed_seconds=now - started_at,
+                    stage_limit=progress_stage_limit,
+                    command_limit=progress_command_limit,
+                )
+                if progress:
+                    print(progress, flush=True)
+                next_progress_at = now + interval
+            time.sleep(min(1.0, max(0.1, float(interval or 1))))
+        returncode = proc.wait()
+        stdout_file.seek(0)
+        stderr_file.seek(0)
+        return subprocess.CompletedProcess(
+            args=cmd,
+            returncode=int(returncode),
+            stdout=stdout_file.read(),
+            stderr=stderr_file.read(),
+        )
 
 
 def command_with_option_value(cmd: list[str], option: str, value: str) -> list[str]:
@@ -868,6 +1071,24 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--chat-stage-limit", type=int, default=int(os.environ.get("SMART_ARB_CHAT_STAGE_LIMIT", "20")))
     parser.add_argument("--chat-command-limit", type=int, default=int(os.environ.get("SMART_ARB_CHAT_COMMAND_LIMIT", "24")))
     parser.add_argument(
+        "--progress-interval-seconds",
+        type=int,
+        default=int(os.environ.get("SMART_ARB_PROGRESS_INTERVAL_SECONDS", "60")),
+        help="print an in-flight progress card every N seconds; set to 0 to disable",
+    )
+    parser.add_argument(
+        "--progress-stage-limit",
+        type=int,
+        default=int(os.environ.get("SMART_ARB_PROGRESS_STAGE_LIMIT", "8")),
+        help="number of recent stages to include in in-flight progress cards",
+    )
+    parser.add_argument(
+        "--progress-command-limit",
+        type=int,
+        default=int(os.environ.get("SMART_ARB_PROGRESS_COMMAND_LIMIT", "3")),
+        help="number of recent command outputs to include in in-flight progress cards",
+    )
+    parser.add_argument(
         "--auto-repair-attempts",
         type=int,
         default=int(os.environ.get("SMART_ARB_AUTO_REPAIR_ATTEMPTS", "2")),
@@ -917,7 +1138,15 @@ def main(argv: list[str] | None = None) -> int:
     cmd += ["--code-agent", code_agent]
     cmd += default_live_bridge_args(args, passthrough)
     cmd += passthrough
-    proc = run_pipeline_command(cmd)
+    progress_interval_seconds = 0 if args.emit_json or args.no_chat_summary else int(args.progress_interval_seconds or 0)
+    progress_kwargs = {
+        "progress_interval_seconds": progress_interval_seconds,
+        "progress_stage_limit": int(args.progress_stage_limit or 0),
+        "progress_command_limit": int(args.progress_command_limit or 0),
+        "source": args.source,
+        "profile": profile,
+    }
+    proc = run_pipeline_command(cmd, **progress_kwargs)
     state = parse_runner_state(proc.stdout)
     repair_history: list[dict[str, object]] = []
     repair_attempts = 0
@@ -957,7 +1186,7 @@ def main(argv: list[str] | None = None) -> int:
             "context_file": str(context_file or ""),
             "context_delivery": "file+env" if context_file is not None else "env",
         }
-        proc = run_pipeline_command(repair_cmd, env=repair_env)
+        proc = run_pipeline_command(repair_cmd, env=repair_env, **progress_kwargs)
         next_state = parse_runner_state(proc.stdout)
         repair_item["returncode"] = int(proc.returncode)
         repair_item["result_status"] = next_state.get("status") if isinstance(next_state, dict) else "unparsed"

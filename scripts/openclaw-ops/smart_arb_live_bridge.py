@@ -26,6 +26,8 @@ STATUS_RE = re.compile(r"(?im)^\s*LIVE_BRIDGE_STATUS\s*:\s*(pass|fail)\s*$")
 FINAL_VERDICT_RE = re.compile(r"(?im)^\s*Final verdict\s*:\s*([a-z_]+)\s*$")
 SESSION_ID_RE = re.compile(r"(?im)^\s*session_id\s*:\s*([A-Za-z0-9_-]+)\s*$")
 SENSITIVE_VALUE_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9][A-Za-z0-9_-]{47,}(?![A-Za-z0-9])")
+QUOTED_VALUE_RE = re.compile(r"['\"]([A-Za-z0-9][A-Za-z0-9_-]{47,})['\"]")
+STRING_LITERAL_RE = re.compile(r"(?P<quote>['\"`])(?P<value>.*?)(?P=quote)")
 KNOWN_SECRET_RE = re.compile(
     r"(?<![A-Za-z0-9_])("
     r"github_pat_[A-Za-z0-9_]{20,}|"
@@ -38,11 +40,49 @@ KNOWN_SECRET_RE = re.compile(
     r"AKIA[0-9A-Z]{16}"
     r")(?![A-Za-z0-9_])"
 )
+PRIVATE_KEY_MARKER_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----|-----END [A-Z ]*PRIVATE KEY-----", re.IGNORECASE)
+PRIVATE_KEY_PATH_RE = re.compile(r"(?i)(^|[\\/])(?:id_(?:rsa|dsa|ecdsa|ed25519)|[^\\/]*(?:private[_-]?key|\.pem|\.key))$")
+PRIVATE_KEY_MATERIAL_RE = re.compile(r"^[A-Za-z0-9+/=]{32,}$")
 SENSITIVE_LINE_RE = re.compile(
-    r"(?im)\b(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|"
+    r"(?im)(?<![A-Za-z0-9_])['\"`]?(authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|"
     r"x-csrf-token|api[_ -]?key|secret|password|credential|session(?:id|_id)?|"
-    r"(?:access|refresh|bearer|auth|api|csrf)[_ -]?token)\b\s*[:=]\s*([^\r\n]+)"
+    r"[A-Z0-9_]*(?:API[_-]?KEY|SECRET|PASSWORD|PASS|TOKEN|COOKIE|OAUTH|PRIVATE[_-]?KEY|SESSION(?:ID|_ID)?|CREDENTIAL)[A-Z0-9_]*|"
+    r"(?:access|refresh|bearer|auth|api|csrf)[_ -]?token)['\"`]?\s*[:=]\s*([^\r\n]+)"
 )
+DIFF_SENSITIVE_ASSIGNMENT_RE = re.compile(
+    r"(?i)(?<![A-Za-z0-9_])['\"`]?("
+    r"authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|x-csrf-token|"
+    r"[A-Z0-9_]*(?:API[_-]?KEY|SECRET|PASSWORD|PASS|TOKEN|COOKIE|OAUTH|PRIVATE[_-]?KEY|SESSION(?:ID|_ID)?|CREDENTIAL)[A-Z0-9_]*|"
+    r"api[_ -]?key|secret|password|credential|session(?:id|_id)?|"
+    r"(?:access|refresh|bearer|auth|api|csrf)[_ -]?token"
+    r")['\"`]?\s*[:=]\s*([^\r\n]+)"
+)
+SECRET_PLACEHOLDER_RE = re.compile(
+    r"(?i)^(?:"
+    r"[\s'\"`]*|"
+    r"(?:none|null|false|0)|"
+    r"(?:redacted|masked|placeholder|example|sample|dummy|fake|test|todo|tbd|changeme|change-me|replace-me|"
+    r"replace-with-[a-z0-9_-]+|your-[a-z0-9_-]+)|"
+    r"(?:required|optional|string|boolean)|"
+    r"(?:basic\s+auth|bearer\s+token|basic\s+<[^>]+>|bearer\s+<[^>]+>)|"
+    r"(?:rotatable-pass|test-pass|test-password|dummy-password|fake-password|should-not-leak)|"
+    r"(?:\[[^\]]*(?:redacted|masked|placeholder|token|secret|password|key|pass)[^\]]*\])|"
+    r"(?:<[^>]*(?:token|secret|password|key|pass|cookie|credential)[^>]*>)|"
+    r"(?:\$\{?[A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASS|PASSWORD|COOKIE|CREDENTIAL)[A-Z0-9_]*\}?|%[A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASS|PASSWORD|COOKIE|CREDENTIAL)[A-Z0-9_]*%)"
+    r")$"
+)
+SECRET_CONTEXT_PLACEHOLDER_RE = re.compile(
+    r"(?i)("
+    r"os\.getenv|os\.environ\.get|getenv|process\.env|from\s+env|env(?:ironment)?\s+var(?:iable)?|"
+    r"replace\s+with|use\s+your|example\s+only|test\s+only|"
+    r"替换为|占位|示例|测试|假密码|环境变量|变量名"
+    r")"
+)
+ENV_LOOKUP_RE = re.compile(r"(?i)\b(?:os\.getenv|os\.environ\.get|getenv|process\.env)\b")
+ENV_FUNCTION_LOOKUP_RE = re.compile(r"(?i)\b(?:os\.getenv|os\.environ\.get|getenv)\s*\(")
+CODE_EXPRESSION_RE = re.compile(r"(?i)^[A-Za-z_][A-Za-z0-9_.]*\s*\(")
+CODE_FILE_SUFFIXES = {".py", ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
+GENERIC_DIFF_ASSIGNMENT_RE = re.compile(r"(?<![A-Za-z0-9_])['\"`]?[A-Za-z_][A-Za-z0-9_.-]*['\"`]?\s*[:=]\s*(.+)$")
 ARTIFACT_PATH_ENV_NAMES = {
     "PIPELINE_RESEARCH_REPORT_FILE",
     "PIPELINE_REQUIREMENTS_FILE",
@@ -77,6 +117,7 @@ def strip_ansi(text: str) -> str:
 
 def redact_text(text: str) -> str:
     text = SENSITIVE_LINE_RE.sub(lambda match: f"{match.group(1)}: [REDACTED]", text or "")
+    text = PRIVATE_KEY_MARKER_RE.sub("[REDACTED_PRIVATE_KEY]", text)
     text = KNOWN_SECRET_RE.sub("[REDACTED]", text)
     return SENSITIVE_VALUE_RE.sub("[REDACTED]", text)
 
@@ -650,12 +691,237 @@ def build_chinese_commit_message() -> str:
     )
 
 
-def staged_diff_has_secret(diff: str) -> bool:
-    if KNOWN_SECRET_RE.search(diff or ""):
+def diff_added_lines(diff: str) -> list[str]:
+    lines: list[str] = []
+    for raw_line in (diff or "").splitlines():
+        if not raw_line.startswith("+") or raw_line.startswith("+++"):
+            continue
+        lines.append(raw_line[1:])
+    return lines
+
+
+def diff_added_line_records(diff: str) -> list[dict[str, Any]]:
+    records: list[dict[str, Any]] = []
+    current_file = "unknown"
+    next_new_line: int | None = None
+    for raw_line in (diff or "").splitlines():
+        if raw_line.startswith("+++ "):
+            path = raw_line[4:].strip()
+            if path == "/dev/null":
+                current_file = "deleted"
+            elif path.startswith("b/"):
+                current_file = path[2:]
+            else:
+                current_file = path.strip('"')
+            continue
+        if raw_line.startswith("@@"):
+            match = re.search(r"\+(\d+)(?:,\d+)?", raw_line)
+            next_new_line = int(match.group(1)) if match else None
+            continue
+        if raw_line.startswith("+") and not raw_line.startswith("+++"):
+            records.append({"file": current_file, "line": next_new_line, "text": raw_line[1:]})
+            if next_new_line is not None:
+                next_new_line += 1
+            continue
+        if raw_line.startswith("-") and not raw_line.startswith("---"):
+            continue
+        if next_new_line is not None:
+            next_new_line += 1
+    return records
+
+
+def normalize_secret_value(value: str) -> str:
+    text = (value or "").strip()
+    if "#" in text:
+        text = text.split("#", 1)[0].strip()
+    return text.strip().strip(",;").strip()
+
+
+def is_secret_placeholder_literal(value: str) -> bool:
+    stripped = normalize_secret_value(value).strip("'\"`").strip()
+    if SECRET_PLACEHOLDER_RE.fullmatch(stripped):
         return True
-    if SENSITIVE_LINE_RE.search(diff or ""):
+    if SECRET_CONTEXT_PLACEHOLDER_RE.search(stripped) and not ENV_LOOKUP_RE.search(stripped):
+        return True
+    if re.fullmatch(r"[A-Z][A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASS|PASSWORD|COOKIE|CREDENTIAL)[A-Z0-9_]*", stripped):
         return True
     return False
+
+
+def is_safe_env_lookup_value(value: str) -> bool:
+    text = normalize_secret_value(value).strip("'\"`").strip()
+    if not ENV_LOOKUP_RE.search(text):
+        return False
+    literal_values = [match.group("value") for match in STRING_LITERAL_RE.finditer(text)]
+    if not literal_values:
+        return True
+    fallback_values = literal_values[1:] if ENV_FUNCTION_LOOKUP_RE.search(text) else literal_values
+    if not fallback_values:
+        return True
+    return all(is_secret_placeholder_literal(fallback) for fallback in fallback_values)
+
+
+def is_secret_placeholder_value(value: str) -> bool:
+    text = normalize_secret_value(value)
+    stripped = text.strip("'\"`").strip()
+    if ENV_LOOKUP_RE.search(stripped):
+        return is_safe_env_lookup_value(stripped)
+    if SECRET_PLACEHOLDER_RE.fullmatch(stripped):
+        return True
+    if CODE_EXPRESSION_RE.match(stripped):
+        return False
+    if SECRET_CONTEXT_PLACEHOLDER_RE.search(stripped):
+        return True
+    if re.fullmatch(r"[A-Z][A-Z0-9_]*(?:KEY|SECRET|TOKEN|PASS|PASSWORD|COOKIE|CREDENTIAL)[A-Z0-9_]*", stripped):
+        return True
+    return False
+
+
+def is_code_expression_value(value: str, file_path: str) -> bool:
+    suffix = Path(file_path or "").suffix.lower()
+    if suffix not in CODE_FILE_SUFFIXES:
+        return False
+    stripped = normalize_secret_value(value).strip("'\"`").strip()
+    if CODE_EXPRESSION_RE.match(stripped):
+        return True
+    return stripped.startswith(("{", "[", "(", "lambda "))
+
+
+def sensitive_assignment_has_secret(key: str, value: str) -> bool:
+    return secret_assignment_finding(key, value, "", "", None)["blocking"]
+
+
+def redact_diff_snippet(line: str, limit: int = 180) -> str:
+    def redact_assignment(match: re.Match[str]) -> str:
+        return f"{match.group(1)}=[REDACTED]"
+
+    text = DIFF_SENSITIVE_ASSIGNMENT_RE.sub(redact_assignment, line or "")
+    text = redact_text(text)
+    if "[REDACTED_PRIVATE_KEY]" in text:
+        return "[REDACTED_PRIVATE_KEY]"
+    text = " ".join(text.split())
+    if len(text) > limit:
+        text = text[:limit].rstrip() + "...[truncated]"
+    return text
+
+
+def secret_assignment_finding(
+    key: str,
+    value: str,
+    line: str,
+    file_path: str,
+    line_number: int | None,
+) -> dict[str, Any]:
+    text = normalize_secret_value(value)
+    key_lower = (key or "").lower()
+    base = {
+        "file": file_path or "unknown",
+        "line": line_number,
+        "key": key or "secret",
+        "snippet": redact_diff_snippet(line),
+    }
+    if PRIVATE_KEY_MARKER_RE.search(line or ""):
+        return {**base, "risk": "high", "rule": "private_key_marker", "blocking": True}
+    if KNOWN_SECRET_RE.search(line or "") or KNOWN_SECRET_RE.search(text):
+        return {**base, "risk": "high", "rule": "known_secret_pattern", "blocking": True}
+    if SENSITIVE_VALUE_RE.search(text):
+        return {**base, "risk": "high", "rule": "high_entropy_secret_value", "blocking": True}
+    if ENV_LOOKUP_RE.search(text):
+        if is_safe_env_lookup_value(text):
+            return {**base, "risk": "low", "rule": "secret_placeholder", "blocking": False}
+        return {**base, "risk": "high", "rule": "sensitive_assignment", "blocking": True}
+    if not text or is_secret_placeholder_value(text):
+        return {**base, "risk": "low", "rule": "secret_placeholder", "blocking": False}
+    if is_code_expression_value(text, file_path):
+        return {**base, "risk": "low", "rule": "code_expression", "blocking": False}
+    if any(name in key_lower for name in ("authorization", "cookie", "x-api-key", "x-auth-token", "x-csrf-token")):
+        return {**base, "risk": "high", "rule": "sensitive_header_assignment", "blocking": True}
+    return {**base, "risk": "high", "rule": "sensitive_assignment", "blocking": True}
+
+
+def secret_token_finding(rule: str, line: str, file_path: str, line_number: int | None) -> dict[str, Any]:
+    snippet = "[REDACTED_PRIVATE_KEY]" if rule.startswith("private_key") else redact_diff_snippet(line)
+    return {
+        "file": file_path or "unknown",
+        "line": line_number,
+        "key": "secret",
+        "risk": "high",
+        "rule": rule,
+        "blocking": True,
+        "snippet": snippet,
+    }
+
+
+def high_entropy_literal_findings(line: str, file_path: str, line_number: int | None) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for match in QUOTED_VALUE_RE.finditer(line or ""):
+        value = match.group(1)
+        if SENSITIVE_VALUE_RE.fullmatch(value):
+            findings.append(secret_token_finding("high_entropy_secret_value", value, file_path, line_number))
+    assignment_match = GENERIC_DIFF_ASSIGNMENT_RE.search(line or "")
+    if assignment_match:
+        value = normalize_secret_value(assignment_match.group(1)).strip("'\"`").strip()
+        if SENSITIVE_VALUE_RE.fullmatch(value):
+            findings.append(secret_token_finding("high_entropy_secret_value", value, file_path, line_number))
+    stripped = (line or "").strip().strip(",;")
+    if SENSITIVE_VALUE_RE.fullmatch(stripped):
+        findings.append(secret_token_finding("high_entropy_secret_value", stripped, file_path, line_number))
+    return findings
+
+
+def staged_diff_secret_findings(diff: str) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for record in diff_added_line_records(diff):
+        line = str(record.get("text") or "")
+        file_path = str(record.get("file") or "unknown")
+        line_number = record.get("line") if isinstance(record.get("line"), int) else None
+        stripped = line.strip()
+        if PRIVATE_KEY_MARKER_RE.search(line):
+            findings.append(secret_token_finding("private_key_marker", line, file_path, line_number))
+            continue
+        if PRIVATE_KEY_PATH_RE.search(file_path) and PRIVATE_KEY_MATERIAL_RE.fullmatch(stripped):
+            findings.append(secret_token_finding("private_key_material", line, file_path, line_number))
+            continue
+        matches = list(DIFF_SENSITIVE_ASSIGNMENT_RE.finditer(line))
+        if matches:
+            for match in matches:
+                findings.append(secret_assignment_finding(match.group(1), match.group(2), line, file_path, line_number))
+            continue
+        if KNOWN_SECRET_RE.search(line):
+            findings.append(secret_token_finding("known_secret_pattern", line, file_path, line_number))
+            continue
+        entropy_findings = high_entropy_literal_findings(line, file_path, line_number)
+        if entropy_findings:
+            findings.extend(entropy_findings)
+    return findings
+
+
+def format_secret_scan_findings(findings: list[dict[str, Any]], limit: int = 20) -> str:
+    blocking = sum(1 for item in findings if item.get("blocking"))
+    non_blocking = max(0, len(findings) - blocking)
+    lines = [
+        "## Secret Scan Findings",
+        f"- Blocking findings: {blocking}",
+        f"- Non-blocking findings: {non_blocking}",
+    ]
+    for finding in findings[: max(1, int(limit or 20))]:
+        line_number = finding.get("line")
+        location = str(finding.get("file") or "unknown")
+        if isinstance(line_number, int):
+            location = f"{location}:{line_number}"
+        lines.append(
+            "- "
+            + f"{location} risk={finding.get('risk')} rule={finding.get('rule')} "
+            + f"blocking={str(bool(finding.get('blocking'))).lower()} "
+            + f"snippet={finding.get('snippet') or '[REDACTED]'}"
+        )
+    if len(findings) > limit:
+        lines.append(f"- ... {len(findings) - limit} more findings omitted")
+    return "\n".join(lines)
+
+
+def staged_diff_has_secret(diff: str) -> bool:
+    return any(finding.get("blocking") for finding in staged_diff_secret_findings(diff))
 
 
 def run_git_publish(args: argparse.Namespace) -> int:
@@ -739,7 +1005,10 @@ def run_git_publish(args: argparse.Namespace) -> int:
         sections.append("LIVE_BRIDGE_STATUS: pass")
         print("\n\n".join(sections))
         return 0
-    if staged_diff_has_secret(staged_diff.stdout or ""):
+    secret_findings = staged_diff_secret_findings(staged_diff.stdout or "")
+    if secret_findings:
+        sections.append(format_secret_scan_findings(secret_findings))
+    if any(finding.get("blocking") for finding in secret_findings):
         sections.append("- Secret-like content detected in staged diff; publish is blocked.")
         sections.append("LIVE_BRIDGE_STAGE: git_publish")
         sections.append("LIVE_BRIDGE_STATUS: fail")

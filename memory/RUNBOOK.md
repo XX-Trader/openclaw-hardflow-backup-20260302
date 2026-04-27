@@ -142,9 +142,9 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 类型：runbook
 范围：`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`pipeline_runner.py`
 事实：默认 live 入口会注入 `git_publish` 命令。runner 只在 verification、code review、deployment（如有）、acceptance 和 memory writeback 全部通过后执行该阶段；`git_publish` 优先接收 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保不发布 `command_cwd` 的未验收脏改动；失败时阻塞为 `failed_stage=git_publish`、`next_action=fix_git_publish`。
-证据：`pipeline_runner.py` 会写入 `git_publish_input_patch_report`；`smart_arb_live_bridge.py --stage git_publish` 会先执行 `git diff --check`，再 `git add -A`，随后执行 `git diff --cached --check`，打印 staged diff 统计，不打印完整 diff；随后扫描 staged diff 中的密钥形态，确认安全后生成脱敏中文提交说明并执行 `git push <remote> HEAD:<branch>`。该阶段不使用 force push。
-最后验证：2026-04-27 相关单元测试 62 项 OK
-复用建议：如远端冲突、认证失败、疑似密钥或 push 失败，先处理 `command-runs/git_publish-*.json` 与 `git_publish_report.md`，不要绕过 reviewer 或直接 force push。需要临时关闭发布时使用 `--skip-git-publish-command` 或 `SMART_ARB_SKIP_GIT_PUBLISH_COMMAND=1`。
+证据：`pipeline_runner.py` 会写入 `git_publish_input_patch_report`；`smart_arb_live_bridge.py --stage git_publish` 会先执行 `git diff --check`，再 `git add -A`，随后执行 `git diff --cached --check`，打印 staged diff 统计，不打印完整 diff；随后扫描 staged diff 中的密钥形态，并在 `## Secret Scan Findings` 中输出脱敏的文件、行号、规则、风险等级和片段。真实 token/header/cookie/高熵值、hardcoded fallback secret、PEM private key marker/material 仍 hard block；环境变量名、测试假值、文档占位和 Basic Auth 说明只作为非阻塞 finding。确认安全后生成脱敏中文提交说明并执行 `git push <remote> HEAD:<branch>`。该阶段不使用 force push。
+最后验证：2026-04-27 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 59 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过
+复用建议：如远端冲突、认证失败、疑似密钥或 push 失败，先处理 `command-runs/git_publish-*.json` 与 `git_publish_report.md`。只有非密钥类发布失败可走 `fix_git_publish` 自动回流；secret scan 中 `risk=high` / `blocking=true` / high-risk rule evidence 仍停人工确认。不要绕过 reviewer、不要关闭 secret scan、不要 force push。需要临时关闭发布时使用 `--skip-git-publish-command` 或 `SMART_ARB_SKIP_GIT_PUBLISH_COMMAND=1`。
 
 ## 定时仓库治理
 
@@ -170,6 +170,7 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_action`：
 
+0. 运行中每 60 秒输出一次 `# nofx 任务执行进度`，从 `pipeline_state.json` 和 `command-runs/*.json` 读取已完成阶段、当前阶段、最近 agent 输出和证据目录；`--emit-json` / `--no-chat-summary` 会关闭进度卡，保持机器可读原始输出。
 1. `agent 分工与完成情况` 展示每个阶段对应 owner、状态、verdict、score 和证据文件。
 2. `agent 输出摘要` 从 `command-runs/*.json` 读取 stdout/stderr/error，展示每个 stage command 的 agent、returncode 和关键输出。
 3. `阻塞原因` 展示失败阶段、stage detail、命令输出和 artifact 摘要。
@@ -177,10 +178,11 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 
 默认自动修复策略：
 
-- `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`：最多自动回流 2 次。
+- `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`、`fix_git_publish`：最多自动回流 2 次。
 - 自动回流仍重新执行 `/home/arbops/.local/bin/smart-arb-pipeline`，每次使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 自动回流会把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并同时通过内联 `PIPELINE_REPAIR_CONTEXT` 注入后续 Hermes stage prompt；即使文件写入失败，也不会丢失失败上下文。
 - 状态卡默认展开最多 24 条 `command-runs/*.json` 摘要；需要更多可设置 `SMART_ARB_CHAT_COMMAND_LIMIT` 或传 `--chat-command-limit`。profile SOUL 要求把完整中文状态卡分段回传到聊天频道，不允许只回 run id、失败阶段和证据目录。
+- 进度卡默认 60 秒一次；需要调整可设置 `SMART_ARB_PROGRESS_INTERVAL_SECONDS` 或传 `--progress-interval-seconds`，最近阶段和最近命令条数分别由 `SMART_ARB_PROGRESS_STAGE_LIMIT` / `--progress-stage-limit`、`SMART_ARB_PROGRESS_COMMAND_LIMIT` / `--progress-command-limit` 控制。
 - 如果 Hermes CLI stdout/stderr 只有 `session_id: ...`，但对应 profile session 文件已有 assistant 输出，live bridge 会从 `/home/arbops/.hermes/profiles/<profile>/sessions/session_<id>.json` 恢复最新 assistant 内容，先做脱敏，再用于 `external_research` local-only pass 判定和状态卡输出。
 - 非代码 Hermes 阶段只返回 stdout/final answer 证据，不直接编辑 `research_report.md`、`requirements_discussion.md`、`patch_summary.md` 等 pipeline artifacts；bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，这些文件由 runner 负责持久化。
 - `external_research` 如果不需要互联网检索，必须在输出里写明 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据；这属于有效 research evidence，不应因缺少 browser lookup 被判失败。

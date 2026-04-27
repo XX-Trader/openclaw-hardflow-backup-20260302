@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from textwrap import dedent
-from typing import Any
+from typing import Any, Callable
 
 
 SCHEMA_VERSION = "1.0"
@@ -1074,6 +1074,7 @@ def run_stage_command(
     command: str,
     index: int = 1,
     input_patch_file: Path | None = None,
+    progress_callback: Callable[[str, str], None] | None = None,
 ) -> dict[str, Any]:
     command_text = str(command or "").strip()
     if not command_text:
@@ -1084,6 +1085,8 @@ def run_stage_command(
     workspaces = prepare_agent_workspaces(config, run_dir, stage_name, index, base_cwd, input_patch_file)
     primary_workspace = workspaces[0]
     cwd = primary_workspace.repo_dir
+    if progress_callback is not None:
+        progress_callback(stage_name, f"running command {index} in {primary_workspace.agent_id}")
 
     started_at = utc_now()
     stdout = ""
@@ -1193,9 +1196,21 @@ def run_stage_commands(
     stage_name: str,
     commands: tuple[str, ...],
     input_patch_file: Path | None = None,
+    progress_callback: Callable[[str, str], None] | None = None,
 ) -> list[dict[str, Any]]:
     return [
-        run_stage_command(config, run_dir, runtime, artifacts, requirement, stage_name, command, index, input_patch_file)
+        run_stage_command(
+            config,
+            run_dir,
+            runtime,
+            artifacts,
+            requirement,
+            stage_name,
+            command,
+            index,
+            input_patch_file,
+            progress_callback,
+        )
         for index, command in enumerate(commands, start=1)
     ]
 
@@ -1971,17 +1986,33 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     stages: list[StageRecord] = []
     artifacts: dict[str, str] = {}
 
+    def write_progress_state(stage_name: str | None = None, detail: str = "") -> None:
+        snapshot_stages = list(stages)
+        if stage_name:
+            snapshot_stages.append(
+                StageRecord(
+                    name=stage_name,
+                    status="running",
+                    next_action="continue",
+                    detail=detail,
+                )
+            )
+        state = pipeline_state(config, run_id, run_dir, runtime, snapshot_stages, artifacts, "running", "continue")
+        write_json(run_dir / "pipeline_state.json", state)
+
     def record(name: str, file_name: str, content: str, **extra: Any) -> Path:
         path = run_dir / file_name
         write_text(path, content)
         artifacts[name] = str(path)
         stages.append(StageRecord(name=name, status="completed", artifact=file_name, **extra))
+        write_progress_state()
         return path
 
     meta_path = run_dir / "run_meta.json"
     write_json(meta_path, render_run_meta(config, run_id, requirement, runtime))
     artifacts["run_meta"] = str(meta_path)
     stages.append(StageRecord(name="intake", status="completed", artifact="run_meta.json"))
+    write_progress_state()
 
     record("context_snapshot", "context_snapshot.md", render_context_snapshot(requirement, runtime))
     record("project_memory_context", "project_memory_context.md", render_project_memory_context(config, requirement, runtime))
@@ -1993,6 +2024,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         requirement,
         "external_research",
         config.research_commands,
+        progress_callback=write_progress_state,
     ) if config.research_commands else []
     research_evidence_supplied = bool(
         config.dry_run
@@ -2033,6 +2065,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         requirement,
         "requirements_discussion",
         config.requirements_discussion_commands,
+        progress_callback=write_progress_state,
     ) if config.requirements_discussion_commands else []
     discussion_evidence_supplied = bool(config.dry_run or discussion_command_reports)
     discussion_body = render_requirements_discussion(requirement)
@@ -2071,6 +2104,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         requirement,
         "requirements_review",
         config.requirements_review_commands,
+        progress_callback=write_progress_state,
     ) if config.requirements_review_commands else []
     req_verdict = "requires_revision" if config.simulate_failure_stage == "requirements" else "ready_for_solution"
     if req_review_reports:
@@ -2121,6 +2155,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         requirement,
         "solution_review",
         config.solution_review_commands,
+        progress_callback=write_progress_state,
     ) if config.solution_review_commands else []
     sol_verdict = "requires_revision" if config.simulate_failure_stage == "solution" else "ready_for_implement"
     if sol_review_reports:
@@ -2166,6 +2201,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
             "code_execution",
             config.code_command,
+            progress_callback=write_progress_state,
         )
         if code_command_report.get("workspace_patch_file"):
             candidate = Path(str(code_command_report["workspace_patch_file"]))
@@ -2218,6 +2254,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         "verification",
         config.verification_commands,
         code_workspace_patch_file,
+        progress_callback=write_progress_state,
     ) if config.verification_commands else []
     missing_live_verification = (
         not config.dry_run
@@ -2296,6 +2333,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         "code_review",
         code_review_commands,
         input_patch_file=code_workspace_patch_file,
+        progress_callback=write_progress_state,
     ) if code_review_commands else []
     missing_live_code_review = (
         not config.dry_run
@@ -2370,6 +2408,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             "deployment",
             config.deployment_command,
             input_patch_file=code_workspace_patch_file,
+            progress_callback=write_progress_state,
         )
         deployment_failed = not deployment_command_report.get("ok")
         record(
@@ -2474,6 +2513,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 "memory_writeback",
                 config.memory_write_command,
                 input_patch_file=code_workspace_patch_file,
+                progress_callback=write_progress_state,
             )
         )
     elif config.write_project_memory:
@@ -2560,6 +2600,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             "git_publish",
             config.git_publish_command,
             input_patch_file=git_publish_input_patch_file,
+            progress_callback=write_progress_state,
         )
         git_publish_report["input_patch"] = git_publish_input_patch_report
         git_publish_command_report_path = artifacts.get("command_git_publish_1")
