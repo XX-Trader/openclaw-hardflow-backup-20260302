@@ -1357,9 +1357,21 @@ def specified_agent_subprocess_env(profile: str, runner_bin: str) -> dict[str, s
     if Path(str(runner_bin or "")).name.lower() in {"hermes", "hermes.exe"}:
         profile_dir = RUNTIME_HOME / "profiles" / profile
         if profile_dir.exists():
-            env.setdefault("HOME", str(RUNTIME_HOME.parent))
-            env.setdefault("HERMES_HOME", str(profile_dir))
+            env["HOME"] = str(RUNTIME_HOME.parent)
+            env["HERMES_HOME"] = str(profile_dir)
     return env
+
+
+def specified_agent_executor_command(cmd: list[str]) -> list[str]:
+    target_user = str(os.environ.get("SMART_ARB_SPECIFIED_AGENT_RUN_AS", "arbops") or "").strip()
+    geteuid = getattr(os, "geteuid", None)
+    try:
+        is_root = bool(callable(geteuid) and int(geteuid()) == 0)
+    except Exception:
+        is_root = False
+    if is_root and target_user and shutil.which("runuser"):
+        return ["runuser", "-u", target_user, "--", *cmd]
+    return cmd
 
 
 def specified_agent_task_id(run_id: str, assignee: str) -> str:
@@ -1599,7 +1611,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
         "--emit-json",
     ]
     proc = subprocess.run(
-        cmd,
+        specified_agent_executor_command(cmd),
         text=True,
         encoding="utf-8",
         errors="replace",

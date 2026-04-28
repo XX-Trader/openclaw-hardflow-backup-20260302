@@ -316,7 +316,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 module,
                 "task_center_snapshot",
                 return_value=(snapshot_task, snapshot_reports),
-            ):
+            ), mock.patch.dict(module.os.environ, {"HOME": "/root"}, clear=False):
                 payload = module.run_specified_agent_route(args, "请测试一次", "spreadagent")
 
             TaskCenter, _TaskCenterError = module.load_task_center_classes()
@@ -344,7 +344,19 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual(str(module.OPS_DIR / "policy"), call_kwargs["env"]["OPENCLAW_POLICY_ROOT"])
         self.assertEqual(str(module.HARDFLOW_REPO_DIR.resolve()), call_kwargs["env"]["HARDFLOW_WORKFLOW_REPO"])
         self.assertEqual(str(module.HARDFLOW_REPO_DIR.resolve()), call_kwargs["env"]["OPENCLAW_WORKFLOW_REPO"])
+        self.assertEqual(str(runtime_home.parent), call_kwargs["env"]["HOME"])
         self.assertEqual(str(runtime_home / "profiles" / "spreadagent"), call_kwargs["env"]["HERMES_HOME"])
+
+    def test_specified_agent_executor_drops_root_to_runtime_user_when_available(self):
+        module = load_module()
+        with mock.patch.object(module.os, "geteuid", return_value=0, create=True), mock.patch.object(
+            module.shutil,
+            "which",
+            return_value="/usr/sbin/runuser",
+        ):
+            cmd = module.specified_agent_executor_command(["python3", "runner.py"])
+
+        self.assertEqual(["runuser", "-u", "arbops", "--", "python3", "runner.py"], cmd)
 
     def test_render_chat_summary_shows_block_reason_and_repair_decision(self):
         module = load_module()
