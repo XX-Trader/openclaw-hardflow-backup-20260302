@@ -35,6 +35,15 @@
 
 ## nofx hardflow 拉取与安装记录
 
+### 2026-04-28 16:27 - Discord 回答状态版本同步到 nofx
+
+类型：deploy
+范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Task Center、内控 API
+事实：nofx hardflow 已 fast-forward 到回答状态代码批次 `f94c2284`（远端短 hash `f94c228`），runtime installer 已把 `smart_arb_pipeline_entry.py` 安装到 `/home/arbops/.hermes/ops`。安装态文件包含启动卡、运行中进度卡和最终状态卡的 `回答状态` 行。两个 live profile `SOUL.md` 已从仓库模板同步，原文件备份为 `SOUL.md.bak-answer-status-20260428T082523Z`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
+证据：远端 `python3 -m py_compile scripts/openclaw-ops/smart_arb_pipeline_entry.py` 通过；远端 `python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；远端定向 `unittest` 39 项 OK；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；两个 gateway 均为 `running` / Discord `connected`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`；echo smoke run `deploy-smoke-spreadagent-20260428T082751163478Z` 完成 15/15 阶段，状态卡顶部显示 `回答状态: 已回答完毕`，并使用 `--skip-deployment-command`、`--skip-git-publish-command`，未触发真实交易、真实部署或 git publish。
+最后验证：2026-04-28 16:27
+复用建议：以后修改 Discord 状态卡或 profile SOUL 后，必须同时验证三层：仓库源码、`/home/arbops/.hermes/ops` 安装态、live profile `SOUL.md`；仅 `git pull` 不代表 Discord gateway 已加载新提示词。
+
 ### 2026-04-28 14:34 - DeliveryPlan / revise_solution 版本同步到 nofx
 
 类型：deploy

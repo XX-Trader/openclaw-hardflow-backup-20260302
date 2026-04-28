@@ -4,9 +4,9 @@
 
 类型：bugfix
 范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`
-事实：Discord pipeline 启动卡和运行中进度卡现在明确显示 `回答状态: 正在回复/执行中`；最终 `# nofx 任务执行状态` 显示 `回答状态: 已回答完毕`、`未回答完毕，等待人工确认或自动修复` 或无法解析执行结果。两个 nofx profile SOUL 同步要求只读直接回复在末尾追加 `回答状态: 已回答完毕`，长只读查询可先发 `回答状态: 正在回复/查询中`。
-证据：新增 `answer_status_label()`、进度卡/最终卡渲染断言，以及两个 profile 模板规则。
-最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 39 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`python -B -m py_compile scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`git diff --check` 通过
+事实：Discord pipeline 启动卡和运行中进度卡现在明确显示 `回答状态: 正在回复/执行中`；最终 `# nofx 任务执行状态` 显示 `回答状态: 已回答完毕`、`未回答完毕，等待人工确认或自动修复` 或无法解析执行结果。两个 nofx profile SOUL 同步要求只读直接回复在末尾追加 `回答状态: 已回答完毕`，长只读查询可先发 `回答状态: 正在回复/查询中`。代码批次 `f94c2284` 已推送并部署到 nofx，远端 hardflow HEAD 为 `f94c228`，live runtime 安装态已加载 `回答状态` 渲染逻辑。
+证据：新增 `answer_status_label()`、进度卡/最终卡渲染断言，以及两个 profile 模板规则。nofx 两个 live profile `SOUL.md` 已同步仓库模板，备份为 `SOUL.md.bak-answer-status-20260428T082523Z`，并重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`；gateway 均为 `running/connected`；echo smoke `deploy-smoke-spreadagent-20260428T082751163478Z` 完成 15/15 阶段，状态卡显示 `回答状态: 已回答完毕`。
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 39 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`python -B -m py_compile scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`git diff --check` 通过。nofx 远端 `py_compile`、`compileall`、39 项定向 `unittest`、`smart-arb-pipeline --help`、gateway state、内控 API `/health` 和 `/api/strategy/status` smoke 均通过
 复用建议：以后用户反馈“看不出是否还在回复 / 是否答完”时，先检查状态卡是否包含 `回答状态` 行，再确认 profile SOUL 是否已同步到 live runtime 并重启 gateway。
 
 ## 2026-04-28 - DeliveryPlan 结构化方案契约与 revise_solution 回流
