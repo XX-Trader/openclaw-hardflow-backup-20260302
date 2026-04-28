@@ -7,6 +7,13 @@
 
 ## 2026-04-29 已完成
 
+- [x] [2026-04-29] **specified_agent 指定 agent 路线与 session/run id 状态卡上线**
+  - `specified_agent` 路线已从占位跳过改为真实执行：用户选择 agent 后，入口创建 Task Center `specified_agent_dispatch` 任务，分配给指定 agent，并由执行器回写 agent session/run 证据。
+  - nofx 无 `openclaw` CLI 时自动使用 Hermes fallback；执行器会降权为 `arbops`，使用目标用户 `python3`，并把 `session_id`、`runId`、`sessionKey` 写入 Task Center 报告和统一状态卡。
+  - `coding_workflow` 路线会把 live bridge / executor 输出中的真实 agent session/run id 汇总进 `command-runs`、`pipeline_state.agent_invocations`、Task Center payload 和 Discord 状态卡，不再只显示 stage label。
+  - 已推送并安装提交 `22cecab` 到 nofx；远端 `smart-arb-pipeline --route-choice specified_agent --assignee tester` smoke 通过，状态卡展示被调用 agent、Task Center id、executor run id、agent session id、agent run id、session key、当前阶段、完成状态和失败原因。
+  - 验证：本地定向 pytest/py_compile/diff check 通过；nofx 远端 `py_compile`、42+6+3 项定向 unittest、runtime installer、指定 agent live smoke、`/health` 与 `/api/strategy/status` 均通过。
+
 - [x] [2026-04-29] **Discord route-choice 入口硬门禁**
   - 定位用户反馈的问题：上一轮主要依赖 nofx profile `SOUL.md` 提示词要求先问用户，`smart_arb_pipeline_entry.py` 入口本身没有阻止 Discord 调用直接进入 pipeline。
   - 入口新增 `--route-choice` 人工选择凭证；Discord source 默认必须携带 `coding_workflow` 或 `todo_auto_candidate` 才启动 coordinator pipeline，缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`。
