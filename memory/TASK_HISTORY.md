@@ -6,25 +6,25 @@
 范围：`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`scripts/openclaw-ops/smart_arb_live_bridge.py`、`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py`、`tests/scripts_openclaw_ops/test_smart_arb_live_bridge.py`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`
 事实：修复 nofx pipeline 方案阶段总被 `solution_review` 拦住的结构性问题。`solution_package` 现在生成通用 `delivery_plan.json` 作为交付契约，`solution.md` 只从契约渲染，避免靠 Markdown 文案过 reviewer。契约字段覆盖任务类型、owner、切片、目标文件/定位策略、实施步骤、验证命令、发布/回滚门禁、人工阻塞条件和安全边界；`solution_review`、`code_execution` 和后续阶段上下文都会读取该契约。`revise_solution` 加入自动回流白名单；否定式安全边界如 “do not set PRODUCTION_TRADING_ENABLED=true” 不再误判为 high risk，正向启用真实交易/下单/资金/凭证仍 hard block。
 证据：`compile_delivery_plan()`、`delivery_plan.json` artifact、`PIPELINE_DELIVERY_PLAN_FILE`、`stage_context_files()` 和 `REPAIRABLE_NEXT_ACTIONS` 已更新；新增/更新单测覆盖结构化契约、prompt 注入、非代码 stage 隔离 artifact 写入路径、`revise_solution` 自动回流和真实交易正向表达 hard block。
-最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 96 项 OK；nofx 已安装 `3a44f0b0`，远端 `compileall` 与 67 项定向单测 OK
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 96 项 OK；nofx 已安装 runtime 代码批次 `3a44f0b0`，远端 `compileall` 与 67 项定向单测 OK
 复用建议：方案评审要求 `requires_revision` 时先看 `delivery_plan.json` 和 `solution_review.md` 的结构化缺口，不要放松 reviewer。修 pipeline/runtime 自身继续绕过 Discord workflow，走外部 Codex/SSH/operator 改 hardflow、测试后再安装。
 
 ## 2026-04-28 - nofx Discord 证据短标签与 cron 群投递
 
 类型：bugfix
 范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`cron/jobs.json`、`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`、`tests/scripts_openclaw_ops/test_project_delivery_runtime_installer.py`
-事实：Discord 状态卡中的证据项不再直接显示 `solution_review.md`、`command-runs/external_research-1.json` 这类文件名，而是显示 20 字以内中文短说明，例如“方案评审报告”“外部资料核对命令2”。完整证据目录和文件仍保留在 pipeline run 目录。`cron/jobs.json` 的 announce / failureAlert 投递目标已从旧 Telegram 群切到 spreadagent Discord 群 `1494595527181078578`，让定时任务结果和失败告警进入群里。2026-04-28 后续部署已把包含该变更的 `3a44f0b0` 安装到 nofx live runtime，并同步两个 profile `SOUL.md`。
+事实：Discord 状态卡中的证据项不再直接显示 `solution_review.md`、`command-runs/external_research-1.json` 这类文件名，而是显示 20 字以内中文短说明，例如“方案评审报告”“外部资料核对命令2”。完整证据目录和文件仍保留在 pipeline run 目录。`cron/jobs.json` 的 announce / failureAlert 投递目标已从旧 Telegram 群切到 spreadagent Discord 群 `1494595527181078578`，让定时任务结果和失败告警进入群里。2026-04-28 后续部署已把包含该变更的 runtime 代码批次 `3a44f0b0` 安装到 nofx live runtime，并同步两个 profile `SOUL.md`。
 证据：新增证据短标签映射和单测；安装器测试校验 selected cron job 安装后的 delivery/failureAlert 指向 Discord 群；两个 nofx profile SOUL 要求状态卡证据项保持 20 字以内中文短说明；远端 `arbops@43.153.157.46` SSH 低频重试返回 `kex_exchange_identification: read: Connection reset by peer`。
 最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 36 项 OK；`python -B -m json.tool cron/jobs.json`、`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过
 复用建议：如果用户反馈状态卡证据看不懂，优先补 `ARTIFACT_EVIDENCE_LABELS` 的中文短标签；如果要换定时任务群，更新 `cron/jobs.json` 后重跑 runtime installer，不要改任务 payload。远端 SSH 恢复后按 nofx installer 流程同步本仓库到 `/home/arbops/.hermes`。
 
-## 2026-04-28 - nofx 拉取并安装 3a44f0b0 hardflow runtime
+## 2026-04-28 - nofx 拉取并安装 runtime 代码批次 3a44f0b0
 
 类型：deploy
 范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、nofx profile `SOUL.md`、runtime installer、cron jobs、内控 API
-事实：本机提交 `3a44f0b0` 已推送到 `origin/main`；nofx hardflow 仓库已对齐该提交，工作树 clean，`HEAD...origin/main=0 0`。runtime installer 返回 `ok=true`、`changed=true`，安装态 ops 文件与仓库源码 SHA256 对齐。两个 live profile `SOUL.md` 已同步仓库模板并备份为 `SOUL.md.bak-20260428T143343`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
-证据：远端 `compileall` 通过；远端 `python3 -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 67 项 OK；`smart-arb-pipeline --help` 正常；两个 gateway 均为 `running/connected`；内控 API `/health` 为 `status=ok`，`/api/strategy/status` 为 `running=false`。
-最后验证：2026-04-28 14:34
+事实：本机 runtime 代码批次 `3a44f0b0` 已推送到 `origin/main`；nofx hardflow 仓库已安装该代码批次，安装时工作树 clean，`HEAD...origin/main=0 0`。后续文档/记忆记录提交可继续 fast-forward 到 `origin/main`，不改变本批 runtime artifact。runtime installer 返回 `ok=true`、`changed=true`，安装态 ops 文件与仓库源码 SHA256 对齐。两个 live profile `SOUL.md` 已同步仓库模板并备份为 `SOUL.md.bak-20260428T143343`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
+证据：远端 `compileall` 通过；远端 `python3 -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 67 项 OK；`smart-arb-pipeline --help` 正常；两个 gateway 均为 `running/connected`；内控 API `127.0.0.1:18080/health` 为 `status=ok`，`127.0.0.1:18080/api/strategy/status` 为 `running=false`。
+最后验证：2026-04-28 14:40
 复用建议：nofx 安装请求完成后要同时检查仓库 HEAD、runtime ops SHA256、profile `SOUL.md` SHA256、gateway connected 和内控 API；若 profile 模板有变更，安装器之外必须同步 live profile 并重启 gateway。
 
 ## 2026-04-27 - nofx 拉取并安装 067fbc43 hardflow runtime

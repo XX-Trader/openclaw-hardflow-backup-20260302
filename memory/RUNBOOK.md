@@ -39,9 +39,9 @@
 
 类型：deploy
 范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/cron/jobs.json`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、内控 API
-事实：nofx hardflow 仓库已对齐 `3a44f0b0`，`HEAD...origin/main` 为 `0 0` 且工作树 clean。runtime installer 返回 `ok=true`、`changed=true`；安装态 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 与仓库源码 SHA256 对齐。两个 live profile `SOUL.md` 已从仓库模板同步并备份为 `SOUL.md.bak-20260428T143343`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
+事实：nofx hardflow 已安装 runtime 代码批次 `3a44f0b0`，安装时 `HEAD...origin/main` 为 `0 0` 且工作树 clean；后续文档/记忆记录提交可继续 fast-forward 到 `origin/main`，不改变本批 runtime artifact。runtime installer 返回 `ok=true`、`changed=true`；安装态 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 与仓库源码 SHA256 对齐。两个 live profile `SOUL.md` 已从仓库模板同步并备份为 `SOUL.md.bak-20260428T143343`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
 证据：远端 `compileall` 通过；远端定向 `unittest` 67 项 OK；`smart-arb-pipeline --help` 正常；`arbitrageagent` PID `1137425`、`spreadagent` PID `1137427`，gateway 均为 `running` / Discord `connected`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`；安装器 JSON 显示 cron jobs 已同步。
-最后验证：2026-04-28 14:34
+最后验证：2026-04-28 14:40
 复用建议：修改仓库内 nofx profile 模板后，安装 runtime ops 之外还要手动同步 `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 并重启 gateway；否则 Discord profile 仍会使用旧提示词。
 
 ### 2026-04-27 23:17 - 密钥扫描收敛版本同步到 nofx
@@ -224,7 +224,7 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`
 事实：`solution_package` 的事实源改为 `delivery_plan.json`，`solution.md` 只作为人工展示层。`delivery_plan.json` 使用 `delivery-plan/v1`，包含 task_type、owner、scope_slices、target_files/entry_points、out_of_scope、implementation_steps、verification_commands、release_gates、rollback_plan、human_blockers、risk_boundaries 和 plan_findings。`solution_review` 和 `code_execution` 的 prior context 都会读入 `delivery_plan.json`；方案 reviewer 必须先审结构化契约，不能只按 Markdown 文案形态放行或阻塞。
 证据：`pipeline_runner.py` 新增 `compile_delivery_plan()`、`delivery_plan.json` artifact 和 `solution.md` 渲染；`smart_arb_live_bridge.py` 将 `delivery_plan.json` 注入 `solution_review`、`code_execution`、后续 verification/review/deploy/writeback/git_publish 上下文，并在非代码 Hermes stage 中剥离 `PIPELINE_DELIVERY_PLAN_FILE` 写入路径；`smart_arb_pipeline_entry.py` 将 `revise_solution` 加入自动回流白名单，并允许“do not set PRODUCTION_TRADING_ENABLED=true”这类否定式安全边界，不放行正向启用实盘。
-最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 96 项 OK；远端 nofx 已安装 `3a44f0b0`，`compileall` 通过，67 项定向单测 OK
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 96 项 OK；远端 nofx 已安装 runtime 代码批次 `3a44f0b0`，`compileall` 通过，67 项定向单测 OK
 复用建议：以后方案评审总是卡在“solution.md 不是实施方案”时，先看 `delivery_plan.json` 是否缺字段或 reviewer finding code，再走 `revise_solution` 回流；不要通过放松 reviewer 或手工润色 Markdown 解决。修 workflow 自身仍走外部 Codex/SSH/operator，不让 Discord profile 递归自修。
 
 ### 2026-04-27 - 工作流自修与未通过 review 补丁清理

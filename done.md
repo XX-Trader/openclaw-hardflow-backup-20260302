@@ -11,20 +11,20 @@
   - `solution_package` 新增 `delivery_plan.json` 结构化交付契约，字段覆盖任务类型、切片、目标文件/定位策略、实施步骤、验证命令、发布/回滚门禁、人工阻塞条件和安全边界。
   - `solution.md` 改为由契约渲染的人工展示层；`solution_review`、`code_execution` 和后续阶段上下文都读取 `delivery_plan.json`，不再靠润色 Markdown 通过审查。
   - `revise_solution` 纳入低风险自动回流；“do not set PRODUCTION_TRADING_ENABLED=true”等否定式安全边界不再误判，正向启用实盘、下单、资金操作、凭证仍 hard block。
-  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 96 项 OK；nofx 已安装 `3a44f0b0`，远端 `compileall` 与 67 项定向单测 OK。
+  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 96 项 OK；nofx 已安装 runtime 代码批次 `3a44f0b0`，远端 `compileall` 与 67 项定向单测 OK。
 
 - [x] [2026-04-28] **nofx Discord 证据短标签与 cron 群投递**
   - `smart-arb-pipeline` 状态卡的证据项改为 20 字以内中文短说明，例如“方案评审报告”“代码执行命令1”，完整证据文件仍保留在 run 目录。
   - `cron/jobs.json` 的 `delivery` 与 `failureAlert` 从旧 Telegram 群切到 spreadagent Discord 群 `1494595527181078578`，定时任务结果和失败告警默认输出到群里。
   - 两个 nofx Discord profile SOUL 同步要求证据短说明；安装器测试校验 selected cron job 安装后的 Discord 投递目标。
-  - 后续部署已把包含该变更的 `3a44f0b0` 安装到 nofx live runtime；两个 live profile `SOUL.md` 已同步仓库模板并重启，gateway 均为 `running/connected`。
+  - 后续部署已把包含该变更的 runtime 代码批次 `3a44f0b0` 安装到 nofx live runtime；两个 live profile `SOUL.md` 已同步仓库模板并重启，gateway 均为 `running/connected`。
   - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 36 项 OK；`python -B -m json.tool cron/jobs.json`、`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
 
-- [x] [2026-04-28] **nofx 拉取并安装 `3a44f0b0` hardflow runtime**
-  - 本机提交 `3a44f0b0` 已推送到 `origin/main`；nofx 仓库已对齐该提交，工作树 clean，`HEAD...origin/main=0 0`。
+- [x] [2026-04-28] **nofx 拉取并安装 runtime 代码批次 `3a44f0b0`**
+  - 本机 runtime 代码批次 `3a44f0b0` 已推送到 `origin/main`；nofx 仓库已安装该代码批次，安装时工作树 clean，`HEAD...origin/main=0 0`。后续文档/记忆记录提交可继续 fast-forward 到 `origin/main`，不改变本批 runtime artifact。
   - `runtime_installer.py install` 返回 `ok=true`、`changed=true`，安装态 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 与仓库源码 SHA256 对齐。
   - 两个 live profile `SOUL.md` 已同步仓库模板，备份为 `SOUL.md.bak-20260428T143343`，并重启 `hermes-discord-arbitrage`、`hermes-discord-spread`。
-  - 验证：远端 `compileall` 通过；定向单测 67 项 OK；`smart-arb-pipeline --help` 正常；两个 gateway `running/connected`；内控 API `/health` 与 `/api/strategy/status` 通过。
+  - 验证：远端 `compileall` 通过；定向单测 67 项 OK；`smart-arb-pipeline --help` 正常；两个 gateway `running/connected`；内控 API `127.0.0.1:18080/health` 与 `127.0.0.1:18080/api/strategy/status` 通过。
 
 ## 2026-04-27 已完成
 
