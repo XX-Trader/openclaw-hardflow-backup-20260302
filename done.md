@@ -7,6 +7,11 @@
 
 ## 2026-04-28 已完成
 
+- [x] [2026-04-28] **nofx 安装 workflow runtime `353f420d`**
+  - 已把 workflow 代码批次 `353f420d` 推送到 `origin/main`，nofx 仓库从 `195c513` fast-forward 到 `353f420`，`HEAD...origin/main=0 0` 且工作树 clean。
+  - `runtime_installer.py install` 已把最新 `pipeline_runner.py` 安装到 `/home/arbops/.hermes/ops`；本轮没有 profile SOUL 改动，因此未重启 Discord gateway。
+  - 验证：远端安装态 `pipeline_runner.py` `py_compile` 通过；远端定向单测 73 项 OK；仓库源码/runtime SHA256 对齐；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；cron job 数 12 且 `memtidy_hits=0`；两个 gateway `running`；dry-run smoke 验证 Windows 绝对路径进入 `filtered_target_candidates`。
+
 - [x] [2026-04-28] **本机 WSL multicore Codex 登录修复**
   - 定位 `multicore` 报 `No Codex credentials stored` 的根因：WSL 中 `trend-backtest` 已有 profile 级 Codex auth store，但 `multicore` 缺少 `/home/ubuntu/.hermes/profiles/multicore/auth.json`。
   - 已复制已验证可用的 profile auth store，权限设为 `0600`，并重启 tmux `multicore-gateway`。
@@ -16,7 +21,7 @@
   - 修复简单任务生成 `delivery_plan.json` 时把 `project_memory_context` 里的 `.workflow`、`.hermes`、项目记忆控制文件等当成业务目标文件的问题。
   - `target_files` 现在优先使用用户原始需求/修复上下文中的显式路径；review/research/memory 只作为低信任补充并过滤控制面路径。找不到可靠业务文件时保持 `discovery_required=true`，不猜测编辑 workflow 宿主；被过滤的异常候选会写入 `plan_findings.filtered_target_candidates` 并展示在 `solution.md`，方便 `solution_review` 判断为什么没有进入业务目标。
   - `human_blockers` 改为 stop-boundary 文案，避免 `revise_solution` 自动回流被误判为正向凭证/资金请求。
-  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
+  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 73 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过；code-reviewer 复审通过。
 
 - [x] [2026-04-28] **nofx profile 普通沟通/独立协作边界上线**
   - 两个 nofx Discord profile SOUL 补齐三分流：普通沟通/只读查询/方案讨论不启动 pipeline；正常项目执行仍进 `smart-arb-pipeline`；pipeline/profile 自身修复提示外部 Codex/SSH operator。

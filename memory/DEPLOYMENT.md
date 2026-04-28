@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-04-28 19:05 - nofx 安装 353f420d workflow runtime
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、runtime installer、cron jobs、Discord gateways
+事实：本机 workflow 代码批次 `353f420d` 已推送到 `origin/main`，nofx hardflow 仓库已从 `195c513` fast-forward 到 `353f420`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 返回 `ok=true`、`changed=true`，已把最新 `pipeline_runner.py` 安装到 `/home/arbops/.hermes/ops`；本轮未修改 nofx profile SOUL，因此未重启 Discord gateway。`memtidy_runner` 旧 cron 继续保持移除，当前 cron job 数为 12。
+证据：远端 `python3 -m py_compile /home/arbops/.hermes/ops/pipeline_runner.py` 通过；远端 `python3 -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 73 项 OK；仓库源码与 runtime 安装态 `pipeline_runner.py` SHA256 均为 `c481bf4c933a64e6e5cda7845391f2b99a42b57aa56e1136d43ceca31dd5c6cf`；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；cron 命中 backlog/source/repo 巡检任务且 `memtidy_hits=0`；`arbitrageagent` 与 `spreadagent` tmux 会话存在、gateway_state 均为 `running`、日志近 80 行错误数为 0；runtime dry-run smoke `/tmp/hardflow-install-smoke-20260428T110456Z` 返回 `status=completed`，`E:/repo/src/app.py` 未进入 `target_files`，并以 `external_or_runtime_absolute_path` 出现在 `filtered_target_candidates` 和 `solution.md`。
+最后验证：2026-04-28 19:05
+复用建议：以后远端 smoke 需要验证入口时优先使用绝对路径 `/home/arbops/.local/bin/smart-arb-pipeline`；非登录 shell 里裸 `smart-arb-pipeline` 可能不在 `PATH`，这不是 runtime installer 失败。只改 `/home/arbops/.hermes/ops` 脚本且 profile 模板无变化时，无需重启 Discord gateway。
+
 ## 2026-04-28 17:01 - nofx 普通沟通/独立协作边界同步到 live profile
 
 类型：deploy
@@ -31,7 +40,7 @@ python3 skills/library/project-delivery-pipeline/scripts/runtime_installer.py in
   --task-center-db /home/arbops/.hermes/ops/task-center/task_center.db \
   --emit-json
 ```
-最后验证：2026-04-28 14:34
+最后验证：2026-04-28 19:05
 复用建议：安装前先 `git fetch` 和 `git status --short --branch`；如有脏改动先 `git stash push -u -m pre-pull-hardflow-install-<timestamp>`，再 `git pull --ff-only origin main`。安装后至少检查 runtime installer JSON、`compileall`、定向单测、`/home/arbops/.hermes/ops` 文件、cron jobs、gateway state、内控 API smoke 和 echo smoke。
 
 ## 2026-04-28 - 安装 runtime 代码批次 3a44f0b0

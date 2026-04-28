@@ -35,6 +35,15 @@
 
 ## nofx hardflow 拉取与安装记录
 
+### 2026-04-28 19:05 - filtered target candidates 版本同步到 nofx
+
+类型：deploy
+范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、cron jobs、Discord gateways
+事实：nofx hardflow 已从 `195c513` fast-forward 到 workflow 代码批次 `353f420d`（远端短 hash `353f420`），`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 已把最新 `pipeline_runner.py` 安装到 `/home/arbops/.hermes/ops`，本轮没有 profile SOUL 改动，因此没有重启 Discord gateway。旧 `memtidy_runner` cron 继续保持移除，cron job 数为 12。
+证据：远端 `py_compile` 安装态 `pipeline_runner.py` 通过；远端定向 `unittest` 73 项 OK；仓库源码与 runtime 安装态 `pipeline_runner.py` SHA256 均为 `c481bf4c933a64e6e5cda7845391f2b99a42b57aa56e1136d43ceca31dd5c6cf`；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；cron 命中 `backlog_runner`、`repo_hygiene_reviewer`、`source_registry_watcher`，`memtidy_hits=0`；`hermes-discord-arbitrage`、`hermes-discord-spread`、`hermes-tg` tmux 会话存在；两个 profile `gateway_state=running`，日志近 80 行错误数为 0；runtime dry-run smoke `/tmp/hardflow-install-smoke-20260428T110456Z` 验证 `E:/repo/src/app.py` 被过滤为 `external_or_runtime_absolute_path` 并展示到 `solution.md`。
+最后验证：2026-04-28 19:05
+复用建议：远端非登录 shell 里不要依赖裸 `smart-arb-pipeline`，用 `/home/arbops/.local/bin/smart-arb-pipeline`。只安装 ops 脚本且 profile 模板未变时，不必重启 Discord gateway。
+
 ### 2026-04-28 16:27 - Discord 回答状态版本同步到 nofx
 
 类型：deploy
@@ -262,7 +271,7 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 范围：`pipeline_runner.py`、`delivery_plan.json`、`solution_review`
 事实：`delivery_plan.json.target_files` 不再把低信任上下文里的 workflow 控制面路径当成业务修改目标。可信顺序是：用户原始需求 / 自动修复上下文中的显式路径优先；`requirements_review`、`research_report`、`project_memory_context` 只作为低信任补充，且必须过滤 `.workflow/`、`agent-workspaces/`、`command-runs/`、`task-center/`、`.hermes/`、`.openclaw/`、`.codex/`、`auth-profiles/`、`credential-imports/`、`sessions/` 和项目记忆控制文件名。没有可靠业务文件时保持 `discovery_required=true`，由实现阶段先定位，不猜测编辑控制面。被过滤的异常候选会写入 `plan_findings.filtered_target_candidates`，并在 `solution.md` 的 `Filtered Target Candidates` 段展示 path/source/reason，避免 `solution_review` 只能看到空目标而不知道过滤原因。
 证据：`pipeline_runner.py` 新增低信任路径过滤 helper、候选拒绝原因记录和 solution 展示；回归测试覆盖简单任务不再把 `API_REGISTRY.json`、`.workflow` 或 `.hermes` 放入 `target_files`，同时记录 `project_memory_control_file` / `negated_context` 等过滤原因；review context 中同时出现真实实现文件和控制面路径时只保留真实实现文件，并展示被排除候选。
-最后验证：2026-04-28 18:29 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
+最后验证：2026-04-28 18:52 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 73 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过；code-reviewer 复审通过。
 复用建议：方案评审卡在敏感路径时不要放松 reviewer，先看 `target_files` 的来源和 `plan_findings.filtered_target_candidates`；如果路径来自 `project_memory_context`、runtime host 或否定上下文，只能作为检索/证据路径，不应作为修改目标。
 
 ### 2026-04-28 - DeliveryPlan 结构化方案契约
