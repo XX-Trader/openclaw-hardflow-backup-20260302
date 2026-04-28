@@ -113,9 +113,40 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("记忆写回: doc-writer -> 完成", text)
         self.assertIn("Git 发布: coordinator -> 完成", text)
         self.assertIn("## 阶段命令状态", text)
-        self.assertIn("代码执行: backend-dev -> 通过；returncode=0；证据=code_execution-1.json", text)
+        self.assertIn("代码执行: backend-dev -> 通过；returncode=0；证据=代码执行命令1", text)
         self.assertNotIn("changed files", text)
         self.assertNotIn("关键证据:", text)
+
+    def test_evidence_labels_are_short_human_summaries(self):
+        module = load_module()
+
+        self.assertEqual(
+            "方案评审报告",
+            module.stage_artifact_name({"name": "solution_review", "artifact": "/tmp/solution_review.md"}),
+        )
+        self.assertLessEqual(len(module.stage_artifact_name({"name": "solution_review", "artifact": "/tmp/solution_review.md"})), 20)
+        self.assertEqual(
+            "外部资料核对命令2",
+            module.report_artifact_name(
+                {
+                    "stage": "external_research",
+                    "index": 2,
+                    "_artifact_path": "/tmp/command-runs/external_research-2.json",
+                }
+            ),
+        )
+        self.assertLessEqual(
+            len(
+                module.report_artifact_name(
+                    {
+                        "stage": "requirements_discussion",
+                        "index": 1,
+                        "_artifact_path": "/tmp/command-runs/requirements_discussion-1.json",
+                    }
+                )
+            ),
+            20,
+        )
 
     def test_render_chat_summary_can_include_command_output_for_debug(self):
         module = load_module()
@@ -291,7 +322,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("阶段进度: 2/3 完成", text)
         self.assertIn("当前阶段: 代码执行: backend-dev -> running", text)
         self.assertIn("## 最近命令状态", text)
-        self.assertIn("代码执行: backend-dev -> 通过；returncode=0；证据=code_execution-1.json", text)
+        self.assertIn("代码执行: backend-dev -> 通过；returncode=0；证据=代码执行命令1", text)
         self.assertNotIn("api_key=[REDACTED]", text)
         self.assertNotIn("short-secret-value", text)
         self.assertNotIn("json-live-secret", text)
@@ -659,11 +690,46 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual("medium", repair_risk)
         self.assertIn("可回流动作: run_external_research", repair_reasons)
 
+    def test_revise_solution_auto_repair_allows_negated_production_flag(self):
+        module = load_module()
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "revise_solution",
+            "failed_stage": "solution_review",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "solution_review",
+                    "status": "blocked",
+                    "detail": (
+                        "requires_revision: revise the delivery plan; "
+                        "do not set PRODUCTION_TRADING_ENABLED=true; "
+                        "do not place orders or transfer funds."
+                    ),
+                    "next_action": "revise_solution",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流动作: revise_solution", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+        self.assertIn("可回流动作: revise_solution", repair_reasons)
+
     def test_positive_credential_or_trading_request_still_high_risk(self):
         module = load_module()
         fake_openai_key = "sk-" + "1234567890abcdefghijklmnop"
         for detail in (
             "需要读取凭证并启用真实交易授权",
+            "set PRODUCTION_TRADING_ENABLED=true before retrying",
+            "do not set PRODUCTION_TRADING_ENABLED=true; set PRODUCTION_TRADING_ENABLED=true",
+            "do not set PRODUCTION_TRADING_ENABLED=true and set PRODUCTION_TRADING_ENABLED=true",
             "needs credentials to continue",
             "needs fund movement to continue",
             "requires funds operation before proceeding",

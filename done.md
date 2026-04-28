@@ -5,7 +5,27 @@
 
 ---
 
+## 2026-04-28 已完成
+
+- [x] [2026-04-28] **DeliveryPlan 结构化方案契约与 revise_solution 自动回流**
+  - `solution_package` 新增 `delivery_plan.json` 结构化交付契约，字段覆盖任务类型、切片、目标文件/定位策略、实施步骤、验证命令、发布/回滚门禁、人工阻塞条件和安全边界。
+  - `solution.md` 改为由契约渲染的人工展示层；`solution_review`、`code_execution` 和后续阶段上下文都读取 `delivery_plan.json`，不再靠润色 Markdown 通过审查。
+  - `revise_solution` 纳入低风险自动回流；“do not set PRODUCTION_TRADING_ENABLED=true”等否定式安全边界不再误判，正向启用实盘、下单、资金操作、凭证仍 hard block。
+  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 93 项 OK。
+
+- [x] [2026-04-28] **nofx Discord 证据短标签与 cron 群投递**
+  - `smart-arb-pipeline` 状态卡的证据项改为 20 字以内中文短说明，例如“方案评审报告”“代码执行命令1”，完整证据文件仍保留在 run 目录。
+  - `cron/jobs.json` 的 `delivery` 与 `failureAlert` 从旧 Telegram 群切到 spreadagent Discord 群 `1494595527181078578`，定时任务结果和失败告警默认输出到群里。
+  - 两个 nofx Discord profile SOUL 同步要求证据短说明；安装器测试校验 selected cron job 安装后的 Discord 投递目标。
+  - 本轮尚未安装到 nofx live runtime：`arbops@43.153.157.46` SSH 握手被远端重置，需连接恢复后再运行 runtime installer。
+  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 36 项 OK；`python -B -m json.tool cron/jobs.json`、`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
+
 ## 2026-04-27 已完成
+
+- [x] [2026-04-27] **nofx 拉取并安装 `067fbc43` hardflow runtime**
+  - 绕开 Discord workflow 自修，通过外部 SSH/operator 路径把 nofx hardflow 仓库拉到 `067fbc43`，并运行 `runtime_installer.py install` 同步到 `/home/arbops/.hermes`。
+  - 安装前备份 runtime 目标文件到 `/home/arbops/.hermes/ops/install/backups/pre-hardflow-install-20260427T151242Z`；安装后 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 与仓库源码 SHA256 对齐。
+  - 验证：远端 `py_compile`、`compileall`、98 项定向单测、`smart-arb-pipeline --help`、cron 检查、gateway state、内控 API smoke 均通过；echo smoke `install-smoke-arbitrageagent-20260427T151733781612Z` 写入 Task Center 且 `passed`；`smart-arb-api` cwd 已核对为真实 SmartMulti 目录。
 
 - [x] [2026-04-27] **nofx Discord 输出降噪与工作流状态卡**
   - `smart-arb-pipeline` 默认不再只等子进程结束后输出最终状态；入口会轮询 `pipeline_state.json`，每 60 秒输出 `# nofx 任务执行进度`，展示已完成阶段、当前阶段、最近命令状态和证据目录。

@@ -715,6 +715,7 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
             os.environ,
             {
                 "PIPELINE_RESEARCH_REPORT_FILE": "/tmp/run/research_report.md",
+                "PIPELINE_DELIVERY_PLAN_FILE": "/tmp/run/delivery_plan.json",
                 "PIPELINE_PATCH_SUMMARY_FILE": "/tmp/run/patch_summary.md",
                 "PIPELINE_CODE_REVIEW_FILE": "/tmp/run/code_review.md",
             },
@@ -728,9 +729,11 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
 
         self.assertNotIn("PIPELINE_RESEARCH_REPORT_FILE", research_env)
         self.assertNotIn("PIPELINE_PATCH_SUMMARY_FILE", research_env)
+        self.assertNotIn("PIPELINE_DELIVERY_PLAN_FILE", sol_review_env)
         self.assertNotIn("PIPELINE_RESEARCH_REPORT_FILE", req_review_env)
         self.assertNotIn("PIPELINE_PATCH_SUMMARY_FILE", sol_review_env)
         self.assertNotIn("PIPELINE_CODE_REVIEW_FILE", review_env)
+        self.assertEqual("/tmp/run/delivery_plan.json", code_env["PIPELINE_DELIVERY_PLAN_FILE"])
         self.assertEqual("/tmp/run/research_report.md", code_env["PIPELINE_RESEARCH_REPORT_FILE"])
         self.assertEqual("/tmp/run/patch_summary.md", code_env["PIPELINE_PATCH_SUMMARY_FILE"])
 
@@ -741,6 +744,7 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = Path(tmpdir)
             (run_dir / "research_report.md").write_text("P0 only; do not implement S1\n", encoding="utf-8")
+            (run_dir / "delivery_plan.json").write_text('{"schema_version":"delivery-plan/v1","target_files":[]}\n', encoding="utf-8")
             (run_dir / "solution.md").write_text("Solution says memory first\n", encoding="utf-8")
 
             with mock.patch.dict(os.environ, {"PIPELINE_RUN_DIR": str(run_dir)}, clear=True):
@@ -748,7 +752,9 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
 
         self.assertIn("Prior accepted stage context", prompt)
         self.assertIn("P0 only; do not implement S1", prompt)
+        self.assertIn("delivery-plan/v1", prompt)
         self.assertIn("Solution says memory first", prompt)
+        self.assertIn("delivery_plan.json", prompt)
         self.assertIn("Do not implement later-phase strategy work", prompt)
 
     def test_pipeline_context_redacts_sensitive_context_values(self):

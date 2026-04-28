@@ -35,6 +35,15 @@
 
 ## nofx hardflow 拉取与安装记录
 
+### 2026-04-27 23:17 - 密钥扫描收敛版本同步到 nofx
+
+类型：deploy
+范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/cron/jobs.json`、Task Center、内控 API
+事实：nofx hardflow 仓库已拉到 `067fbc43`，`HEAD...origin/main` 为 `0 0`。安装前已备份 runtime 目标文件到 `/home/arbops/.hermes/ops/install/backups/pre-hardflow-install-20260427T151242Z`；runtime installer 已把 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 安装到 `/home/arbops/.hermes/ops`，并与仓库源码 SHA256 对齐。本轮没有通过 Discord profile 自修，也没有执行真实 Hermes chat、服务重启或 git publish smoke。
+证据：`smart-arb-pipeline --help` 正常；远端安装态 `py_compile` 通过；远端 `compileall` 通过；定向 `unittest` 98 项 OK；cron 中 `backlog_runner_30m`、`repo_hygiene_reviewer_2d`、`source_registry_watcher` 各 1 条；`arbitrageagent` 与 `spreadagent` gateway 均为 `running/connected`；内控 API `/health` 为 `status=ok` 且 `/api/strategy/status` 为 `running=false`；echo smoke run `install-smoke-arbitrageagent-20260427T151733781612Z` 为 `status=completed` 且 Task Center `passed`。`smart-arb-api` cwd 已复核为 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`。
+最后验证：2026-04-27 23:17
+复用建议：Windows 自带 OpenSSH 若出现空退，可直接切 Git for Windows `C:\Program Files\Git\usr\bin\ssh.exe`；复杂远端脚本优先用 Paramiko stdin，避免 PowerShell 管道带 BOM 导致远端 bash 首行 `set` 被解析成 `﻿set`。
+
 ### 2026-04-27 15:01 - 最新 runtime installer 同步到 nofx
 
 类型：deploy
@@ -148,6 +157,15 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 ## 定时仓库治理
 
+### 2026-04-28 - cron 状态投递到 Discord 群
+
+类型：runbook
+范围：`cron/jobs.json`、`skills/library/project-delivery-pipeline/scripts/runtime_installer.py`
+事实：本仓库 cron 模板中的 `delivery` 与 `failureAlert` 已从旧 Telegram 群切到 Discord spreadagent 群 `1494595527181078578`。OpenClaw cron delivery 支持显式 channel/to；Discord 数字频道 ID 会按 normalize 逻辑解析为目标 channel。该变更只影响定时任务结果和失败告警投递，不新增交易、资金、写接口或服务重启动作。
+证据：`cron/jobs.json` 中 20 个投递目标均为 `channel=discord`、`to=1494595527181078578`；安装器测试会校验 `system_exception_to_task_bridge`、`todo_deadline_to_task_bridge_daily`、`backlog_runner_30m` 安装后的 `delivery` / `failureAlert` 均指向该 Discord 群。
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 36 项 OK；`python -B -m json.tool cron/jobs.json`、`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过
+复用建议：如果后续换群，只改 `cron/jobs.json` 中的投递目标并重新运行 runtime installer；不要在任务 payload 里硬编码 webhook 或 token。
+
 ### 2026-04-27 - Task Center 待办持续推进
 
 类型：runbook
@@ -172,13 +190,13 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 
 0. 运行中每 60 秒输出一次 `# nofx 任务执行进度`，从 `pipeline_state.json` 和 `command-runs/*.json` 读取已完成阶段、当前阶段、最近命令状态和证据目录；默认不展开 command stdout/stderr/error；`--emit-json` / `--no-chat-summary` 会关闭进度卡，保持机器可读原始输出。
 1. `agent 分工与完成情况` 展示每个阶段对应 owner、状态、verdict、score 和证据文件。
-2. `阶段命令状态` 从 `command-runs/*.json` 读取 stage、agent、returncode 和证据文件，默认只显示命令状态行；失败时才追加脱敏摘要。
+2. `阶段命令状态` 从 `command-runs/*.json` 读取 stage、agent、returncode 和证据文件，默认把证据文件显示为 20 字以内中文短说明；失败时才追加脱敏摘要。
 3. `阻塞原因` 展示失败阶段、stage detail、脱敏命令摘要或 artifact 摘要，不直接贴原始命令输出。
 4. `自动修复判断` 记录是否回流、回流次数、风险分类和每次结果。
 
 默认自动修复策略：
 
-- `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`、`fix_git_publish`：最多自动回流 2 次。
+- `run_external_research`、`revise_solution`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`、`fix_git_publish`：最多自动回流 2 次。
 - 自动回流仍重新执行 `/home/arbops/.local/bin/smart-arb-pipeline`，每次使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 自动回流会把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并同时通过内联 `PIPELINE_REPAIR_CONTEXT` 注入后续 Hermes stage prompt；即使文件写入失败，也不会丢失失败上下文。
 - 状态卡默认展示最多 24 条 `command-runs/*.json` 状态行；需要更多可设置 `SMART_ARB_CHAT_COMMAND_LIMIT` 或传 `--chat-command-limit`。默认不展示 reviewer/tester/terminal 原始输出；排障时如需脱敏命令摘要，可设置 `SMART_ARB_CHAT_INCLUDE_COMMAND_OUTPUT=1` 或传 `--chat-include-command-output`；如需旧版“关键证据”列表，可设置 `SMART_ARB_CHAT_SHOW_KEY_ARTIFACTS=1` 或传 `--chat-show-key-artifacts`。profile SOUL 要求把中文状态卡分段回传到聊天频道，不允许只回 run id、失败阶段和证据目录。
@@ -190,6 +208,15 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 - 高风险内容不自动继续：正向要求读取/输出/使用凭证、API key、token、private key、session_id，或要求启用真实交易、下单、资金转移、提现、破坏性数据操作、force push 等。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全边界不应被当成高风险阻断；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]` 仍是 high，`No need for ...` / `Do not need ...` 这类否定式预脱敏噪音可回流；如果同一段同时出现“但需要资金操作 / but needs credentials”等正向子句，仍按高风险停人工确认。
 - bridge 会在前序 artifact 注入后续 prompt 前脱敏常见 header、assignment、长 token 和 GitHub PAT / OpenAI `sk-` / Slack / HF / Google / AWS access key 等短格式 secret；排障时不要把原始 token 放进 artifact。
 - 排障时优先看最终状态卡，再看原 run 与 `-repair<n>` run 各自的 `command-runs/*.json`，以及原 run 下的 `auto_repair_context_<n>.md`。
+
+### 2026-04-28 - DeliveryPlan 结构化方案契约
+
+类型：runbook
+范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`
+事实：`solution_package` 的事实源改为 `delivery_plan.json`，`solution.md` 只作为人工展示层。`delivery_plan.json` 使用 `delivery-plan/v1`，包含 task_type、owner、scope_slices、target_files/entry_points、out_of_scope、implementation_steps、verification_commands、release_gates、rollback_plan、human_blockers、risk_boundaries 和 plan_findings。`solution_review` 和 `code_execution` 的 prior context 都会读入 `delivery_plan.json`；方案 reviewer 必须先审结构化契约，不能只按 Markdown 文案形态放行或阻塞。
+证据：`pipeline_runner.py` 新增 `compile_delivery_plan()`、`delivery_plan.json` artifact 和 `solution.md` 渲染；`smart_arb_live_bridge.py` 将 `delivery_plan.json` 注入 `solution_review`、`code_execution`、后续 verification/review/deploy/writeback/git_publish 上下文，并在非代码 Hermes stage 中剥离 `PIPELINE_DELIVERY_PLAN_FILE` 写入路径；`smart_arb_pipeline_entry.py` 将 `revise_solution` 加入自动回流白名单，并允许“do not set PRODUCTION_TRADING_ENABLED=true”这类否定式安全边界，不放行正向启用实盘。
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 93 项 OK
+复用建议：以后方案评审总是卡在“solution.md 不是实施方案”时，先看 `delivery_plan.json` 是否缺字段或 reviewer finding code，再走 `revise_solution` 回流；不要通过放松 reviewer 或手工润色 Markdown 解决。修 workflow 自身仍走外部 Codex/SSH/operator，不让 Discord profile 递归自修。
 
 ### 2026-04-27 - 工作流自修与未通过 review 补丁清理
 

@@ -27,8 +27,8 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {
         "nextRunAtMs": 1772441651961,
@@ -43,8 +43,8 @@
       "failureAlert": {
         "after": 1,
         "cooldownMs": 1800000,
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "skill_ref": "todo-patrol"
     },
@@ -75,8 +75,8 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {
         "nextRunAtMs": 1772656776140,
@@ -117,8 +117,8 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {
         "nextRunAtMs": 1772467200000
@@ -152,14 +152,14 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "failureAlert": {
         "after": 1,
         "cooldownMs": 3600000,
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "openclaw-security-audit"
@@ -191,8 +191,8 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "memtidy"
@@ -224,14 +224,14 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "failureAlert": {
         "after": 2,
         "cooldownMs": 7200000,
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "config-watchdog"
@@ -263,8 +263,8 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "log-monitor"
@@ -296,14 +296,14 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "failureAlert": {
         "after": 1,
         "cooldownMs": 3600000,
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "log-monitor"
@@ -335,8 +335,8 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "api-registry-manager"
@@ -368,14 +368,14 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "failureAlert": {
         "after": 1,
         "cooldownMs": 3600000,
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "project-delivery-pipeline"
@@ -407,14 +407,14 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "failureAlert": {
         "after": 1,
         "cooldownMs": 3600000,
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "project-delivery-pipeline"
@@ -446,8 +446,8 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "todo-patrol"
@@ -479,14 +479,14 @@
       },
       "delivery": {
         "mode": "announce",
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "failureAlert": {
         "after": 1,
         "cooldownMs": 3600000,
-        "channel": "telegram",
-        "to": "-1003333097130"
+        "channel": "discord",
+        "to": "1494595527181078578"
       },
       "state": {},
       "skill_ref": "todo-patrol"

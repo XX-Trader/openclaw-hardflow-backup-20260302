@@ -80,6 +80,28 @@ REVIEWER_ROLE_ARG_RE = re.compile(
 REVIEWER_ROLE_OUTPUT_RE = re.compile(
     r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:\s*([A-Za-z0-9_.-]+)\s*$"
 )
+PATH_TOKEN_RE = re.compile(
+    r"(?:`([^`\r\n]+)`)|(?:\b([A-Za-z0-9_.\-/\\]+(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)))\b)"
+)
+PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)$)", re.IGNORECASE)
+PIPELINE_ARTIFACT_FILES = {
+    "context_snapshot.md",
+    "delivery_evidence.md",
+    "delivery_plan.json",
+    "git_publish_report.md",
+    "patch_summary.md",
+    "pipeline_state.json",
+    "project_memory_context.md",
+    "requirements.md",
+    "requirements_discussion.md",
+    "requirements_review.md",
+    "research_report.md",
+    "resolved_requirement.md",
+    "solution.md",
+    "solution_review.md",
+    "verification_report.md",
+    "writeback_report.md",
+}
 
 
 class PipelineError(RuntimeError):
@@ -696,55 +718,267 @@ def render_resolved_requirement(requirement: str, artifacts: dict[str, str]) -> 
     )
 
 
-def render_solution(runtime: dict[str, Any], requirement: str) -> str:
-    return dedent(
-        f"""
-        # Solution Package
+def clean_plan_path(value: str) -> str:
+    path = str(value or "").strip().strip(".,;:()[]{}<>\"'")
+    if not path:
+        return ""
+    path = path.replace("\\", "/")
+    name = Path(path).name
+    if name in PIPELINE_ARTIFACT_FILES:
+        return ""
+    if not PLAN_PATH_RE.search(path):
+        return ""
+    if path.startswith(("/tmp/", "/home/", "C:/", "c:/")):
+        return ""
+    return path
 
-        ## Target Requirement
-        {requirement}
 
-        ## Architecture
-        The pipeline is a deterministic state machine with runtime adapters.
-        OpenClaw and Hermes are hosts, not separate workflow definitions.
+def extract_plan_paths(*texts: str, limit: int = 24) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        for match in PATH_TOKEN_RE.finditer(str(text or "")):
+            candidate = clean_plan_path(match.group(1) or match.group(2) or "")
+            if not candidate or candidate in seen:
+                continue
+            seen.add(candidate)
+            paths.append(candidate)
+            if len(paths) >= limit:
+                return paths
+    return paths
 
-        ## Implementation Source Of Truth
-        - Use `requirements_discussion.md` and `requirements_review.md` for the
-          concrete scope of this run.
-        - Use `research_report.md` and `project_memory_context.md` for local or
-          external evidence.
-        - Do not implement the generic stage-order description below as a new
-          feature unless the user explicitly requested workflow architecture work.
 
-        ## Runtime Adapter
-        - Host: {runtime["host"]}
-        - Runtime home: {runtime["runtime_home"]}
-        - State dir: {runtime["state_dir"]}
+def infer_task_type(text: str) -> str:
+    value = str(text or "")
+    lowered = value.lower()
+    if any(token in lowered for token in ("docs-only", "doc-only", "memory/docs-only", "memory-only")):
+        return "docs"
+    if any(token in lowered for token in ("bug", "fix", "failed", "requires_revision", "修复", "失败", "阻塞")):
+        return "bugfix"
+    if any(token in lowered for token in ("deploy", "restart", "install", "runtime", "部署", "重启", "安装")):
+        return "deploy"
+    if any(token in lowered for token in ("research", "官方", "调研", "资料")):
+        return "research"
+    if (
+        re.search(r"\b(?:only|just)\s+(?:update|edit|write|sync)\b.{0,60}\b(?:docs?|documentation|memory|readme)\b", lowered)
+        or re.search(r"(?:只|仅|只需|仅需|只要).{0,30}(?:更新|修改|补充|同步|整理|撰写|写).{0,60}(?:文档|记忆|README)", value, re.IGNORECASE)
+    ):
+        return "docs"
+    return "feature"
 
-        ## Stage Order
-        1. intake
-        2. context_snapshot
-        3. project_memory_context
-        4. external_research
-        5. requirements_package
-        6. requirements_discussion
-        7. requirements_review
-        8. solution_package
-        9. solution_review
-        10. code_execution
-        11. verification
-        12. code_review
-        13. deployment (when supplied)
-        14. acceptance
-        15. writeback
-        16. git_publish (when supplied)
 
-        ## Failure Routing
-        - Requirement defects route to revise_requirements.
-        - Solution defects route to revise_solution.
-        - Implementation, verification, and code review defects route to return_to_code_execution.
-        - Git publish defects route to fix_git_publish and do not force push.
-        """
+def infer_code_agent(text: str, config: PipelineConfig) -> str:
+    lowered = str(text or "").lower()
+    if config.code_agent == "frontend-dev":
+        return "frontend-dev"
+    if any(token in lowered for token in ("frontend", "dashboard", "页面", "前端", "交互")) or re.search(r"\bui\b", lowered):
+        return "frontend-dev"
+    if infer_task_type(text) == "docs":
+        return "doc-writer"
+    return normalize_code_agent(config.code_agent)
+
+
+def original_requirement_excerpt(requirement: str) -> str:
+    match = re.search(r"(?ims)^## Original Requirement\s*(.+?)(?=^## |\Z)", str(requirement or ""))
+    source = match.group(1) if match else requirement
+    lines = [line.strip(" -\t") for line in str(source or "").splitlines() if line.strip(" -\t")]
+    return next((line for line in lines if not line.startswith("#")), "")
+
+
+def plan_scope_slice(requirement: str, review: str, repair_context: str) -> dict[str, Any]:
+    original = original_requirement_excerpt(requirement)
+    source = repair_context or original or review or requirement
+    lines = [line.strip(" -\t") for line in str(source or "").splitlines() if line.strip(" -\t")]
+    summary = next((line for line in lines if not line.startswith("#")), "Deliver the accepted requirement.")
+    return {
+        "id": "primary",
+        "description": clip_text(summary, 280),
+        "source": "repair_context" if repair_context else ("original_requirement" if original else "requirements_review"),
+    }
+
+
+def configured_verification_commands(config: PipelineConfig, task_type: str) -> list[dict[str, Any]]:
+    commands = [
+        {"command": command, "required": True, "source": "runner_config"}
+        for command in config.verification_commands
+    ]
+    if commands:
+        return commands
+    fallback = [{"command": "git diff --check", "required": True, "source": "default"}]
+    if task_type != "docs":
+        fallback.append(
+            {
+                "command": "Run the focused tests or compile checks that cover changed files.",
+                "required": True,
+                "source": "agent_selected",
+            }
+        )
+    return fallback
+
+
+def render_markdown_items(items: list[str]) -> str:
+    cleaned = [clip_text(str(item).strip(), 240) for item in items if str(item).strip()]
+    if not cleaned:
+        return "- not_applicable"
+    return "\n".join(f"- {item}" for item in cleaned)
+
+
+def artifact_text(artifacts: dict[str, str], key: str) -> str:
+    path = artifacts.get(key)
+    if not path:
+        return ""
+    return read_optional_file(Path(path), "")
+
+
+def compile_delivery_plan(
+    config: PipelineConfig,
+    runtime: dict[str, Any],
+    requirement: str,
+    artifacts: dict[str, str],
+) -> dict[str, Any]:
+    research = artifact_text(artifacts, "external_research")
+    memory = artifact_text(artifacts, "project_memory_context")
+    requirements_review = artifact_text(artifacts, "requirements_review")
+    repair_context = os.environ.get("PIPELINE_REPAIR_CONTEXT", "").strip()
+    original_requirement = original_requirement_excerpt(requirement) or requirement
+    decision_text = "\n".join([requirement, requirements_review, repair_context])
+    classification_text = "\n".join(
+        part for part in (original_requirement, repair_context) if str(part or "").strip()
+    ) or requirements_review
+    task_type = infer_task_type(classification_text)
+    target_paths = extract_plan_paths(requirement, requirements_review, repair_context)
+    if not target_paths:
+        target_paths = extract_plan_paths(research, memory)
+    target_files = [
+        {
+            "path": path,
+            "reason": "Referenced by accepted requirement, review, repair context, or project evidence.",
+            "confidence": "explicit",
+        }
+        for path in target_paths
+    ]
+    discovery_required = not target_files
+    implementation_steps = [
+        {
+            "id": "locate",
+            "description": (
+                "Use repository search and project memory to confirm the exact files and entry points before editing."
+                if discovery_required
+                else "Open the listed target files and confirm the current behavior before editing."
+            ),
+            "required": True,
+        },
+        {
+            "id": "change",
+            "description": "Apply the smallest scoped change that satisfies the accepted requirement and repair findings.",
+            "required": True,
+        },
+        {
+            "id": "verify",
+            "description": "Run every required verification command and record concrete outcomes.",
+            "required": True,
+        },
+        {
+            "id": "review",
+            "description": "Do not proceed to acceptance or publish until code review gates pass.",
+            "required": True,
+        },
+    ]
+    return {
+        "schema_version": "delivery-plan/v1",
+        "task_type": task_type,
+        "owner": infer_code_agent(classification_text, config),
+        "source_artifacts": {
+            key: artifacts[key]
+            for key in (
+                "resolved_requirement",
+                "requirements_review",
+                "requirements_discussion",
+                "external_research",
+                "project_memory_context",
+            )
+            if key in artifacts
+        },
+        "runtime": {
+            "host": runtime.get("host", ""),
+            "runtime_home": runtime.get("runtime_home", ""),
+        },
+        "scope_slices": [plan_scope_slice(requirement, requirements_review, repair_context)],
+        "target_files": target_files,
+        "entry_points": [
+            {"path": path["path"], "reason": path["reason"]}
+            for path in target_files[:8]
+        ],
+        "out_of_scope": [
+            "Do not broaden the task beyond the accepted requirement.",
+            "Do not use secrets, credentials, private keys, cookies, or auth state files.",
+            "Do not start real trading, place orders, transfer funds, or change production trading controls.",
+        ],
+        "implementation_steps": implementation_steps,
+        "verification_commands": configured_verification_commands(config, task_type),
+        "release_gates": [
+            "All required verification commands pass.",
+            "Dual review gates pass with the expected final verdicts.",
+            "Deployment or git publish only runs when explicitly configured by the runner.",
+        ],
+        "rollback_plan": [
+            "If verification or code review fails after a workspace patch is applied, revert the applied patch and preserve rollback evidence.",
+            "If rollback fails, stop with manual_cleanup_required.",
+        ],
+        "human_blockers": [
+            "Requires credentials, secret values, private keys, cookies, or auth state access.",
+            "Requires real trading authorization, order placement, fund movement, withdrawals, destructive data operations, or force push.",
+            "Target files cannot be located from repository evidence and implementation would require guessing.",
+        ],
+        "risk_boundaries": [
+            {"name": "credentials", "allowed": False, "description": "No credential or secret access."},
+            {"name": "real_trading", "allowed": False, "description": "Production trading remains disabled."},
+            {"name": "fund_movement", "allowed": False, "description": "No orders, transfers, withdrawals, or fund movement."},
+        ],
+        "plan_findings": {
+            "discovery_required": discovery_required,
+            "repair_context_present": bool(repair_context),
+        },
+    }
+
+
+def render_solution(delivery_plan: dict[str, Any]) -> str:
+    target_files = delivery_plan.get("target_files") if isinstance(delivery_plan.get("target_files"), list) else []
+    verification_commands = delivery_plan.get("verification_commands") if isinstance(delivery_plan.get("verification_commands"), list) else []
+    implementation_steps = delivery_plan.get("implementation_steps") if isinstance(delivery_plan.get("implementation_steps"), list) else []
+    human_blockers = delivery_plan.get("human_blockers") if isinstance(delivery_plan.get("human_blockers"), list) else []
+    out_of_scope = delivery_plan.get("out_of_scope") if isinstance(delivery_plan.get("out_of_scope"), list) else []
+    return "\n".join(
+        [
+            "# Solution Package",
+            "",
+            "## Delivery Plan Contract",
+            "- Source of truth: `delivery_plan.json`",
+            f"- Schema: {delivery_plan.get('schema_version', 'delivery-plan/v1')}",
+            f"- Task type: {delivery_plan.get('task_type', 'feature')}",
+            f"- Owner: {delivery_plan.get('owner', 'backend-dev')}",
+            "",
+            "## Scope Slices",
+            render_markdown_items([item.get("description", "") for item in delivery_plan.get("scope_slices", []) if isinstance(item, dict)]),
+            "",
+            "## Target Files",
+            render_markdown_items([item.get("path", "") for item in target_files if isinstance(item, dict)] or ["Discovery required before editing; do not guess."]),
+            "",
+            "## Implementation Steps",
+            render_markdown_items([item.get("description", "") for item in implementation_steps if isinstance(item, dict)]),
+            "",
+            "## Verification Commands",
+            render_markdown_items([item.get("command", "") for item in verification_commands if isinstance(item, dict)]),
+            "",
+            "## Out Of Scope",
+            render_markdown_items([str(item) for item in out_of_scope]),
+            "",
+            "## Human Blockers",
+            render_markdown_items([str(item) for item in human_blockers]),
+            "",
+            "## Review Contract",
+            "Reviewers must validate `delivery_plan.json`, not prose shape alone. The plan is not ready for implementation if it lacks scope, target discovery, verification commands, release gates, rollback behavior, or human blockers.",
+        ]
     )
 
 
@@ -1034,6 +1268,7 @@ def command_env(
             "PIPELINE_REQUIREMENTS_FILE": str(run_dir / "requirements.md"),
             "PIPELINE_REQUIREMENTS_DISCUSSION_FILE": str(run_dir / "requirements_discussion.md"),
             "PIPELINE_REQUIREMENTS_REVIEW_FILE": str(run_dir / "requirements_review.md"),
+            "PIPELINE_DELIVERY_PLAN_FILE": str(run_dir / "delivery_plan.json"),
             "PIPELINE_SOLUTION_FILE": str(run_dir / "solution.md"),
             "PIPELINE_SOLUTION_REVIEW_FILE": str(run_dir / "solution_review.md"),
             "PIPELINE_PATCH_SUMMARY_FILE": str(run_dir / "patch_summary.md"),
@@ -2008,6 +2243,13 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         write_progress_state()
         return path
 
+    def record_payload(name: str, file_name: str, payload: dict[str, Any]) -> Path:
+        path = run_dir / file_name
+        write_json(path, payload)
+        artifacts[name] = str(path)
+        write_progress_state()
+        return path
+
     meta_path = run_dir / "run_meta.json"
     write_json(meta_path, render_run_meta(config, run_id, requirement, runtime))
     artifacts["run_meta"] = str(meta_path)
@@ -2146,7 +2388,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         verdict="pass",
     )
 
-    record("solution_package", "solution.md", render_solution(runtime, resolved_requirement.read_text(encoding="utf-8")))
+    delivery_plan = compile_delivery_plan(
+        config,
+        runtime,
+        resolved_requirement.read_text(encoding="utf-8"),
+        artifacts,
+    )
+    record_payload("delivery_plan", "delivery_plan.json", delivery_plan)
+    record("solution_package", "solution.md", render_solution(delivery_plan))
     sol_review_reports = run_stage_commands(
         config,
         run_dir,
@@ -2837,6 +3086,7 @@ def render_view_text(payload: dict[str, Any]) -> str:
             "project_memory_context",
             "requirements_package",
             "requirements_discussion",
+            "delivery_plan",
             "solution_package",
             "verification",
             "code_review",

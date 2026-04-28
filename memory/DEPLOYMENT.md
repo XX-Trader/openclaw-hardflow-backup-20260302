@@ -22,8 +22,17 @@ python3 skills/library/project-delivery-pipeline/scripts/runtime_installer.py in
   --task-center-db /home/arbops/.hermes/ops/task-center/task_center.db \
   --emit-json
 ```
-最后验证：2026-04-27 16:39
+最后验证：2026-04-27 23:17
 复用建议：安装前先 `git fetch` 和 `git status --short --branch`；如有脏改动先 `git stash push -u -m pre-pull-hardflow-install-<timestamp>`，再 `git pull --ff-only origin main`。安装后至少检查 runtime installer JSON、`compileall`、定向单测、`/home/arbops/.hermes/ops` 文件、cron jobs、gateway state、内控 API smoke 和 echo smoke。
+
+## 2026-04-27 - 安装提交 067fbc43
+
+类型：deploy
+范围：nofx hardflow runtime、Hermes ops、cron jobs、Discord gateways、Task Center、内控 API
+事实：nofx hardflow 仓库已拉到 `067fbc43`，与 `origin/main` ahead/behind 为 `0 0`，并重装 runtime。安装前已备份 `/home/arbops/.local/bin/smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 到 `/home/arbops/.hermes/ops/install/backups/pre-hardflow-install-20260427T151242Z`。安装态 `/home/arbops/.hermes/ops/pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 与仓库源码 SHA256 完全一致；`smart-arb-pipeline --help` 正常。
+证据：远端 `python3 -m py_compile /home/arbops/.hermes/ops/{pipeline_runner.py,smart_arb_pipeline_entry.py,smart_arb_live_bridge.py}` 通过；`python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol` 通过；远端定向 `unittest` 98 项 OK；runtime cron 命中 `backlog_runner_30m`、`repo_hygiene_reviewer_2d`、`source_registry_watcher`；`arbitrageagent` 与 `spreadagent` gateway 均为 `running/connected`；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`；echo smoke `install-smoke-arbitrageagent-20260427T151733781612Z` 为 `status=completed`，Task Center `passed`。`smart-arb-api` 进程 cwd 核对为 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`。
+最后验证：2026-04-27 23:17
+复用建议：远端命令优先使用 Git for Windows `ssh.exe` 或 Paramiko；本机 Windows 自带 `C:\Windows\System32\OpenSSH\ssh.exe` 本轮连 `ssh -V` 都返回 255 且无 stderr。通过 PowerShell 管道把多行脚本送入远端 bash 时要警惕 UTF-8 BOM，必要时改用 Paramiko stdin 执行，避免远端出现 `﻿set: command not found`。
 
 ## 2026-04-27 - 安装提交 429ce994
 

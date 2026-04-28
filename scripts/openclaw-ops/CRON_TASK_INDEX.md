@@ -1,8 +1,9 @@
 # OpenClaw Cron 定时任务索引
 
-> 最后更新：2026-04-27
+> 最后更新：2026-04-28
 > 数据源：`cron/jobs.json`
 > 裁剪记录：移除 3 个自进化 job（ops_git_sync_push / reviewer_incremental_daily / reviewer_weekly_structure）
+> 默认投递：`delivery` / `failureAlert` 输出到 spreadagent Discord 群 `1494595527181078578`
 
 ## 任务总览
 
@@ -19,7 +20,7 @@
 ### 1.2 每日 TODO 摘要
 - **ID**：`2ce5fe63-...`
 - **频率**：每日 00:00 UTC
-- **功能**：生成每日 TODO 汇总，通过 Telegram 发送
+- **功能**：生成每日 TODO 汇总，通过 Discord 群发送
 
 ### 1.3 系统异常巡检
 - **ID**：`d4e5f6a7-...`
@@ -50,7 +51,7 @@
 
 ### 2.4 仓库精简巡检
 - **ID**：`r1h2g3f4-...`
-- **执行 agent**：`optimization-agent`
+- **执行 agent**：`coordinator`
 - **频率**：每 2 天
 - **功能**：只读扫描冗余文件、失效缓存、冲突残留、重复文件和可清理项，生成报告并创建人工确认候选任务；不自动删除、不自动推送
 

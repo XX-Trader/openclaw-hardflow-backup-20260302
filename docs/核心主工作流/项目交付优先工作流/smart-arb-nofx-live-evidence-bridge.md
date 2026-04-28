@@ -27,7 +27,7 @@
 2026-04-27 远程核对后，nofx 当前运行态按三层理解：
 
 1. **live 入口**：只有两个 Hermes Discord profile，`arbitrageagent` 与 `spreadagent`。
-2. **workflow 层**：`/home/arbops/.local/bin/smart-arb-pipeline` 调用 `/home/arbops/.hermes/ops/pipeline_runner.py`，主阶段为 `context_snapshot -> project_memory_context -> external_research -> requirements_discussion -> requirements_review -> solution_review -> code_execution -> verification -> code_review -> deployment -> writeback -> git_publish`。
+2. **workflow 层**：`/home/arbops/.local/bin/smart-arb-pipeline` 调用 `/home/arbops/.hermes/ops/pipeline_runner.py`，主阶段为 `context_snapshot -> project_memory_context -> external_research -> requirements_discussion -> requirements_review -> solution_package -> solution_review -> code_execution -> verification -> code_review -> deployment -> writeback -> git_publish`。
 3. **逻辑 owner 层**：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 用于阶段分工、隔离 workspace 和 Task Center 留痕，不是独立常驻 agent 进程。
 4. **cron 责任标签**：当前只允许 `coordinator` / `project-agent`；`ops-agent`、`optimization-agent` 已退出 active cron 配置。是否真的有运行中的 agent，要继续看具体 profile、tmux、session/run id 或命令证据。
 
@@ -71,7 +71,7 @@ live 默认注入以下命令证据：
 | `external_research` | Hermes / web-agent 查外部资料和项目事实 | `command_external_research_*` |
 | `requirements_discussion` | project-agent 与 reviewer 双 AI 讨论需求 | `command_requirements_discussion_*` |
 | `requirements_review` | reviewer-a / reviewer-b 双审需求，均需 `ready_for_solution` | `command_requirements_review_1/2` |
-| `solution_review` | reviewer-a / reviewer-b 双审方案，均需 `ready_for_implement` | `command_solution_review_1/2` |
+| `solution_review` | reviewer-a / reviewer-b 双审 `delivery_plan.json` 交付契约，均需 `ready_for_implement` | `command_solution_review_1/2` |
 | `code_execution` | Hermes headless 执行代码改动 | `command_code_execution_*` |
 | `verification` | 固定命令验证，默认 `git diff --check` 与 `compileall -q scripts strategy_runtime`，单命令超时默认 300 秒 | `command_verification_*` |
 | `code_review` | reviewer-a / reviewer-b 双审代码，均需 `pass` | `command_code_review_1/2` |
@@ -93,7 +93,7 @@ Discord 状态卡必须回答三个问题：
 
 自动修复策略：
 
-- `run_external_research`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`、`fix_git_publish` 默认自动回流，最多 2 次，可用 `--auto-repair-attempts` 或 `SMART_ARB_AUTO_REPAIR_ATTEMPTS` 调整。
+- `run_external_research`、`revise_solution`、`return_to_code_execution`、`return_to_deployment`、`fix_memory_writeback`、`fix_git_publish` 默认自动回流，最多 2 次，可用 `--auto-repair-attempts` 或 `SMART_ARB_AUTO_REPAIR_ATTEMPTS` 调整。
 - 每次回流使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 每次回流前，入口把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并通过 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT` 传给 live bridge；后续 Hermes stage prompt 会看到上一轮失败原因。
 - 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署、记忆写回或 Git 发布。

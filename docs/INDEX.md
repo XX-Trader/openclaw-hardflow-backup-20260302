@@ -1,6 +1,7 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-27 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个 active workflow owner；Discord 运行中默认每 60 秒输出 `# nofx 任务执行进度`；cron 只挂 `coordinator/project-agent`；低风险到期 TODO 进入 backlog runner，高风险进人工队列；工作流自身修复不再通过同一个 Discord pipeline 自修；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
+> 最后更新：2026-04-28 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个 active workflow owner；Discord 运行中默认每 60 秒输出 `# nofx 任务执行进度`，证据项显示 20 字以内中文短说明；cron 只挂 `coordinator/project-agent`，结果与失败告警默认投递到 spreadagent Discord 群；低风险到期 TODO 进入 backlog runner，高风险进人工队列；工作流自身修复不再通过同一个 Discord pipeline 自修；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
+> 2026-04-28 补充：项目交付方案阶段以 `delivery_plan.json` 作为结构化交付契约，`solution.md` 只作为人工展示层；`revise_solution` 支持低风险自动回流。
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
 ---

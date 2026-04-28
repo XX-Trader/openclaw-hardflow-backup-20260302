@@ -89,6 +89,28 @@ STAGE_LABELS = {
     "writeback": "记忆写回",
     "git_publish": "Git 发布",
 }
+SHORT_EVIDENCE_LIMIT = 20
+ARTIFACT_EVIDENCE_LABELS = {
+    "run_meta.json": "接入元数据",
+    "context_snapshot.md": "上下文快照",
+    "project_memory_context.md": "项目记忆",
+    "research_report.md": "外部核对报告",
+    "requirements.md": "需求整理报告",
+    "requirements_discussion.md": "需求讨论报告",
+    "requirements_review.md": "需求评审报告",
+    "resolved_requirement.md": "需求确认报告",
+    "delivery_plan.json": "交付计划契约",
+    "solution.md": "方案整理报告",
+    "solution_review.md": "方案评审报告",
+    "patch_summary.md": "代码补丁摘要",
+    "verification_report.md": "验证报告",
+    "code_review.md": "代码审查报告",
+    "deployment_report.md": "部署烟测报告",
+    "delivery_evidence.md": "验收证据",
+    "writeback_report.md": "记忆写回报告",
+    "git_publish_report.md": "Git发布报告",
+    "pipeline_state.json": "流水线状态",
+}
 STAGE_ORDER = {name: index for index, name in enumerate(STAGE_LABELS)}
 COMMAND_ARTIFACT_RE = re.compile(r"^command_(?P<stage>.+)_(?P<index>\d+)$")
 STATUS_LABELS = {
@@ -99,6 +121,7 @@ STATUS_LABELS = {
 }
 REPAIRABLE_NEXT_ACTIONS = {
     "run_external_research",
+    "revise_solution",
     "return_to_code_execution",
     "return_to_deployment",
     "fix_memory_writeback",
@@ -161,8 +184,10 @@ SAFE_NEGATED_LIST_FRAGMENT_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
         r"\b(?:no\s+need(?:ed)?\s+for|do\s+not\s+need|don't\s+need|not\s+(?:required|needed))\b.{0,120}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|authorization|auth\s+state\s+files?)\b\s*(?::|=)?\s*(?:\[[^\]]*REDACTED[^\]]*\])?",
-        r"\b(?:do\s+not|don't|never|without)\b(?:(?!\b(?:but|however|yet|needs?|requires?|start|enable|execute|place|submit|perform|allow)\b).){0,160}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|auth\s+state\s+files?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds)\b",
-        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未在|未启动|未下单|未划转|未转账|未提现|未出金|未读取|未泄露|未打印|未移动|未修改|未保留|不保留|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露|不打印|不移动|不修改)(?:(?!(?:但|但是|不过|然而|需要|要求|启动|启用|执行|进行|允许|下单后|划转后|转账后|提现后|出金后|资金操作)).){0,160}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|credential(?:-imports)?|credentials?|secrets?|tokens?|cookies?|oauth|api[_ /-]?keys?)",
+        r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:use|read|print|show|dump|export|upload|commit|modify|delete|place|start|enable|execute|transfer|withdraw|set|configure|turn\s+on|switch\s+on)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|and|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,160}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|auth\s+state\s+files?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds)\b",
+        r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:set|configure)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|and|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,160}\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未在|未启动|未下单|未划转|未转账|未提现|未出金|未读取|未泄露|未打印|未移动|未修改|未保留|不保留|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露|不打印|不移动|不修改)(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许|下单后|划转后|转账后|提现后|出金后|资金操作)).){0,160}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|credential(?:-imports)?|credentials?|secrets?|tokens?|cookies?|oauth|api[_ /-]?keys?)",
+        r"(?:不得|不要|不能|禁止|不允许|不应|不会)(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许)).){0,160}PRODUCTION_TRADING_ENABLED\s*=\s*true",
     )
 ]
 SAFE_DOCUMENTATION_HISTORY_PATTERNS = [
@@ -352,11 +377,34 @@ def parse_runner_state(stdout: str) -> dict | None:
     return payload if isinstance(payload, dict) and "stages" in payload else None
 
 
+def short_evidence_label(label: str, limit: int = SHORT_EVIDENCE_LIMIT) -> str:
+    compacted = "".join(str(label or "").split())
+    return compacted[:limit]
+
+
+def artifact_evidence_label(name: str, *, stage: str = "") -> str:
+    clean_name = Path(str(name or "").strip()).name
+    if not clean_name:
+        return ""
+    mapped = ARTIFACT_EVIDENCE_LABELS.get(clean_name)
+    if mapped:
+        return short_evidence_label(mapped)
+    if clean_name.startswith("auto_repair_context_"):
+        return "自动修复上下文"
+    if clean_name.startswith("rollback_"):
+        return "回滚记录"
+    if stage:
+        stage_label = STAGE_LABELS.get(stage, stage)
+        return short_evidence_label(f"{stage_label}证据")
+    stem = clean_name.rsplit(".", 1)[0].replace("_", " ").replace("-", " ")
+    return short_evidence_label(stem or clean_name)
+
+
 def stage_artifact_name(stage: dict) -> str:
     artifact = str(stage.get("artifact") or "").strip()
     if not artifact:
         return ""
-    return Path(artifact).name
+    return artifact_evidence_label(artifact, stage=str(stage.get("name") or "").strip())
 
 
 def read_json_file(path: Path) -> dict:
@@ -433,11 +481,23 @@ def report_excerpt(report: dict, limit: int = 260, *, redact: bool = True) -> st
 def report_artifact_name(report: dict) -> str:
     path = str(report.get("_artifact_path") or "").strip()
     if path:
-        return Path(path).name
+        name = Path(path).name
+        stage = str(report.get("stage") or "").strip()
+        index = str(report.get("index") or "").strip()
+        if not index:
+            key = str(report.get("_artifact_key") or "").strip()
+            match = COMMAND_ARTIFACT_RE.match(key)
+            index = match.group("index") if match else ""
+        stage_label = STAGE_LABELS.get(stage, stage)
+        suffix = index if index and index != "0" else ""
+        if stage_label:
+            return short_evidence_label(f"{stage_label}命令{suffix}")
+        return artifact_evidence_label(name, stage=stage)
     key = str(report.get("_artifact_key") or "").strip()
     match = COMMAND_ARTIFACT_RE.match(key)
     if match:
-        return f"{match.group('stage')}-{match.group('index')}.json"
+        stage = match.group("stage")
+        return short_evidence_label(f"{STAGE_LABELS.get(stage, stage)}命令{match.group('index')}")
     return ""
 
 

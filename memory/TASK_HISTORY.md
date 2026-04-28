@@ -1,5 +1,32 @@
 # TASK_HISTORY
 
+## 2026-04-28 - DeliveryPlan 结构化方案契约与 revise_solution 回流
+
+类型：bugfix
+范围：`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`scripts/openclaw-ops/smart_arb_live_bridge.py`、`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py`、`tests/scripts_openclaw_ops/test_smart_arb_live_bridge.py`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`
+事实：修复 nofx pipeline 方案阶段总被 `solution_review` 拦住的结构性问题。`solution_package` 现在生成通用 `delivery_plan.json` 作为交付契约，`solution.md` 只从契约渲染，避免靠 Markdown 文案过 reviewer。契约字段覆盖任务类型、owner、切片、目标文件/定位策略、实施步骤、验证命令、发布/回滚门禁、人工阻塞条件和安全边界；`solution_review`、`code_execution` 和后续阶段上下文都会读取该契约。`revise_solution` 加入自动回流白名单；否定式安全边界如 “do not set PRODUCTION_TRADING_ENABLED=true” 不再误判为 high risk，正向启用真实交易/下单/资金/凭证仍 hard block。
+证据：`compile_delivery_plan()`、`delivery_plan.json` artifact、`PIPELINE_DELIVERY_PLAN_FILE`、`stage_context_files()` 和 `REPAIRABLE_NEXT_ACTIONS` 已更新；新增/更新单测覆盖结构化契约、prompt 注入、非代码 stage 隔离 artifact 写入路径、`revise_solution` 自动回流和真实交易正向表达 hard block。
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 93 项 OK
+复用建议：方案评审要求 `requires_revision` 时先看 `delivery_plan.json` 和 `solution_review.md` 的结构化缺口，不要放松 reviewer。修 pipeline/runtime 自身继续绕过 Discord workflow，走外部 Codex/SSH/operator 改 hardflow、测试后再安装。
+
+## 2026-04-28 - nofx Discord 证据短标签与 cron 群投递
+
+类型：bugfix
+范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`cron/jobs.json`、`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`、`tests/scripts_openclaw_ops/test_project_delivery_runtime_installer.py`
+事实：Discord 状态卡中的证据项不再直接显示 `solution_review.md`、`command-runs/external_research-1.json` 这类文件名，而是显示 20 字以内中文短说明，例如“方案评审报告”“外部资料核对命令2”。完整证据目录和文件仍保留在 pipeline run 目录。`cron/jobs.json` 的 announce / failureAlert 投递目标已从旧 Telegram 群切到 spreadagent Discord 群 `1494595527181078578`，让定时任务结果和失败告警进入群里。本轮只完成本地仓库改动与验证；nofx 远端 SSH 在握手阶段重置连接，尚未安装到 live runtime。
+证据：新增证据短标签映射和单测；安装器测试校验 selected cron job 安装后的 delivery/failureAlert 指向 Discord 群；两个 nofx profile SOUL 要求状态卡证据项保持 20 字以内中文短说明；远端 `arbops@43.153.157.46` SSH 低频重试返回 `kex_exchange_identification: read: Connection reset by peer`。
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 36 项 OK；`python -B -m json.tool cron/jobs.json`、`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过
+复用建议：如果用户反馈状态卡证据看不懂，优先补 `ARTIFACT_EVIDENCE_LABELS` 的中文短标签；如果要换定时任务群，更新 `cron/jobs.json` 后重跑 runtime installer，不要改任务 payload。远端 SSH 恢复后按 nofx installer 流程同步本仓库到 `/home/arbops/.hermes`。
+
+## 2026-04-27 - nofx 拉取并安装 067fbc43 hardflow runtime
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/cron/jobs.json`、Task Center、内控 API
+事实：按“不要走工作流”的自修边界，从外部 Codex/SSH 直接完成 nofx hardflow 拉取与 runtime 安装。远端仓库已对齐 `067fbc43`，安装前备份 runtime 目标文件到 `/home/arbops/.hermes/ops/install/backups/pre-hardflow-install-20260427T151242Z`；安装后 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 的安装态 SHA256 与仓库源码一致。echo smoke 使用 `--skip-deployment-command` 与 `--skip-git-publish-command`，不重启服务、不执行 git publish、不触发真实 Hermes chat。
+证据：远端 `git rev-list --left-right --count HEAD...origin/main` 为 `0 0`；`smart-arb-pipeline --help` 正常；远端安装态 `py_compile`、仓库 `compileall` 通过；远端定向 `unittest` 98 项 OK；cron 命中三项治理任务；两个 gateway `running/connected`；内控 API `/health` 为 `status=ok`，`/api/strategy/status` 为 `running=false`；echo smoke `install-smoke-arbitrageagent-20260427T151733781612Z` 完成且 Task Center `passed`；`smart-arb-api` cwd 为 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`。
+最后验证：2026-04-27 23:17
+复用建议：workflow/runtime 自修时继续用外部 SSH/operator，不让 Discord profile 自己改自身；安装后必须复核安装态 hash、入口 help、Task Center smoke 和 `smart-arb-api` cwd。
+
 ## 2026-04-27 - nofx Discord 输出降噪与工作流状态卡
 
 类型：bugfix

@@ -94,6 +94,22 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertIn("system_exception_to_task_bridge", names)
             self.assertIn("todo_deadline_to_task_bridge_daily", names)
             self.assertIn("backlog_runner_30m（持续推进待办）", names)
+            installed_jobs = [
+                job
+                for job in jobs
+                if job["name"]
+                in {
+                    "system_exception_to_task_bridge",
+                    "todo_deadline_to_task_bridge_daily",
+                    "backlog_runner_30m（持续推进待办）",
+                }
+            ]
+            self.assertEqual(3, len(installed_jobs))
+            for job in installed_jobs:
+                self.assertEqual("discord", job.get("delivery", {}).get("channel"))
+                self.assertEqual("1494595527181078578", job.get("delivery", {}).get("to"))
+                self.assertEqual("discord", job.get("failureAlert", {}).get("channel"))
+                self.assertEqual("1494595527181078578", job.get("failureAlert", {}).get("to"))
             rendered = "\n".join(str((job.get("payload") or {}).get("message", "")) for job in jobs)
             runtime_text = str(runtime_home).replace("\\", "/")
             self.assertIn(runtime_text, rendered)

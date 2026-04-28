@@ -107,6 +107,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 "external_research",
                 "requirements_package",
                 "requirements_review",
+                "delivery_plan",
                 "solution_package",
                 "solution_review",
                 "code_execution",
@@ -216,13 +217,84 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
 
             requirements = Path(state["artifacts"]["requirements_package"]).read_text(encoding="utf-8")
             solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
             self.assertIn("修复 nofx smart-arb-pipeline", requirements)
             self.assertIn("不要继续业务第五切片", requirements)
             self.assertIn("Deliver the user request above exactly as written", requirements)
             self.assertNotIn("Build an end-to-end coding delivery pipeline that can", requirements)
-            self.assertIn("## Target Requirement", solution)
-            self.assertIn("修复 nofx smart-arb-pipeline", solution)
-            self.assertIn("Use `requirements_discussion.md`", solution)
+            self.assertIn("## Delivery Plan Contract", solution)
+            self.assertIn("delivery_plan.json", solution)
+            self.assertIn("修复 nofx smart-arb-pipeline", delivery_plan["scope_slices"][0]["description"])
+            self.assertEqual("delivery-plan/v1", delivery_plan["schema_version"])
+            self.assertIn("smart-arb-pipeline", json.dumps(delivery_plan, ensure_ascii=False))
+            self.assertNotIn("## Stage Order", solution)
+
+    def test_delivery_plan_prefers_explicit_target_paths_over_memory_context_noise(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Fix scripts/openclaw-ops/smart_arb_pipeline_entry.py without live trading.",
+                    workspace_root=Path(tmp),
+                    run_id="explicit-plan-path",
+                    dry_run=True,
+                )
+            )
+
+            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+
+            self.assertEqual("bugfix", delivery_plan["task_type"])
+            self.assertEqual("backend-dev", delivery_plan["owner"])
+            self.assertEqual(
+                ["scripts/openclaw-ops/smart_arb_pipeline_entry.py"],
+                [item["path"] for item in delivery_plan["target_files"]],
+            )
+            self.assertNotIn("project-agent", json.dumps(delivery_plan, ensure_ascii=False))
+            self.assertNotIn("API_REGISTRY.json", [item["path"] for item in delivery_plan["target_files"]])
+            self.assertTrue(solution.startswith("# Solution Package\n\n## Delivery Plan Contract"))
+
+    def test_delivery_plan_keeps_code_fix_type_when_docs_are_synced(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="修复 skills/library/project-delivery-pipeline/scripts/pipeline_runner.py 并同步 memory/RUNBOOK.md 文档",
+                    workspace_root=Path(tmp),
+                    run_id="code-fix-with-doc-sync",
+                    dry_run=True,
+                )
+            )
+
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+
+            self.assertEqual("bugfix", delivery_plan["task_type"])
+            self.assertEqual("backend-dev", delivery_plan["owner"])
+            self.assertIn(
+                "Run the focused tests or compile checks that cover changed files.",
+                [item["command"] for item in delivery_plan["verification_commands"]],
+            )
+
+    def test_delivery_plan_does_not_treat_readme_tooling_as_docs_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Add README renderer support in scripts/openclaw-ops/smart_arb_pipeline_entry.py",
+                    workspace_root=Path(tmp),
+                    run_id="readme-tooling-support",
+                    dry_run=True,
+                )
+            )
+
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+
+            self.assertEqual("feature", delivery_plan["task_type"])
+            self.assertEqual("backend-dev", delivery_plan["owner"])
+            self.assertIn(
+                "Run the focused tests or compile checks that cover changed files.",
+                [item["command"] for item in delivery_plan["verification_commands"]],
+            )
 
     def test_code_agent_can_select_frontend_stage_owner(self):
         with tempfile.TemporaryDirectory() as tmp:

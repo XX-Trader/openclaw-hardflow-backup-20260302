@@ -93,6 +93,7 @@ ARTIFACT_PATH_ENV_NAMES = {
     "PIPELINE_REQUIREMENTS_FILE",
     "PIPELINE_REQUIREMENTS_DISCUSSION_FILE",
     "PIPELINE_REQUIREMENTS_REVIEW_FILE",
+    "PIPELINE_DELIVERY_PLAN_FILE",
     "PIPELINE_SOLUTION_FILE",
     "PIPELINE_SOLUTION_REVIEW_FILE",
     "PIPELINE_PATCH_SUMMARY_FILE",
@@ -209,13 +210,14 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
     if stage == "requirements_review":
         return ("research_report.md", "project_memory_context.md", "requirements.md", "requirements_discussion.md")
     if stage == "solution_review":
-        return ("requirements.md", "requirements_review.md", "solution.md")
+        return ("requirements.md", "requirements_review.md", "delivery_plan.json", "solution.md")
     if stage == "code_execution":
         return (
             "research_report.md",
             "requirements.md",
             "requirements_discussion.md",
             "requirements_review.md",
+            "delivery_plan.json",
             "solution.md",
             "solution_review.md",
         )
@@ -223,6 +225,7 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
         return (
             "research_report.md",
             "requirements_discussion.md",
+            "delivery_plan.json",
             "solution.md",
             "patch_summary.md",
             "verification_report.md",
@@ -383,7 +386,7 @@ Run at least two short rounds of discussion:
         )
         specific = """
 Act as {role} executor for {focus}. Read project memory/docs/todo/done and the relevant code before editing.
-Treat Prior accepted stage context and Repair context as hard constraints. Do not implement later-phase strategy work if the current requirement or research context says to stay on P0 memory/environment work.
+Treat Prior accepted stage context, `delivery_plan.json`, and Repair context as hard constraints. Do not implement later-phase strategy work if the current requirement or research context says to stay on P0 memory/environment work.
 Implement the smallest safe change that satisfies the refined requirement.
 Run the most relevant local checks you can run in this environment.
 Return a patch summary with changed files, commands run, and remaining risk.
@@ -402,6 +405,7 @@ Return a patch summary with changed files, commands run, and remaining risk.
         specific = """
 Act as {role}. Review the pipeline artifacts for {focus}.
 You are one side of a dual-AI review gate. Produce your own independent verdict and evidence.
+For solution review, validate the structured `delivery_plan.json` contract first; `solution.md` is only the human-readable rendering.
 Include exactly this reviewer role line:
 Reviewer role: {role}
 If the material is acceptable, include exactly this line:
