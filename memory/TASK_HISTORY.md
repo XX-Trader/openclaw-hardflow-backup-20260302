@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-04-29 - Discord route-choice 入口硬门禁
+
+类型：bugfix
+范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`、`tests/scripts_openclaw_ops/test_nofx_profile_templates.py`、nofx live evidence 文档
+事实：用户指出“应该先问是否走工作流，但没有问”。根因是前一轮只把“所有 Discord 新任务先路线选择”写进 profile SOUL，入口脚本本身没有硬门禁；如果 profile 模型误调用 `smart-arb-pipeline`，入口仍会直接启动 coordinator pipeline。现在入口要求 Discord source 携带 `--route-choice coding_workflow` 或 `--route-choice todo_auto_candidate` 才会启动 pipeline；缺失时只输出执行链路选择卡并返回 `回答状态: 等待人工选择`，显式选择 `direct_run` / `requirement_discussion` / `specified_agent` 时跳过 pipeline。
+证据：新增 `--route-choice` 参数、路线推荐与选择卡渲染、`SMART_ARB_REQUIRE_DISCORD_ROUTE_CHOICE` 开关、非 pipeline route 跳过逻辑；两个 profile 模板的 pipeline 启动示例已补人工选择凭证。回归测试覆盖无 route choice 不调用 `run_pipeline_command`、非 pipeline route 输出 `status=skipped`、既有 pipeline 测试必须显式传入 `--route-choice coding_workflow`。
+最后验证：2026-04-29 00:42，本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_nofx_profile_templates -v` 41 项 OK；`python -B -m py_compile scripts\openclaw-ops\smart_arb_pipeline_entry.py` 通过
+复用建议：以后 Discord 入口没有询问用户时，不要只查 SOUL 提示词；同时检查入口脚本安装态是否包含 route-choice 硬门禁，以及 profile 启动 pipeline 时是否传入 `--route-choice coding_workflow` 或 `--route-choice todo_auto_candidate`。
+
 ## 2026-04-28 - Discord 全任务路线选择与 SmartMulti 拉最新
 
 类型：task

@@ -43,6 +43,8 @@ class NofxProfileTemplateTests(unittest.TestCase):
                 self.assertIn("coding_workflow", text)
                 self.assertIn("todo_auto_candidate", text)
                 self.assertIn("用户选择 `direct_run` 后", text)
+                self.assertIn("--route-choice coding_workflow", text)
+                self.assertIn("缺失时入口会只返回选择卡并拒绝启动 pipeline", text)
                 self.assertIn("git pull --ff-only", text)
                 self.assertIn("HEAD == origin/main", text)
                 self.assertIn("只有用户明确回复", text)

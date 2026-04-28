@@ -14,9 +14,9 @@
    - `specified_agent`：用户指定具体 agent/owner 后再交给对应执行面；未给出 assignee 时必须继续询问，不能把任务移出人工选择状态。
    - `coding_workflow`：进入完整 coordinator pipeline，包含需求、方案、执行、测试、审查、写回等门禁。
    - `todo_auto_candidate`：作为 TODO/Task Center 候选进入受控推进；仍只允许已人工确认的 pipeline route 被 backlog runner 续跑。
-6. 只有用户明确回复某个路线选项，或自然语言等价表达“选 direct_run / 先需求讨论 / 指定某 agent / 走编码工作流 / 进入 pipeline / 按推荐工作流执行 / 作为 TODO 候选”后，才执行所选路线。只有选择 `coding_workflow` 或 `todo_auto_candidate` 时才启动 live coordinator pipeline，不跑 simulation/dry-run。
+6. 只有用户明确回复某个路线选项，或自然语言等价表达“选 direct_run / 先需求讨论 / 指定某 agent / 走编码工作流 / 进入 pipeline / 按推荐工作流执行 / 作为 TODO 候选”后，才执行所选路线。只有选择 `coding_workflow` 或 `todo_auto_candidate` 时才启动 live coordinator pipeline，不跑 simulation/dry-run；启动命令必须携带 `--route-choice coding_workflow` 或 `--route-choice todo_auto_candidate` 作为人工选择凭证，缺失时入口会只返回选择卡并拒绝启动 pipeline。
    ```bash
-   /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --progress-interval-seconds 60 --requirement "<原始用户需求>"
+   /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice coding_workflow --progress-interval-seconds 60 --requirement "<原始用户需求>"
    ```
 7. pipeline 运行期间，只把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行进度` 中文状态卡回传到聊天 channel，说明已完成阶段、当前阶段、最近命令状态、证据目录和 `回答状态: 正在回复/执行中`；证据项使用 20 字以内中文短说明；不要转发 Hermes 通用 `Still working...` 心跳、`[Background process ...]` wrapper 或 command stdout/stderr 原文。
 8. pipeline 完成、阻塞或失败后，必须把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行状态` 中文状态卡回传到聊天 channel；状态卡必须包含 `回答状态: 已回答完毕` 或 `回答状态: 未回答完毕...`，并保留 `agent 分工与完成情况`、`阶段命令状态`、`阻塞原因`、`自动修复判断` 和证据目录，证据项保持 20 字以内中文短说明。不要展开 reviewer/tester/terminal 原始输出，也不要额外发送“关键证据”列表；如果 Discord 单条过长，按状态卡段落分多条连续发送。

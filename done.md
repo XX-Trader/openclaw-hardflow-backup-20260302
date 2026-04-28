@@ -5,6 +5,14 @@
 
 ---
 
+## 2026-04-29 已完成
+
+- [x] [2026-04-29] **Discord route-choice 入口硬门禁**
+  - 定位用户反馈的问题：上一轮主要依赖 nofx profile `SOUL.md` 提示词要求先问用户，`smart_arb_pipeline_entry.py` 入口本身没有阻止 Discord 调用直接进入 pipeline。
+  - 入口新增 `--route-choice` 人工选择凭证；Discord source 默认必须携带 `coding_workflow` 或 `todo_auto_candidate` 才启动 coordinator pipeline，缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`。
+  - 显式选择 `direct_run`、`requirement_discussion` 或 `specified_agent` 时入口跳过 pipeline，避免非工作流选择被误送入 `smart-arb-pipeline`。
+  - 本地验证：`test_smart_arb_pipeline_entry` 与 `test_nofx_profile_templates` 共 41 项 OK；`smart_arb_pipeline_entry.py` `py_compile` 通过。本轮尚未安装到 nofx live runtime。
+
 ## 2026-04-28 已完成
 
 - [x] [2026-04-28] **nofx Discord 全任务路线选择与 SmartMulti 拉最新**

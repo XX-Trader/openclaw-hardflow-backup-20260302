@@ -344,6 +344,46 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("回答状态: 正在回复/执行中", text)
         self.assertIn("状态: 已启动 coordinator pipeline", text)
 
+    def test_discord_source_without_route_choice_prints_selection_card(self):
+        module = load_module()
+        out = io.StringIO()
+
+        with mock.patch.object(module, "run_pipeline_command") as run_mock, redirect_stdout(out):
+            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", "帮我拉取最新代码"])
+
+        self.assertEqual(0, rc)
+        self.assertFalse(run_mock.called)
+        text = out.getvalue()
+        self.assertIn("# nofx 执行链路选择", text)
+        self.assertIn("推荐链路: direct_run", text)
+        self.assertIn("回答状态: 等待人工选择", text)
+        self.assertIn("已阻止直接启动 `smart-arb-pipeline`", text)
+
+    def test_discord_source_with_non_pipeline_route_choice_skips_pipeline(self):
+        module = load_module()
+        out = io.StringIO()
+
+        with mock.patch.object(module, "run_pipeline_command") as run_mock, redirect_stdout(out):
+            rc = module.main(
+                [
+                    "--profile",
+                    "spreadagent",
+                    "--source",
+                    "discord",
+                    "--route-choice",
+                    "direct_run",
+                    "--emit-json",
+                    "--requirement",
+                    "不要走工作流，查一下状态",
+                ]
+            )
+
+        self.assertEqual(0, rc)
+        self.assertFalse(run_mock.called)
+        payload = json.loads(out.getvalue())
+        self.assertEqual("skipped", payload["status"])
+        self.assertEqual("manual_route_not_pipeline:direct_run", payload["next_action"])
+
     def test_render_chat_summary_marks_unparsed_output_not_finished(self):
         module = load_module()
 
@@ -426,7 +466,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
-            rc = module.main(["--profile", "arbitrageagent", "--source", "discord", "--requirement", "demo"])
+            rc = module.main(["--profile", "arbitrageagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         self.assertIn("# nofx 任务执行状态", out.getvalue())
@@ -473,7 +513,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
-            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", requirement])
+            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", requirement])
 
         self.assertEqual(0, rc)
         runner_cmd = run_mock.call_args.args[0]
@@ -504,7 +544,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
-            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", requirement])
+            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", requirement])
 
         self.assertEqual(0, rc)
         runner_cmd = run_mock.call_args.args[0]
@@ -531,7 +571,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
-            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--skip-git-publish-command", "--requirement", "demo"])
+            rc = module.main(["--profile", "spreadagent", "--source", "discord", "--route-choice", "coding_workflow", "--skip-git-publish-command", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         runner_cmd = run_mock.call_args.args[0]
@@ -574,7 +614,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                     completed_process(module, json.dumps(completed, ensure_ascii=False), returncode=0),
                 ],
             ) as run_mock, redirect_stdout(out), redirect_stderr(err):
-                rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", "demo"])
+                rc = module.main(["--profile", "spreadagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         self.assertEqual(2, run_mock.call_count)
@@ -620,7 +660,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                     completed_process(module, json.dumps(completed, ensure_ascii=False), returncode=0),
                 ],
             ) as run_mock, mock.patch.object(module, "write_repair_context_file", return_value=None), redirect_stdout(io.StringIO()):
-                rc = module.main(["--emit-json", "--profile", "spreadagent", "--source", "discord", "--requirement", "demo"])
+                rc = module.main(["--emit-json", "--profile", "spreadagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         repair_env = run_mock.call_args_list[1].kwargs["env"]
@@ -680,7 +720,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 "write_repair_context_file",
                 side_effect=[first_context, None],
             ), redirect_stdout(io.StringIO()):
-                rc = module.main(["--emit-json", "--profile", "spreadagent", "--source", "discord", "--requirement", "demo"])
+                rc = module.main(["--emit-json", "--profile", "spreadagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         second_repair_env = run_mock.call_args_list[2].kwargs["env"]
@@ -1151,7 +1191,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 "run_pipeline_command",
                 return_value=completed_process(module, json.dumps(blocked, ensure_ascii=False), returncode=1),
             ) as run_mock, redirect_stdout(out):
-                rc = module.main(["--profile", "spreadagent", "--source", "discord", "--requirement", "demo"])
+                rc = module.main(["--profile", "spreadagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", "demo"])
 
         self.assertEqual(1, rc)
         self.assertEqual(1, run_mock.call_count)
@@ -1178,7 +1218,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "run_pipeline_command",
             return_value=completed_process(module, raw, stderr="runner warning\n"),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
-            rc = module.main(["--emit-json", "--requirement", "demo"])
+            rc = module.main(["--emit-json", "--route-choice", "coding_workflow", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         self.assertEqual(raw, out.getvalue())
@@ -1195,7 +1235,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "run_pipeline_command",
             return_value=completed_process(module, "runner raw output\n", stderr="runner err\n"),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
-            rc = module.main(["--no-chat-summary", "--requirement", "demo"])
+            rc = module.main(["--no-chat-summary", "--route-choice", "coding_workflow", "--requirement", "demo"])
 
         self.assertEqual(0, rc)
         self.assertEqual("runner raw output\n", out.getvalue())
@@ -1216,6 +1256,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 [
                     "--emit-json",
                     "--no-live-bridge",
+                    "--route-choice",
+                    "coding_workflow",
                     "--requirement",
                     "请优化前端页面布局和按钮交互",
                 ]
@@ -1241,6 +1283,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                     "--live",
                     "--profile",
                     "spreadagent",
+                    "--route-choice",
+                    "coding_workflow",
                     "--live-bridge-agent-mode",
                     "echo",
                     "--live-bridge-verification-command-timeout-seconds",

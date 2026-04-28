@@ -1,6 +1,6 @@
 # SmartMultiPlatformArbitrage nofx live evidence bridge
 
-> 最后验证：2026-04-27 10:30 Asia/Shanghai
+> 最后验证：2026-04-29 00:42 Asia/Shanghai，本地 route-choice 入口门禁已验证；nofx live runtime 尚待安装该代码批次。
 > 适用范围：nofx 上 SmartMultiPlatformArbitrage 的 Discord 需求入口、Hermes runtime、项目交付优先工作流 live 证据桥。
 
 ## 归属边界
@@ -59,8 +59,10 @@ Discord 入口默认不是直接执行，而是先由连接 Discord 的 profile 
 固定选项为 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`。推荐链路只作为建议，不等于授权；只有用户明确选择 `coding_workflow` 或 `todo_auto_candidate` 后，profile 才启动真实 coordinator pipeline：
 
 ```bash
-/home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --progress-interval-seconds 60 --requirement "<需求文本>"
+/home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice coding_workflow --progress-interval-seconds 60 --requirement "<需求文本>"
 ```
+
+`--route-choice` 是代码层人工选择凭证，不只是提示词约定。`smart_arb_pipeline_entry.py` 默认要求 Discord source 携带 `coding_workflow` 或 `todo_auto_candidate` 才会启动 coordinator pipeline；缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`。如果显式传入 `direct_run`、`requirement_discussion` 或 `specified_agent`，入口会跳过 pipeline，避免 profile 把非 pipeline 选择误送进工作流。
 
 如果用户选择 `direct_run`，当前 Discord profile 作为最高权限 operator 直接处理，不进入 pipeline；仍必须遵守凭证、生产、资金、真实交易、force push、删除生产数据等安全边界。安全仓库同步只允许 clean 工作树上的 `git fetch` + `git pull --ff-only`，并做 `git status`、`HEAD == origin/main` 和内控 API smoke。
 

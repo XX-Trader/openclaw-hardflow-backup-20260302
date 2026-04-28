@@ -112,6 +112,40 @@ ARTIFACT_EVIDENCE_LABELS = {
     "pipeline_state.json": "流水线状态",
 }
 STAGE_ORDER = {name: index for index, name in enumerate(STAGE_LABELS)}
+PIPELINE_ROUTE_CHOICES = {"coding_workflow", "todo_auto_candidate"}
+NON_PIPELINE_ROUTE_CHOICES = {"direct_run", "requirement_discussion", "specified_agent"}
+VALID_ROUTE_CHOICES = PIPELINE_ROUTE_CHOICES | NON_PIPELINE_ROUTE_CHOICES
+ROUTE_SELECTION_OPTIONS = (
+    ("direct_run", "直接运行", "当前 Discord profile 直接处理，不进入 coordinator pipeline。"),
+    ("requirement_discussion", "需求探讨", "先澄清目标、范围、风险和验收，不改代码。"),
+    ("specified_agent", "指定 agent", "用户指定具体 agent/owner 后再交给对应执行面。"),
+    ("coding_workflow", "指定编码工作流", "进入完整 coordinator pipeline，包含测试、审查和写回门禁。"),
+    ("todo_auto_candidate", "TODO 自动候选", "确认后才允许 backlog runner 作为受控候选推进。"),
+)
+DIRECT_RUN_RECOMMENDATION_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"\b(?:git\s+(?:fetch|pull|status)|pull\s+(?:latest|code)|sync\s+(?:latest|repo|code))\b",
+        r"(?:拉取|同步|更新).{0,12}(?:最新代码|代码|仓库|main|origin/main)",
+        r"(?:不要走工作流|不走\s*workflow|绕过工作流|别进\s*pipeline|直接沟通|先自己开发|这次不用自动流程)",
+        r"(?:修|改|检查|排查).{0,20}(?:workflow|工作流|pipeline|profile|SOUL|runtime|git_publish|auto-repair|dual review|runtime installer|cron)",
+        r"(?:只读|查询|看看|状态|监控|health|strategy/status)",
+    )
+]
+REQUIREMENT_DISCUSSION_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"(?:讨论|方案|评估|解释|为什么|是否|能不能|怎么做)",
+        r"\b(?:discuss|plan|evaluate|explain|why|whether|how)\b",
+    )
+]
+CODING_WORKFLOW_RECOMMENDATION_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"(?:实现|开发|修复|修改|重构|测试|部署|上线|提交|推送|安装依赖|改业务配置|重启业务服务)",
+        r"\b(?:implement|develop|fix|change|refactor|test|deploy|push|install|restart)\b",
+    )
+]
 COMMAND_ARTIFACT_RE = re.compile(r"^command_(?P<stage>.+)_(?P<index>\d+)$")
 STATUS_LABELS = {
     "completed": "完成",
@@ -375,6 +409,79 @@ def parse_runner_state(stdout: str) -> dict | None:
     except json.JSONDecodeError:
         return None
     return payload if isinstance(payload, dict) and "stages" in payload else None
+
+
+def normalize_route_choice(value: object) -> str:
+    return str(value or "").strip().lower().replace("-", "_")
+
+
+def recommend_discord_route(requirement: str) -> tuple[str, str]:
+    text = str(requirement or "").strip()
+    if any(pattern.search(text) for pattern in DIRECT_RUN_RECOMMENDATION_PATTERNS):
+        return "direct_run", "需求可由当前 Discord profile 直接受控处理，推荐先选择 direct_run。"
+    if any(pattern.search(text) for pattern in REQUIREMENT_DISCUSSION_PATTERNS):
+        return "requirement_discussion", "需求更像沟通或方案问题，推荐先选择 requirement_discussion。"
+    if any(pattern.search(text) for pattern in CODING_WORKFLOW_RECOMMENDATION_PATTERNS):
+        return "coding_workflow", "需求涉及实现、验证或交付门禁，推荐选择 coding_workflow。"
+    return "direct_run", "未命中必须进入 pipeline 的信号，推荐先选择 direct_run。"
+
+
+def render_route_selection_card(*, source: str, profile: str, requirement: str) -> str:
+    recommended_route, reason = recommend_discord_route(requirement)
+    lines = [
+        "# nofx 执行链路选择",
+        f"来源: {source}/{profile}",
+        "总状态: 等待人工选择",
+        f"推荐链路: {recommended_route}",
+        f"推荐原因: {reason}",
+        "",
+        "可选项",
+    ]
+    for route_id, label, description in ROUTE_SELECTION_OPTIONS:
+        lines.append(f"- {route_id}: {label}；{description}")
+    lines.extend(
+        [
+            "",
+            "下一步: 请回复其中一个选项。只有选择 `coding_workflow` 或 `todo_auto_candidate` 后，才会启动 coordinator pipeline。",
+            "防误触发: 当前调用没有携带人工选择凭证，已阻止直接启动 `smart-arb-pipeline`。",
+            "回答状态: 等待人工选择",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def route_selection_payload(*, source: str, profile: str, requirement: str) -> dict[str, object]:
+    recommended_route, reason = recommend_discord_route(requirement)
+    return {
+        "status": "blocked",
+        "next_action": "await_route_selection",
+        "source": source,
+        "profile": profile,
+        "stages": [],
+        "answer_status": "等待人工选择",
+        "route_selection": {
+            "mode": "manual_selection",
+            "required": True,
+            "recommended_route": recommended_route,
+            "recommendation_reason": reason,
+            "options": [
+                {"id": route_id, "label": label, "description": description}
+                for route_id, label, description in ROUTE_SELECTION_OPTIONS
+            ],
+        },
+    }
+
+
+def discord_route_choice_required(source: str) -> bool:
+    if str(source or "").strip().lower() != "discord":
+        return False
+    return env_flag("SMART_ARB_REQUIRE_DISCORD_ROUTE_CHOICE", True)
+
+
+def should_block_for_discord_route_choice(source: str, route_choice: str) -> bool:
+    if not discord_route_choice_required(source):
+        return False
+    return normalize_route_choice(route_choice) not in PIPELINE_ROUTE_CHOICES
 
 
 def short_evidence_label(label: str, limit: int = SHORT_EVIDENCE_LIMIT) -> str:
@@ -1144,6 +1251,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Smart arbitrage project delivery pipeline entry")
     parser.add_argument("--source", default="discord")
     parser.add_argument("--profile", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROFILE", "arbitrageagent"))
+    parser.add_argument(
+        "--route-choice",
+        choices=sorted(VALID_ROUTE_CHOICES),
+        default=os.environ.get("SMART_ARB_ROUTE_CHOICE", ""),
+        help="manual route selected by the Discord user; Discord pipeline execution requires a pipeline route",
+    )
     parser.add_argument("--live", action="store_true", help="kept for compatibility; this entrypoint always runs live")
     parser.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--no-live-bridge", action="store_true", help="do not inject default live evidence commands")
@@ -1221,6 +1334,20 @@ def main(argv: list[str] | None = None) -> int:
     args.live = True
 
     profile = args.profile or "arbitrageagent"
+    requirement_text = requirement_from_passthrough(passthrough)
+    route_choice = normalize_route_choice(args.route_choice)
+    if should_block_for_discord_route_choice(args.source, route_choice):
+        payload = route_selection_payload(source=args.source, profile=profile, requirement=requirement_text)
+        if route_choice in NON_PIPELINE_ROUTE_CHOICES:
+            payload["selected_route"] = route_choice
+            payload["status"] = "skipped"
+            payload["next_action"] = f"manual_route_not_pipeline:{route_choice}"
+        if args.emit_json or args.no_chat_summary:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(render_route_selection_card(source=args.source, profile=profile, requirement=requirement_text))
+        return 0
+
     run_id = utc_run_id(f"{args.source}-{profile}")
     cmd = [
         sys.executable,
@@ -1248,7 +1375,6 @@ def main(argv: list[str] | None = None) -> int:
         "--force",
         "--emit-json",
     ]
-    requirement_text = requirement_from_passthrough(passthrough)
     code_agent = normalize_code_agent(args.code_agent) or infer_code_agent(requirement_text)
     cmd += ["--code-agent", code_agent]
     cmd += default_live_bridge_args(args, passthrough)
