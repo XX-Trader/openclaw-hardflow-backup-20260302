@@ -296,6 +296,131 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 [item["command"] for item in delivery_plan["verification_commands"]],
             )
 
+    def test_delivery_plan_does_not_promote_memory_context_to_simple_task_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="把 Discord 状态卡的回答状态文案改短一点。",
+                    workspace_root=Path(tmp),
+                    run_id="simple-task-no-memory-targets",
+                    dry_run=True,
+                )
+            )
+
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+            target_paths = [item["path"] for item in delivery_plan["target_files"]]
+
+            self.assertEqual([], target_paths)
+            self.assertTrue(delivery_plan["plan_findings"]["discovery_required"])
+            self.assertNotIn("API_REGISTRY.json", target_paths)
+            self.assertNotIn("SOURCE_REGISTRY.json", target_paths)
+            self.assertFalse(any(".workflow" in path or ".hermes" in path for path in target_paths))
+
+    def test_delivery_plan_skips_negated_control_paths_in_original_requirement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement=(
+                        "Do not edit .workflow/pipeline-runs/demo/retry.py; "
+                        "把 Discord 状态卡的回答状态文案改短一点。"
+                    ),
+                    workspace_root=Path(tmp),
+                    run_id="negated-control-path",
+                    dry_run=True,
+                )
+            )
+
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+            target_paths = [item["path"] for item in delivery_plan["target_files"]]
+
+            self.assertEqual([], target_paths)
+            self.assertTrue(delivery_plan["plan_findings"]["discovery_required"])
+
+    def test_delivery_plan_reads_explicit_target_from_multiline_original_requirement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement=(
+                        "Shorten the Discord answer-status copy.\n"
+                        "Target file: scripts/openclaw-ops/smart_arb_pipeline_entry.py"
+                    ),
+                    workspace_root=Path(tmp),
+                    run_id="multiline-explicit-target",
+                    dry_run=True,
+                )
+            )
+
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+
+            self.assertEqual(
+                ["scripts/openclaw-ops/smart_arb_pipeline_entry.py"],
+                [item["path"] for item in delivery_plan["target_files"]],
+            )
+
+    def test_delivery_plan_filters_control_paths_from_review_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            requirements_review = run_dir / "requirements_review.md"
+            project_memory_context = run_dir / "project_memory_context.md"
+            requirements_review.write_text(
+                "\n".join(
+                    [
+                        "Final verdict: ready_for_solution",
+                        "Likely implementation file: scripts/openclaw-ops/smart_arb_pipeline_entry.py",
+                        "Do not edit .workflow/pipeline-runs/demo/retry.py",
+                        "Do not edit .workflow/project-memory/demo/API_REGISTRY.json",
+                        "Do not edit /home/arbops/.hermes/profiles/spreadagent/sessions/session_1.json",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            project_memory_context.write_text(
+                "Runtime host: hermes\nRequired Files: API_REGISTRY.json, SOURCE_REGISTRY.json\n",
+                encoding="utf-8",
+            )
+
+            delivery_plan = _mod.compile_delivery_plan(
+                PipelineConfig(project_key="demo", requirement="把状态卡文案改短"),
+                {"host": "hermes", "runtime_home": "/home/arbops/.hermes"},
+                "把状态卡文案改短",
+                {
+                    "requirements_review": str(requirements_review),
+                    "project_memory_context": str(project_memory_context),
+                },
+            )
+
+            self.assertEqual(
+                ["scripts/openclaw-ops/smart_arb_pipeline_entry.py"],
+                [item["path"] for item in delivery_plan["target_files"]],
+            )
+
+    def test_delivery_plan_splits_heavy_multi_item_requirement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="继续推进：策略主干、资金费率套利、spread_grid 远端集成验收、Discord 真实查询验收、文档治理。安全要求：不读取凭证。",
+                    workspace_root=Path(tmp),
+                    run_id="split-heavy-task",
+                    dry_run=True,
+                )
+            )
+
+            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+
+            self.assertEqual("slice-1", delivery_plan["task_split_policy"]["current_slice_id"])
+            self.assertIn("slice-2", delivery_plan["task_split_policy"]["deferred_slice_ids"])
+            self.assertEqual("current", delivery_plan["scope_slices"][0]["status"])
+            self.assertEqual("deferred", delivery_plan["scope_slices"][1]["status"])
+            self.assertTrue(
+                any("Do not implement deferred scope slices" in item for item in delivery_plan["out_of_scope"])
+            )
+            self.assertIn("## Task Split Policy", solution)
+
     def test_code_agent_can_select_frontend_stage_owner(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = run_pipeline(

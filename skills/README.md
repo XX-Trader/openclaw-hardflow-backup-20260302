@@ -13,7 +13,6 @@
 | [control-plane-ops](library/control-plane-ops/SKILL.md) | 控制面巡检、Agent 审查、Cron 诊断 | — |
 | [log-monitor](library/log-monitor/SKILL.md) | 异常日志扫描、分类、增量去重 | — |
 | [config-watchdog](library/config-watchdog/SKILL.md) | 配置快照、变更检测、JSON 校验、回滚 | — |
-| [memtidy](library/memtidy/SKILL.md) | 记忆三层管理、备份修剪 | — |
 | [todo-patrol](library/todo-patrol/SKILL.md) | TODO 巡检、过期检测、归档 | — |
 | [task-cost-analytics](library/task-cost-analytics/SKILL.md) | Token 统计、成本分析 | — |
 
@@ -115,5 +114,5 @@
 | **tester** | playwright-interactive, webapp-testing, auto-fix, deployment-test, systematic-debugging |
 | **deployer** | db-deploy, deployment-test, github-actions-runner, windows-fullstack-deploy, openclaw-security-audit |
 | **doc-writer** | writing-plans, docx, changelog-generator, internal-comms, product-requirements, baoyu-format-markdown, pdf, pptx, xlsx |
-| **ops-agent** | control-plane-ops, log-monitor, config-watchdog, memtidy, fleet-sync, todo-patrol, task-cost-analytics |
+| **ops-agent** | control-plane-ops, log-monitor, config-watchdog, fleet-sync, todo-patrol, task-cost-analytics |
 | **optimization-agent** | repo-hygiene-reviewer, workflow-audit, task-cost-analytics |

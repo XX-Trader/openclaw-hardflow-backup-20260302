@@ -165,39 +165,6 @@
       "skill_ref": "openclaw-security-audit"
     },
     {
-      "id": "b2c3d4e5-memtidy-runner-hardflow-0002",
-      "agentId": "coordinator",
-      "name": "memtidy_runner（每日记忆整理）",
-      "description": "每日凌晨3:00执行记忆文件三层管理：热保持/温压缩/冷归档/废弃修剪，自动备份后执行",
-      "enabled": true,
-      "createdAtMs": 1772643600000,
-      "updatedAtMs": 1772643600000,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 3 * * *",
-        "tz": "Asia/Shanghai"
-      },
-      "sessionTarget": "isolated",
-      "wakeMode": "now",
-      "payload": {
-        "kind": "agentTurn",
-        "message": "你是 memtidy 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/memtidy_runner.py --memory-dirs ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/memory/ ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/workspace/memory/ --rules-file ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/config/memtidy_rules.json。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
-        "timeoutSeconds": 180,
-        "toolsAllow": [
-          "exec",
-          "read"
-        ],
-        "lightContext": true
-      },
-      "delivery": {
-        "mode": "announce",
-        "channel": "discord",
-        "to": "1494595527181078578"
-      },
-      "state": {},
-      "skill_ref": "memtidy"
-    },
-    {
       "id": "c3d4e5f6-config-watchdog-hardflow-0003",
       "agentId": "coordinator",
       "name": "config_watchdog（配置安全巡检）",

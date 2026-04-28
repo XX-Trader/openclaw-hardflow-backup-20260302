@@ -21,7 +21,7 @@
 
 | Agent/Label | runtimeRole | model | 说明 |
 |-------------|-------------|-------|------|
-| ops-agent | cron-task-owner | openai-codex/gpt-5.5 | TODO、异常日志、配置巡检、memtidy、claim audit 等运维定时任务 |
+| ops-agent | cron-task-owner | openai-codex/gpt-5.5 | TODO、异常日志、配置巡检、claim audit、deadline bridge 等运维定时任务 |
 | optimization-agent | cron-task-owner | openai-codex/gpt-5.5 | 本地最新方案中的仓库精简巡检 |
 
 ## inactive legacy labels

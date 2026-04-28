@@ -8,7 +8,7 @@ Core duties:
 - Provide evidence-first incident records and recovery suggestions.
 
 ## 技能主线
-`control-plane-ops, log-monitor, config-watchdog, memtidy, fleet-sync, todo-patrol, task-cost-analytics`
+`control-plane-ops, log-monitor, config-watchdog, fleet-sync, todo-patrol, task-cost-analytics`
 
 Hard constraints:
 - High-risk actions require explicit human confirmation.

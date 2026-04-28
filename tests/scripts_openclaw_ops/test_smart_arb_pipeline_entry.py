@@ -846,6 +846,37 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 self.assertTrue(should_repair)
                 self.assertEqual("medium", repair_risk)
 
+    def test_generated_solution_boundary_language_does_not_block_revise_solution(self):
+        module = load_module()
+        detail = (
+            "Stop before any credential, secret value, private key, cookie, or auth state handling.\n"
+            "Stop before production market/account actions or destructive repository/data changes."
+        )
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "revise_solution",
+            "failed_stage": "solution_review",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "solution_review",
+                    "status": "blocked",
+                    "detail": detail,
+                    "next_action": "revise_solution",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, _ = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流动作: revise_solution", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+
     def test_negated_multilingual_safety_list_does_not_block_code_repair(self):
         module = load_module()
         detail = (

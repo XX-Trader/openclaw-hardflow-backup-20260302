@@ -39,7 +39,6 @@ OPS_SCRIPT_MAP = {
     "unified_exception_logger.py": "skills/library/log-monitor/scripts/unified_exception_logger.py",
     "exception_to_task_bridge.py": "skills/library/log-monitor/scripts/exception_to_task_bridge.py",
     "claim_verification_auditor.py": "skills/library/openclaw-security-audit/scripts/claim_verification_auditor.py",
-    "memtidy_runner.py": "skills/library/memtidy/scripts/memtidy_runner.py",
     "config_watchdog.py": "skills/library/config-watchdog/scripts/config_watchdog.py",
     "source_registry_watcher.py": "scripts/openclaw-ops/source_registry_watcher.py",
     "repo_hygiene_reviewer.py": "scripts/openclaw-ops/repo_hygiene_reviewer.py",

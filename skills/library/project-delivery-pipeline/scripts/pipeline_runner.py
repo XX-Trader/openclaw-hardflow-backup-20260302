@@ -81,9 +81,25 @@ REVIEWER_ROLE_OUTPUT_RE = re.compile(
     r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:\s*([A-Za-z0-9_.-]+)\s*$"
 )
 PATH_TOKEN_RE = re.compile(
-    r"(?:`([^`\r\n]+)`)|(?:\b([A-Za-z0-9_.\-/\\]+(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)))\b)"
+    r"(?:`([^`\r\n]+)`)|(?:(?<![A-Za-z0-9_./\\])([.]?[A-Za-z0-9_][A-Za-z0-9_.\-/\\]*"
+    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))"
 )
 PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)$)", re.IGNORECASE)
+PATH_CONTEXT_SPLIT_RE = re.compile(
+    r"[\r\n;；]+|\b(?:but|however|yet|and)\b|(?:但|但是|不过|然而|并且|然后|同时)",
+    re.IGNORECASE,
+)
+NEGATED_PATH_CONTEXT_RE = re.compile(
+    r"\b(?:do\s+not|don't|never|avoid|exclude|excluded|out\s+of\s+scope|must\s+not|should\s+not)\b|"
+    r"(?:不要|不得|禁止|不允许|不应|不能|不修改|不编辑|不触碰|别改|别碰|排除|非目标)",
+    re.IGNORECASE,
+)
+CONTROL_PLANE_TARGET_REQUEST_RE = re.compile(
+    r"\b(?:fix|repair|restore|update|edit|modify|migrate|clean)\b.{0,80}"
+    r"\b(?:workflow|pipeline|runtime|control[- ]?plane|state|artifact|\.workflow|\.hermes|\.openclaw)\b|"
+    r"(?:修复|恢复|修改|更新|迁移|清理).{0,40}(?:工作流|pipeline|runtime|运行态|控制面|状态|产物|\.workflow|\.hermes|\.openclaw)",
+    re.IGNORECASE,
+)
 PIPELINE_ARTIFACT_FILES = {
     "context_snapshot.md",
     "delivery_evidence.md",
@@ -102,6 +118,25 @@ PIPELINE_ARTIFACT_FILES = {
     "verification_report.md",
     "writeback_report.md",
 }
+CONTROL_PLANE_PATH_PREFIXES = (
+    ".workflow/",
+    "workflow/",
+    "agent-workspaces/",
+    "command-runs/",
+    "task-center/",
+)
+CONTROL_PLANE_PATH_PARTS = (
+    "/.workflow/",
+    "/agent-workspaces/",
+    "/command-runs/",
+    "/task-center/",
+    "/.hermes/",
+    "/.openclaw/",
+    "/.codex/",
+    "/auth-profiles/",
+    "/credential-imports/",
+    "/sessions/",
+)
 
 
 class PipelineError(RuntimeError):
@@ -719,7 +754,7 @@ def render_resolved_requirement(requirement: str, artifacts: dict[str, str]) -> 
 
 
 def clean_plan_path(value: str) -> str:
-    path = str(value or "").strip().strip(".,;:()[]{}<>\"'")
+    path = str(value or "").strip().strip(",;:()[]{}<>\"'").rstrip(".")
     if not path:
         return ""
     path = path.replace("\\", "/")
@@ -746,6 +781,77 @@ def extract_plan_paths(*texts: str, limit: int = 24) -> list[str]:
             if len(paths) >= limit:
                 return paths
     return paths
+
+
+def path_context_segments(text: str) -> list[str]:
+    return [segment.strip() for segment in PATH_CONTEXT_SPLIT_RE.split(str(text or "")) if segment.strip()]
+
+
+def is_negated_path_context(text: str) -> bool:
+    return bool(NEGATED_PATH_CONTEXT_RE.search(str(text or "")))
+
+
+def is_control_plane_plan_path(path: str) -> bool:
+    normalized = str(path or "").replace("\\", "/").strip()
+    if not normalized:
+        return True
+    trimmed = normalized
+    while trimmed.startswith("./"):
+        trimmed = trimmed[2:]
+    trimmed = trimmed.lstrip("/")
+    name = Path(trimmed).name
+    if name in PIPELINE_ARTIFACT_FILES or name in PROJECT_MEMORY_FILES:
+        return True
+    if any(trimmed.startswith(prefix) for prefix in CONTROL_PLANE_PATH_PREFIXES):
+        return True
+    wrapped = f"/{trimmed.strip('/')}/"
+    return any(part in wrapped for part in CONTROL_PLANE_PATH_PARTS)
+
+
+def allows_control_plane_targets(text: str) -> bool:
+    return bool(CONTROL_PLANE_TARGET_REQUEST_RE.search(str(text or "")))
+
+
+def contextual_plan_paths(
+    *texts: str,
+    limit: int = 24,
+    filter_control_plane: bool = False,
+    allow_control_plane: bool = False,
+) -> list[str]:
+    paths: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        for segment in path_context_segments(text):
+            if is_negated_path_context(segment):
+                continue
+            for path in extract_plan_paths(segment, limit=limit * 2):
+                if path in seen:
+                    continue
+                if filter_control_plane and is_control_plane_plan_path(path) and not allow_control_plane:
+                    continue
+                seen.add(path)
+                paths.append(path)
+                if len(paths) >= limit:
+                    return paths
+    return paths
+
+
+def low_trust_plan_paths(*texts: str, limit: int = 24) -> list[str]:
+    return contextual_plan_paths(*texts, limit=limit, filter_control_plane=True)
+
+
+def merge_plan_paths(*path_groups: list[str], limit: int = 24) -> list[str]:
+    merged: list[str] = []
+    seen: set[str] = set()
+    for group in path_groups:
+        for path in group:
+            if not path or path in seen:
+                continue
+            seen.add(path)
+            merged.append(path)
+            if len(merged) >= limit:
+                return merged
+    return merged
 
 
 def infer_task_type(text: str) -> str:
@@ -778,9 +884,13 @@ def infer_code_agent(text: str, config: PipelineConfig) -> str:
     return normalize_code_agent(config.code_agent)
 
 
-def original_requirement_excerpt(requirement: str) -> str:
+def original_requirement_block(requirement: str) -> str:
     match = re.search(r"(?ims)^## Original Requirement\s*(.+?)(?=^## |\Z)", str(requirement or ""))
-    source = match.group(1) if match else requirement
+    return (match.group(1) if match else requirement).strip()
+
+
+def original_requirement_excerpt(requirement: str) -> str:
+    source = original_requirement_block(requirement)
     lines = [line.strip(" -\t") for line in str(source or "").splitlines() if line.strip(" -\t")]
     return next((line for line in lines if not line.startswith("#")), "")
 
@@ -795,6 +905,67 @@ def plan_scope_slice(requirement: str, review: str, repair_context: str) -> dict
         "description": clip_text(summary, 280),
         "source": "repair_context" if repair_context else ("original_requirement" if original else "requirements_review"),
     }
+
+
+def split_scope_candidates(text: str) -> list[str]:
+    value = str(text or "").strip()
+    if not value:
+        return []
+    lines = []
+    for raw in value.splitlines():
+        line = raw.strip(" \t-")
+        line = re.sub(r"^\s*(?:\d+[.)、]|[A-Za-z][.)])\s*", "", line).strip()
+        if line and not line.startswith("#"):
+            lines.append(line)
+    bullet_like = [line for line in lines if len(line) >= 8]
+    if len(bullet_like) >= 2:
+        return bullet_like
+
+    source = original_requirement_excerpt(value) or value
+    if "：" in source:
+        source = source.split("：", 1)[1]
+    elif ":" in source:
+        source = source.split(":", 1)[1]
+    parts = re.split(r"[、；;]\s*|\s*,\s*", source)
+    cleaned = [part.strip(" -\t。.") for part in parts if len(part.strip(" -\t。.")) >= 4]
+    return cleaned if len(cleaned) >= 2 else []
+
+
+def is_scope_control_text(text: str) -> bool:
+    return bool(
+        re.search(
+            r"(安全|要求|不得|禁止|保持|不读取|不打印|不处理|不启动|不下单|不撤单|不划转|PRODUCTION_TRADING_ENABLED|token|cookie|credential|private key)",
+            str(text or ""),
+            re.IGNORECASE,
+        )
+    )
+
+
+def plan_scope_slices(requirement: str, review: str, repair_context: str) -> list[dict[str, Any]]:
+    candidates = split_scope_candidates(repair_context or requirement)
+    actionable = []
+    seen: set[str] = set()
+    for item in candidates:
+        normalized = re.sub(r"\s+", " ", item).strip()
+        if not normalized or normalized in seen or is_scope_control_text(normalized):
+            continue
+        seen.add(normalized)
+        actionable.append(normalized)
+
+    if len(actionable) < 2:
+        return [plan_scope_slice(requirement, review, repair_context)]
+
+    out: list[dict[str, Any]] = []
+    for index, item in enumerate(actionable[:6], start=1):
+        out.append(
+            {
+                "id": f"slice-{index}",
+                "description": clip_text(item, 280),
+                "status": "current" if index == 1 else "deferred",
+                "source": "task_decomposition",
+            }
+        )
+    return out
 
 
 def configured_verification_commands(config: PipelineConfig, task_type: str) -> list[dict[str, Any]]:
@@ -840,15 +1011,24 @@ def compile_delivery_plan(
     memory = artifact_text(artifacts, "project_memory_context")
     requirements_review = artifact_text(artifacts, "requirements_review")
     repair_context = os.environ.get("PIPELINE_REPAIR_CONTEXT", "").strip()
-    original_requirement = original_requirement_excerpt(requirement) or requirement
+    original_requirement_full = original_requirement_block(requirement) or requirement
+    original_requirement = original_requirement_excerpt(requirement) or original_requirement_full or requirement
     decision_text = "\n".join([requirement, requirements_review, repair_context])
     classification_text = "\n".join(
-        part for part in (original_requirement, repair_context) if str(part or "").strip()
+        part for part in (original_requirement_full, repair_context) if str(part or "").strip()
     ) or requirements_review
     task_type = infer_task_type(classification_text)
-    target_paths = extract_plan_paths(requirement, requirements_review, repair_context)
+    allow_control_targets = allows_control_plane_targets("\n".join([original_requirement_full, repair_context]))
+    explicit_target_paths = contextual_plan_paths(
+        original_requirement_full,
+        repair_context,
+        filter_control_plane=True,
+        allow_control_plane=allow_control_targets,
+    )
+    review_target_paths = low_trust_plan_paths(requirements_review)
+    target_paths = merge_plan_paths(explicit_target_paths, review_target_paths)
     if not target_paths:
-        target_paths = extract_plan_paths(research, memory)
+        target_paths = low_trust_plan_paths(research, memory)
     target_files = [
         {
             "path": path,
@@ -884,6 +1064,8 @@ def compile_delivery_plan(
             "required": True,
         },
     ]
+    scope_slices = plan_scope_slices(requirement, requirements_review, repair_context)
+    deferred_slices = [item for item in scope_slices if item.get("status") == "deferred"]
     return {
         "schema_version": "delivery-plan/v1",
         "task_type": task_type,
@@ -903,7 +1085,13 @@ def compile_delivery_plan(
             "host": runtime.get("host", ""),
             "runtime_home": runtime.get("runtime_home", ""),
         },
-        "scope_slices": [plan_scope_slice(requirement, requirements_review, repair_context)],
+        "scope_slices": scope_slices,
+        "task_split_policy": {
+            "enabled": True,
+            "current_slice_id": scope_slices[0].get("id", "primary") if scope_slices else "primary",
+            "deferred_slice_ids": [str(item.get("id")) for item in deferred_slices],
+            "rule": "If multiple independent scope slices are present, execute only the current slice in this run and leave deferred slices for follow-up Task Center runs unless the user explicitly approves grouping.",
+        },
         "target_files": target_files,
         "entry_points": [
             {"path": path["path"], "reason": path["reason"]}
@@ -911,6 +1099,7 @@ def compile_delivery_plan(
         ],
         "out_of_scope": [
             "Do not broaden the task beyond the accepted requirement.",
+            "Do not implement deferred scope slices in the current run.",
             "Do not use secrets, credentials, private keys, cookies, or auth state files.",
             "Do not start real trading, place orders, transfer funds, or change production trading controls.",
         ],
@@ -926,8 +1115,8 @@ def compile_delivery_plan(
             "If rollback fails, stop with manual_cleanup_required.",
         ],
         "human_blockers": [
-            "Requires credentials, secret values, private keys, cookies, or auth state access.",
-            "Requires real trading authorization, order placement, fund movement, withdrawals, destructive data operations, or force push.",
+            "Stop before any credential, secret value, private key, cookie, or auth state handling.",
+            "Stop before production market/account actions or destructive repository/data changes.",
             "Target files cannot be located from repository evidence and implementation would require guessing.",
         ],
         "risk_boundaries": [
@@ -948,6 +1137,7 @@ def render_solution(delivery_plan: dict[str, Any]) -> str:
     implementation_steps = delivery_plan.get("implementation_steps") if isinstance(delivery_plan.get("implementation_steps"), list) else []
     human_blockers = delivery_plan.get("human_blockers") if isinstance(delivery_plan.get("human_blockers"), list) else []
     out_of_scope = delivery_plan.get("out_of_scope") if isinstance(delivery_plan.get("out_of_scope"), list) else []
+    split_policy = delivery_plan.get("task_split_policy") if isinstance(delivery_plan.get("task_split_policy"), dict) else {}
     return "\n".join(
         [
             "# Solution Package",
@@ -959,7 +1149,25 @@ def render_solution(delivery_plan: dict[str, Any]) -> str:
             f"- Owner: {delivery_plan.get('owner', 'backend-dev')}",
             "",
             "## Scope Slices",
-            render_markdown_items([item.get("description", "") for item in delivery_plan.get("scope_slices", []) if isinstance(item, dict)]),
+            render_markdown_items(
+                [
+                    f"{item.get('id', 'slice')}: {item.get('description', '')}"
+                    + (f" ({item.get('status')})" if item.get("status") else "")
+                    for item in delivery_plan.get("scope_slices", [])
+                    if isinstance(item, dict)
+                ]
+            ),
+            "",
+            "## Task Split Policy",
+            render_markdown_items(
+                [
+                    str(split_policy.get("rule", "")),
+                    f"current_slice_id: {split_policy.get('current_slice_id', '')}",
+                    f"deferred_slice_ids: {', '.join(split_policy.get('deferred_slice_ids', []))}"
+                    if isinstance(split_policy.get("deferred_slice_ids"), list) and split_policy.get("deferred_slice_ids")
+                    else "",
+                ]
+            ),
             "",
             "## Target Files",
             render_markdown_items([item.get("path", "") for item in target_files if isinstance(item, dict)] or ["Discovery required before editing; do not guess."]),

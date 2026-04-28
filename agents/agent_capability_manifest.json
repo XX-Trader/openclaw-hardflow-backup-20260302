@@ -223,7 +223,6 @@
         "TODO 巡检",
         "异常日志巡检",
         "配置巡检",
-        "memtidy",
         "claim audit",
         "deadline bridge"
       ],
@@ -234,7 +233,6 @@
         "control-plane-ops",
         "log-monitor",
         "config-watchdog",
-        "memtidy",
         "todo-patrol"
       ],
       "capability_mode": "cron_label"

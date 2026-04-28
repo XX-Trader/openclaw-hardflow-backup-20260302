@@ -47,17 +47,6 @@
       "allow_agents": []
     },
     {
-      "job_id": "b2c3d4e5-memtidy-runner-hardflow-0002",
-      "job_name": "memtidy_runner（每日记忆整理）",
-      "schedule": "0 3 * * *",
-      "agent_id": "ops-agent",
-      "declared_exists": true,
-      "agent_exists": true,
-      "capability_mode": "cron_label",
-      "declared_skills": ["memtidy"],
-      "allow_agents": []
-    },
-    {
       "job_id": "c3d4e5f6-config-watchdog-hardflow-0003",
       "job_name": "config_watchdog（配置安全巡检）",
       "schedule": "every 14400000ms",
