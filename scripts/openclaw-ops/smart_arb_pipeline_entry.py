@@ -1505,6 +1505,37 @@ def report_runtime_refs(result: dict[str, Any], reports: list[dict[str, Any]]) -
     }
 
 
+def truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "passed", "ok"}
+
+
+def latest_report(reports: list[dict[str, Any]]) -> dict[str, Any]:
+    return reports[0] if reports and isinstance(reports[0], dict) else {}
+
+
+def specified_agent_report_status(result: dict[str, Any], reports: list[dict[str, Any]]) -> str:
+    report = latest_report(reports)
+    explicit = str(result.get("report_status") or "").strip().lower()
+    if explicit:
+        return explicit
+    reported = str(report.get("status") or "").strip().lower()
+    if reported:
+        return reported
+    status = str(result.get("status") or "").strip().lower()
+    return status if status in {"passed", "partial", "failed", "escalated"} else ""
+
+
+def specified_agent_solved(result: dict[str, Any], reports: list[dict[str, Any]]) -> bool:
+    if "solved" in result:
+        return truthy(result.get("solved"))
+    report = latest_report(reports)
+    return truthy(report.get("solved"))
+
+
 def specified_agent_failure_reason(result: dict[str, Any], reports: list[dict[str, Any]], stderr: str = "") -> str:
     failed_items = result.get("failed_items") if isinstance(result.get("failed_items"), list) else []
     parts = [
@@ -1528,6 +1559,8 @@ def render_specified_agent_card(payload: dict[str, Any]) -> str:
     refs = payload.get("refs") if isinstance(payload.get("refs"), dict) else {}
     result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
     task = payload.get("task") if isinstance(payload.get("task"), dict) else {}
+    reports = payload.get("reports") if isinstance(payload.get("reports"), list) else []
+    report_status = specified_agent_report_status(result, reports)
     stage = str(result.get("stage") or task.get("stage_id") or "dispatch").strip()
     completed = bool(payload.get("completed"))
     lines = [
@@ -1543,7 +1576,7 @@ def render_specified_agent_card(payload: dict[str, Any]) -> str:
         f"session key: {refs.get('agent_session_key') or '-'}",
         f"当前阶段: {stage}",
         f"是否完成: {'是' if completed else '否'}",
-        f"总状态: task={task.get('status') or '-'}；report={result.get('report_status') or result.get('status') or '-'}",
+        f"总状态: task={task.get('status') or '-'}；report={report_status or '-'}",
         f"失败原因: {payload.get('failure_reason') or 'none'}",
         f"回答状态: {'已回答完毕' if completed else '未回答完毕，指定 agent 未通过或执行失败'}",
     ]
@@ -1628,11 +1661,12 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
     result = first_executor_result(summary)
     task_snapshot, reports = task_center_snapshot(task_id)
     refs = report_runtime_refs(result, reports)
+    report_status = specified_agent_report_status(result, reports)
     completed = (
         int(proc.returncode or 0) == 0
         and str(task_snapshot.get("status") or "").strip().lower() == "passed"
-        and str(result.get("report_status") or "").strip().lower() in {"passed", "partial"}
-        and bool(result.get("solved", False))
+        and report_status in {"passed", "partial"}
+        and specified_agent_solved(result, reports)
     )
     failure_reason = "none" if completed else specified_agent_failure_reason(result, reports, proc.stderr)
     return {
@@ -1646,6 +1680,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
         "assignee": assignee,
         "agent_runner_bin": agent_runner_bin,
         "task": task_snapshot,
+        "reports": reports,
         "created_task": task,
         "executor_summary": summary,
         "result": result,

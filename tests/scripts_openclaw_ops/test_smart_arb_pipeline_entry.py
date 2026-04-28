@@ -286,7 +286,6 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                         "stage": "test-loop",
                         "status": "executed",
                         "task_status_after": "passed",
-                        "report_status": "passed",
                         "solved": True,
                         "executor_run_id": "exec-1",
                         "session_id": "task-session-1",
@@ -304,6 +303,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             snapshot_task = {"task_id": "placeholder", "status": "passed", "assignee": "tester"}
             snapshot_reports = [
                 {
+                    "status": "passed",
+                    "solved": True,
                     "details": {
                         "run_id": "exec-1",
                         "session_id": "task-session-1",
@@ -336,6 +337,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertIn("被调用 agent: tester", rendered)
         self.assertIn("agent session id: task-session-1", rendered)
         self.assertIn("agent run id: agent-run-1", rendered)
+        self.assertIn("总状态: task=passed；report=passed", rendered)
         executor_cmd = mocked_run.call_args.args[0]
         self.assertIn("--only-task-id", executor_cmd)
         self.assertIn(payload["task_id"], executor_cmd)
