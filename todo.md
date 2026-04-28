@@ -85,7 +85,7 @@
 - [x] [🟡 P1] 将需求/方案/代码审查升级为两条独立 reviewer command report 门禁
 - [x] [🟡 P1] 修复 nofx Discord 工作流自修循环：工作流自身修复不再套进同一条 pipeline，review 失败补丁自动回滚并隔离旧业务漂移
 - [x] [🟡 P1] 将 nofx Discord profile 高权限工作流维护模板同步到 live profile，并在无活跃 pipeline 时重启 gateway 验证
-- [x] [🟡 P1] 将 specified_agent/session-run-id 批次推送并安装到 nofx live runtime：代码批次 `22cecab` 已安装，最终仓库提交 `939288b` 已拉到 nofx，runtime installer `ok=true/changed=true`，远端指定 agent smoke 返回 Task Center、executor run id、agent session id、agent run id、session key 和 `回答状态: 已回答完毕`
+- [x] [🟡 P1] 将 specified_agent/session-run-id 批次推送并安装到 nofx live runtime：代码批次 `22cecab` 已安装，后续文档/记忆提交已拉到 nofx 且 `HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`，远端指定 agent smoke 返回 Task Center、executor run id、agent session id、agent run id、session key 和 `回答状态: 已回答完毕`
 - [x] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
 
