@@ -1363,7 +1363,7 @@ def specified_agent_subprocess_env(profile: str, runner_bin: str) -> dict[str, s
 
 
 def specified_agent_executor_command(cmd: list[str]) -> list[str]:
-    target_user = str(os.environ.get("SMART_ARB_SPECIFIED_AGENT_RUN_AS", "arbops") or "").strip()
+    target_user = specified_agent_run_as_user()
     geteuid = getattr(os, "geteuid", None)
     try:
         is_root = bool(callable(geteuid) and int(geteuid()) == 0)
@@ -1375,6 +1375,38 @@ def specified_agent_executor_command(cmd: list[str]) -> list[str]:
             runtime_cmd[0] = str(os.environ.get("SMART_ARB_SPECIFIED_AGENT_PYTHON", "") or "python3")
         return ["runuser", "-u", target_user, "--", *runtime_cmd]
     return cmd
+
+
+def specified_agent_run_as_user() -> str:
+    return str(os.environ.get("SMART_ARB_SPECIFIED_AGENT_RUN_AS", "arbops") or "").strip()
+
+
+def is_effective_root() -> bool:
+    geteuid = getattr(os, "geteuid", None)
+    try:
+        return bool(callable(geteuid) and int(geteuid()) == 0)
+    except Exception:
+        return False
+
+
+def prepare_specified_agent_report_dir(report_dir: Path) -> None:
+    report_dir.mkdir(parents=True, exist_ok=True)
+    target_user = specified_agent_run_as_user()
+    if not target_user or not is_effective_root() or os.name != "posix":
+        return
+    try:
+        import pwd
+
+        entry = pwd.getpwnam(target_user)
+        uid = int(entry.pw_uid)
+        gid = int(entry.pw_gid)
+        for path in [report_dir, *report_dir.rglob("*")]:
+            try:
+                os.chown(path, uid, gid)
+            except OSError:
+                continue
+    except Exception:
+        return
 
 
 def specified_agent_task_id(run_id: str, assignee: str) -> str:
@@ -1625,6 +1657,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
     runner = task_executor_runner_path()
     agent_runner_bin = resolve_agent_runner_bin(str(args.openclaw_bin))
     report_dir = OPS_DIR / "task-executor-runs"
+    prepare_specified_agent_report_dir(report_dir)
     cmd = [
         sys.executable,
         str(runner),
