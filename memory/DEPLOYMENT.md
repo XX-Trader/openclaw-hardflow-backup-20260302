@@ -22,16 +22,16 @@ python3 skills/library/project-delivery-pipeline/scripts/runtime_installer.py in
   --task-center-db /home/arbops/.hermes/ops/task-center/task_center.db \
   --emit-json
 ```
-最后验证：2026-04-28 14:27
+最后验证：2026-04-28 14:34
 复用建议：安装前先 `git fetch` 和 `git status --short --branch`；如有脏改动先 `git stash push -u -m pre-pull-hardflow-install-<timestamp>`，再 `git pull --ff-only origin main`。安装后至少检查 runtime installer JSON、`compileall`、定向单测、`/home/arbops/.hermes/ops` 文件、cron jobs、gateway state、内控 API smoke 和 echo smoke。
 
-## 2026-04-28 - 安装提交 89bba4af
+## 2026-04-28 - 安装提交 3a44f0b0
 
 类型：deploy
 范围：nofx hardflow runtime、Hermes ops、cron jobs、Discord profile `SOUL.md`、Discord gateways、内控 API
-事实：本机提交 `89bba4af` 已推送到 `origin/main`；nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302` 已对齐 `89bba4af`，工作树 clean，`HEAD...origin/main` 为 `0 0`。runtime installer 返回 `ok=true`、`changed=true`，已把最新 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 安装到 `/home/arbops/.hermes/ops`，且安装态 SHA256 与仓库源码一致。两个 live profile `SOUL.md` 已从仓库模板同步到 `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，同步前备份为 `SOUL.md.bak-20260428T142632`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
-证据：远端 `python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol` 通过；远端定向 `unittest` 62 项 OK；`smart-arb-pipeline --help` 正常；`arbitrageagent` gateway PID `1133051`、`spreadagent` gateway PID `1133053`，两者 `gateway_state=running` 且 Discord `connected`；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`；`cron/jobs.json` 与最新安装器模板同步，profile `SOUL.md` SHA256 与仓库模板一致。
-最后验证：2026-04-28 14:27
+事实：本机提交 `3a44f0b0` 已推送到 `origin/main`；nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302` 已对齐 `3a44f0b0`，工作树 clean，`HEAD...origin/main` 为 `0 0`。runtime installer 返回 `ok=true`、`changed=true`，已把最新 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 安装到 `/home/arbops/.hermes/ops`，且安装态 SHA256 与仓库源码一致。两个 live profile `SOUL.md` 已从仓库模板同步到 `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，同步前备份为 `SOUL.md.bak-20260428T143343`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
+证据：远端 `python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol` 通过；远端定向 `unittest` 67 项 OK；`smart-arb-pipeline --help` 正常；`arbitrageagent` gateway PID `1137425`、`spreadagent` gateway PID `1137427`，两者 `gateway_state=running` 且 Discord `connected`；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`；`cron/jobs.json` 与最新安装器模板同步，profile `SOUL.md` SHA256 与仓库模板一致。
+最后验证：2026-04-28 14:34
 复用建议：若本仓库修改了 `config/nofx-hermes-profiles/<profile>/SOUL.md`，`runtime_installer.py install` 后还必须同步 live profile 文件并重启两个 Discord gateway；只装 `/home/arbops/.hermes/ops` 不足以让 profile 提示词更新生效。
 
 ## 2026-04-27 - 安装提交 067fbc43
