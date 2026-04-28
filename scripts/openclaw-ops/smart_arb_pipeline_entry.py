@@ -1322,6 +1322,12 @@ def resolve_agent_runner_bin(requested: str) -> str:
 
 def specified_agent_subprocess_env(profile: str, runner_bin: str) -> dict[str, str]:
     env = dict(os.environ)
+    env.setdefault("OPENCLAW_HOME", str(RUNTIME_HOME))
+    env.setdefault("TASK_CENTER_DIR", str(OPS_DIR / "task-center"))
+    env.setdefault("OPENCLAW_POLICY_ROOT", str(OPS_DIR / "policy"))
+    env.setdefault("POLICY_FILE", str(OPS_DIR / "policy" / "policy-config.json"))
+    env.setdefault("POLICY_ROUTING_FILE", str(OPS_DIR / "policy" / "routing-rules.json"))
+    env.setdefault("POLICY_PRICING_FILE", str(OPS_DIR / "policy" / "token-pricing.json"))
     if Path(str(runner_bin or "")).name.lower() in {"hermes", "hermes.exe"}:
         profile_dir = RUNTIME_HOME / "profiles" / profile
         if profile_dir.exists():
@@ -1572,6 +1578,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        cwd=str(PROJECT_DIR) if PROJECT_DIR.exists() else None,
         env=specified_agent_subprocess_env(profile, agent_runner_bin),
         timeout=max(60, int(args.specified_agent_timeout_seconds or 1200) + 120),
         check=False,

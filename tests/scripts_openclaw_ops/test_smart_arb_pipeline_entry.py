@@ -240,6 +240,16 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
     def test_specified_agent_route_creates_task_and_renders_ids(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            runtime_home = tmp_path / "runtime"
+            module.RUNTIME_HOME = runtime_home
+            module.OPS_DIR = runtime_home / "ops"
+            module.TASK_EXECUTOR_RUNNER = module.OPS_DIR / "policy" / "task_executor_runner.py"
+            module.PROJECT_DIR = tmp_path / "project"
+            (runtime_home / "profiles" / "spreadagent").mkdir(parents=True)
+            (tmp_path / ".local" / "bin").mkdir(parents=True)
+            (tmp_path / ".local" / "bin" / "hermes").write_text("#!/bin/sh\n", encoding="utf-8")
+            module.PROJECT_DIR.mkdir()
             db_path = Path(tmp) / "task_center.db"
             module.TASK_CENTER_DB = db_path
             args = SimpleNamespace(
@@ -309,6 +319,12 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         executor_cmd = mocked_run.call_args.args[0]
         self.assertIn("--only-task-id", executor_cmd)
         self.assertIn(payload["task_id"], executor_cmd)
+        call_kwargs = mocked_run.call_args.kwargs
+        self.assertEqual(str(module.PROJECT_DIR), call_kwargs["cwd"])
+        self.assertEqual(str(module.RUNTIME_HOME), call_kwargs["env"]["OPENCLAW_HOME"])
+        self.assertEqual(str(module.OPS_DIR / "task-center"), call_kwargs["env"]["TASK_CENTER_DIR"])
+        self.assertEqual(str(module.OPS_DIR / "policy"), call_kwargs["env"]["OPENCLAW_POLICY_ROOT"])
+        self.assertEqual(str(runtime_home / "profiles" / "spreadagent"), call_kwargs["env"]["HERMES_HOME"])
 
     def test_render_chat_summary_shows_block_reason_and_repair_decision(self):
         module = load_module()
