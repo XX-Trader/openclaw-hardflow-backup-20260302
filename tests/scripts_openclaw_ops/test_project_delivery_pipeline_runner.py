@@ -1,6 +1,7 @@
 import argparse
 import importlib.util
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -8,6 +9,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -770,6 +772,38 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         self.assertTrue(resolved.exists())
         self.assertEqual("score-policy.json", resolved.name)
         self.assertIn("openclaw-hardflow-automation", resolved.parts)
+
+    def test_workflow_repo_root_prefers_runtime_env(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            score_policy = repo / "skills" / "openclaw-hardflow-automation" / "scripts" / "score-policy.json"
+            score_policy.parent.mkdir(parents=True)
+            (repo / ".git").mkdir()
+            score_policy.write_text('{"gates":{"default":{}}}\n', encoding="utf-8")
+
+            with mock.patch.dict(os.environ, {"HARDFLOW_WORKFLOW_REPO": str(repo)}):
+                module = load_policy_workflow_module()
+
+            resolved = module.WorkflowMixin._resolve_repo_ref_path("scripts/hardflow/score-policy.json")
+            self.assertEqual(repo.resolve(), module.REPO_ROOT)
+            self.assertEqual(score_policy.resolve(), resolved)
+
+    def test_workflow_repo_root_falls_back_to_current_workdir(self):
+        module = load_policy_workflow_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            runtime = Path(tmp) / "runtime" / "ops"
+            repo.mkdir()
+            runtime.mkdir(parents=True)
+            (repo / ".git").mkdir()
+            old_cwd = Path.cwd()
+            try:
+                os.chdir(repo)
+                resolved = module._discover_repo_root(runtime)
+            finally:
+                os.chdir(old_cwd)
+
+        self.assertEqual(repo.resolve(), resolved)
 
     def test_view_without_state_or_task_center_fails_clear(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1328,6 +1328,9 @@ def specified_agent_subprocess_env(profile: str, runner_bin: str) -> dict[str, s
     env.setdefault("POLICY_FILE", str(OPS_DIR / "policy" / "policy-config.json"))
     env.setdefault("POLICY_ROUTING_FILE", str(OPS_DIR / "policy" / "routing-rules.json"))
     env.setdefault("POLICY_PRICING_FILE", str(OPS_DIR / "policy" / "token-pricing.json"))
+    if PROJECT_DIR.exists():
+        env.setdefault("HARDFLOW_WORKFLOW_REPO", str(PROJECT_DIR))
+        env.setdefault("OPENCLAW_WORKFLOW_REPO", str(PROJECT_DIR))
     if Path(str(runner_bin or "")).name.lower() in {"hermes", "hermes.exe"}:
         profile_dir = RUNTIME_HOME / "profiles" / profile
         if profile_dir.exists():

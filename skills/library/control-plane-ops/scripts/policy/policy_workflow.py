@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import uuid
@@ -18,7 +19,18 @@ if str(ROOT) not in sys.path:
 
 def _discover_repo_root(start: Path) -> Path:
     """Find the repository root from a skillized policy module path."""
+    for env_name in ("HARDFLOW_WORKFLOW_REPO", "OPENCLAW_WORKFLOW_REPO"):
+        env_value = str(os.environ.get(env_name, "") or "").strip()
+        if not env_value:
+            continue
+        candidate = Path(env_value).expanduser().resolve()
+        if (candidate / ".git").exists():
+            return candidate
     for candidate in (start, *start.parents):
+        if (candidate / ".git").exists():
+            return candidate
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
         if (candidate / ".git").exists():
             return candidate
     return ROOT.parent.parent
