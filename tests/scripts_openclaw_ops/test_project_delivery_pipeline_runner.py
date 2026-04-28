@@ -805,6 +805,23 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
 
         self.assertEqual(repo.resolve(), resolved)
 
+    def test_workflow_repo_root_ignores_inaccessible_git_probe(self):
+        module = load_policy_workflow_module()
+        original_exists = module.Path.exists
+
+        def fake_exists(path):
+            if path.name == ".git":
+                raise PermissionError("blocked")
+            return original_exists(path)
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
+            os.environ,
+            {"HARDFLOW_WORKFLOW_REPO": "", "OPENCLAW_WORKFLOW_REPO": ""},
+        ), mock.patch.object(module.Path, "exists", fake_exists):
+            resolved = module._discover_repo_root(Path(tmp) / "runtime" / "ops")
+
+        self.assertIsInstance(resolved, Path)
+
     def test_view_without_state_or_task_center_fails_clear(self):
         with tempfile.TemporaryDirectory() as tmp:
             missing = Path(tmp) / "missing-runs"
