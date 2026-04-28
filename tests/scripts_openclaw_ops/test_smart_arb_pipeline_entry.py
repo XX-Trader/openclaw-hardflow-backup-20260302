@@ -328,6 +328,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertEqual("tester", task["assignee"])
         self.assertEqual("specified_agent_dispatch", task["task_type"])
+        self.assertIn("指定 agent 按用户任务返回结构化结果", task["acceptance"])
+        self.assertIn("执行器负责记录 session/run id", task["acceptance"])
         self.assertTrue(payload["completed"])
         self.assertEqual("agent-run-1", payload["refs"]["agent_run_id"])
         rendered = module.render_specified_agent_card(payload)
