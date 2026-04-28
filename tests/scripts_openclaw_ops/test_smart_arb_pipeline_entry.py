@@ -354,7 +354,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "which",
             return_value="/usr/sbin/runuser",
         ):
-            cmd = module.specified_agent_executor_command(["python3", "runner.py"])
+            cmd = module.specified_agent_executor_command(["/root/miniconda3/bin/python3", "runner.py"])
 
         self.assertEqual(["runuser", "-u", "arbops", "--", "python3", "runner.py"], cmd)
 

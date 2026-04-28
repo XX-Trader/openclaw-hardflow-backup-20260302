@@ -1370,7 +1370,10 @@ def specified_agent_executor_command(cmd: list[str]) -> list[str]:
     except Exception:
         is_root = False
     if is_root and target_user and shutil.which("runuser"):
-        return ["runuser", "-u", target_user, "--", *cmd]
+        runtime_cmd = list(cmd)
+        if runtime_cmd and Path(runtime_cmd[0]).name.lower().startswith("python"):
+            runtime_cmd[0] = str(os.environ.get("SMART_ARB_SPECIFIED_AGENT_PYTHON", "") or "python3")
+        return ["runuser", "-u", target_user, "--", *runtime_cmd]
     return cmd
 
 
