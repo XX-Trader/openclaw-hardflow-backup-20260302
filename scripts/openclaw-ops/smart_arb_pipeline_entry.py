@@ -8,6 +8,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -1305,6 +1306,30 @@ def task_executor_runner_path() -> Path:
     return candidates[0]
 
 
+def resolve_agent_runner_bin(requested: str) -> str:
+    value = str(requested or "").strip() or "openclaw"
+    if value != "openclaw" or shutil.which(value):
+        return value
+    hermes_candidates = [
+        RUNTIME_HOME.parent / ".local" / "bin" / "hermes",
+        Path("/home/arbops/.local/bin/hermes"),
+    ]
+    for candidate in hermes_candidates:
+        if candidate.exists():
+            return str(candidate)
+    return shutil.which("hermes") or value
+
+
+def specified_agent_subprocess_env(profile: str, runner_bin: str) -> dict[str, str]:
+    env = dict(os.environ)
+    if Path(str(runner_bin or "")).name.lower() in {"hermes", "hermes.exe"}:
+        profile_dir = RUNTIME_HOME / "profiles" / profile
+        if profile_dir.exists():
+            env.setdefault("HOME", str(RUNTIME_HOME.parent))
+            env.setdefault("HERMES_HOME", str(profile_dir))
+    return env
+
+
 def specified_agent_task_id(run_id: str, assignee: str) -> str:
     return f"specified-agent:{slugify(assignee, 'agent')}:{slugify(run_id, 'run')}"
 
@@ -1464,6 +1489,7 @@ def render_specified_agent_card(payload: dict[str, Any]) -> str:
         "路线: specified_agent",
         f"Task Center: {payload.get('task_id', '-')}",
         f"被调用 agent: {payload.get('assignee', '-')}",
+        f"agent runner: {payload.get('agent_runner_bin') or '-'}",
         f"executor run id: {refs.get('executor_run_id') or '-'}",
         f"agent session id: {refs.get('session_id') or refs.get('agent_runtime_session_id') or '-'}",
         f"agent run id: {refs.get('agent_run_id') or '-'}",
@@ -1517,6 +1543,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
         run_id=run_id,
     )
     runner = task_executor_runner_path()
+    agent_runner_bin = resolve_agent_runner_bin(str(args.openclaw_bin))
     report_dir = OPS_DIR / "task-executor-runs"
     cmd = [
         sys.executable,
@@ -1532,7 +1559,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
         "--planner-id",
         profile,
         "--openclaw-bin",
-        str(args.openclaw_bin),
+        agent_runner_bin,
         "--timeout-sec",
         str(max(30, int(args.specified_agent_timeout_seconds or 1200))),
         "--report-dir",
@@ -1545,6 +1572,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        env=specified_agent_subprocess_env(profile, agent_runner_bin),
         timeout=max(60, int(args.specified_agent_timeout_seconds or 1200) + 120),
         check=False,
     )
@@ -1568,6 +1596,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
         "run_id": run_id,
         "task_id": task_id,
         "assignee": assignee,
+        "agent_runner_bin": agent_runner_bin,
         "task": task_snapshot,
         "created_task": task,
         "executor_summary": summary,

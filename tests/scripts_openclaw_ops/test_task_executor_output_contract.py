@@ -11,6 +11,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def load_module(name: str, rel_path: str):
     path = ROOT / rel_path
+    if not path.exists() and rel_path == "scripts/openclaw-ops/policy/task_executor_runner.py":
+        path = ROOT / "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py"
     sys.path.insert(0, str(path.parent))
     try:
         spec = importlib.util.spec_from_file_location(name, path)
@@ -228,6 +230,46 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
         self.assertEqual(contract["status"], "passed")
         self.assertTrue(contract["solved"])
         self.assertEqual(contract["resolution_summary"], "ok")
+
+    def test_hermes_bin_wraps_chat_output_with_runtime_refs(self):
+        module = load_module(
+            "task_executor_runner",
+            "scripts/openclaw-ops/policy/task_executor_runner.py",
+        )
+
+        mocked_result = SimpleNamespace(
+            returncode=0,
+            stdout='session_id: sess-hermes-1\n{"status":"passed","solved":true,"resolution_summary":"ok"}',
+            stderr="",
+        )
+        with mock.patch.object(module.subprocess, "run", return_value=mocked_result) as mocked_run:
+            rc, out, err, attempts, details = module.call_agent_with_retries(
+                "/home/arbops/.local/bin/hermes",
+                "tester",
+                "prompt",
+                "task-1",
+                30,
+                False,
+                "",
+                max_retries=0,
+                retry_delay_sec=1,
+                prefer_gateway=True,
+            )
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(err, "")
+        self.assertEqual(attempts, 1)
+        self.assertEqual(details[0]["exit_code"], 0)
+        payload = module.json.loads(out)
+        agent_meta = payload["meta"]["agentMeta"]
+        self.assertEqual(agent_meta["runtime"], "hermes-chat")
+        self.assertEqual(agent_meta["runId"], "sess-hermes-1")
+        self.assertEqual(agent_meta["sessionId"], "sess-hermes-1")
+        self.assertEqual(agent_meta["sessionKey"], "agent:tester:cron:task-executor:run:task-1")
+        self.assertIn('"status":"passed"', payload["payloads"][0]["text"])
+
+        cmd = mocked_run.call_args.args[0]
+        self.assertEqual(cmd[:3], ["/home/arbops/.local/bin/hermes", "--pass-session-id", "chat"])
 
 
 if __name__ == "__main__":

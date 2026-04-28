@@ -63,7 +63,7 @@ Discord 入口默认不是直接执行，而是先由连接 Discord 的 profile 
 /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice specified_agent --assignee tester --requirement "<需求文本>"
 ```
 
-`--route-choice` 是代码层人工选择凭证，不只是提示词约定。`smart_arb_pipeline_entry.py` 默认要求 Discord source 携带有效路线才会执行：缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`；`coding_workflow` / `todo_auto_candidate` 进入 coordinator pipeline；`specified_agent` 必须带 `--assignee <agent-id>`，并生成 `specified_agent_dispatch` Task Center 任务交给 `task_executor_runner.py` 调用指定 agent。如果显式传入 `direct_run` 或 `requirement_discussion`，入口仍跳过 pipeline，避免 profile 把非 pipeline 选择误送进工作流。
+`--route-choice` 是代码层人工选择凭证，不只是提示词约定。`smart_arb_pipeline_entry.py` 默认要求 Discord source 携带有效路线才会执行：缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`；`coding_workflow` / `todo_auto_candidate` 进入 coordinator pipeline；`specified_agent` 必须带 `--assignee <agent-id>`，并生成 `specified_agent_dispatch` Task Center 任务交给 `task_executor_runner.py` 调用指定 agent。nofx 当前没有 `openclaw` CLI 时，入口会自动使用 `/home/arbops/.local/bin/hermes` 和当前 profile 的 `HERMES_HOME` 进行 Hermes chat 执行，并把 Hermes `session_id` 回写成 agent session/run 证据。如果显式传入 `direct_run` 或 `requirement_discussion`，入口仍跳过 pipeline，避免 profile 把非 pipeline 选择误送进工作流。
 
 如果用户选择 `direct_run`，当前 Discord profile 作为最高权限 operator 直接处理，不进入 pipeline；仍必须遵守凭证、生产、资金、真实交易、force push、删除生产数据等安全边界。安全仓库同步只允许 clean 工作树上的 `git fetch` + `git pull --ff-only`，并做 `git status`、`HEAD == origin/main` 和内控 API smoke。
 
@@ -123,7 +123,7 @@ Discord 状态卡必须回答三个问题：
 - `command-runs/*.json`、`agent-workspaces/manifest.json`、Task Center `stage_runs.details_json` / `module_communications.details_json` 会记录 agent id、workspace、repo dir、dispatch mode 和 patch 文件。
 - Task Center 中的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester` 等字段如果没有 session/run id，仍然只是阶段 owner 与交接记录；是否真正启动多个宿主 native session，要以 command evidence 中的独立 session/run id 为准。
 
-因此，如果用户观察到“Hermes 在工作，但任务没有转发到其他 agent”，现在要分两层判断：第一层检查 `agent-workspaces/manifest.json` 和 `command-runs/*.json`，确认是否进入了独立 workspace；第二层检查 command evidence、Task Center `agent_task_reports.details` 和最终状态卡中是否出现宿主 native session/run id。workspace 隔离已经落地；coding_workflow 现在会记录 bridge/executor 暴露的 session/run id，specified_agent 已接 Task Center 指定 agent 执行器。仍不能把没有 session/run id 的 stage label 宣称为真实 native fan-out。
+因此，如果用户观察到“Hermes 在工作，但任务没有转发到其他 agent”，现在要分两层判断：第一层检查 `agent-workspaces/manifest.json` 和 `command-runs/*.json`，确认是否进入了独立 workspace；第二层检查 command evidence、Task Center `agent_task_reports.details` 和最终状态卡中是否出现宿主 native session/run id。workspace 隔离已经落地；coding_workflow 现在会记录 bridge/executor 暴露的 session/run id，specified_agent 已接 Task Center 指定 agent 执行器；nofx 上该执行器会在缺少 `openclaw` CLI 时走 Hermes chat fallback。仍不能把没有 session/run id 的 stage label 宣称为真实 native fan-out。
 
 ### Discord profile 提示词规则
 

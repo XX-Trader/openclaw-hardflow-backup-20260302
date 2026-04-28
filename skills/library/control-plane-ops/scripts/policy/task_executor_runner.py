@@ -110,12 +110,32 @@ BENIGN_STDERR_PATTERNS = (
     "loaded without install/load-path provenance",
     "treat as untracked local code and pin trust via plugins.allow or install records",
 )
+ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+HERMES_SESSION_ID_RE = re.compile(r"(?im)^\s*(?:session_id|session id|SESSION_ID)\s*[:=]\s*([A-Za-z0-9_.:-]+)\s*$")
 GATEWAY_ACK_TIMEOUT_MS = 30_000
 GATEWAY_HISTORY_LIMIT = 200
 
 
 def now_iso() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat()
+
+
+def strip_ansi(text: str) -> str:
+    return ANSI_RE.sub("", str(text or ""))
+
+
+def extract_hermes_session_id(text: str) -> str:
+    match = HERMES_SESSION_ID_RE.search(strip_ansi(text))
+    return str(match.group(1) or "").strip() if match else ""
+
+
+def strip_hermes_session_lines(text: str) -> str:
+    lines = []
+    for line in strip_ansi(text).splitlines():
+        if HERMES_SESSION_ID_RE.match(line.strip()):
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
 
 
 def parse_json_output(text: str) -> dict[str, Any] | None:
@@ -1560,6 +1580,73 @@ def call_agent(
     return int(proc.returncode), str(proc.stdout or ""), str(proc.stderr or "")
 
 
+def is_hermes_agent_bin(openclaw_bin: str) -> bool:
+    name = Path(str(openclaw_bin or "")).name.lower()
+    return name == "hermes" or name == "hermes.exe"
+
+
+def call_hermes_agent(
+    hermes_bin: str,
+    assignee: str,
+    message: str,
+    session_id: str,
+    timeout_sec: int,
+    local_mode: bool,
+) -> tuple[int, str, str]:
+    hermes_cmd = str(hermes_bin or "hermes").strip() or "hermes"
+    timeout_value = max(30, int(timeout_sec))
+    session_key = build_gateway_agent_session_key(assignee, session_id)
+    prompt = (
+        f"你是 Task Center 指定 agent `{str(assignee or '').strip()}`。\n"
+        "请只根据下面任务执行，并按输出模板返回结构化 JSON。\n\n"
+        f"{message}"
+    )
+    cmd = [
+        hermes_cmd,
+        "--pass-session-id",
+        "chat",
+        "-q",
+        prompt,
+        "-Q",
+        "--max-turns",
+        "1",
+        "--source",
+        f"task-executor:{str(assignee or '').strip() or 'agent'}",
+        "--accept-hooks",
+        "--checkpoints",
+    ]
+    if local_mode:
+        cmd.append("--yolo")
+    proc = subprocess.run(
+        cmd,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        timeout=max(60, int(timeout_value) + 30),
+        check=False,
+    )
+    stdout = strip_ansi(proc.stdout or "")
+    stderr = strip_ansi(proc.stderr or "")
+    if int(proc.returncode or 0) != 0:
+        return int(proc.returncode), stdout, stderr
+    session_ref = extract_hermes_session_id(f"{stdout}\n{stderr}")
+    reply_text = strip_hermes_session_lines(stdout) or stdout.strip()
+    wrapped = {
+        "payloads": [{"text": reply_text}],
+        "meta": {
+            "agentMeta": {
+                "runId": session_ref or session_id,
+                "waitStatus": "ok",
+                "sessionKey": session_key,
+                "sessionId": session_ref,
+                "runtime": "hermes-chat",
+            }
+        },
+    }
+    return 0, json.dumps(wrapped, ensure_ascii=False), stderr
+
+
 def call_gateway_method(
     openclaw_bin: str,
     method: str,
@@ -1694,7 +1781,16 @@ def call_agent_with_retries(
     total_attempts = max(1, int(max_retries or 0) + 1)
     delay_base = max(1, int(retry_delay_sec or 1))
     for attempt_idx in range(total_attempts):
-        if prefer_gateway:
+        if is_hermes_agent_bin(openclaw_bin):
+            rc, out, err = call_hermes_agent(
+                openclaw_bin,
+                assignee,
+                message,
+                session_id,
+                timeout_sec,
+                local_mode,
+            )
+        elif prefer_gateway:
             rc, out, err = call_agent_via_gateway_step(
                 openclaw_bin,
                 assignee,
