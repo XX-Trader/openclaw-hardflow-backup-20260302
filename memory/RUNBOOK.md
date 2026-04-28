@@ -35,6 +35,15 @@
 
 ## nofx hardflow 拉取与安装记录
 
+### 2026-04-28 23:15 - 最新 `d2e530b7` 代码批次安装到 nofx
+
+类型：runbook
+范围：nofx hardflow 仓库、runtime installer、live profile SOUL、gateway、Task Center smoke
+事实：nofx 安装顺序为：确认无活跃 `smart-arb-pipeline` -> `git pull --ff-only origin main` -> `runtime_installer.py install` -> 远端 `git diff --check`、`py_compile`、`compileall`、定向 `unittest` -> `smart-arb-pipeline --help` -> 同步 live profile SOUL -> 重启两个 Discord gateway -> 内控 API smoke -> echo pipeline smoke -> 清理 `file_write_audit.jsonl` 测试副作用。
+证据：本轮远端 HEAD 为 `d2e530b7`，`HEAD...origin/main=0 0`，runtime installer 返回 `ok=true`/`changed=true`，19 项定向单测 OK，两个 gateway `running/connected`，echo smoke `install-smoke-arbitrageagent-20260428T151514657470Z` 完成 15/15 且 Task Center `passed`。
+最后验证：2026-04-28 23:15
+复用建议：复杂远端脚本优先 Paramiko 单连接；如果用 PowerShell 直接拼 SSH 命令，必须防止 `$p`、`$TS` 等远端 shell 变量被本地展开。profile 模板变化时不要只跑 runtime installer，还要同步 `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 并重启 gateway。
+
 ### 2026-04-28 19:40 - 最新 `17d9b369` 文档记录提交同步到 nofx
 
 类型：deploy

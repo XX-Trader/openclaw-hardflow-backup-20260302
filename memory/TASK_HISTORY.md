@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-04-28 - nofx 安装 workflow runtime d2e530b7
+
+类型：deploy
+范围：nofx hardflow 仓库、`/home/arbops/.hermes/ops`、`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways、Task Center smoke
+事实：已把本仓最新提交 `d2e530b7` 推送到 `origin/main` 并安装到 nofx。服务器仓库从 `17d9b36` fast-forward 到 `d2e530b`，`HEAD...origin/main=0 0`，最终工作树 clean；runtime installer 返回 `ok=true`、`changed=true`，安装态包含新增 `policy_route_selection.py`。两个 live profile `SOUL.md` 已同步高权限工作流维护模式，备份后缀为 `manual-route-20260428T151420Z`，并重启两个 Discord gateway。
+证据：本地验证通过 19 项定向单测、7 个脚本 `py_compile`、`compileall`、`git diff --check`、`git diff --cached --check` 和 staged secret scan；独立 code-reviewer 审查 0 findings / APPROVE。远端验证通过 `git diff --check`、7 个脚本 `py_compile`、`compileall`、19 项定向单测、`smart-arb-pipeline --help`、gateway `running/connected`、内控 API `/health` 与 `/api/strategy/status`、cron job 数 12 / `memtidy_hits=0`，echo smoke `install-smoke-arbitrageagent-20260428T151514657470Z` 完成 15/15 且 Task Center `passed`。
+最后验证：2026-04-28 23:15
+复用建议：以后“上传到 git 并去 nofx 拉取测试”按本次顺序执行：本地测试和 reviewer 通过 -> push -> nofx `git pull --ff-only` -> runtime installer -> 远端定向测试/help/API -> 如 profile 变更则同步 live SOUL 并重启 gateway -> echo smoke -> 清理 `file_write_audit.jsonl` 测试副作用 -> 记录记忆。
+
 ## 2026-04-28 - 执行链路手动选择模式
 
 类型：feature

@@ -1,7 +1,7 @@
 # TODO
 
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
-> 更新时间：2026-04-27
+> 更新时间：2026-04-28
 
 ## P0 — 项目交付优先工作流（核心战略落地）
 
@@ -82,7 +82,7 @@
 - [x] [🟡 P1] 收敛 active agent 配置为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`
 - [x] [🟡 P1] 将需求/方案/代码审查升级为两条独立 reviewer command report 门禁
 - [x] [🟡 P1] 修复 nofx Discord 工作流自修循环：工作流自身修复不再套进同一条 pipeline，review 失败补丁自动回滚并隔离旧业务漂移
-- [ ] [🟡 P1] 将 nofx Discord profile 高权限工作流维护模板同步到 live profile，并在无活跃 pipeline 时重启 gateway 验证
+- [x] [🟡 P1] 将 nofx Discord profile 高权限工作流维护模板同步到 live profile，并在无活跃 pipeline 时重启 gateway 验证
 - [ ] [🟡 P1] 将 nofx Smart Arb live bridge 继续升级为宿主 native agent dispatch，并在 Task Center 记录独立 agent session/run id
 - [x] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁

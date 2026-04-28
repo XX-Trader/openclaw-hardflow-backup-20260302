@@ -1,13 +1,13 @@
 # DEPLOYMENT
 
-## 2026-04-28 19:59 - 高权限工作流维护模板待 nofx live 同步
+## 2026-04-28 23:15 - nofx 安装 d2e530b7 并同步高权限 profile
 
 类型：deploy
-范围：本仓 `config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、nofx live `/home/arbops/.hermes/profiles/<profile>/SOUL.md`
-事实：本仓 profile 模板已允许 Discord profile 在 workflow/runtime/profile 自身故障时进入高权限工作流维护模式，直接维护 hardflow 宿主而不是递归启动同一条 `smart-arb-pipeline`。当前尚未确认 nofx live profile 已同步；本轮 SSH 探测未拿到有效输出，因此不重启 gateway，避免在可能存在活跃 run 时中断状态回传。
-证据：本地模板、文档、记忆和 `tests/scripts_openclaw_ops/test_nofx_profile_templates.py` 已更新；远端同步待执行。
-最后验证：2026-04-28 19:59
-复用建议：SSH 恢复后先查 `ps -ef | grep -F smart-arb-pipeline` 和最近 `pipeline_state.json`，确认无活跃 running run，再备份并同步两个 live `SOUL.md`，重启 `hermes-discord-arbitrage` / `hermes-discord-spread`，最后核对 `gateway_state=running`、Discord connected 和日志。
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways、Task Center smoke
+事实：本机提交 `d2e530b7` 已推送到 `origin/main`，nofx 仓库从 `17d9b36` fast-forward 到 `d2e530b`，`HEAD...origin/main=0 0` 且工作树 clean；本轮未创建 stash。runtime installer 返回 `ok=true`、`changed=true`，已安装 5 个 runtime skill、18 个 ops 脚本、12 个 cron job 和新增 policy 文件 `policy_route_selection.py`。两个 live profile `SOUL.md` 已从仓库模板同步，备份后缀为 `manual-route-20260428T151420Z`，并重启 `hermes-discord-arbitrage` / `hermes-discord-spread`。
+证据：远端 `git diff --check` 通过；7 个改动脚本 `py_compile` 通过；远端 `compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/control-plane-ops/scripts/policy skills/library/todo-patrol/scripts` 通过；远端定向 `unittest` 19 项 OK；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；两个 gateway `gateway_state=running` 且 Discord `connected`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`；echo smoke `install-smoke-arbitrageagent-20260428T151514657470Z` 完成 15/15，Task Center `project-delivery:install-smoke-arbitrageagent-20260428T151514657470Z` 为 `passed`；cron job 数为 12、`memtidy_hits=0`、`backlog_runner_30m=1`。远端单测生成的 `file_write_audit.jsonl` 测试副作用已恢复，最终工作树 clean。
+最后验证：2026-04-28 23:15
+复用建议：以后 profile 模板有变化时，安装 runtime 后还必须同步 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 并重启对应 gateway；重启前先查活跃 `smart-arb-pipeline`。复杂远端命令优先用 Paramiko 单连接，避免 PowerShell 对 `$p` 等 shell 变量做本地展开。
 
 ## 2026-04-28 19:40 - nofx 安装 17d9b369 workflow runtime
 

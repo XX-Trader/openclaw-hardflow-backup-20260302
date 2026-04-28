@@ -7,15 +7,20 @@
 
 ## 2026-04-28 已完成
 
+- [x] [2026-04-28] **nofx 安装 workflow runtime `d2e530b7` 并同步高权限 profile**
+  - 已把本机提交 `d2e530b7` 推送到 `origin/main`；nofx 仓库从 `17d9b36` fast-forward 到 `d2e530b`，`HEAD...origin/main=0 0` 且最终工作树 clean。
+  - `runtime_installer.py install` 已把新增 `policy_route_selection.py`、更新后的 `backlog_runner.py`、`human_inbox.py`、`policy_task.py`、`deadline_to_task_bridge.py` 等安装到 `/home/arbops/.hermes/ops`；两个 live profile `SOUL.md` 已同步高权限工作流维护模式，备份后缀为 `manual-route-20260428T151420Z`，并重启 `hermes-discord-arbitrage` / `hermes-discord-spread`。
+  - 验证：本地 19 项定向单测、7 个脚本 `py_compile`、`compileall`、diff check、staged secret scan 和独立 code-reviewer 均通过；nofx 远端 `git diff --check`、7 个脚本 `py_compile`、`compileall`、19 项定向单测、`smart-arb-pipeline --help`、gateway/API/cron 检查均通过；echo smoke `install-smoke-arbitrageagent-20260428T151514657470Z` 完成 15/15 且 Task Center `passed`。
+
 - [x] [2026-04-28] **执行链路手动选择模式**
   - 到期 TODO 和通用 `create-task` 不再因为低风险就自动进入 backlog runner；系统会生成路线选择问题，让用户在直接运行、需求探讨、指定 agent、编码工作流、TODO 自动候选中选择。
   - `human_inbox.py confirm --route-choice` 会记录人工选择；旧 `confirm-risk` 会拒绝未选择路线的任务；`backlog_runner.py` 只正向推进已确认走 pipeline 的选择，未选择路线或选择直接运行、需求探讨、指定 agent 都不会被 runner 偷跑；选择指定 agent 时必须显式提供 `--assignee <agent-id>`。
-  - 验证：本地 `test_deadline_to_task_bridge`、`test_human_inbox`、`test_backlog_runner`、`test_policy_task_manual_route`、`test_workflow_selector` 共 18 项 OK；7 个改动脚本 `py_compile` 通过。
+  - 验证：本地 `test_deadline_to_task_bridge`、`test_human_inbox`、`test_backlog_runner`、`test_policy_task_manual_route`、`test_workflow_selector`、`test_nofx_profile_templates` 共 19 项 OK；7 个改动脚本 `py_compile` 通过；nofx 已完成 runtime 安装和 echo smoke。
 
-- [x] [2026-04-28] **nofx Discord profile 高权限工作流维护模式（本地模板）**
+- [x] [2026-04-28] **nofx Discord profile 高权限工作流维护模式上线**
   - 两个 profile 模板新增“高权限工作流维护模式”：修 hardflow workflow/runtime/profile 自身时不再递归启动同一条 `smart-arb-pipeline`，可直接维护 hardflow 宿主、测试并按需安装 runtime；普通业务任务仍走 coordinator pipeline。
-  - 已同步 `smart-arb-nofx-live-evidence-bridge.md`、项目记忆和回归测试。当前 live nofx profile 尚未同步，待 SSH 恢复且无活跃 pipeline 后安装并重启 gateway。
-  - 验证：本地 `test_nofx_profile_templates`、`test_project_delivery_runtime_installer`、`compileall`、`git diff --check` 通过。
+  - 已同步 `smart-arb-nofx-live-evidence-bridge.md`、项目记忆和回归测试；live nofx profile 已同步并重启 gateway。
+  - 验证：本地 `test_nofx_profile_templates`、`compileall`、`git diff --check` 通过；nofx 两个 gateway 均为 `running/connected`。
 
 - [x] [2026-04-28] **nofx 安装 workflow runtime `17d9b369`**
   - nofx hardflow 仓库已对齐 `origin/main` 最新提交 `17d9b36`，`git pull --ff-only origin main` 返回 already up to date，`HEAD...origin/main=0 0` 且工作树 clean；本轮未创建 stash。
