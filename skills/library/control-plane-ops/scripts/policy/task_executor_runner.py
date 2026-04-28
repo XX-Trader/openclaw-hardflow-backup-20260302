@@ -1598,7 +1598,8 @@ def call_hermes_agent(
     session_key = build_gateway_agent_session_key(assignee, session_id)
     prompt = (
         f"你是 Task Center 指定 agent `{str(assignee or '').strip()}`。\n"
-        "请只根据下面任务执行，并按输出模板返回结构化 JSON。\n\n"
+        "本次调用已经由上游人工选择 specified_agent 路线并分配给你，不是新的 Discord 入口消息；"
+        "不要再次要求选择执行链路。请只根据下面任务执行，并按输出模板返回结构化 JSON。\n\n"
         f"{message}"
     )
     cmd = [
@@ -1609,11 +1610,12 @@ def call_hermes_agent(
         prompt,
         "-Q",
         "--max-turns",
-        "1",
+        "3",
         "--source",
         f"task-executor:{str(assignee or '').strip() or 'agent'}",
         "--accept-hooks",
         "--checkpoints",
+        "--ignore-rules",
     ]
     if local_mode:
         cmd.append("--yolo")

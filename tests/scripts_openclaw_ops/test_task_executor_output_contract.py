@@ -270,6 +270,8 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
 
         cmd = mocked_run.call_args.args[0]
         self.assertEqual(cmd[:3], ["/home/arbops/.local/bin/hermes", "--pass-session-id", "chat"])
+        self.assertIn("--ignore-rules", cmd)
+        self.assertEqual("3", cmd[cmd.index("--max-turns") + 1])
 
 
 if __name__ == "__main__":
