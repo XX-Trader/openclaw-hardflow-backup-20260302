@@ -1,5 +1,32 @@
 # TASK_HISTORY
 
+## 2026-04-28 - 执行链路手动选择模式
+
+类型：feature
+范围：`skills/library/control-plane-ops/scripts/policy/policy_route_selection.py`、`skills/library/todo-patrol/scripts/deadline_to_task_bridge.py`、`skills/library/control-plane-ops/scripts/policy/policy_task.py`、`skills/library/control-plane-ops/scripts/policy/human_inbox.py`、`scripts/openclaw-ops/backlog_runner.py`、`skills/library/control-plane-ops/scripts/policy/policy_observe.py`、`docs/核心主工作流/项目交付优先工作流/README.md`
+事实：根据用户确认，当前不把推荐链路直接全自动执行。路由层会输出推荐链路和选项；到期 TODO 和通用 `create-task` 默认创建 `manual_selection` 人工问题，用户可选择直接运行、需求探讨、指定 agent、编码工作流或 TODO 自动候选。`human_inbox confirm --route-choice` 会记录 `selected_route` 并设置 action；`backlog_runner` 只正向推进已人工确认且选择为 `coding_workflow`/`todo_auto_candidate` 的 pipeline 任务，未选择路线或选择直接运行、需求探讨、指定 agent 的任务不会被自动执行。旧 `confirm-risk` 对未选择路线的任务会 fail-close，避免任务从人工队列消失但没有 `selected_route`；`specified_agent` 选择必须显式带 `--assignee <agent-id>`，否则任务继续留在人工队列。
+证据：新增/调整单测覆盖低风险到期 TODO 进入人工路线选择、高风险 TODO 推荐编码工作流、通用 create-task 默认等待路线选择、旧 confirm-risk 拒绝未选择路线任务、CLI 接受 `--route-choice recommended`、人工选择非 pipeline 路线留痕、指定 agent 缺 assignee 拒绝、backlog runner 正向校验 pipeline 路线、workflow selector 路线建议。
+最后验证：2026-04-28 21:31 本地 `python -m unittest tests.scripts_openclaw_ops.test_human_inbox tests.scripts_openclaw_ops.test_policy_task_manual_route tests.scripts_openclaw_ops.test_deadline_to_task_bridge tests.scripts_openclaw_ops.test_backlog_runner tests.scripts_openclaw_ops.test_workflow_selector -v` 18 项 OK；`python -m py_compile` 覆盖 `policy_route_selection.py`、`task_capability_binding.py`、`deadline_to_task_bridge.py`、`human_inbox.py`、`backlog_runner.py`、`policy_observe.py`、`policy_task.py` 通过。
+复用建议：如果后续要恢复全自动，应先统计推荐链路与人工最终选择的一致率，只对稳定类别放开自动，不要全局关闭人工选择。
+
+## 2026-04-28 - nofx Discord profile 高权限工作流维护模式
+
+类型：task
+范围：`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`docs/核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md`、`tests/scripts_openclaw_ops/test_nofx_profile_templates.py`、`memory/`
+事实：已把两个 nofx Discord profile 模板从“workflow 自修只读诊断”升级为“高权限工作流维护模式”。普通业务任务仍进入 coordinator pipeline；修 hardflow workflow/runtime/profile/SOUL/dual review/auto-repair/git_publish/runtime installer/cron workflow 时，profile 不再启动新的 `smart-arb-pipeline`，而是直接切到 hardflow 仓库修工作流宿主、跑测试、按需安装 runtime，并在无法启动独立 reviewer 时标记 `review=pending_external`。当前仅完成本地模板、文档、记忆和测试；SSH 到 nofx 未返回有效输出，live profile 同步和 gateway 重启待 SSH 恢复且确认无活跃 pipeline 后执行。
+证据：`test_nofx_profile_templates.py` 断言两个模板含“高权限工作流维护模式”、hardflow 仓库路径、runtime installer 和 `review=pending_external`，且不再含“只允许做只读诊断和状态回传”。
+最后验证：2026-04-28 19:59 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_nofx_profile_templates tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` OK；`git diff --check` OK。
+复用建议：要让该权限在 Discord live 生效，必须同步本仓 `config/nofx-hermes-profiles/<profile>/SOUL.md` 到 nofx live `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，并重启对应 gateway；重启前先查活跃 `smart-arb-pipeline`。
+
+## 2026-04-28 - nofx 安装 workflow runtime 17d9b369
+
+类型：deploy
+范围：nofx hardflow 仓库、`/home/arbops/.hermes/ops`、runtime installer、cron jobs、Discord gateways、内控 API、Task Center smoke
+事实：已在 nofx 拉取并安装最新 workflow 仓库状态。服务器仓库当前 `HEAD=17d9b36`，与 `origin/main` 对齐，`git pull --ff-only origin main` 返回 already up to date，`HEAD...origin/main=0 0`，工作树 clean，未创建 stash。runtime installer 返回 `ok=true`、`changed=true`，安装 5 个 runtime skill、18 个 ops 脚本和 12 个 cron job；本轮没有 profile SOUL 变更，因此未重启 gateway。
+证据：安装日志 `/tmp/hardflow-runtime-install-20260428T113954Z.json`；远端安装态 3 个核心脚本 `py_compile` 通过；远端 `compileall` 通过；远端 `python3 -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 76 项 OK；仓库源码与 runtime 安装态 SHA256 对齐；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；cron job 数为 12 且 `memtidy_hits=0`；两个 Discord gateway `running`；内控 API `/health` 为 `status=ok`、`/api/strategy/status` 为 `running=false`；echo smoke `install-smoke-arbitrageagent-20260428T114016095602Z` 完成 15/15，`next_action=none`。
+最后验证：2026-04-28 19:40
+复用建议：以后 nofx “拉取最新代码并安装 workflow”按 `git fetch -> git status -> 必要时 stash -> git pull --ff-only -> runtime_installer.py install -> py_compile/compileall/unittest -> help/cron/gateway/API/smoke` 顺序执行；远端复杂脚本优先 Paramiko，避免 PowerShell stdin BOM。
+
 ## 2026-04-28 - nofx 安装 workflow runtime 353f420d
 
 类型：deploy
@@ -58,7 +85,7 @@
 
 类型：refactor
 范围：`cron/jobs.json`、`skills/library/project-delivery-pipeline/scripts/runtime_installer.py`、`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`skills/library/memtidy/`、`config/memtidy_rules.json`
-事实：根据用户确认，Hermes 已有记忆整理能力，本仓删除 MemTidy 自动修改型能力：不再注册 `memtidy_runner（每日记忆整理）` cron，不再通过 runtime installer 安装 `memtidy` skill / `memtidy_runner.py`，并移除本仓 `memtidy_rules.json`。待办自动运行链保留：deadline bridge 负责到期 TODO 风险分流，backlog runner 每 30 分钟最多推进 1 个低风险、无需人工确认或澄清的 Task Center 项。`delivery_plan.json` 现在会把多事项需求拆成 `scope_slices`，第一块为 `current`，后续块为 `deferred`，避免一个 pipeline run 吞掉过重任务。
+事实：根据用户确认，Hermes 已有记忆整理能力，本仓删除 MemTidy 自动修改型能力：不再注册 `memtidy_runner（每日记忆整理）` cron，不再通过 runtime installer 安装 `memtidy` skill / `memtidy_runner.py`，并移除本仓 `memtidy_rules.json`。当时待办自动运行链保留；2026-04-28 已进一步收口为到期 TODO 先人工路线选择，backlog runner 只推进已确认走 pipeline 的 Task Center 项。`delivery_plan.json` 现在会把多事项需求拆成 `scope_slices`，第一块为 `current`，后续块为 `deferred`，避免一个 pipeline run 吞掉过重任务。
 证据：`cron/jobs.json` 删除 memtidy job；`runtime_installer.py` 删除 `memtidy` 和 `memtidy_runner.py` 安装项；`pipeline_runner.py` 新增 `plan_scope_slices()`、`task_split_policy` 和 solution 展示；新增单测覆盖重任务拆分。
 最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner` 31 项 OK；`python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_runtime_installer tests.scripts_openclaw_ops.test_active_agent_registry` 5 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol`、JSON 解析和 `git diff --check` 通过。
 复用建议：以后用户要求“自动推进待办”时，保留 TODO/deadline/backlog runner；如果任务过大，由主代理/项目交付契约先拆小，只有凭证、资金、生产破坏、需求不清或需要核对的点才回问用户。
@@ -148,7 +175,7 @@
 
 类型：task
 范围：`scripts/openclaw-ops/backlog_runner.py`、`cron/jobs.json`、`skills/library/project-delivery-pipeline/scripts/runtime_installer.py`、`tests/scripts_openclaw_ops/test_backlog_runner.py`
-事实：新增 `backlog_runner.py`，将 Task Center 中可安全执行的 backlog 转交给 runtime 内安装的 pipeline 入口继续推进；默认每 30 分钟由 `backlog_runner_30m` 最多推进 1 个低风险、无需人工确认、无需澄清任务。pending 任务仅允许指定来源或 `todo-*`；failed 任务必须显式 `--include-failed`，且 `next_action` 在允许列表内。高风险、需确认、需澄清、人工升级任务不自动执行。runtime installer 已同步安装该脚本，cron `--pipeline-command` 指向 runtime `ops/smart_arb_pipeline_entry.py`，避免自定义 runtime home 下路径失效。
+事实：新增 `backlog_runner.py`，将 Task Center 中可安全执行的 backlog 转交给 runtime 内安装的 pipeline 入口继续推进；最初默认每 30 分钟由 `backlog_runner_30m` 最多推进 1 个低风险、无需人工确认、无需澄清任务。2026-04-28 已收口为只推进已确认走 pipeline 的任务。pending 任务必须有 `selected_route` 为 `coding_workflow` 或 `todo_auto_candidate`、`human_confirmed=true`、`action=confirmed_for_execution`；failed 任务必须显式 `--include-failed`、已有 pipeline route 记录且 `next_action` 在允许列表内。高风险、需确认、需澄清、人工升级、未选择路线和非 pipeline 手动选择任务不自动执行。runtime installer 已同步安装该脚本，cron `--pipeline-command` 指向 runtime `ops/smart_arb_pipeline_entry.py`，避免自定义 runtime home 下路径失效。
 证据：新增测试覆盖 dry-run 只选择安全任务、真实执行时调用 pipeline 并把任务标记 passed、pipeline 启动失败不会卡在 running、安装器安装 `ops/backlog_runner.py`、自定义 runtime home 下 backlog cron payload 指向 runtime entry；相关测试 9 项 OK。
 最后验证：2026-04-27 12:00
 复用建议：该 runner 是“持续推进”入口，不是人工确认替代品。若 backlog 没有推进，先看任务是否被安全门禁跳过，再看是否达到 `max_attempts_per_task`，最后查 pipeline run id 对应的 `pipeline_state.json`。
@@ -157,7 +184,7 @@
 
 类型：task
 范围：`deadline_to_task_bridge.py`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`openclaw.json`、`openclaw/openclaw.json`、`cron/jobs.json`
-事实：到期 TODO 不再全部转人工确认；低风险到期项创建 `risk_level=low`、`need_human_confirm=false`、`action=dispatch_pipeline`、`assignee=coordinator` 的候选任务，由 backlog runner 继续推进；高风险、生产、部署、资金、凭证、删除等仍创建 `await_human_confirm` 人工候选。active agent 配置收敛为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`。需求、方案、代码审查都必须有两条不同命令、不同 `reviewer_role`（`reviewer-a`/`reviewer-b`）的 reviewer command report，且 verdict 全部匹配才放行。
+事实：历史实现中，到期 TODO 不再全部转人工确认，低风险到期项会创建 `dispatch_pipeline` 候选并由 backlog runner 推进；2026-04-28 已收口为默认人工路线选择，低风险项也先 `await_route_selection`。active agent 配置收敛为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`。需求、方案、代码审查都必须有两条不同命令、不同 `reviewer_role`（`reviewer-a`/`reviewer-b`）的 reviewer command report，且 verdict 全部匹配才放行。
 证据：相关测试覆盖低风险/高风险 TODO 分流、单 reviewer 阻塞、重复 reviewer role 阻塞、重复 command 阻塞、两 reviewer 放行、Hermes smoke 双 reviewer 同步、live bridge 三类 review verdict、entry 默认注入 reviewer-a/reviewer-b、active registry 与 cron owner 合规。
 最后验证：2026-04-27
 复用建议：后续回答“是不是 9 个 agent、是否双 AI 审核、低风险 TODO 是否自动推进”时，以 active registry 测试、pipeline command artifacts（含 `reviewer_role`）和 Task Center payload 为准，不再沿用旧 cron owner 口径。

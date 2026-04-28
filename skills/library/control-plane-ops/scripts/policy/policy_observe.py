@@ -16,6 +16,7 @@ from policy_defaults import DEFAULT_POLICY, DEFAULT_ROUTING_RULES
 from policy_utils import PolicyError, RuntimePaths, parse_bool, merge_missing_keys, emit_json, read_json, now_iso
 from io_write_gateway import atomic_write_text, write_json_atomic
 from task_center import TASK_STATUSES, load_pricing, format_daily_summary_markdown
+from policy_route_selection import build_route_selection
 
 class ObservabilityMixin:
     """Mixin providing Observability methods for PolicyEnforcer."""
@@ -352,6 +353,16 @@ class ObservabilityMixin:
             needs_clarification=needs_clarification,
             context_payload=context_payload,
         )
+        selected_profile = str(workflow_selection.get("workflow_profile_id") or "").strip()
+        route_selection_required = True
+        route_selection = build_route_selection(
+            risk_level=risk_level,
+            needs_clarification=needs_clarification,
+            workflow_profile_id=selected_profile,
+            task_type=task_type,
+            require_manual=True,
+        )
+        execution_mode = "manual_route_selection"
 
         return {
             "task_id_suggested": task_id_suggested,
@@ -372,23 +383,15 @@ class ObservabilityMixin:
             "needs_clarification": needs_clarification,
             "clarification_reason": clarification_reason,
             "execution_strategy": {
-                "mode": (
-                    "clarify_then_confirm"
-                    if needs_clarification
-                    else (
-                        "confirm_before_execute"
-                        if need_human_confirm
-                        else "direct_low_risk_execution"
-                    )
-                ),
+                "mode": execution_mode,
                 "confirmation_required": bool(need_human_confirm),
                 "confirmation_reason": confirmation_reason,
                 "clarification_required": bool(needs_clarification),
+                "route_selection_required": route_selection_required,
+                "recommended_route": route_selection["recommended_route"],
                 "confirm_command_after_create": (
-                    "python3 scripts/openclaw-ops/policy/policy_enforcer.py "
-                    + "confirm-risk --task-id <task_id> --confirmed true --actor human"
-                    if need_human_confirm
-                    else ""
+                    "python3 skills/library/control-plane-ops/scripts/policy/human_inbox.py "
+                    + "confirm --task-id <task_id> --route-choice recommended --actor human"
                 ),
             },
             "code_dispatch_forced": code_dispatch_forced,
@@ -400,6 +403,7 @@ class ObservabilityMixin:
             "requirement_package_gate": requirement_package_gate,
             "context_payload": context_payload,
             "workflow_selection": workflow_selection,
+            "route_selection": route_selection,
             "hits": {
                 "high_risk": high_risk_hits,
                 "low_risk": low_risk_hits,

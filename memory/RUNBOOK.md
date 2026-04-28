@@ -35,6 +35,15 @@
 
 ## nofx hardflow 拉取与安装记录
 
+### 2026-04-28 19:40 - 最新 `17d9b369` 文档记录提交同步到 nofx
+
+类型：deploy
+范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、cron jobs、Discord gateways、内控 API
+事实：nofx hardflow 仓库已对齐最新 `origin/main`：`HEAD=17d9b36`，`HEAD...origin/main=0 0`，工作树 clean；`git pull --ff-only origin main` 返回 already up to date，本轮没有远端脏改动，未创建 stash。runtime installer 返回 `ok=true`、`changed=true`，安装 5 个 runtime skill、18 个 ops 脚本和 12 个 cron job；`memtidy` 继续为 0。本轮只是安装 runtime ops 和文档记录提交，没有 profile SOUL 改动，因此不重启 `hermes-discord-*`。
+证据：安装日志 `/tmp/hardflow-runtime-install-20260428T113954Z.json`；安装态 3 个核心脚本 `py_compile` 通过；远端 `compileall` 通过；定向 `unittest` 76 项 OK；`smart-arb-pipeline --help` 正常；`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 的仓库源码与 `/home/arbops/.hermes/ops` SHA256 分别一致；两个 gateway 为 `running`；内控 API `/health` 为 `status=ok`，`/api/strategy/status` 为 `running=false`；echo smoke `install-smoke-arbitrageagent-20260428T114016095602Z` 完成 15/15 阶段，`next_action=none`。
+最后验证：2026-04-28 19:40
+复用建议：远程多命令不要再用 PowerShell here-string 直接管道给 Bash；该路径会出现 BOM 首行，导致 `set: command not found` 和退出码污染。优先用 Paramiko 低频单连接，或用 Git for Windows ssh 执行简单命令。
+
 ### 2026-04-28 19:05 - filtered target candidates 版本同步到 nofx
 
 类型：deploy
@@ -196,21 +205,22 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 ## 定时仓库治理
 
-### 2026-04-28 - TODO 自动运行链路与任务拆分
+### 2026-04-28 - TODO 手动链路选择与任务拆分
 
 类型：runbook
 范围：`cron/jobs.json`、`pipeline_runner.py`、Task Center、`todo.md`
-事实：待办自动运行链路保留，但不允许把重任务整包吞进单次 pipeline。当前 TODO 相关定时任务分工如下：
+事实：待办持续推进能力保留，但当前默认先手动选择执行链路，不让系统直接自动开跑。当前 TODO 相关定时任务分工如下：
 - `TODO 巡检（15分钟）`：巡检 `todo.md`，做去重播报、执行状态检测和未分配项协调。
 - `todo_deadline_checker_daily（截止时间检测）`：每日 00:00 检查 `[截止:YYYY-MM-DD]` 未完成项，标记超期、到期和提醒项；远端 dry-run 曾返回 `NO_REPLY`，表示当前无需要输出的提醒。
-- `todo_deadline_to_task_bridge_daily`：每日 00:05 把到期/超期 TODO 写入 Task Center；低风险任务可进入 `dispatch_pipeline`，高风险、需求不清、凭证/资金/生产破坏类任务进入 `human_inbox.py` 等待确认。
-- `backlog_runner_30m（持续推进待办）`：每 30 分钟最多推进 1 个低风险、无需人工确认/澄清的 pending 任务，或 allowlist 中带 `next_action` 的 failed 任务；默认每任务 1 次 attempt，防止循环重跑。
+- `todo_deadline_to_task_bridge_daily`：每日 00:05 把到期/超期 TODO 写入 Task Center；无论低风险或高风险，先创建 `route_selection.mode=manual_selection` 的 `human_question`，让用户在直接运行、需求探讨、指定 agent、编码工作流、TODO 自动候选中选择。路线选项统一来自 `policy_route_selection.py`。
+- `policy_enforcer create-task`：通用任务创建默认也写入 `route_selection.mode=manual_selection`、`action=await_route_selection`、`assignee=human-inbox`；只有调用方已经提供人工选择后的 `selected_route` 和 `human_confirmed=true`，才按选择后的 action 入库。旧 `confirm-risk` 不可用于未选择路线的任务，会提示改用 `human_inbox.py confirm --route-choice ...`；选择 `specified_agent` 时必须提供 `--assignee <agent-id>`。
+- `backlog_runner_30m（持续推进待办）`：每 30 分钟最多推进 1 个已人工确认且选择为 pipeline 动作的 pending 任务，或 allowlist 中带 `next_action` 且已有 pipeline 选择记录的 failed 任务；pending 任务必须正向满足 `selected_route in {coding_workflow,todo_auto_candidate}`、`human_confirmed=true`、`action=confirmed_for_execution`。选择为 `direct_run`、`requirement_discussion`、`specified_agent` 或未选择路线的任务会被跳过，默认每任务 1 次 attempt，防止循环重跑。
 - `daily_todo_digest_daily`：每日汇总 TODO 状态，属于信息汇总，不是执行推进器。
 - `project_index_maintainer_4h`：维护项目索引和注册表，帮助 TODO/Task Center 定位项目事实源，不直接执行待办。
-拆分规则：当用户需求包含多个独立事项时，`delivery_plan.json` 必须写入 `scope_slices`。第一块为 `current` 并进入本轮执行，其余为 `deferred`，后续通过 Task Center run 或用户确认继续推进；只有凭证、资金、生产破坏、需求不清和边界冲突才回问用户。
-证据：`cron/jobs.json` 保留上述 TODO/Task Center 相关 job；`pipeline_runner.py` 新增 `plan_scope_slices()`、`task_split_policy` 和 `Scope Slices` 展示；新增单测覆盖多事项需求拆分。
-最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner` 31 项 OK；`python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_runtime_installer tests.scripts_openclaw_ops.test_active_agent_registry` 5 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol`、`python -B -m json.tool cron/jobs.json`、`python -B -m json.tool cron/index/cron_agent_capability_matrix.json`、`python -B -m json.tool agents/agent_capability_manifest.json`、`git diff --check` 均通过。
-复用建议：以后用户说“任务太重”时，默认先拆成可验收切片，不把拆分责任交回用户；只在切片需要权限、凭证、生产风险确认或目标冲突时再提问。
+拆分规则：当用户需求包含多个独立事项时，`delivery_plan.json` 必须写入 `scope_slices`。第一块为 `current` 并进入本轮执行，其余为 `deferred`，后续通过 Task Center run 或用户确认继续推进；凭证、资金、生产破坏、需求不清和边界冲突仍必须回问用户。
+证据：`deadline_to_task_bridge.py` 会为到期 TODO 写入路线选择候选并复用统一路线 helper；`policy_task.py` 会为通用 create-task 写入路线选择候选并拦截旧确认入口；`human_inbox.py confirm --route-choice` 记录人工选择、CLI 支持 `recommended`、并拦截缺少 assignee 的 `specified_agent`；`backlog_runner.py` 使用正向 pipeline route 门禁；`pipeline_runner.py` 保留 `scope_slices` 拆分。
+最后验证：2026-04-28 21:31 本地 `python -m unittest tests.scripts_openclaw_ops.test_human_inbox tests.scripts_openclaw_ops.test_policy_task_manual_route tests.scripts_openclaw_ops.test_deadline_to_task_bridge tests.scripts_openclaw_ops.test_backlog_runner tests.scripts_openclaw_ops.test_workflow_selector -v` 18 项 OK；`py_compile` 覆盖 7 个改动脚本通过。
+复用建议：以后用户说“先手动设置 / 先询问人走什么链路”时，按路线选择模式处理；等推荐准确率稳定后，再按任务类型逐步开放自动执行。
 
 ### 2026-04-28 - cron 状态投递到 Discord 群
 
@@ -225,7 +235,7 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 类型：runbook
 范围：`cron/jobs.json`、`scripts/openclaw-ops/backlog_runner.py`、`skills/library/project-delivery-pipeline/scripts/runtime_installer.py`
-事实：新增 `backlog_runner.py`，并注册 `backlog_runner_30m（持续推进待办）`。该 job 每 30 分钟最多选择 1 个 Task Center 中低风险、无需人工确认、无需澄清的 pending 待办，或显式允许 `next_action` 的 failed 项，调用 runtime 内安装的 `python3 <runtime_home>/ops/smart_arb_pipeline_entry.py --live --profile spreadagent --source backlog-runner` 继续推进。高风险、需确认、需澄清、`escalate_human` 任务会被跳过，继续由 `human_inbox.py` 处理；每个任务默认只记录 1 次 `backlog_runner_attempt`，避免无限重复续跑。若 pipeline 命令启动失败，runner 会记录 failed 输出并把任务转为 `failed`，不会卡在 `running`。
+事实：新增 `backlog_runner.py`，并注册 `backlog_runner_30m（持续推进待办）`。该 job 每 30 分钟最多选择 1 个 Task Center 中低风险、已人工确认走 pipeline、无需澄清的 pending 待办，或显式允许 `next_action` 的 failed 项，调用 runtime 内安装的 `python3 <runtime_home>/ops/smart_arb_pipeline_entry.py --live --profile spreadagent --source backlog-runner` 继续推进。高风险、需确认、需澄清、`escalate_human` 以及被人工选择为直接运行、需求探讨、指定 agent 的任务会被跳过，继续由 `human_inbox.py` 或人工协作处理；每个任务默认只记录 1 次 `backlog_runner_attempt`，避免无限重复续跑。若 pipeline 命令启动失败，runner 会记录 failed 输出并把任务转为 `failed`，不会卡在 `running`。
 证据：`scripts/openclaw-ops/backlog_runner.py` 实现安全选择、失败项 next_action allowlist、防循环、pipeline 调用和启动失败兜底；`cron/jobs.json` 新增 `b9c8d7e6-backlog-runner-0030`，`--pipeline-command` 指向 runtime `ops/smart_arb_pipeline_entry.py`，不再从 runtime home 反推 `~/.local/bin`；`runtime_installer.py` 会把脚本安装到 runtime `ops/backlog_runner.py`；本地测试 `python -m unittest tests.scripts_openclaw_ops.test_backlog_runner tests.scripts_openclaw_ops.test_project_delivery_runtime_installer tests.scripts_openclaw_ops.test_repo_hygiene_and_source_watcher` 共 9 项 OK。
 最后验证：2026-04-27 12:00
 复用建议：以后排查“很多 TODO 只有用户催才推进”时，先查 nofx 是否已安装 `ops/backlog_runner.py`，再查 `cron/jobs.json` 是否有 `backlog_runner_30m`，最后查 Task Center 中被跳过任务的 `need_human_confirm`、`needs_clarification`、`risk_level`、`source`、`next_action` 和 `backlog_runner_attempt` 输出。
@@ -281,16 +291,16 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 事实：`solution_package` 的事实源改为 `delivery_plan.json`，`solution.md` 只作为人工展示层。`delivery_plan.json` 使用 `delivery-plan/v1`，包含 task_type、owner、scope_slices、target_files/entry_points、out_of_scope、implementation_steps、verification_commands、release_gates、rollback_plan、human_blockers、risk_boundaries 和 plan_findings。`solution_review` 和 `code_execution` 的 prior context 都会读入 `delivery_plan.json`；方案 reviewer 必须先审结构化契约，不能只按 Markdown 文案形态放行或阻塞。
 证据：`pipeline_runner.py` 新增 `compile_delivery_plan()`、`delivery_plan.json` artifact 和 `solution.md` 渲染；`smart_arb_live_bridge.py` 将 `delivery_plan.json` 注入 `solution_review`、`code_execution`、后续 verification/review/deploy/writeback/git_publish 上下文，并在非代码 Hermes stage 中剥离 `PIPELINE_DELIVERY_PLAN_FILE` 写入路径；`smart_arb_pipeline_entry.py` 将 `revise_solution` 加入自动回流白名单，并允许“do not set PRODUCTION_TRADING_ENABLED=true”这类否定式安全边界，不放行正向启用实盘。
 最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 96 项 OK；远端 nofx 已安装 runtime 代码批次 `3a44f0b0`，`compileall` 通过，67 项定向单测 OK
-复用建议：以后方案评审总是卡在“solution.md 不是实施方案”时，先看 `delivery_plan.json` 是否缺字段或 reviewer finding code，再走 `revise_solution` 回流；不要通过放松 reviewer 或手工润色 Markdown 解决。修 workflow 自身仍走外部 Codex/SSH/operator，不让 Discord profile 递归自修。
+复用建议：以后方案评审总是卡在“solution.md 不是实施方案”时，先看 `delivery_plan.json` 是否缺字段或 reviewer finding code，再走 `revise_solution` 回流；不要通过放松 reviewer 或手工润色 Markdown 解决。修 workflow 自身不再走同一条 `smart-arb-pipeline`，而是进入 Discord profile 的高权限工作流维护模式或外部 Codex/SSH/operator 维护 hardflow 宿主。
 
 ### 2026-04-27 - 工作流自修与未通过 review 补丁清理
 
 类型：runbook
 范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、nofx Discord profile `SOUL.md`、SmartMultiPlatformArbitrage 主工作区
-事实：工作流自身修复不能继续通过同一个 Discord profile 无限启动 `smart-arb-pipeline`。两个 nofx profile 模板已增加“工作流自修例外”：用户明确说“不要走工作流”，或目标是修复 pipeline/bridge/profile/dual-review/auto-repair/git_publish 时，profile 只做只读诊断和状态回传，提示外部 operator/Codex 通过 SSH 修复 hardflow 并重新安装 runtime。`pipeline_runner.py` 会在 requirements review 通过后写 `resolved_requirement.md`，并让 `solution.md` 消费该 handoff。应用 code workspace patch 前会检查主工作区脏路径是否与补丁路径重叠，重叠则拒绝应用；`verification` 或 `code_review` 阻塞时对已应用到主项目目录的 patch 执行 `git apply -R` 并写入 `command-runs/rollback-<reason>.json`；如果回滚失败，pipeline 以 `failed_stage=rollback_cleanup`、`next_action=manual_cleanup_required` 阻塞，避免假装只是普通实现失败。
+事实：工作流自身修复不能继续通过同一个 Discord profile 无限启动 `smart-arb-pipeline`。两个 nofx profile 模板的“工作流自修例外”已升级为“高权限工作流维护模式”：用户明确要求修 pipeline/bridge/profile/dual-review/auto-repair/git_publish/runtime installer/cron workflow 时，profile 不启动新的 `smart-arb-pipeline`，而是直接切到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 维护 hardflow 宿主、测试并按需安装 runtime；若无法启动真正独立 code-reviewer，最终状态卡必须标记 `review=pending_external`。`pipeline_runner.py` 会在 requirements review 通过后写 `resolved_requirement.md`，并让 `solution.md` 消费该 handoff。应用 code workspace patch 前会检查主工作区脏路径是否与补丁路径重叠，重叠则拒绝应用；`verification` 或 `code_review` 阻塞时对已应用到主项目目录的 patch 执行 `git apply -R` 并写入 `command-runs/rollback-<reason>.json`；如果回滚失败，pipeline 以 `failed_stage=rollback_cleanup`、`next_action=manual_cleanup_required` 阻塞，避免假装只是普通实现失败。
 证据：本地测试 `python -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_smart_arb_live_bridge` 共 68 项 OK；新增测试覆盖 requirement/solution artifact 保留具体用户请求、resolved requirement handoff、code review 失败回滚、verification 失败回滚、主工作区重叠脏路径拒绝应用、回滚失败升级为 manual cleanup。nofx 上旧业务漂移已保存到 `stash@{0}: pre-workflow-fix-rejected-business-drift-20260427T075431Z`，包含 `_close_position` / `execution_orchestration` 相关未通过 review 改动、`.workflow/` 和 `memory/smart-arb/`。nofx 已部署提交 `429ce994`：远端 `compileall` 与 75 项定向 unittest OK；runtime ops 命中 `Resolved Requirement`、`overlapping_dirty_paths`、`rollback_cleanup`；两个 live profile `SOUL.md` 已同步自修例外并重启，gateway 均为 `running` / Discord `connected`；SmartMulti 主工作区 clean，内控 API smoke 通过。
 最后验证：2026-04-27 16:39
-复用建议：遇到“修工作流本身”“不要走工作流”时，不要再让 Discord profile 自己调用 pipeline；先 SSH 到 nofx 停活跃 self-repair run，再改 hardflow 仓库、跑测试、安装 runtime。遇到 SmartMulti 主仓库残留未通过 review 的业务改动，优先 `git stash push -u -m pre-workflow-fix-rejected-business-drift-<timestamp>` 隔离，不要直接删除。
+复用建议：遇到“修工作流本身”“不要走工作流”时，不要再让 Discord profile 调用同一条 pipeline；先确认没有活跃 `smart-arb-pipeline` run，再由高权限工作流维护模式或外部 SSH 改 hardflow 仓库、跑测试、安装 runtime。遇到 SmartMulti 主仓库残留未通过 review 的业务改动，优先 `git stash push -u -m pre-workflow-fix-rejected-business-drift-<timestamp>` 隔离，不要直接删除。
 
 ## nofx workflow 服务器级权限
 

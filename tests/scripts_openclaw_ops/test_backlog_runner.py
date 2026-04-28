@@ -26,7 +26,28 @@ def load_module(name: str, path: Path):
         sys.path.pop(0)
 
 
-def create_task(center, *, task_id: str, source: str = "todo_patrol", risk_level: str = "low", status: str = "pending", need_human_confirm: bool = False):
+def create_task(
+    center,
+    *,
+    task_id: str,
+    source: str = "todo_patrol",
+    risk_level: str = "low",
+    status: str = "pending",
+    need_human_confirm: bool = False,
+    human_confirmed: bool = False,
+    action: str = "",
+    selected_route: str = "",
+):
+    context_payload = {}
+    if selected_route:
+        context_payload = {
+            "route_selection": {
+                "mode": "manual_selection",
+                "required": True,
+                "recommended_route": selected_route,
+                "selected_route": selected_route,
+            }
+        }
     center.create_task(
         {
             "task_id": task_id,
@@ -40,7 +61,9 @@ def create_task(center, *, task_id: str, source: str = "todo_patrol", risk_level
             "assignee": "coordinator",
             "status": status,
             "need_human_confirm": need_human_confirm,
-            "human_confirmed": False,
+            "human_confirmed": human_confirmed,
+            "action": action,
+            "context_payload": context_payload,
             "requirement": f"完成 {task_id}",
             "result_output": "输出执行报告",
             "acceptance": "通过测试和审查",
@@ -60,8 +83,23 @@ class BacklogRunnerTests(unittest.TestCase):
             center = task_center.TaskCenter(db)
             try:
                 center.init_schema()
-                create_task(center, task_id="todo-safe")
+                create_task(
+                    center,
+                    task_id="todo-safe",
+                    need_human_confirm=True,
+                    human_confirmed=True,
+                    action="confirmed_for_execution",
+                    selected_route="todo_auto_candidate",
+                )
+                create_task(center, task_id="todo-unselected")
                 create_task(center, task_id="todo-human", risk_level="high", need_human_confirm=True)
+                create_task(
+                    center,
+                    task_id="todo-direct-route",
+                    human_confirmed=True,
+                    need_human_confirm=True,
+                    action="manual_direct_run_requested",
+                )
             finally:
                 center.close()
 
@@ -86,7 +124,10 @@ class BacklogRunnerTests(unittest.TestCase):
             )
 
         self.assertEqual(["todo-safe"], [item["task_id"] for item in report["selected"]])
-        self.assertIn("human_or_clarification_gate", {item["reason"] for item in report["skipped"]})
+        reasons = {item["reason"] for item in report["skipped"]}
+        self.assertIn("human_or_clarification_gate", reasons)
+        self.assertIn("manual_pipeline_route_required", reasons)
+        self.assertIn("manual_route_not_pipeline:manual_direct_run_requested", reasons)
         self.assertTrue(report["dry_run"])
 
     def test_executes_pipeline_and_marks_task_passed(self):
@@ -97,7 +138,14 @@ class BacklogRunnerTests(unittest.TestCase):
             center = task_center.TaskCenter(db)
             try:
                 center.init_schema()
-                create_task(center, task_id="todo-safe")
+                create_task(
+                    center,
+                    task_id="todo-safe",
+                    need_human_confirm=True,
+                    human_confirmed=True,
+                    action="confirmed_for_execution",
+                    selected_route="coding_workflow",
+                )
             finally:
                 center.close()
 
@@ -156,7 +204,14 @@ class BacklogRunnerTests(unittest.TestCase):
             center = task_center.TaskCenter(db)
             try:
                 center.init_schema()
-                create_task(center, task_id="todo-safe")
+                create_task(
+                    center,
+                    task_id="todo-safe",
+                    need_human_confirm=True,
+                    human_confirmed=True,
+                    action="confirmed_for_execution",
+                    selected_route="coding_workflow",
+                )
             finally:
                 center.close()
 

@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-04-28 - capability registry 默认条目必须带 agent_id
+
+类型：pitfall
+范围：`skills/library/control-plane-ops/scripts/policy/task_capability_binding.py`、workflow selector / create-task 临时运行态
+事实：`DEFAULT_CAPABILITY_REGISTRY.agent_defaults` 中不能存在缺少 `agent_id` 的条目；否则新临时 runtime 初始化 `PolicyEnforcer` 时会在 `normalize_capability_registry()` 报 `capability agent default #0 missing agent_id`，连 route-task / create-task 测试都会被初始化阶段阻塞。已删除 4 个无 `agent_id` 的无效默认条目，保留具名 agent 默认配置。
+证据：修复前 `tests/scripts_openclaw_ops/test_workflow_selector.py` 和 `test_policy_task_manual_route.py` 均在 `PolicyEnforcer(paths)` 阶段失败；修复后 `python -m unittest tests.scripts_openclaw_ops.test_deadline_to_task_bridge tests.scripts_openclaw_ops.test_human_inbox tests.scripts_openclaw_ops.test_backlog_runner tests.scripts_openclaw_ops.test_policy_task_manual_route tests.scripts_openclaw_ops.test_workflow_selector -v` 15 项 OK。
+最后验证：2026-04-28 21:40
+复用建议：后续若临时 runtime 初始化在 capability registry 校验阶段失败，先检查 `agent_defaults` 是否全都有 `agent_id`，再排查 workflow selector 本身；不要把初始化失败误判成 route-task 逻辑失败。
+
 ## 2026-04-27 - Discord 只显示 Still working 不是 agent 没产出
 
 类型：pitfall
@@ -43,7 +52,7 @@
 事实：用户明确说“不要走工作流”“可以绕过”或“直接修工作流”时，旧 SOUL 仍把请求包装成新的 coordinator pipeline，导致 `discord-spreadagent-20260427T072912161741Z` 与后续 `discord-spreadagent-20260427T074448323797Z` 继续自修。该模式会在旧 runtime 上反复读取/生成 artifact，并可能把未通过 review 的业务补丁留在 SmartMulti 主工作区。
 证据：远端进程曾显示两个 self-repair run 仍在执行；SmartMulti 工作区残留 `multi_exchange_arbitrage.py`、`execution_orchestration.py`、`tests/test_execution_orchestration.py`、`.workflow/`、`memory/smart-arb/`。本次已终止活跃 self-repair run，并把残留业务漂移保存为 `stash@{0}: pre-workflow-fix-rejected-business-drift-20260427T075431Z`。
 最后验证：2026-04-27 15:54
-复用建议：工作流宿主自修必须由外部 operator/Codex 经 SSH 修改 hardflow 仓库和安装态；Discord profile 只允许只读诊断并回传状态。后续若用户说“可以绕过”“不要走工作流”或看到 `Still working...` 对应的 run 目标是修 `smart-arb-pipeline` / `pipeline_runner.py` / `smart_arb_live_bridge.py`，先停止该 self-repair run，再部署修复后的 runtime。
+复用建议：工作流宿主自修不能再通过同一条 `smart-arb-pipeline` 递归执行；2026-04-28 起可由 Discord profile 的高权限工作流维护模式或外部 operator/Codex 经 SSH 直接修改 hardflow 仓库和安装态。后续若用户说“可以绕过”“不要走工作流”或看到 `Still working...` 对应的 run 目标是修 `smart-arb-pipeline` / `pipeline_runner.py` / `smart_arb_live_bridge.py`，先停止或避开该 self-repair run，再维护 hardflow 宿主、测试并部署修复后的 runtime。
 
 ## 2026-04-26 - P0 记忆写回不应被否定式敏感词或 session_id 输出卡住
 

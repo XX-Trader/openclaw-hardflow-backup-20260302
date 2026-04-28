@@ -21,6 +21,13 @@ from task_capability_binding import (
     resolve_task_capability_binding,
     validate_task_capability_constraints,
 )
+from policy_route_selection import (
+    AWAIT_ROUTE_SELECTION_ACTION,
+    PIPELINE_ROUTE_CHOICES,
+    VALID_ROUTE_CHOICES,
+    build_route_selection,
+    route_choice_action,
+)
 
 class TaskLifecycleMixin:
     """Mixin providing TaskLifecycle methods for PolicyEnforcer."""
@@ -214,6 +221,28 @@ class TaskLifecycleMixin:
         need_human_confirm = bool(task.get("need_human_confirm"))
         human_confirmed = bool(task.get("human_confirmed"))
         needs_clarification = bool(task.get("needs_clarification"))
+        task_id = str(task.get("task_id", "")).strip()
+        context_payload = task.get("context_payload")
+        if not isinstance(context_payload, dict):
+            context_payload = {}
+        route_selection = context_payload.get("route_selection")
+        if not isinstance(route_selection, dict):
+            route_selection = {}
+        route_selection_required = bool(route_selection.get("required")) and not str(
+            route_selection.get("selected_route") or ""
+        ).strip()
+        if route_selection_required:
+            confirm_command = (
+                "python3 skills/library/control-plane-ops/scripts/policy/human_inbox.py "
+                + f"confirm --task-id {task_id} --route-choice recommended --actor human"
+            )
+        elif need_human_confirm and (not human_confirmed):
+            confirm_command = (
+                "python3 scripts/openclaw-ops/policy/policy_enforcer.py "
+                + f"confirm-risk --task-id {task_id} --confirmed true --actor human"
+            )
+        else:
+            confirm_command = ""
         state = "ready"
         if needs_clarification:
             state = "blocked_clarification"
@@ -225,13 +254,8 @@ class TaskLifecycleMixin:
             "need_human_confirm": need_human_confirm,
             "human_confirmed": human_confirmed,
             "needs_clarification": needs_clarification,
-            "task_id": str(task.get("task_id", "")).strip(),
-            "confirm_command": (
-                "python3 scripts/openclaw-ops/policy/policy_enforcer.py "
-                + f"confirm-risk --task-id {str(task.get('task_id', '')).strip()} --confirmed true --actor human"
-                if need_human_confirm and (not human_confirmed)
-                else ""
-            ),
+            "task_id": task_id,
+            "confirm_command": confirm_command,
         }
 
 
@@ -666,6 +690,7 @@ class TaskLifecycleMixin:
             risk_level=risk_level,
         )
         need_human_confirm = parse_bool(args.need_human_confirm, default_need_confirm)
+        human_confirmed = parse_bool(args.human_confirmed, False)
         scheduled_at = str(args.scheduled_at or "").strip()
         if pool == "todo" and self.todo_require_scheduled_at() and not scheduled_at:
             scheduled_at = now_iso()
@@ -780,6 +805,34 @@ class TaskLifecycleMixin:
             "stage_gate_evaluated_stage_id": str(stage_context_gate.get("evaluated_stage_id", "")).strip(),
         }
 
+        route_selection = context_payload.get("route_selection")
+        if not isinstance(route_selection, dict):
+            route_selection = {}
+        selected_route = str(route_selection.get("selected_route") or "").strip().lower()
+        verified_route_selected = bool(human_confirmed) and selected_route in VALID_ROUTE_CHOICES
+        route_selection_applies = initial_status == "pending" and task_type != "ops_runtime_cron"
+        if route_selection_applies:
+            recommended_route_selection = build_route_selection(
+                risk_level=risk_level,
+                needs_clarification=needs_clarification,
+                workflow_profile_id=workflow_selection["workflow_profile_id"],
+                task_type=task_type,
+                require_manual=True,
+            )
+            recommended_route_selection.update(route_selection)
+            context_payload["route_selection"] = recommended_route_selection
+            need_human_confirm = True
+            if verified_route_selected:
+                initial_action = route_choice_action(selected_route)
+                if selected_route == "requirement_discussion" and not explicit_assignee:
+                    assignee = self.clarification_assignee()
+                elif selected_route in PIPELINE_ROUTE_CHOICES and not explicit_assignee:
+                    assignee = self.dispatcher_agent()
+            else:
+                human_confirmed = False
+                initial_action = AWAIT_ROUTE_SELECTION_ACTION
+                assignee = "human-inbox"
+
         explicit_required_capabilities = self.parse_text_list_arg(getattr(args, "required_capabilities", ""))
         explicit_required_skills = self.parse_text_list_arg(getattr(args, "required_skills", ""))
         explicit_allowed_agents = self.parse_text_list_arg(getattr(args, "allowed_agents", ""))
@@ -835,7 +888,7 @@ class TaskLifecycleMixin:
             "needs_clarification": needs_clarification,
             "clarification_reason": clarification_reason,
             "need_human_confirm": need_human_confirm,
-            "human_confirmed": parse_bool(args.human_confirmed, False),
+            "human_confirmed": human_confirmed,
             "context_completeness": float(context_eval.get("context_completeness", 0.0) or 0.0),
             "context_fields_missing": merged_context_missing_fields,
             "context_fields_recommended_missing": context_eval.get("missing_recommended_fields", []),
@@ -1018,6 +1071,22 @@ class TaskLifecycleMixin:
 
 
     def confirm_risk(self, args: argparse.Namespace) -> dict[str, Any]:
+        task = self.db.get_task(args.task_id, display_safe=False)
+        context_payload = task.get("context_payload")
+        if not isinstance(context_payload, dict):
+            context_payload = {}
+        route_selection = context_payload.get("route_selection")
+        if not isinstance(route_selection, dict):
+            route_selection = {}
+        if (
+            parse_bool(args.confirmed, True)
+            and bool(route_selection.get("required"))
+            and not str(route_selection.get("selected_route") or "").strip()
+        ):
+            raise PolicyError(
+                "task requires route selection; use human_inbox.py confirm "
+                f"--task-id {args.task_id} --route-choice recommended"
+            )
         return self.db.confirm_human(task_id=args.task_id, actor=args.actor, confirmed=parse_bool(args.confirmed, True))
 
 
@@ -2025,4 +2094,3 @@ class TaskLifecycleMixin:
             "stats": stats,
             "updated_tasks": details[:200],
         }
-

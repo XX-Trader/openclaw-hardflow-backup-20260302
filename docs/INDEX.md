@@ -1,6 +1,6 @@
 # OpenClaw 文档导航（INDEX）
 
-> 最后更新：2026-04-28 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个 active workflow owner；Discord 运行中默认每 60 秒输出 `# nofx 任务执行进度`，状态卡包含 `回答状态`（正在回复/已回答完毕/未回答完毕），证据项显示 20 字以内中文短说明；cron 只挂 `coordinator/project-agent`，结果与失败告警默认投递到 spreadagent Discord 群；低风险到期 TODO 进入 backlog runner，高风险进人工队列；工作流自身修复不再通过同一个 Discord pipeline 自修；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
+> 最后更新：2026-04-28 | nofx agent/model 口径已修正为 2 个 Hermes profile（`openai-codex/gpt-5.5`）+ `smart-arb-pipeline` 工作流 + 9 个 active workflow owner；Discord 运行中默认每 60 秒输出 `# nofx 任务执行进度`，状态卡包含 `回答状态`（正在回复/已回答完毕/未回答完毕），证据项显示 20 字以内中文短说明；cron 只挂 `coordinator/project-agent`，结果与失败告警默认投递到 spreadagent Discord 群；到期 TODO 和通用 create-task 默认先人工选择执行链路，只有选择为编码工作流/TODO 自动候选并记录人工确认后才进入 backlog runner，选择指定 agent 时必须显式给出 assignee；工作流自身修复不再通过同一个 Discord pipeline 自修；旧 14 Agent 文档仅保留为历史 OpenClaw 注册表快照
 > 2026-04-28 补充：项目交付方案阶段以 `delivery_plan.json` 作为结构化交付契约，`solution.md` 只作为人工展示层；`revise_solution` 支持低风险自动回流。
 > 配套文件：[execution-roadmap.md](execution-roadmap.md)（路线图）、[todo.md](../todo.md)（待办）、[done.md](../done.md)（已完成）
 
@@ -12,7 +12,7 @@
 |------------|-----------|------|----------|----------|
 | 🎯 核心主工作流 | [通用运营工作流](核心主工作流/通用运营工作流/README.md) | ✅ 已上线 | 人工/事件触发 | 任务调度、TODO巡检、日报、评分闭环 |
 | 🎯 核心主工作流 | [ACP全链路编码工作流](核心主工作流/ACP全链路编码工作流/README.md) | ✅ 已上线 | 人工触发 | G0-G6门禁、回流整改、部署验收 |
-| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🟡 Phase 6.6 已实现 | 人工触发 / 项目维护事件 / 运维事件 / Task Center backlog runner | 自动需求探索、项目记忆定位、编码执行、测试验收、代码审核、受控 Git 发布、Task Center 追踪、人工队列、低风险待办持续推进 |
+| 🎯 核心主工作流 | [项目交付优先工作流](核心主工作流/项目交付优先工作流/README.md) | 🟡 Phase 6.6 已实现 | 人工触发 / 项目维护事件 / 运维事件 / 人工确认后的 Task Center backlog runner | 自动需求探索、项目记忆定位、编码执行、测试验收、代码审核、受控 Git 发布、Task Center 追踪、人工队列、手动路线选择后的受控推进 |
 | 📦 专项场景 | [巡检故障闭环工作流](专项场景工作流/巡检故障闭环工作流/README.md) | ✅ 已上线 | 每6小时/异常触发 | 异常分类→知识库匹配→自修复 |
 | 📦 专项场景 | [记忆知识沉淀工作流](专项场景工作流/记忆知识沉淀工作流/README.md) | ✅ 已上线 | 每日/每周 | 知识蒸馏、经验→技能封装 |
 | 📦 专项场景 | [情报采集分析工作流](专项场景工作流/情报采集分析工作流/README.md) | ✅ 已上线 | 每日自动 | 上游同步、网页爬取、GitHub扫描 |
@@ -93,10 +93,10 @@
 | [`skills/library/project-delivery-pipeline/scripts/hermes_profile_smoke.py`](../skills/library/project-delivery-pipeline/scripts/hermes_profile_smoke.py) | Hermes profile 非 dry-run smoke 验收入口 |
 | [`skills/library/project-delivery-pipeline/references/state-machine.md`](../skills/library/project-delivery-pipeline/references/state-machine.md) | 状态、产物、门禁、失败回退、Task Center 镜像规则 |
 | [`skills/library/project-delivery-pipeline/references/runtime-adapter.md`](../skills/library/project-delivery-pipeline/references/runtime-adapter.md) | 通用 runtime 宿主、任务中心与检索后端适配契约 |
-| [`skills/library/todo-patrol/scripts/deadline_to_task_bridge.py`](../skills/library/todo-patrol/scripts/deadline_to_task_bridge.py) | 到期 TODO 按风险分流：低风险进 Task Center 自动队列，高风险等待人工确认 |
+| [`skills/library/todo-patrol/scripts/deadline_to_task_bridge.py`](../skills/library/todo-patrol/scripts/deadline_to_task_bridge.py) | 到期 TODO 进入人工路线选择：系统推荐链路，用户确认后才执行 |
 | [`skills/library/log-monitor/scripts/exception_to_task_bridge.py`](../skills/library/log-monitor/scripts/exception_to_task_bridge.py) | 增量异常日志转运维任务与 incident |
 | [`skills/library/control-plane-ops/scripts/policy/human_inbox.py`](../skills/library/control-plane-ops/scripts/policy/human_inbox.py) | 人工确认、拒绝、澄清、升级任务统一入口 |
-| [`scripts/openclaw-ops/backlog_runner.py`](../scripts/openclaw-ops/backlog_runner.py) | 每 30 分钟从 Task Center 选择低风险、无需人工确认或可续跑失败项，调用 `smart-arb-pipeline` 持续推进 |
+| [`scripts/openclaw-ops/backlog_runner.py`](../scripts/openclaw-ops/backlog_runner.py) | 每 30 分钟从 Task Center 正向选择已人工确认且走 pipeline 的安全项，调用 `smart-arb-pipeline` 受控推进 |
 
 ### 双 AI 对抗审查 Skill
 

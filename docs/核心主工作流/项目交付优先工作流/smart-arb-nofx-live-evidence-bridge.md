@@ -127,11 +127,14 @@ nofx 两个 Discord Hermes profile 的 `SOUL.md` 使用本仓库模板维护：
 
 提示词必须把以下规则放在最前面：
 
-1. 执行类请求先创建 `smart-arb-pipeline` run。
-2. 不允许在 profile 会话里直接实现、部署、安装依赖、修改代码或提交 Git。
+1. 普通业务执行类请求先创建 `smart-arb-pipeline` run。
+2. 不允许在 profile 会话里直接实现、部署、安装依赖、修改 SmartMulti 业务代码或提交业务 Git。
 3. 只有只读状态查询、简单解释或监控数据查询可以直接处理。
-4. 运行期间必须回传 `# nofx 任务执行进度`，完成后必须回传 `# nofx 任务执行状态`；不要转发 Hermes 通用心跳、background wrapper 或 command 原始输出。
-5. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
+4. 当目标是 hardflow workflow/runtime/profile 自身，例如修 `smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、profile/SOUL、dual review、auto-repair、git_publish、runtime installer 或 cron workflow 时，进入“高权限工作流维护模式”：不要递归启动同一条 `smart-arb-pipeline`，直接切到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 修改 workflow 宿主，跑测试，必要时安装到 `/home/arbops/.hermes` 并同步 live profile。
+5. 运行期间必须回传 `# nofx 任务执行进度`，完成后必须回传 `# nofx 任务执行状态`；不要转发 Hermes 通用心跳、background wrapper 或 command 原始输出。
+6. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
+
+高权限工作流维护模式不是“跳过门禁”。它只绕过有问题的 workflow 编排本身，仍必须检查 Git 脏工作区、保护凭证、运行 `git diff --check`、相关 `unittest` 和 `compileall`；如果修改 profile 模板，必须备份并同步 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，再重启对应 Discord gateway 并核对 `gateway_state=running`。如果 profile 无法启动真正独立 code-reviewer，最终状态卡必须标记 `review=pending_external`，不能谎称审查通过。
 
 2026-04-25 19:20 已按上述模板刷新 nofx 两个 profile，并重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。2026-04-25 23:45 再次刷新为绝对入口命令，并改用 profile `start-gateway.sh` 加载 `.env` 后启动。验证结果：
 

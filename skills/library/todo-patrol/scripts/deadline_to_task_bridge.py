@@ -34,6 +34,11 @@ for candidate in POLICY_DIR_CANDIDATES:
         sys.path.insert(0, str(candidate))
         break
 
+from policy_route_selection import (  # noqa: E402
+    AWAIT_ROUTE_SELECTION_ACTION,
+    build_route_selection as build_policy_route_selection,
+    route_selection_options,
+)
 from task_center import TaskCenter, TaskCenterError  # noqa: E402
 
 
@@ -52,8 +57,6 @@ LOW_RISK_PATTERN = re.compile(
     r"(文档|docs?|readme|索引|说明|注释|格式|错别字|typo|只读|查询|整理|报告|csv|excel)",
     re.IGNORECASE,
 )
-
-
 @dataclass(frozen=True)
 class DueTodoItem:
     line_no: int
@@ -157,49 +160,44 @@ def infer_priority_and_risk(item: DueTodoItem) -> tuple[str, str, list[str]]:
     return priority, risk_level, reasons
 
 
+def build_todo_route_selection(*, priority: str, risk_level: str, risk_reasons: list[str]) -> dict[str, Any]:
+    route_selection = build_policy_route_selection(
+        risk_level=risk_level,
+        task_type="todo_deadline_candidate",
+        require_manual=True,
+    )
+    route_selection.update(
+        {
+            "priority": priority,
+            "risk_level": risk_level,
+            "risk_reasons": risk_reasons,
+        }
+    )
+    return route_selection
+
+
 def build_candidate_task(todo_file: Path, item: DueTodoItem, *, assignee: str) -> dict[str, Any]:
     overdue_text = "overdue" if item.days_until < 0 else item.state
     priority, risk_level, risk_reasons = infer_priority_and_risk(item)
-    need_human_confirm = risk_level == "high"
-    effective_assignee = "human-inbox" if need_human_confirm else "coordinator"
-    action = "await_human_confirm" if need_human_confirm else "dispatch_pipeline"
+    route_selection = build_todo_route_selection(priority=priority, risk_level=risk_level, risk_reasons=risk_reasons)
+    need_human_confirm = True
+    effective_assignee = "human-inbox"
+    action = AWAIT_ROUTE_SELECTION_ACTION
     requirement = (
-        "Ask the user whether this due TODO should become an executable Task Center item before any agent "
-        f"starts work. TODO: {item.text}"
-        if need_human_confirm
-        else (
-            "Execute this due low-risk TODO through the normal coordinator pipeline. "
-            "Do not bypass project memory, verification, code review, writeback, or Git publish gates. "
-            f"TODO: {item.text}"
-        )
+        "Ask the user to choose the execution route before any workflow, agent, or backlog runner starts work. "
+        f"Recommended route: {route_selection['recommended_route']}. TODO: {item.text}"
     )
-    result_output = (
-        "A confirmed executable task, a clarified task, or a cancelled candidate."
-        if need_human_confirm
-        else "Pipeline run evidence, changed files if any, tests, review result, and writeback status."
-    )
-    acceptance = (
-        "The user explicitly confirms, declines, or clarifies the due TODO candidate."
-        if need_human_confirm
-        else "The low-risk due TODO completes through the pipeline with verification and review gates passing."
-    )
-    observable_outputs = (
-        "human_inbox entry; task_center task row; human question output"
-        if need_human_confirm
-        else "pipeline_state.json; command-runs; Task Center outputs; final status card"
-    )
-    acceptance_thresholds = (
-        "Candidate remains blocked while need_human_confirm=true and human_confirmed=false."
-        if need_human_confirm
-        else "Task reaches passed/completed or blocks with a concrete next_action without bypassing safety gates."
-    )
+    result_output = "A selected execution route, a clarified task, or a cancelled candidate."
+    acceptance = "The user explicitly chooses direct run, requirement discussion, specified agent, coding workflow, or TODO auto candidate."
+    observable_outputs = "human_inbox entry; task_center task row; human route-selection output"
+    acceptance_thresholds = "Candidate remains blocked while need_human_confirm=true and human_confirmed=false."
     return {
         "task_id": build_task_id(todo_file, item),
         "pool": "todo",
         "task_type": "todo_deadline_candidate",
         "reason": f"TODO deadline {overdue_text}: line {item.line_no}",
         "source": "todo-deadline-bridge",
-        "request_source": "ai" if not need_human_confirm else "human",
+        "request_source": "ai",
         "priority": priority,
         "risk_level": risk_level,
         "assignee": effective_assignee,
@@ -226,17 +224,10 @@ def build_candidate_task(todo_file: Path, item: DueTodoItem, *, assignee: str) -
             "state": item.state,
             "raw_todo": item.raw_line,
             "risk_reasons": risk_reasons,
+            "route_selection": route_selection,
         },
-        "allowed_agents": (
-            ["human-inbox", "project-agent", "coordinator"]
-            if need_human_confirm
-            else ["coordinator", "project-agent", "reviewer", "tester", "doc-writer"]
-        ),
-        "required_capabilities": (
-            ["human_confirmation", "task_routing"]
-            if need_human_confirm
-            else ["project_delivery_pipeline", "verification", "code_review"]
-        ),
+        "allowed_agents": ["human-inbox", "coordinator", "project-agent", "researcher", "tester", "doc-writer"],
+        "required_capabilities": ["human_confirmation", "task_routing"],
         "required_skills": ["todo-patrol"],
     }
 
@@ -281,42 +272,34 @@ def create_due_candidates(
                 continue
             created = center.create_task(task, actor=actor)
             command_base = "python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/policy/human_inbox.py"
-            if task.get("need_human_confirm"):
-                center.record_task_output(
-                    task_id=task_id,
-                    output_type="human_question",
-                    audience="human",
-                    channel="human_inbox",
-                    status="prepared",
-                    summary=f"Confirm due TODO candidate {task_id}",
-                    payload={
-                        "question": "Add this due TODO to Task Center for execution?",
-                        "todo": item.raw_line,
-                        "deadline": item.deadline.date().isoformat(),
-                        "choices": ["confirm", "decline", "clarify"],
-                        "commands": {
-                            "confirm": f"{command_base} confirm --task-db {task_db} --task-id {task_id}",
-                            "decline": f"{command_base} decline --task-db {task_db} --task-id {task_id}",
-                        },
+            route_selection = task.get("context_payload", {}).get("route_selection", {})
+            recommended_route = str(route_selection.get("recommended_route") or "coding_workflow")
+            center.record_task_output(
+                task_id=task_id,
+                output_type="human_question",
+                audience="human",
+                channel="human_inbox",
+                status="prepared",
+                summary=f"Select execution route for due TODO candidate {task_id}",
+                payload={
+                    "question": "请选择这个到期 TODO 的执行链路。",
+                    "todo": item.raw_line,
+                    "deadline": item.deadline.date().isoformat(),
+                    "recommended_route": recommended_route,
+                    "recommendation_reason": route_selection.get("recommendation_reason", ""),
+                    "choices": route_selection.get("options", route_selection_options()),
+                    "commands": {
+                        "recommended": f"{command_base} confirm --task-db {task_db} --task-id {task_id} --route-choice {recommended_route}",
+                        "direct_run": f"{command_base} confirm --task-db {task_db} --task-id {task_id} --route-choice direct_run",
+                        "requirement_discussion": f"{command_base} confirm --task-db {task_db} --task-id {task_id} --route-choice requirement_discussion --assignee project-agent",
+                        "specified_agent": f"{command_base} confirm --task-db {task_db} --task-id {task_id} --route-choice specified_agent --assignee <agent-id>",
+                        "coding_workflow": f"{command_base} confirm --task-db {task_db} --task-id {task_id} --route-choice coding_workflow",
+                        "todo_auto_candidate": f"{command_base} confirm --task-db {task_db} --task-id {task_id} --route-choice todo_auto_candidate",
+                        "decline": f"{command_base} decline --task-db {task_db} --task-id {task_id}",
                     },
-                    actor=actor,
-                )
-            else:
-                center.record_task_output(
-                    task_id=task_id,
-                    output_type="deadline_auto_dispatch_ready",
-                    audience="machine",
-                    channel="task_center",
-                    status="prepared",
-                    summary=f"Low-risk due TODO ready for backlog runner task_id={task_id}",
-                    payload={
-                        "todo": item.raw_line,
-                        "deadline": item.deadline.date().isoformat(),
-                        "risk_level": task.get("risk_level"),
-                        "priority": task.get("priority"),
-                    },
-                    actor=actor,
-                )
+                },
+                actor=actor,
+            )
             center.add_event(
                 task_id=task_id,
                 actor=actor,

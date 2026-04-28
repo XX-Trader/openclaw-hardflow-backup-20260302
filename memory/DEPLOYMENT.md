@@ -1,12 +1,30 @@
 # DEPLOYMENT
 
+## 2026-04-28 19:59 - 高权限工作流维护模板待 nofx live 同步
+
+类型：deploy
+范围：本仓 `config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、nofx live `/home/arbops/.hermes/profiles/<profile>/SOUL.md`
+事实：本仓 profile 模板已允许 Discord profile 在 workflow/runtime/profile 自身故障时进入高权限工作流维护模式，直接维护 hardflow 宿主而不是递归启动同一条 `smart-arb-pipeline`。当前尚未确认 nofx live profile 已同步；本轮 SSH 探测未拿到有效输出，因此不重启 gateway，避免在可能存在活跃 run 时中断状态回传。
+证据：本地模板、文档、记忆和 `tests/scripts_openclaw_ops/test_nofx_profile_templates.py` 已更新；远端同步待执行。
+最后验证：2026-04-28 19:59
+复用建议：SSH 恢复后先查 `ps -ef | grep -F smart-arb-pipeline` 和最近 `pipeline_state.json`，确认无活跃 running run，再备份并同步两个 live `SOUL.md`，重启 `hermes-discord-arbitrage` / `hermes-discord-spread`，最后核对 `gateway_state=running`、Discord connected 和日志。
+
+## 2026-04-28 19:40 - nofx 安装 17d9b369 workflow runtime
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、runtime installer、cron jobs、Discord gateways、内控 API、Task Center smoke
+事实：nofx hardflow 仓库已对齐 `origin/main` 最新提交 `17d9b36`（本地完整提交 `17d9b369`），`git pull --ff-only origin main` 返回 already up to date，`HEAD...origin/main=0 0` 且工作树 clean；本轮无远端脏改动，`STASH_NAME=none`。runtime installer 返回 `ok=true`、`changed=true`，把 `project-delivery-pipeline`、`control-plane-ops`、`todo-patrol`、`log-monitor`、`task-cost-analytics` 和 18 个 ops 脚本安装到 `/home/arbops/.hermes`，cron job 数为 12，`memtidy` 仍为 0。本轮没有 profile SOUL 变更，因此未重启 Discord gateway。
+证据：安装日志 `/tmp/hardflow-runtime-install-20260428T113954Z.json`；远端安装态 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` `py_compile` 通过；远端 `compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；远端定向 `unittest` 76 项 OK；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；仓库源码与 runtime 安装态 SHA256 对齐（`pipeline_runner.py=c481bf4c933a64e6e5cda7845391f2b99a42b57aa56e1136d43ceca31dd5c6cf`，`smart_arb_pipeline_entry.py=f280c5ab0e469517e12fd64bbb1d3367b22b46a92f02aa53d078b3a1e1d680f7`，`smart_arb_live_bridge.py=2443ded9914b5769f4a544d9b802c402dd274aebdb15d5529a7898d33f68ff52`）；两个 profile `gateway_state=running`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`；echo smoke `install-smoke-arbitrageagent-20260428T114016095602Z` 完成 15/15 阶段，`next_action=none`，日志 `/tmp/hardflow-install-smoke-20260428T113954Z.json`。
+最后验证：2026-04-28 19:40
+复用建议：nofx 已有最新 Git 提交时也要重跑 runtime installer 和 echo smoke，不能只以 `git pull` already up to date 作为安装完成依据。PowerShell 管道会给远端 Bash stdin 带 BOM，复杂远端脚本优先用 Paramiko 或 Git for Windows ssh；仓库/runtime 操作继续通过 `runuser -u arbops` 执行。
+
 ## 2026-04-28 19:05 - nofx 安装 353f420d workflow runtime
 
 类型：deploy
 范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、runtime installer、cron jobs、Discord gateways
 事实：本机 workflow 代码批次 `353f420d` 已推送到 `origin/main`，nofx hardflow 仓库已从 `195c513` fast-forward 到 `353f420`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 返回 `ok=true`、`changed=true`，已把最新 `pipeline_runner.py` 安装到 `/home/arbops/.hermes/ops`；本轮未修改 nofx profile SOUL，因此未重启 Discord gateway。`memtidy_runner` 旧 cron 继续保持移除，当前 cron job 数为 12。
 证据：远端 `python3 -m py_compile /home/arbops/.hermes/ops/pipeline_runner.py` 通过；远端 `python3 -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 73 项 OK；仓库源码与 runtime 安装态 `pipeline_runner.py` SHA256 均为 `c481bf4c933a64e6e5cda7845391f2b99a42b57aa56e1136d43ceca31dd5c6cf`；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；cron 命中 backlog/source/repo 巡检任务且 `memtidy_hits=0`；`arbitrageagent` 与 `spreadagent` tmux 会话存在、gateway_state 均为 `running`、日志近 80 行错误数为 0；runtime dry-run smoke `/tmp/hardflow-install-smoke-20260428T110456Z` 返回 `status=completed`，`E:/repo/src/app.py` 未进入 `target_files`，并以 `external_or_runtime_absolute_path` 出现在 `filtered_target_candidates` 和 `solution.md`。
-最后验证：2026-04-28 19:05
+最后验证：2026-04-28 19:40
 复用建议：以后远端 smoke 需要验证入口时优先使用绝对路径 `/home/arbops/.local/bin/smart-arb-pipeline`；非登录 shell 里裸 `smart-arb-pipeline` 可能不在 `PATH`，这不是 runtime installer 失败。只改 `/home/arbops/.hermes/ops` 脚本且 profile 模板无变化时，无需重启 Discord gateway。
 
 ## 2026-04-28 17:01 - nofx 普通沟通/独立协作边界同步到 live profile

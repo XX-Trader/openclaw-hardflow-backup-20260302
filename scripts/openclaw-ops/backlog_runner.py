@@ -40,7 +40,13 @@ for candidate in POLICY_DIR_CANDIDATES:
         sys.path.insert(0, str(candidate))
         break
 
-from task_center import TaskCenter, TaskCenterError, utc_now_iso  # type: ignore  # noqa: E402
+from task_center import TaskCenter, TaskCenterError, parse_json, utc_now_iso  # type: ignore  # noqa: E402
+from policy_route_selection import (  # type: ignore  # noqa: E402
+    AWAIT_ROUTE_SELECTION_ACTION,
+    NON_PIPELINE_ROUTE_ACTIONS,
+    PIPELINE_ROUTE_ACTION,
+    PIPELINE_ROUTE_CHOICES,
+)
 
 
 DEFAULT_PIPELINE_COMMAND = str(Path.home() / ".local" / "bin" / "smart-arb-pipeline")
@@ -55,6 +61,7 @@ DEFAULT_NEXT_ACTIONS = (
 )
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
 NEXT_ACTION_RE = re.compile(r"next_action=([A-Za-z0-9_-]+)")
+NON_PIPELINE_MANUAL_ACTIONS = {AWAIT_ROUTE_SELECTION_ACTION, *NON_PIPELINE_ROUTE_ACTIONS.values()}
 
 
 @dataclass(frozen=True)
@@ -130,6 +137,30 @@ def is_human_blocked(task: dict[str, Any]) -> bool:
     return False
 
 
+def task_route_selection(task: dict[str, Any]) -> dict[str, Any]:
+    context = task.get("context_payload")
+    if isinstance(context, str):
+        context = parse_json(context)
+    if not isinstance(context, dict):
+        return {}
+    route_selection = context.get("route_selection")
+    return route_selection if isinstance(route_selection, dict) else {}
+
+
+def has_selected_pipeline_route(task: dict[str, Any], *, require_pipeline_action: bool) -> bool:
+    route_selection = task_route_selection(task)
+    selected_route = str(route_selection.get("selected_route") or "").strip().lower()
+    if selected_route not in PIPELINE_ROUTE_CHOICES:
+        return False
+    if not truthy(task.get("human_confirmed")):
+        return False
+    if require_pipeline_action:
+        action = str(task.get("action") or "").strip().lower()
+        if action != PIPELINE_ROUTE_ACTION:
+            return False
+    return True
+
+
 def task_requirement(task: dict[str, Any], *, next_action: str = "") -> str:
     base = compact(task.get("requirement") or task.get("reason") or task.get("task_id"), 2400)
     acceptance = compact(task.get("acceptance"), 700)
@@ -182,10 +213,14 @@ def load_candidate_tasks(
         source = str(task.get("source") or "").strip()
         status = str(task.get("status") or "").strip().lower()
         risk = str(task.get("risk_level") or "").strip().lower()
+        action = str(task.get("action") or "").strip().lower()
         next_action = ""
 
         if is_human_blocked(task):
             skipped.append({"task_id": task_id, "reason": "human_or_clarification_gate"})
+            continue
+        if action in NON_PIPELINE_MANUAL_ACTIONS:
+            skipped.append({"task_id": task_id, "reason": f"manual_route_not_pipeline:{action}"})
             continue
         if risk == "high" and not (allow_confirmed_high_risk and truthy(task.get("human_confirmed"))):
             skipped.append({"task_id": task_id, "reason": "high_risk_requires_explicit_runner_flag"})
@@ -195,10 +230,16 @@ def load_candidate_tasks(
             continue
 
         if status == "pending":
+            if not has_selected_pipeline_route(task, require_pipeline_action=True):
+                skipped.append({"task_id": task_id, "reason": "manual_pipeline_route_required"})
+                continue
             if source not in allowed_sources_set and not task_id.startswith("todo-"):
                 skipped.append({"task_id": task_id, "reason": "source_not_allowed"})
                 continue
         elif status == "failed" and include_failed:
+            if not has_selected_pipeline_route(task, require_pipeline_action=False):
+                skipped.append({"task_id": task_id, "reason": "manual_pipeline_route_required"})
+                continue
             next_action = latest_next_action(center, task_id)
             if source not in failed_sources_set:
                 skipped.append({"task_id": task_id, "reason": "failed_source_not_allowed"})

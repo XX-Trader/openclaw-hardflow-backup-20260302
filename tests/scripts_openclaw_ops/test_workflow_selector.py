@@ -12,6 +12,8 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def load_module(name: str, rel_path: str):
     path = ROOT / rel_path
+    if not path.exists() and rel_path == "scripts/openclaw-ops/policy/policy_enforcer.py":
+        path = ROOT / "skills" / "library" / "control-plane-ops" / "scripts" / "policy" / "policy_enforcer.py"
     sys.path.insert(0, str(path.parent))
     try:
         spec = importlib.util.spec_from_file_location(name, path)
@@ -23,6 +25,14 @@ def load_module(name: str, rel_path: str):
     finally:
         sys.modules.pop(name, None)
         sys.path.pop(0)
+
+
+def init_runtime(paths):
+    cli = load_module(
+        "policy_cli_workflow_selector",
+        "skills/library/control-plane-ops/scripts/policy/policy_cli.py",
+    )
+    cli.cmd_init(paths, force=True)
 
 
 class WorkflowSelectorTests(unittest.TestCase):
@@ -40,7 +50,7 @@ class WorkflowSelectorTests(unittest.TestCase):
                 routing_file=root / "routing-rules.json",
                 pricing_file=root / "token-pricing.json",
             )
-            module.cmd_init(paths, force=True)
+            init_runtime(paths)
             enforcer = module.PolicyEnforcer(paths)
             try:
                 selected = enforcer.select_workflow(
@@ -83,7 +93,7 @@ class WorkflowSelectorTests(unittest.TestCase):
                 routing_file=root / "routing-rules.json",
                 pricing_file=root / "token-pricing.json",
             )
-            module.cmd_init(paths, force=True)
+            init_runtime(paths)
             enforcer = module.PolicyEnforcer(paths)
             try:
                 selected = enforcer.select_workflow(
@@ -127,7 +137,7 @@ class WorkflowSelectorTests(unittest.TestCase):
                 routing_file=root / "routing-rules.json",
                 pricing_file=root / "token-pricing.json",
             )
-            module.cmd_init(paths, force=True)
+            init_runtime(paths)
             enforcer = module.PolicyEnforcer(paths)
             try:
                 selected = enforcer.select_workflow(
@@ -171,7 +181,7 @@ class WorkflowSelectorTests(unittest.TestCase):
                 routing_file=root / "routing-rules.json",
                 pricing_file=root / "token-pricing.json",
             )
-            module.cmd_init(paths, force=True)
+            init_runtime(paths)
             enforcer = module.PolicyEnforcer(paths)
             try:
                 selected = enforcer.select_workflow(
@@ -215,7 +225,7 @@ class WorkflowSelectorTests(unittest.TestCase):
                 routing_file=root / "routing-rules.json",
                 pricing_file=root / "token-pricing.json",
             )
-            module.cmd_init(paths, force=True)
+            init_runtime(paths)
             enforcer = module.PolicyEnforcer(paths)
             try:
                 selected = enforcer.select_workflow(
@@ -257,7 +267,7 @@ class WorkflowSelectorTests(unittest.TestCase):
                 routing_file=root / "routing-rules.json",
                 pricing_file=root / "token-pricing.json",
             )
-            module.cmd_init(paths, force=True)
+            init_runtime(paths)
             enforcer = module.PolicyEnforcer(paths)
             try:
                 routed = enforcer.route_task(
@@ -276,6 +286,9 @@ class WorkflowSelectorTests(unittest.TestCase):
         self.assertIn("workflow_selection", routed)
         self.assertEqual(routed["workflow_selection"]["workflow_profile_id"], "coding-default")
         self.assertEqual(routed["workflow_selection"]["workflow_channel"], "stable")
+        self.assertTrue(routed["route_selection"]["required"])
+        self.assertEqual(routed["execution_strategy"]["mode"], "manual_route_selection")
+        self.assertEqual(routed["route_selection"]["recommended_route"], "coding_workflow")
 
     def test_route_task_flags_requirement_package_gap_for_complex_human_request(self):
         module = load_module(
@@ -291,7 +304,7 @@ class WorkflowSelectorTests(unittest.TestCase):
                 routing_file=root / "routing-rules.json",
                 pricing_file=root / "token-pricing.json",
             )
-            module.cmd_init(paths, force=True)
+            init_runtime(paths)
             enforcer = module.PolicyEnforcer(paths)
             try:
                 routed = enforcer.route_task(

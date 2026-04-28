@@ -7,6 +7,21 @@
 
 ## 2026-04-28 已完成
 
+- [x] [2026-04-28] **执行链路手动选择模式**
+  - 到期 TODO 和通用 `create-task` 不再因为低风险就自动进入 backlog runner；系统会生成路线选择问题，让用户在直接运行、需求探讨、指定 agent、编码工作流、TODO 自动候选中选择。
+  - `human_inbox.py confirm --route-choice` 会记录人工选择；旧 `confirm-risk` 会拒绝未选择路线的任务；`backlog_runner.py` 只正向推进已确认走 pipeline 的选择，未选择路线或选择直接运行、需求探讨、指定 agent 都不会被 runner 偷跑；选择指定 agent 时必须显式提供 `--assignee <agent-id>`。
+  - 验证：本地 `test_deadline_to_task_bridge`、`test_human_inbox`、`test_backlog_runner`、`test_policy_task_manual_route`、`test_workflow_selector` 共 18 项 OK；7 个改动脚本 `py_compile` 通过。
+
+- [x] [2026-04-28] **nofx Discord profile 高权限工作流维护模式（本地模板）**
+  - 两个 profile 模板新增“高权限工作流维护模式”：修 hardflow workflow/runtime/profile 自身时不再递归启动同一条 `smart-arb-pipeline`，可直接维护 hardflow 宿主、测试并按需安装 runtime；普通业务任务仍走 coordinator pipeline。
+  - 已同步 `smart-arb-nofx-live-evidence-bridge.md`、项目记忆和回归测试。当前 live nofx profile 尚未同步，待 SSH 恢复且无活跃 pipeline 后安装并重启 gateway。
+  - 验证：本地 `test_nofx_profile_templates`、`test_project_delivery_runtime_installer`、`compileall`、`git diff --check` 通过。
+
+- [x] [2026-04-28] **nofx 安装 workflow runtime `17d9b369`**
+  - nofx hardflow 仓库已对齐 `origin/main` 最新提交 `17d9b36`，`git pull --ff-only origin main` 返回 already up to date，`HEAD...origin/main=0 0` 且工作树 clean；本轮未创建 stash。
+  - `runtime_installer.py install` 已把最新 runtime skill、ops 脚本和 12 个 cron job 安装到 `/home/arbops/.hermes`；本轮没有 profile SOUL 改动，因此未重启 Discord gateway。
+  - 验证：远端安装态 3 个核心脚本 `py_compile` 通过；远端 `compileall` 通过；远端定向单测 76 项 OK；仓库源码/runtime SHA256 对齐；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；cron job 数 12 且 `memtidy_hits=0`；两个 gateway `running`；内控 API smoke 通过；echo smoke `install-smoke-arbitrageagent-20260428T114016095602Z` 完成 15/15。
+
 - [x] [2026-04-28] **nofx 安装 workflow runtime `353f420d`**
   - 已把 workflow 代码批次 `353f420d` 推送到 `origin/main`，nofx 仓库从 `195c513` fast-forward 到 `353f420`，`HEAD...origin/main=0 0` 且工作树 clean。
   - `runtime_installer.py install` 已把最新 `pipeline_runner.py` 安装到 `/home/arbops/.hermes/ops`；本轮没有 profile SOUL 改动，因此未重启 Discord gateway。
@@ -97,13 +112,13 @@
   - 验证：远端 `compileall` 通过；定向单测 53 项 OK；两个 Discord gateway 为 `running/connected`；内控 API `/health` 与 `/api/strategy/status` 通过；echo smoke `install-smoke-arbitrageagent-20260427T065537Z` 写入 Task Center 且 `passed`；受控 backlog runner smoke `todo-hardflow-install-smoke-20260427T070123Z` 写入 1 条 `backlog_runner_attempt`。
 
 - [x] [2026-04-27] **工作流合规收敛：低风险自动推进、9 个 active owner、双 reviewer 门禁**
-  - `deadline_to_task_bridge.py` 改为按 TODO 文本和优先级推断风险：低风险到期项直接创建 `dispatch_pipeline` 候选并交给 `coordinator/backlog_runner`，高风险、部署、资金、凭证、删除、生产操作等仍进入 `human_inbox.py` 等待人工确认。
+  - 历史实现：`deadline_to_task_bridge.py` 曾按 TODO 文本和优先级推断风险并让低风险项进入 pipeline；2026-04-28 已收口为默认人工路线选择。
   - `pipeline_runner.py` 的需求审查、方案审查、代码审查均要求至少两条独立 reviewer command report，且各自输出预期 `Final verdict` 后才放行；live entry 默认注入 `reviewer-a/reviewer-b` 两条命令。
   - `openclaw.json` 与 `openclaw/openclaw.json` active agent 清单收敛为 9 个 workflow owner；`cron/jobs.json` 的定时任务 owner 改为 `coordinator/project-agent`，不再注册 `ops-agent/optimization-agent`。
   - 新增/更新测试覆盖低风险 TODO 自动队列、高风险 TODO 人工确认、双 reviewer 数量门禁、重复 reviewer role/command 阻断、live bridge review verdict、Hermes smoke 同步、active agent registry 和 cron owner 合规。
 
 - [x] [2026-04-27] **Task Center 待办持续推进 runner**
-  - 新增 `scripts/openclaw-ops/backlog_runner.py`：每次从 Task Center 选择最多 1 个低风险、无需人工确认、无需澄清的 pending 待办，或允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进。
+  - 新增 `scripts/openclaw-ops/backlog_runner.py`：每次从 Task Center 选择最多 1 个已确认走 pipeline 的 pending 待办，或允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进。
   - 注册 `backlog_runner_30m（持续推进待办）` cron，每 30 分钟运行一次；高风险、需确认、需澄清和人工升级任务仍停在 `human_inbox.py`。
   - `runtime_installer.py` 已同步安装 `ops/backlog_runner.py`；新增测试覆盖安全选择、pipeline 执行、任务状态回写和安装器同步。
   - 同步文档：项目交付 README/架构/实施规划、docs 索引、Cron 索引、项目记忆、todo。
@@ -192,7 +207,7 @@
   - 新增单元测试覆盖完整 live command adapter happy path
 
 - [x] [2026-04-24] **运营事件入任务中心 + 人工队列闭环**
-  - 新增 `deadline_to_task_bridge.py`：到期/超期 TODO 自动生成 `todo_deadline_candidate`；2026-04-27 起按风险分流，低风险自动进入 coordinator pipeline，高风险才 `need_human_confirm=true` 等待用户确认
+  - 新增 `deadline_to_task_bridge.py`：到期/超期 TODO 自动生成 `todo_deadline_candidate`；2026-04-28 起默认进入人工路线选择，用户确认后才执行
   - 新增 `exception_to_task_bridge.py`：增量扫描日志异常，按 fingerprint 去重创建 `ops_exception` 运维任务，并写入 `task_incidents`
   - 新增 `human_inbox.py`：统一列出、确认、拒绝、澄清 `need_human_confirm`、`needs_clarification`、`escalated`、`escalate_human` 任务
   - 更新 `cron/jobs.json`：注册 `todo_deadline_to_task_bridge_daily` 与 `system_exception_to_task_bridge`

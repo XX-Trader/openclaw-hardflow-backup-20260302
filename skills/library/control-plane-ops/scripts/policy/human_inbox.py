@@ -16,6 +16,15 @@ if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
 from task_center import TaskCenter, TaskCenterError, parse_json  # noqa: E402
+from policy_route_selection import (  # noqa: E402
+    NON_PIPELINE_ROUTE_ACTIONS,
+    PIPELINE_ROUTE_CHOICES,
+    VALID_ROUTE_CHOICES,
+    route_choice_action,
+)
+
+
+VALID_CONFIRM_CHOICES = set(VALID_ROUTE_CHOICES) | {"recommended"}
 
 
 def default_task_db() -> Path:
@@ -97,14 +106,70 @@ def format_inbox(tasks: list[dict[str, Any]], *, task_db: Path) -> str:
     return "\n".join(lines)
 
 
-def confirm_task(task_db: Path, task_id: str, *, actor: str, assignee: str = "") -> dict[str, Any]:
+def _task_context(task: dict[str, Any]) -> dict[str, Any]:
+    context = task.get("context_payload")
+    if isinstance(context, str):
+        context = parse_json(context)
+    return context if isinstance(context, dict) else {}
+
+
+def _resolve_route_choice(task: dict[str, Any], route_choice: str) -> tuple[str, str]:
+    context = _task_context(task)
+    route_selection = context.get("route_selection")
+    if not isinstance(route_selection, dict):
+        route_selection = {}
+    raw_choice = str(route_choice or "").strip().lower() or "recommended"
+    if raw_choice not in VALID_CONFIRM_CHOICES:
+        raise TaskCenterError(
+            "route_choice must be one of: " + ", ".join(sorted(VALID_CONFIRM_CHOICES))
+        )
+    recommended = str(route_selection.get("recommended_route") or "coding_workflow").strip().lower()
+    selected = recommended if raw_choice == "recommended" else raw_choice
+    if selected not in VALID_ROUTE_CHOICES:
+        selected = "coding_workflow"
+    return selected, route_choice_action(selected)
+
+
+def confirm_task(
+    task_db: Path,
+    task_id: str,
+    *,
+    actor: str,
+    assignee: str = "",
+    route_choice: str = "recommended",
+) -> dict[str, Any]:
     center = TaskCenter(task_db)
     try:
         center.init_schema()
+        task = center.get_task(task_id, display_safe=False)
+        selected_route, action = _resolve_route_choice(task, route_choice)
+        context = _task_context(task)
+        route_selection = context.get("route_selection")
+        if not isinstance(route_selection, dict):
+            route_selection = {}
+        route_selection.update(
+            {
+                "selected_route": selected_route,
+                "selection_actor": actor,
+                "selection_source": "human_inbox",
+            }
+        )
+        context["route_selection"] = route_selection
+        normalized_assignee = str(assignee or "").strip()
+        if selected_route == "specified_agent" and not normalized_assignee:
+            raise TaskCenterError("specified_agent route requires --assignee <agent-id>")
+        if not normalized_assignee:
+            if selected_route == "requirement_discussion":
+                normalized_assignee = "project-agent"
+            elif selected_route in PIPELINE_ROUTE_CHOICES:
+                normalized_assignee = "coordinator"
         center.confirm_human(task_id=task_id, actor=actor, confirmed=True)
-        updates: dict[str, Any] = {"action": "confirmed_for_execution"}
-        if assignee:
-            updates["assignee"] = assignee
+        updates: dict[str, Any] = {
+            "action": action,
+            "context_payload": context,
+        }
+        if normalized_assignee:
+            updates["assignee"] = normalized_assignee
         updated = center.update_task(task_id, actor=actor, fields=updates)
         center.record_task_output(
             task_id=task_id,
@@ -112,8 +177,8 @@ def confirm_task(task_db: Path, task_id: str, *, actor: str, assignee: str = "")
             audience="machine",
             channel="human_inbox",
             status="prepared",
-            summary="Human confirmed task for execution.",
-            payload={"decision": "confirm", "assignee": assignee},
+            summary=f"Human selected route: {selected_route}.",
+            payload={"decision": "confirm", "route_choice": route_choice, "selected_route": selected_route, "assignee": normalized_assignee},
             actor=actor,
         )
         return updated
@@ -203,6 +268,12 @@ def build_parser() -> argparse.ArgumentParser:
     confirm_parser.add_argument("--emit-json", action="store_true")
     confirm_parser.add_argument("--task-id", required=True)
     confirm_parser.add_argument("--assignee", default="")
+    confirm_parser.add_argument(
+        "--route-choice",
+        default="recommended",
+        choices=sorted(VALID_CONFIRM_CHOICES),
+        help="manual execution route selected by the human",
+    )
 
     decline_parser = subparsers.add_parser("decline")
     decline_parser.add_argument("--task-db", default=str(default_task_db()))
@@ -233,7 +304,13 @@ def main() -> int:
                 print(format_inbox(result, task_db=task_db))
             return 0
         if command == "confirm":
-            result = confirm_task(task_db, str(args.task_id), actor=str(args.actor), assignee=str(args.assignee or ""))
+            result = confirm_task(
+                task_db,
+                str(args.task_id),
+                actor=str(args.actor),
+                assignee=str(args.assignee or ""),
+                route_choice=str(getattr(args, "route_choice", "recommended") or "recommended"),
+            )
         elif command == "decline":
             result = decline_task(task_db, str(args.task_id), actor=str(args.actor), note=str(args.note or ""))
         elif command == "clarify":

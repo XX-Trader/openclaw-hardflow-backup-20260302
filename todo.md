@@ -65,7 +65,7 @@
 - [x] [🔴 P0] 增加项目记忆定位门禁，生成 `.workflow/project-memory/<project_key>/`
 - [x] [🔴 P0] 增加 Task Center 镜像，记录状态、阶段、通信、输出和 incident
 - [x] [🔴 P0] 增加 `pipeline_runner.py view` 人工查看入口
-- [x] [🔴 P0] 增加到期 TODO → Task Center 风险分流桥接（低风险自动推进，高风险人工确认）
+- [x] [🔴 P0] 增加到期 TODO → Task Center 手动路线选择桥接（系统推荐，人工选择后才执行）
 - [x] [🔴 P0] 增加异常日志 → 运维任务/incident 桥接（critical 默认转人工确认）
 - [x] [🔴 P0] 增加 `human_inbox.py` 人工队列，统一处理确认、拒绝、澄清和升级任务
 - [x] [🔴 P0] 接入 runtime/Hermes 可配置 agent 命令适配（research/code/verify/review/writeback）
@@ -77,10 +77,12 @@
 - [x] [🟡 P1] 修复 nofx Discord 状态卡回显、Hermes `session_id` 输出恢复、否定式敏感词误判和 memory/docs-only 写回误触发 deployment
 - [x] [🟡 P1] 增加 `git_publish` 受控发布阶段，中文提交说明，疑似密钥/远端冲突/push 失败回流 `fix_git_publish`
 - [x] [🟡 P1] 增加 `repo_hygiene_reviewer.py` 两天一次仓库精简巡检，`source_registry_watcher` 同步调整为两天一次
-- [x] [🟡 P1] 增加 `backlog_runner.py` 与 `backlog_runner_30m`，从 Task Center 持续推进低风险、无需人工确认的待办
+- [x] [🟡 P1] 增加 `backlog_runner.py` 与 `backlog_runner_30m`，从 Task Center 持续推进已人工确认且选择 pipeline 的待办
+- [x] [🟡 P1] 增加手动执行链路选择：系统推荐直接运行、需求探讨、指定 agent、编码工作流或 TODO 自动候选，用户确认后才执行
 - [x] [🟡 P1] 收敛 active agent 配置为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`
 - [x] [🟡 P1] 将需求/方案/代码审查升级为两条独立 reviewer command report 门禁
 - [x] [🟡 P1] 修复 nofx Discord 工作流自修循环：工作流自身修复不再套进同一条 pipeline，review 失败补丁自动回滚并隔离旧业务漂移
+- [ ] [🟡 P1] 将 nofx Discord profile 高权限工作流维护模板同步到 live profile，并在无活跃 pipeline 时重启 gateway 验证
 - [ ] [🟡 P1] 将 nofx Smart Arb live bridge 继续升级为宿主 native agent dispatch，并在 Task Center 记录独立 agent session/run id
 - [x] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
@@ -150,7 +152,7 @@
 | `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` | workflow 阶段 owner / 隔离 workspace / Task Center 标签 | 由当前 live profile 承载，不是独立常驻模型 |
 | `coordinator`、`project-agent` | cron / Task Center 责任标签 | 由 active workflow owner 执行定时命令；仓库精简巡检由 `coordinator` 只读创建候选，不再注册 `ops-agent/optimization-agent` |
 
-> 服务器安装态提示：2026-04-27 15:01 已把 nofx hardflow 仓库 fast-forward 到 `578b3f0` 并运行 runtime installer；`source_registry_watcher`、`repo_hygiene_reviewer_2d`、`backlog_runner_30m` 已安装到 `/home/arbops/.hermes`，echo smoke `install-smoke-arbitrageagent-20260427T065537Z` 已写入 Task Center 且 `passed`；受控 backlog runner smoke `todo-hardflow-install-smoke-20260427T070123Z` 已写入 1 条 `backlog_runner_attempt`。
+> 服务器安装态提示：2026-04-28 19:40 已把 nofx hardflow 仓库对齐到 `origin/main` 最新提交 `17d9b36` 并运行 runtime installer；`source_registry_watcher`、`repo_hygiene_reviewer_2d`、`backlog_runner_30m` 已安装到 `/home/arbops/.hermes`，cron job 数 12 且 `memtidy_hits=0`；echo smoke `install-smoke-arbitrageagent-20260428T114016095602Z` 完成 15/15，`next_action=none`。
 
 ---
 ## 参考文档

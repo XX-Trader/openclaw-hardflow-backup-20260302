@@ -24,7 +24,7 @@ def load_module(name: str, rel_path: str):
 
 
 class DeadlineToTaskBridgeTests(unittest.TestCase):
-    def test_due_todo_routes_low_risk_to_auto_queue_once(self):
+    def test_due_todo_creates_manual_route_selection_once(self):
         bridge = load_module(
             "deadline_to_task_bridge",
             "skills/library/todo-patrol/scripts/deadline_to_task_bridge.py",
@@ -78,11 +78,13 @@ class DeadlineToTaskBridgeTests(unittest.TestCase):
 
         self.assertEqual(task["task_type"], "todo_deadline_candidate")
         self.assertEqual(task["risk_level"], "low")
-        self.assertFalse(task["need_human_confirm"])
+        self.assertTrue(task["need_human_confirm"])
         self.assertFalse(task["human_confirmed"])
-        self.assertEqual(task["action"], "dispatch_pipeline")
-        self.assertEqual(task["assignee"], "coordinator")
-        self.assertEqual(outputs[-1]["output_type"], "deadline_auto_dispatch_ready")
+        self.assertEqual(task["action"], "await_route_selection")
+        self.assertEqual(task["assignee"], "human-inbox")
+        self.assertEqual(outputs[-1]["output_type"], "human_question")
+        self.assertEqual(outputs[-1]["payload"]["recommended_route"], "todo_auto_candidate")
+        self.assertIn("coding_workflow", outputs[-1]["payload"]["commands"])
 
     def test_due_high_risk_todo_creates_human_confirmed_candidate(self):
         bridge = load_module(
@@ -122,8 +124,9 @@ class DeadlineToTaskBridgeTests(unittest.TestCase):
 
         self.assertEqual(task["risk_level"], "high")
         self.assertTrue(task["need_human_confirm"])
-        self.assertEqual(task["action"], "await_human_confirm")
+        self.assertEqual(task["action"], "await_route_selection")
         self.assertEqual(outputs[-1]["output_type"], "human_question")
+        self.assertEqual(outputs[-1]["payload"]["recommended_route"], "coding_workflow")
 
 
 if __name__ == "__main__":

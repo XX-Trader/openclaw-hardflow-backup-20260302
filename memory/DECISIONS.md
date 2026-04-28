@@ -1,5 +1,23 @@
 # DECISIONS
 
+## 2026-04-28 - 执行链路默认手动选择
+
+类型：decision
+范围：`deadline_to_task_bridge.py`、`human_inbox.py`、`backlog_runner.py`、项目交付优先工作流入口
+事实：当前阶段不启用“系统自动决定执行链路”。系统可以推荐链路和原因，但用户必须手动选择：直接运行、需求探讨、指定 agent、指定编码工作流或 TODO 自动候选。到期 TODO 和通用 `create-task` 默认都先创建 `need_human_confirm=true/action=await_route_selection` 的路线选择候选；只有人工选择为 `coding_workflow` 或 `todo_auto_candidate`、记录 `selected_route`、且 action 为 `confirmed_for_execution` 后，`backlog_runner` 才能推进。选择为 `direct_run`、`requirement_discussion` 或 `specified_agent` 的任务不会被 backlog runner 偷偷执行；其中 `specified_agent` 必须显式提供 `--assignee <agent-id>`，否则保持 fail-close，不会把任务移出人工队列。
+证据：`policy_route_selection.py` 统一路线选项、描述和 action 映射；`deadline_to_task_bridge.py` 复用该统一路线 helper 并生成 `route_selection.mode=manual_selection` 与 `human_question`；`policy_task.py` 让通用 `create-task` 默认进入手动路线选择，并让旧 `confirm-risk` 对未选择路线的任务 fail-close；`human_inbox.py confirm --route-choice` 记录 `selected_route`，CLI 支持 `--route-choice recommended`，且拦截未指定 assignee 的 `specified_agent`；`backlog_runner.py` 正向校验 `selected_route in {coding_workflow,todo_auto_candidate}`、`human_confirmed=true` 和 pipeline action；相关单测覆盖低风险到期 TODO、通用 create-task、旧确认入口拒绝、CLI 推荐路线、人工选择非 pipeline 路由、指定 agent assignee 防呆和 runner 正向门禁。
+最后验证：2026-04-28 21:31 本地 `python -m unittest tests.scripts_openclaw_ops.test_human_inbox tests.scripts_openclaw_ops.test_policy_task_manual_route tests.scripts_openclaw_ops.test_deadline_to_task_bridge tests.scripts_openclaw_ops.test_backlog_runner tests.scripts_openclaw_ops.test_workflow_selector -v` 18 项 OK；`py_compile` 覆盖 7 个改动脚本通过。
+复用建议：后续要切全自动，必须先根据一段时间的推荐/人工选择/执行结果做准确率复盘，再只对稳定类型开放自动执行；不要直接恢复“低风险 TODO 自动入队执行”。
+
+## 2026-04-28 - Discord profile 可直接维护工作流宿主
+
+类型：decision
+范围：`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、nofx hardflow workflow/runtime 修复
+事实：普通 SmartMulti 业务交付仍走 `smart-arb-pipeline` coordinator pipeline；但当用户明确要求修复 hardflow workflow/runtime/profile/SOUL/dual review/auto-repair/git_publish/runtime installer/cron workflow，或说“给 Discord agent 更高权限 / 允许改工作流 / 工作流流程有问题”时，Discord profile 进入高权限工作流维护模式，不再递归启动同一条 `smart-arb-pipeline`。该模式允许直接切到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 修改工作流宿主、运行测试并按需安装 runtime；不能触碰凭证、真实交易、force push 或破坏性数据操作。若 profile 无法启动真正独立 code-reviewer，最终状态卡必须标记 `review=pending_external`。
+证据：两个 nofx profile 模板已新增“高权限工作流维护模式”；`tests/scripts_openclaw_ops/test_nofx_profile_templates.py` 覆盖该模式不能退回“只读诊断和状态回传”；`docs/核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md`、`memory/INDEX.md`、`memory/RUNBOOK.md` 已同步该边界。
+最后验证：2026-04-28 19:59
+复用建议：以后 Discord 里修 workflow 流程问题时，不要再让旧 workflow 评审自己；先走高权限维护模式或外部 SSH，维护 hardflow 宿主后再安装 runtime。普通业务修改仍回到 coordinator pipeline。
+
 ## 2026-04-28 - 普通 Codex 协作模式独立于工作流
 
 类型：decision
