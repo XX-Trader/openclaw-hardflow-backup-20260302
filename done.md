@@ -7,11 +7,38 @@
 
 ## 2026-04-28 已完成
 
+- [x] [2026-04-28] **本机 WSL multicore Codex 登录修复**
+  - 定位 `multicore` 报 `No Codex credentials stored` 的根因：WSL 中 `trend-backtest` 已有 profile 级 Codex auth store，但 `multicore` 缺少 `/home/ubuntu/.hermes/profiles/multicore/auth.json`。
+  - 已复制已验证可用的 profile auth store，权限设为 `0600`，并重启 tmux `multicore-gateway`。
+  - 验证：`hermes -p multicore status` 显示 OpenAI Codex logged in；`hermes -p multicore chat -q '只回复 OK，不要调用工具。'` 返回 `OK`。
+
+- [x] [2026-04-28] **DeliveryPlan 目标路径收敛**
+  - 修复简单任务生成 `delivery_plan.json` 时把 `project_memory_context` 里的 `.workflow`、`.hermes`、项目记忆控制文件等当成业务目标文件的问题。
+  - `target_files` 现在优先使用用户原始需求/修复上下文中的显式路径；review/research/memory 只作为低信任补充并过滤控制面路径。找不到可靠业务文件时保持 `discovery_required=true`，不猜测编辑 workflow 宿主。
+  - `human_blockers` 改为 stop-boundary 文案，避免 `revise_solution` 自动回流被误判为正向凭证/资金请求。
+  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
+
+- [x] [2026-04-28] **nofx profile 普通沟通/独立协作边界上线**
+  - 两个 nofx Discord profile SOUL 补齐三分流：普通沟通/只读查询/方案讨论不启动 pipeline；正常项目执行仍进 `smart-arb-pipeline`；pipeline/profile 自身修复提示外部 Codex/SSH operator。
+  - 已同步到 nofx 仓库模板和 live profile，备份为 `SOUL.md.bak-ordinary-collab-20260428T170108`，并重启 `hermes-discord-arbitrage` / `hermes-discord-spread`。
+  - 验证：两个 gateway 均为 `running` 且 Discord `connected`；日志尾部未见新的 error/exception/approval required；本地 profile 模板 `git diff --check` 通过。
+
+- [x] [2026-04-28] **工作流外普通沟通与独立开发边界**
+  - 用户级 `AGENTS.md` 增加普通 Codex 协作模式：用户明确说“不走工作流 / 直接沟通 / 先自己开发 / 这次不用自动流程”时，不启动 OMX workflow、Discord pipeline、Task Center backlog runner 或新的自动化 run。
+  - 项目交付优先工作流 README 与 `memory/DECISIONS.md` / `memory/TASK_HISTORY.md` 同步该边界；该模式仍保留事实核对、安全、测试、审查、文档/记忆和 Git 门禁。
+  - 验证：文档级变更，未改 runtime 代码；本地已核对规则落点并运行 `git diff --check`。
+
 - [x] [2026-04-28] **nofx Discord 回复状态标识**
   - `smart-arb-pipeline` 启动卡和运行中进度卡新增 `回答状态: 正在回复/执行中`，最终状态卡新增 `回答状态: 已回答完毕` 或 `未回答完毕...`，让 Discord channel 能直接判断任务是否仍在回复。
   - 两个 nofx profile SOUL 要求只读直接回复末尾补 `回答状态: 已回答完毕`，长只读查询可先发 `回答状态: 正在回复/查询中`。
   - 已推送并部署代码批次 `f94c2284` 到 nofx；`/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py` 已包含 `回答状态` 渲染逻辑，两个 live profile `SOUL.md` 已同步并重启，gateway 均为 `running/connected`。
   - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 39 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`python -B -m py_compile scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`git diff --check` 通过。nofx 远端 `py_compile`、`compileall`、39 项定向单测、`smart-arb-pipeline --help`、gateway/API smoke 通过；echo smoke `deploy-smoke-spreadagent-20260428T082751163478Z` 返回 `回答状态: 已回答完毕`。
+
+- [x] [2026-04-28] **MemTidy 退役与待办拆分门禁**
+  - 删除本仓自动修改型 `memtidy_runner` 链路：不再注册每日 03:00 cron，不再安装 `memtidy_runner.py`，不再维护 `config/memtidy_rules.json`，并移除对应 skill/test 入口；记忆整理交给 Hermes 原生能力承接。
+  - 保留 TODO 自动推进链：截止时间检测、到期 TODO 转 Task Center、`backlog_runner_30m` 低风险持续推进和每日摘要继续有效；高风险、需求不清、凭证/资金/生产破坏类仍进入人工确认。
+  - `delivery_plan.json` 新增多事项拆分门禁：需求会拆成 `scope_slices`，本轮只执行 `current` 切片，剩余标为 `deferred`，后续由 Task Center 或用户确认继续。
+  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner` 31 项 OK；`python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_runtime_installer tests.scripts_openclaw_ops.test_active_agent_registry` 5 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol`、JSON 解析和 `git diff --check` 通过。
 
 - [x] [2026-04-28] **DeliveryPlan 结构化方案契约与 revise_solution 自动回流**
   - `solution_package` 新增 `delivery_plan.json` 结构化交付契约，字段覆盖任务类型、切片、目标文件/定位策略、实施步骤、验证命令、发布/回滚门禁、人工阻塞条件和安全边界。

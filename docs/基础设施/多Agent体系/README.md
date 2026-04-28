@@ -73,7 +73,7 @@ research
 
 | owner | 当前用途 |
 |-------|----------|
-| `coordinator` | TODO 巡检、异常日志巡检、配置巡检、memtidy、claim audit、deadline bridge、backlog runner、repo hygiene 候选巡检 |
+| `coordinator` | TODO 巡检、异常日志巡检、配置巡检、claim audit、deadline bridge、backlog runner、repo hygiene 候选巡检 |
 | `project-agent` | 项目索引维护、项目事实源相关定时任务 |
 
 ## 已停用 / 不再 active 的旧标签

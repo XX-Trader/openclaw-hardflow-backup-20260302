@@ -17,7 +17,7 @@
 | `todo_patrol` | 核心运营 | 保留 |
 | `distill_runner` | 基础设施 | 保留 |
 | `config_watchdog` | 基础设施 | 保留 |
-| `memtidy_runner` | 基础设施 | 保留 |
+| `memtidy_runner` | 基础设施 | 删除：Hermes 已有记忆整理能力，本仓不再安装或注册该任务 |
 | `unified_exception_logger` | 基础设施 | 保留 |
 | `source_registry_watcher` | 项目交付 | 保留（每 2 天） |
 | `repo_hygiene_reviewer_2d` | 项目交付治理 | 新增保留（每 2 天，`coordinator` 只读扫描 + 人工确认候选） |

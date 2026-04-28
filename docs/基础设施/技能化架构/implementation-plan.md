@@ -58,12 +58,13 @@ coordinator、reviewer、ops-agent 已绑定对应 Skill。
 
 ### Phase 3B — 新建 9 个运维 Skill ✅
 
+> 2026-04-28 更新：`memtidy` 已退役并删除实现，记忆文件生命周期交给 Hermes 原生能力承接；下表保留当前仍可调度的运维 skill。
+
 | Skill | 能力域 |
 |-------|--------|
 | `control-plane-ops` | 控制面运维（系统巡检/Agent审查/Cron诊断）|
 | `log-monitor` | 异常日志扫描/分类/增量去重 |
 | `config-watchdog` | 配置快照/变更检测/回滚 |
-| `memtidy` | 记忆三层管理/备份修剪 |
 | `git-sync` | 本地备份/远程同步 |
 | `todo-patrol` | TODO巡检/过期检测/归档 |
 | `web-intelligence` | GitHub扫描/网页情报/外部评估 |
@@ -101,7 +102,6 @@ coordinator、reviewer、ops-agent 已绑定对应 Skill。
 | git-sync | 3 | — |
 | task-cost-analytics | 3 | — |
 | receiving-code-review | 2 | — |
-| memtidy | 2 | — |
 | log-monitor | 2 | — |
 | config-watchdog | 1 | — |
 | shared/ (跨Skill公用) | 5 | — |
@@ -126,7 +126,6 @@ skills/
     ├── git-sync/scripts/                  ← 3 files
     ├── task-cost-analytics/scripts/       ← 3 files
     ├── receiving-code-review/scripts/     ← 2 files
-    ├── memtidy/scripts/                   ← 2 files
     ├── log-monitor/scripts/               ← 2 files
     └── config-watchdog/scripts/           ← 1 file
 
@@ -176,7 +175,7 @@ scripts/openclaw-ops/
 
 | Agent | 技能数 | 绑定内容 |
 |-------|:------:|---------|
-| `ops-agent` | 7 | control-plane-ops, log-monitor, config-watchdog, memtidy, fleet-sync, todo-patrol, task-cost-analytics |
+| `ops-agent` | 6 | control-plane-ops, log-monitor, config-watchdog, fleet-sync, todo-patrol, task-cost-analytics |
 | `optimization-agent` | 4 | openclaw-evolution-upgrader, openclaw-workflow-manager, task-cost-analytics, workflow-audit |
 | `project-agent` | 3 | product-requirements, requirements-clarity, writing-plans |
 | `web-agent` | 3 | web-intelligence, pretext-text-layout, playwright-interactive |
@@ -185,7 +184,7 @@ scripts/openclaw-ops/
 
 - `agent_to_skills.json`：历史 OpenClaw 注册表 14 个 Agent 全覆盖（无空数组）；不作为 nofx 当前 Hermes runtime 的常驻 agent 数量依据
 - `skill_to_agents.json`：反向补齐 + 新增条目
-- `skills_by_domain.json`：新增 `ops_infra`（8技能）和 `intelligence`（2技能）域
+- `skills_by_domain.json`：历史上新增 `ops_infra`（8技能）和 `intelligence`（2技能）域；2026-04-28 起 `memtidy` 不再属于当前可调度 ops_infra 能力
 - `skills/by_agent/`：历史 2026-03 技能索引保留作参考；nofx 当前 active owner 不包含 `explorer`
 
 ### Step 6.3 — README 速查表 ✅

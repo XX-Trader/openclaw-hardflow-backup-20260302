@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-04-28 17:01 - nofx 普通沟通/独立协作边界同步到 live profile
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302/config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways
+事实：两个 nofx Discord profile 的 SOUL 已补齐三分流边界：用户明确说“不要走工作流 / 绕过工作流 / 可以绕过 / 别进 pipeline / 直接沟通 / 先讨论 / 先自己开发 / 这次不用自动流程”时，不启动 `smart-arb-pipeline`，只做直接沟通、澄清、只读查询、状态结论和方案说明；若后续要求实际改代码、安装依赖、重启、部署、提交推送或改生产配置，profile 不直接执行，必须提示外部 operator/Codex 经 SSH 处理，或由用户重新授权进入 coordinator pipeline。正常项目执行类请求仍默认进入 `smart-arb-pipeline`；工作流自身修复例外收窄为“不走工作流”且目标是 pipeline/profile/auto-repair/git_publish 等运行时问题。
+证据：同步前确认 nofx 没有活跃 `smart-arb-pipeline` 进程；SFTP 备份并写入仓库模板和 live profile，备份后缀为 `SOUL.md.bak-ordinary-collab-20260428T170108`；`arbitrageagent` 模板/live SHA256 为 `70a2126b407e1c83bc0524a9a0a5eead9eaf402acad760ebaaf872e994b6c690`，`spreadagent` 为 `ed23e40fea8f8e21e76fb9e69b0b4c274459c32456a7ad023dcf9d249ddfb11f`；已重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`，两者 `gateway_state=running` 且 Discord `connected`，日志尾部未见新的 `error/exception/traceback/approval required`。
+最后验证：2026-04-28 17:01
+复用建议：以后用户在 Discord 里说“不走工作流”时，先判断是普通沟通/只读讨论，还是 pipeline/profile 自身修复；两者都不启动新的 pipeline run。若需要真实改代码或部署，不能由 Discord profile 直接做，必须切到外部 Codex/SSH operator 或重新进入 coordinator pipeline。
+
 ## nofx hardflow runtime
 
 类型：deploy

@@ -22,15 +22,15 @@
 - **热记忆口径**：以 `workspace/USER.md + MEMORY.md` 为准。
 - **旧 `openclaw-memory/` 口径**：只保留兼容、归档或迁移语义，不再作为热记忆主落点。
 - **冻结文档**：`architecture.md` / `implementation-plan.md` 已冻结，不再指导具体实现。
-- **已退役**：`ai-session-distiller` / `memory-vectorization` 旧技能目录及旧 cron 入口已删除。
+- **已退役**：`ai-session-distiller` / `memory-vectorization` 旧技能目录及旧 cron 入口已删除；2026-04-28 起本仓 `memtidy_runner` 也已退役，记忆文件生命周期交给 Hermes 原生能力承接。
 
 ## 1. 核心定位
 
 **从 Agent 会话中提取可复用知识，自动归档到对应记忆层级。**
 
-与 `memtidy`（文件层面的热/温/冷管理）互补，本模块解决**知识层面**的蒸馏：
+与 Hermes 原生记忆整理（文件生命周期管理）分层，本模块解决**知识层面**的蒸馏：
 
-| 维度 | memtidy（已有） | 知识蒸馏（本模块） |
+| 维度 | Hermes 原生记忆整理 | 知识蒸馏（本模块） |
 |------|:--:|:--:|
 | 对象 | .md 文件 | Agent 会话内容 |
 | 操作 | 压缩/归档/修剪 | 提取/分类/沉淀 |
@@ -77,4 +77,4 @@ skills/library/cross-runtime-memory-distiller/
 - **只读会话**：蒸馏引擎只读 sessions，绝不修改/删除原始会话记录
 - **LLM 依赖**：D2 分类需要 LLM，但 D1/D3/D4/D6/D7 纯脚本
 - **人工确认**：D5 模式升级为 Skill 必须经过人工确认
-- **与 memtidy 互不干扰**：memtidy 管文件生命周期，蒸馏管内容价值；两者可并行
+- **与 Hermes 原生记忆整理互不干扰**：Hermes 管文件生命周期，蒸馏管内容价值；两者可并行

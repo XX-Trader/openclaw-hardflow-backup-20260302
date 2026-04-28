@@ -1,5 +1,41 @@
 # TASK_HISTORY
 
+## 2026-04-28 - 本机 WSL multicore Codex 登录修复
+
+类型：runbook
+范围：WSL Ubuntu `/home/ubuntu/.hermes/profiles/{trend-backtest,multicore}`、tmux `multicore-gateway`
+事实：`multicore` profile 的 Discord gateway 能连接，但 Hermes provider 调用失败为 `No Codex credentials stored`。真实原因不是全局 Windows Codex 登录失效，而是 `trend-backtest` 已有 profile 级 Hermes auth store：`/home/ubuntu/.hermes/profiles/trend-backtest/auth.json`，而 `multicore` 缺少 `/home/ubuntu/.hermes/profiles/multicore/auth.json`。已将已验证可用的 profile auth store 安装到 `multicore`，权限为 `0600`，并重启 `multicore-gateway`。
+证据：修复前 `hermes -p multicore status` 显示 `OpenAI Codex ✗ not logged in` 且 auth file 指向 `/home/ubuntu/.hermes/profiles/multicore/auth.json`；修复后 `hermes -p multicore status` 显示 `OpenAI Codex ✓ logged in`，gateway PID 更新为 `5169`；`timeout 90 hermes -p multicore chat -q '只回复 OK，不要调用工具。'` 返回 `OK`，0 tool calls。
+最后验证：2026-04-28 17:44
+复用建议：本机 WSL 多 profile 登录排障时，先查 `hermes -p <profile> status` 里显示的 profile 级 auth file，不要只查 `/home/ubuntu/.codex/auth.json` 或 Windows `C:\Users\Administrator\.codex\auth.json`。新增 profile 若复用同一 Codex 账号，可从已登录 profile 复制 `auth.json` 并设置 `chmod 600`，然后重启对应 tmux gateway。
+
+## 2026-04-28 - DeliveryPlan 目标路径收敛与 solution_review 卡点修复
+
+类型：bugfix
+范围：`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`
+事实：修复简单任务在 `solution_package` / `delivery_plan.json` 生成时被扩散到 workflow 宿主和控制面路径的问题。`target_files` 现在优先信任用户原始需求与修复上下文；`requirements_review`、`research_report` 和 `project_memory_context` 只作为低信任补充，并过滤 `.workflow/`、`agent-workspaces/`、`command-runs/`、`task-center/`、`.hermes/`、`.openclaw/`、`.codex/`、`auth-profiles/`、`credential-imports/`、`sessions/` 以及项目记忆控制文件名。`human_blockers` 文案从 `Requires credentials...` 收敛为 stop-boundary 表达，避免 `revise_solution` 自动回流被风险扫描误判为正向凭证/资金请求。
+证据：新增 `is_control_plane_plan_path()`、`low_trust_plan_paths()`、`merge_plan_paths()`；新增回归测试覆盖简单任务不把 `API_REGISTRY.json` / `.workflow` / `.hermes` 作为目标文件、review context 中保留真实实现文件但过滤控制面路径、生成的方案边界文案不阻断 `revise_solution`。
+最后验证：2026-04-28 17:25 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
+复用建议：以后 `solution_review` 因方案“触碰 workflow 宿主 / 敏感路径 / 控制面路径”卡住时，先查 `delivery_plan.json.target_files` 是否来自低信任 context。用户没有明确点名文件时，宁可让 `discovery_required=true`，也不要把项目记忆、runtime host 或 pipeline artifact 路径当成业务修改目标。
+
+## 2026-04-28 - nofx profile 普通沟通/独立协作边界上线
+
+类型：deploy
+范围：`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、nofx live profile `SOUL.md`、Discord gateway
+事实：完善 nofx 上“不走工作流”的真实执行边界：普通沟通、只读查询、方案讨论和用户明确要求“直接沟通 / 先讨论 / 先自己开发 / 这次不用自动流程”时不启动 `smart-arb-pipeline`；但代码修改、部署、依赖安装、提交推送和生产配置变更仍不能在 Discord profile 会话里直接做，必须由外部 Codex/SSH operator 处理，或由用户重新授权进入 coordinator pipeline。工作流自身修复例外已从“只要说不要走工作流”收窄为“不要走工作流且目标是 pipeline/profile/auto-repair/git_publish 等运行时问题”。
+证据：本地模板已更新；nofx 仓库模板与 `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 均通过 SFTP 同步并备份为 `SOUL.md.bak-ordinary-collab-20260428T170108`；重启 `hermes-discord-arbitrage` / `hermes-discord-spread` 后，两者 `gateway_state=running`、Discord `connected`，日志尾部无新增错误。
+最后验证：2026-04-28 17:01
+复用建议：以后 Discord 里“不走工作流”优先理解为“本轮不启动 pipeline”，再按任务类型判断：能直接答就直接答，需要真实改动就提示外部 operator 或重新授权 pipeline。
+
+## 2026-04-28 - 工作流外普通沟通与独立开发边界
+
+类型：decision
+范围：用户级 `AGENTS.md`、项目交付优先工作流文档、项目记忆
+事实：补齐“工作流之外也能独立开发和沟通”的规则：当用户明确说不走工作流、直接沟通、先自己开发或这次不用自动流程时，当前 Codex 会话直接处理，不进入 `smart-arb-pipeline`、Discord pipeline、Task Center backlog runner 或新的 OMX workflow run。该规则与“工作流自身故障时绕过自修”并列存在，不再把所有“不走工作流”都解释成故障降级。
+证据：`C:\Users\Administrator\.codex\AGENTS.md` 新增普通 Codex 协作模式段落；`docs/核心主工作流/项目交付优先工作流/README.md` Out Of Scope 新增边界；`memory/DECISIONS.md` 已记录长期决策。
+最后验证：2026-04-28
+复用建议：用户如果只是想讨论方案、让主代理直接改文件、或临时不想进自动流程，就留在普通会话完成；只有用户重新要求 `$name`、`omx ...`、pipeline、长期自动推进或 Discord 工作流交付时，才恢复 workflow。
+
 ## 2026-04-28 - nofx Discord 回复状态标识
 
 类型：bugfix
@@ -8,6 +44,15 @@
 证据：新增 `answer_status_label()`、进度卡/最终卡渲染断言，以及两个 profile 模板规则。nofx 两个 live profile `SOUL.md` 已同步仓库模板，备份为 `SOUL.md.bak-answer-status-20260428T082523Z`，并重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`；gateway 均为 `running/connected`；echo smoke `deploy-smoke-spreadagent-20260428T082751163478Z` 完成 15/15 阶段，状态卡显示 `回答状态: 已回答完毕`。
 最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 39 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`python -B -m py_compile scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`git diff --check` 通过。nofx 远端 `py_compile`、`compileall`、39 项定向 `unittest`、`smart-arb-pipeline --help`、gateway state、内控 API `/health` 和 `/api/strategy/status` smoke 均通过
 复用建议：以后用户反馈“看不出是否还在回复 / 是否答完”时，先检查状态卡是否包含 `回答状态` 行，再确认 profile SOUL 是否已同步到 live runtime 并重启 gateway。
+
+## 2026-04-28 - MemTidy 退役与待办拆分门禁
+
+类型：refactor
+范围：`cron/jobs.json`、`skills/library/project-delivery-pipeline/scripts/runtime_installer.py`、`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`skills/library/memtidy/`、`config/memtidy_rules.json`
+事实：根据用户确认，Hermes 已有记忆整理能力，本仓删除 MemTidy 自动修改型能力：不再注册 `memtidy_runner（每日记忆整理）` cron，不再通过 runtime installer 安装 `memtidy` skill / `memtidy_runner.py`，并移除本仓 `memtidy_rules.json`。待办自动运行链保留：deadline bridge 负责到期 TODO 风险分流，backlog runner 每 30 分钟最多推进 1 个低风险、无需人工确认或澄清的 Task Center 项。`delivery_plan.json` 现在会把多事项需求拆成 `scope_slices`，第一块为 `current`，后续块为 `deferred`，避免一个 pipeline run 吞掉过重任务。
+证据：`cron/jobs.json` 删除 memtidy job；`runtime_installer.py` 删除 `memtidy` 和 `memtidy_runner.py` 安装项；`pipeline_runner.py` 新增 `plan_scope_slices()`、`task_split_policy` 和 solution 展示；新增单测覆盖重任务拆分。
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner` 31 项 OK；`python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_runtime_installer tests.scripts_openclaw_ops.test_active_agent_registry` 5 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol`、JSON 解析和 `git diff --check` 通过。
+复用建议：以后用户要求“自动推进待办”时，保留 TODO/deadline/backlog runner；如果任务过大，由主代理/项目交付契约先拆小，只有凭证、资金、生产破坏、需求不清或需要核对的点才回问用户。
 
 ## 2026-04-28 - DeliveryPlan 结构化方案契约与 revise_solution 回流
 

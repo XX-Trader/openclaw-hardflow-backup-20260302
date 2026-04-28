@@ -203,7 +203,7 @@ def normalize(text: str) -> str:
 ┌─────────────────────────────────────────┐
 │ 已有                                     │
 │                                         │
-│ memtidy_runner.py  → 文件层面整理        │
+│ Hermes 原生记忆整理 → 文件层面整理        │
 │ optimize_incremental_scan.py → 变更扫描 │
 │ Cron: optimize 自我进化总结             │
 │                                         │
@@ -227,7 +227,7 @@ def normalize(text: str) -> str:
 |------|------|
 | 只读会话 | 绝不修改/删除 sessions/ 下的原始文件 |
 | LLM 成本控制 | 单次分类限 20 片段；confidence < 0.6 不写入 |
-| 写前备份 | 修改 MEMORY.md 前先备份，复用 memtidy 的备份机制 |
+| 写前备份 | 修改 MEMORY.md 前先备份，使用蒸馏模块自带轻量备份或 Hermes 原生备份能力 |
 | 人工确认 | PATTERN → Skill 升级必须经人确认 |
 | 幂等执行 | 指纹去重保证重复运行不产生重复知识 |
 | Fail-Fast | 任何 I/O 错误立即终止 + 报告，不静默跳过 |

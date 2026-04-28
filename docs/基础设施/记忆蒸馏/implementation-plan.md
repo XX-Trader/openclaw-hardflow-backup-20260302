@@ -58,7 +58,7 @@
 - [ ] 实现 FACT 追加写入（按 tag 聚合到对应文件）
 - [ ] 实现 EXPERIENCE 追加写入（按主题文件聚合）
 - [ ] 指纹库持久化到 `fingerprints.json`
-- [ ] 写前备份：复用 memtidy 的 `create_backup()` 函数
+- [ ] 写前备份：使用蒸馏模块自带轻量备份或 Hermes 原生备份能力，不依赖已退役的 `memtidy_runner`
 - [ ] 单元测试：验证去重（同一内容写 2 次只生效 1 次）
 
 ### Step 1.3 — distill_reporter.py（报告器）

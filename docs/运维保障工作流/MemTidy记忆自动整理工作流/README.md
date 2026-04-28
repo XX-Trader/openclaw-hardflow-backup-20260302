@@ -1,5 +1,7 @@
 # MemTidy 记忆自动整理工作流
 
+> 状态：已退役（2026-04-28）。Hermes 运行态已有记忆整理能力，本仓不再安装 `memtidy_runner.py`、不再维护 `config/memtidy_rules.json`，也不再注册 `memtidy_runner` cron。本文仅保留历史设计记录。
+
 > 状态：✅ 已上线 | 触发方式：每日凌晨 3:00 自动触发
 > 上级目录：[运维保障工作流](../README.md)
 

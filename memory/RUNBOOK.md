@@ -103,6 +103,18 @@
    - `cat /home/arbops/.hermes/profiles/<profile>/gateway_state.json`
    - 读取 `SOUL.md` 前 10 行确认中文不是问号乱码。
 
+### 2026-04-28 - 普通沟通/独立协作三分流
+
+类型：runbook
+范围：nofx `arbitrageagent` / `spreadagent` Discord profile SOUL、`smart-arb-pipeline` 入口边界
+事实：profile SOUL 现在按三类请求分流：
+1. 普通沟通/独立协作：用户明确说“不要走工作流”“不走 workflow”“绕过工作流”“可以绕过”“别进 pipeline”“直接沟通”“先讨论”“先自己开发”“这次不用自动流程”等时，不启动 `smart-arb-pipeline`，只允许直接沟通、澄清、读取 memory/docs/API/logs/监控、给状态结论、给方案或说明下一步。
+2. 正常项目执行：继续做、依次完成、修复、实现、部署、测试一遍、把任务跑完、上传代码、改配置、重启服务、整理并落文档等执行类请求，默认进入 live coordinator pipeline，不在 profile 会话里直接改代码、部署、装依赖或提交 Git。
+3. 工作流自身修复：用户要求不走工作流且目标是修 `smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、Hermes profile/SOUL、dual-review、auto-repair 或 git_publish 门禁时，不启动自修 pipeline，只做只读诊断并提示外部 operator/Codex 经 SSH 修复。
+证据：2026-04-28 17:01 已把模板和 live profile 同步到 nofx，并重启两个 gateway；`arbitrageagent` / `spreadagent` 均 `gateway_state=running` 且 Discord `connected`。
+最后验证：2026-04-28 17:01
+复用建议：不要把所有“不走工作流”都归为自修；普通沟通可以直接答，真实修改必须外部 operator 或重新进 pipeline。
+
 ## nofx live verification 门禁
 
 Discord live pipeline 的 verification 阶段不再默认跑全量 `unittest discover`，因为 nofx 上该命令曾在 async/zmq 相关测试中长时间挂起。当前安全默认是：
@@ -175,6 +187,22 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 ## 定时仓库治理
 
+### 2026-04-28 - TODO 自动运行链路与任务拆分
+
+类型：runbook
+范围：`cron/jobs.json`、`pipeline_runner.py`、Task Center、`todo.md`
+事实：待办自动运行链路保留，但不允许把重任务整包吞进单次 pipeline。当前 TODO 相关定时任务分工如下：
+- `TODO 巡检（15分钟）`：巡检 `todo.md`，做去重播报、执行状态检测和未分配项协调。
+- `todo_deadline_checker_daily（截止时间检测）`：每日 00:00 检查 `[截止:YYYY-MM-DD]` 未完成项，标记超期、到期和提醒项；远端 dry-run 曾返回 `NO_REPLY`，表示当前无需要输出的提醒。
+- `todo_deadline_to_task_bridge_daily`：每日 00:05 把到期/超期 TODO 写入 Task Center；低风险任务可进入 `dispatch_pipeline`，高风险、需求不清、凭证/资金/生产破坏类任务进入 `human_inbox.py` 等待确认。
+- `backlog_runner_30m（持续推进待办）`：每 30 分钟最多推进 1 个低风险、无需人工确认/澄清的 pending 任务，或 allowlist 中带 `next_action` 的 failed 任务；默认每任务 1 次 attempt，防止循环重跑。
+- `daily_todo_digest_daily`：每日汇总 TODO 状态，属于信息汇总，不是执行推进器。
+- `project_index_maintainer_4h`：维护项目索引和注册表，帮助 TODO/Task Center 定位项目事实源，不直接执行待办。
+拆分规则：当用户需求包含多个独立事项时，`delivery_plan.json` 必须写入 `scope_slices`。第一块为 `current` 并进入本轮执行，其余为 `deferred`，后续通过 Task Center run 或用户确认继续推进；只有凭证、资金、生产破坏、需求不清和边界冲突才回问用户。
+证据：`cron/jobs.json` 保留上述 TODO/Task Center 相关 job；`pipeline_runner.py` 新增 `plan_scope_slices()`、`task_split_policy` 和 `Scope Slices` 展示；新增单测覆盖多事项需求拆分。
+最后验证：2026-04-28 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner` 31 项 OK；`python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_runtime_installer tests.scripts_openclaw_ops.test_active_agent_registry` 5 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol`、`python -B -m json.tool cron/jobs.json`、`python -B -m json.tool cron/index/cron_agent_capability_matrix.json`、`python -B -m json.tool agents/agent_capability_manifest.json`、`git diff --check` 均通过。
+复用建议：以后用户说“任务太重”时，默认先拆成可验收切片，不把拆分责任交回用户；只在切片需要权限、凭证、生产风险确认或目标冲突时再提问。
+
 ### 2026-04-28 - cron 状态投递到 Discord 群
 
 类型：runbook
@@ -228,6 +256,15 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 - bridge 会在前序 artifact 注入后续 prompt 前脱敏常见 header、assignment、长 token 和 GitHub PAT / OpenAI `sk-` / Slack / HF / Google / AWS access key 等短格式 secret；排障时不要把原始 token 放进 artifact。
 - 排障时优先看最终状态卡，再看原 run 与 `-repair<n>` run 各自的 `command-runs/*.json`，以及原 run 下的 `auto_repair_context_<n>.md`。
 
+### 2026-04-28 - DeliveryPlan 目标路径过滤
+
+类型：runbook
+范围：`pipeline_runner.py`、`delivery_plan.json`、`solution_review`
+事实：`delivery_plan.json.target_files` 不再把低信任上下文里的 workflow 控制面路径当成业务修改目标。可信顺序是：用户原始需求 / 自动修复上下文中的显式路径优先；`requirements_review`、`research_report`、`project_memory_context` 只作为低信任补充，且必须过滤 `.workflow/`、`agent-workspaces/`、`command-runs/`、`task-center/`、`.hermes/`、`.openclaw/`、`.codex/`、`auth-profiles/`、`credential-imports/`、`sessions/` 和项目记忆控制文件名。没有可靠业务文件时保持 `discovery_required=true`，由实现阶段先定位，不猜测编辑控制面。
+证据：`pipeline_runner.py` 新增低信任路径过滤 helper；回归测试覆盖简单任务不再把 `API_REGISTRY.json`、`.workflow` 或 `.hermes` 放入 `target_files`，并覆盖 review context 中同时出现真实实现文件和控制面路径时只保留真实实现文件。
+最后验证：2026-04-28 17:25 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
+复用建议：方案评审卡在敏感路径时不要放松 reviewer，先看 `target_files` 的来源；如果路径来自 `project_memory_context` 或 runtime host，只能作为检索/证据路径，不应作为修改目标。
+
 ### 2026-04-28 - DeliveryPlan 结构化方案契约
 
 类型：runbook
@@ -271,3 +308,12 @@ runuser -u arbops -- sudo -n id
 证据：2026-04-27 16:40 重启后 `trend-backtest` 的 `gateway_state=running`、PID `6470`、Discord connected as `趋势回测机器人#9621`、`/proc/6470/cwd=/home/ubuntu/projects/SmartTrendTracker`、home channel `1495659215598125217`；`multicore` 的 `gateway_state=running`、PID `6473`、Discord connected as `多核电脑#8868`、`/proc/6473/cwd=/home/ubuntu/.hermes/profiles/multicore/workspace`、home channel `1498225531923988562`。Discord API 只读核验显示旧 bot 可见 `趋势回测测试` 频道，新 bot 可见 `常规` 频道。拆分前完整备份在 `/home/ubuntu/.hermes/backups/profile-split-two-agents-20260427164001`。
 最后验证：2026-04-27 16:41
 复用建议：后续不要再把新“多核电脑”接到 `trend-backtest` profile。新增/调整本机 WSL agent 时，必须先明确 bot token、频道 ID、profile 名、SOUL、memory、`terminal.cwd`、`DISCORD_ALLOWED_CHANNELS` 和 `DISCORD_ALLOW_DMS`；同一个 bot token 如需多 gateway，必须先实现共享 token 锁隔离并强制频道白名单。
+
+### 2026-04-28 - 本机 WSL multicore Codex 登录修复
+
+类型：runbook
+范围：`/home/ubuntu/.hermes/profiles/multicore/auth.json`、tmux `multicore-gateway`
+事实：Hermes v0.10.0 的 OpenAI Codex 登录态按 profile 级 auth store 读取。`trend-backtest` 已登录，auth file 为 `/home/ubuntu/.hermes/profiles/trend-backtest/auth.json`；`multicore` 报 `Provider authentication failed: No Codex credentials stored` 是因为 `/home/ubuntu/.hermes/profiles/multicore/auth.json` 缺失。已从 `trend-backtest` 复制 auth store 到 `multicore`，设置 `0600`，并重启 `multicore-gateway`。
+证据：修复后 `hermes -p multicore status` 显示 `OpenAI Codex ✓ logged in`，auth file 为 `/home/ubuntu/.hermes/profiles/multicore/auth.json`；`multicore-gateway` tmux session 重建于 2026-04-28 17:43，PID `5169`；`hermes -p multicore chat -q '只回复 OK，不要调用工具。'` 返回 `OK`。
+最后验证：2026-04-28 17:44
+复用建议：后续新增本机 WSL Hermes profile 时，不要只同步 `.env`、SOUL、cwd 和 Discord channel；还要补 profile 级 `auth.json`，否则 gateway connected 也会在实际模型调用时失败。
