@@ -17,9 +17,9 @@
 类型：runbook
 范围：nofx Discord profile `SOUL.md`、`smart-arb-pipeline` 入口、Task Center/backlog runner、SmartMultiPlatformArbitrage 安全仓库同步
 事实：连接 Discord 的 Hermes profile 是 nofx Discord 入口的最高权限调度入口，但最高权限不等于跳过人工路线选择。所有 Discord 新任务都必须先发“执行链路选择”卡，固定选项为 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`，并以 `回答状态: 等待人工选择` 结束。只读状态查询、简单解释、监控查询、“不要走工作流”、安全仓库同步、业务执行、TODO 推进和 hardflow workflow/runtime/profile 自修都必须先选择；用户选择 `direct_run` 后，当前 Discord profile 才可以作为最高权限 operator 直接处理。只有 `coding_workflow` / `todo_auto_candidate` 会启动 `smart-arb-pipeline`。2026-04-29 起，入口脚本也有代码层硬门禁：Discord source 必须携带 `--route-choice coding_workflow` 或 `--route-choice todo_auto_candidate` 才会启动 coordinator pipeline；缺失时只返回选择卡，显式选择非 pipeline route 时跳过 pipeline。
-证据：2026-04-28 23:23 Discord run `discord-spreadagent-20260428T152135225120Z` 没有询问用户，直接进入 `smart-arb-pipeline` 并卡在 `solution_review`；artifact 显示旧 profile 仍把普通任务导向 pipeline，且只读/普通沟通存在直答例外。已将两个 profile 模板改为“收到任何 Discord 新任务，不要先执行、不要先启动 pipeline、不要直接做只读查询或普通沟通”，并增加模板测试覆盖。2026-04-29 已补 `smart_arb_pipeline_entry.py` 的 `--route-choice` 门禁和回归测试，证明缺少人工选择凭证时不会调用 `run_pipeline_command`。
-最后验证：2026-04-29 00:42，本地入口与模板回归测试通过；nofx live 尚待安装该代码层硬门禁
-复用建议：排查“为什么 Discord 没问我”时，先查 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 前 20 行是否包含“所有来自 Discord 的新任务”“最高权限 operator”“回答状态: 等待人工选择”，再查安装态 `/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py` 是否要求 `--route-choice`。如果只改了仓库模板没有同步 live profile、没重启 gateway，或只改了本仓入口脚本没有运行 runtime installer，Discord 仍会沿用旧规则。
+证据：2026-04-28 23:23 Discord run `discord-spreadagent-20260428T152135225120Z` 没有询问用户，直接进入 `smart-arb-pipeline` 并卡在 `solution_review`；artifact 显示旧 profile 仍把普通任务导向 pipeline，且只读/普通沟通存在直答例外。已将两个 profile 模板改为“收到任何 Discord 新任务，不要先执行、不要先启动 pipeline、不要直接做只读查询或普通沟通”，并增加模板测试覆盖。2026-04-29 已补 `smart_arb_pipeline_entry.py` 的 `--route-choice` 门禁和回归测试，证明缺少人工选择凭证时不会调用 `run_pipeline_command`。nofx 已安装提交 `8d952c0d`，安装态入口 SHA256 与仓库一致，缺失 `--route-choice` 的 smoke 只返回选择卡且没有启动 pipeline。
+最后验证：2026-04-29 01:24，nofx live runtime 已安装该代码层硬门禁，arbitrageagent / spreadagent gateway 均 `running/connected`
+复用建议：排查“为什么 Discord 没问我”时，先查 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 前 20 行是否包含“所有来自 Discord 的新任务”“最高权限 operator”“回答状态: 等待人工选择”，再查安装态 `/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py` 是否要求 `--route-choice`。如果只改了仓库模板没有同步 live profile、没重启 gateway，或只改了本仓入口脚本没有运行 runtime installer，Discord 仍会沿用旧规则。用户明确要求“做好了没问题就上传并安装”时，默认继续做 push、nofx pull/install/smoke 和记忆回写闭环。
 
 排障顺序：
 

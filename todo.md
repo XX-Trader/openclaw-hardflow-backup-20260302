@@ -80,7 +80,7 @@
 - [x] [🟡 P1] 增加 `backlog_runner.py` 与 `backlog_runner_30m`，从 Task Center 持续推进已人工确认且选择 pipeline 的待办
 - [x] [🟡 P1] 增加手动执行链路选择：系统推荐直接运行、需求探讨、指定 agent、编码工作流或 TODO 自动候选，用户确认后才执行
 - [x] [🟡 P1] 将 nofx Discord 入口收紧为所有新任务先执行链路选择，并把连接 Discord 的 profile 定义为最高权限调度入口
-- [ ] [🟡 P1] 将 Discord route-choice 入口硬门禁安装到 nofx live runtime：push 后 nofx `git pull --ff-only`，运行 `runtime_installer.py install`，同步 live profile `SOUL.md`，重启两个 Discord gateway，并用缺失 `--route-choice` 的 smoke 验证只返回选择卡、不启动 pipeline
+- [x] [🟡 P1] 将 Discord route-choice 入口硬门禁安装到 nofx live runtime：提交 `8d952c0d` 已推送并在 nofx `git pull --ff-only`，runtime installer `ok=true/changed=true`，live profile 已同步并重启 gateway，缺失 `--route-choice` 的 smoke 只返回选择卡、不启动 pipeline
 - [x] [🟡 P1] 收敛 active agent 配置为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`
 - [x] [🟡 P1] 将需求/方案/代码审查升级为两条独立 reviewer command report 门禁
 - [x] [🟡 P1] 修复 nofx Discord 工作流自修循环：工作流自身修复不再套进同一条 pipeline，review 失败补丁自动回滚并隔离旧业务漂移

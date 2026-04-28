@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-04-29 01:24 - nofx 安装 route-choice 入口硬门禁
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways、内控 API
+事实：本机提交 `8d952c0d` 已推送到 `origin/main`，nofx hardflow 仓库从 `7c7245a` fast-forward 到 `8d952c0`，`HEAD...origin/main=0 0` 且最终工作树 clean。拉取前远端两个 profile 模板存在上一轮手工同步残留，已保存为 `stash@{0}: pre-route-choice-deploy-20260428T172058Z`，没有 reset 或覆盖。runtime installer 返回 `ok=true`、`changed=true`，已把包含 route-choice 硬门禁的 `smart_arb_pipeline_entry.py` 安装到 `/home/arbops/.hermes/ops`。两个 live profile `SOUL.md` 已从仓库模板同步，备份后缀为 `route-choice-20260429T0124`，并重启 `hermes-discord-arbitrage` / `hermes-discord-spread`。
+证据：远端 `git diff --check`、`py_compile`、`compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 均通过；远端定向 `unittest` 41 项 OK；`/home/arbops/.local/bin/smart-arb-pipeline --help` 显示 `--route-choice {coding_workflow,direct_run,requirement_discussion,specified_agent,todo_auto_candidate}`；仓库源码与安装态 `/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py` SHA256 均为 `1f1ddfc728a96c89a25c6732262ee48becba3db6640d004fda48c1233cd0ee01`。两个 gateway 重启后 `arbitrageagent` PID `1374690`、`spreadagent` PID `1374779`，均为 `gateway_state=running` 且 Discord `connected`；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`。缺失 `--route-choice` 的 spreadagent smoke 只返回 `# nofx 执行链路选择` 和 `回答状态: 等待人工选择`；显式 `--route-choice direct_run --emit-json` 返回 `status=skipped`、`next_action=manual_route_not_pipeline:direct_run`；未发现活跃 `smart-arb-pipeline` / `pipeline_runner.py` 进程。
+最后验证：2026-04-29 01:24
+复用建议：以后“做好了没问题就部署”的 nofx hardflow 修复默认按本次闭环执行：本地测试和 staged secret scan 通过 -> commit/push -> nofx 保存远端脏改动 -> `git pull --ff-only origin main` -> runtime installer -> 远端定向测试/help/API -> 如 profile 变更则同步 live SOUL 并重启 gateway -> 缺失 route-choice 或 echo smoke -> 写回 `memory/`、`done.md`、`todo.md`。
+
 ## 2026-04-28 23:45 - nofx Discord 全任务路线选择与最高权限入口
 
 类型：deploy

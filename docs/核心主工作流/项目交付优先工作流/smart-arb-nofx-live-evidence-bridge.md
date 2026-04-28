@@ -1,6 +1,6 @@
 # SmartMultiPlatformArbitrage nofx live evidence bridge
 
-> 最后验证：2026-04-29 00:42 Asia/Shanghai，本地 route-choice 入口门禁已验证；nofx live runtime 尚待安装该代码批次。
+> 最后验证：2026-04-29 01:24 Asia/Shanghai，route-choice 入口门禁已安装到 nofx live runtime，两个 Discord gateway 已重启并 connected。
 > 适用范围：nofx 上 SmartMultiPlatformArbitrage 的 Discord 需求入口、Hermes runtime、项目交付优先工作流 live 证据桥。
 
 ## 归属边界
