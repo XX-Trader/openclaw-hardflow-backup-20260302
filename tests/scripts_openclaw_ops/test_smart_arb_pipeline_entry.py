@@ -246,10 +246,28 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             module.OPS_DIR = runtime_home / "ops"
             module.TASK_EXECUTOR_RUNNER = module.OPS_DIR / "policy" / "task_executor_runner.py"
             module.PROJECT_DIR = tmp_path / "project"
+            module.HARDFLOW_REPO_DIR = tmp_path / "hardflow"
             (runtime_home / "profiles" / "spreadagent").mkdir(parents=True)
             (tmp_path / ".local" / "bin").mkdir(parents=True)
             (tmp_path / ".local" / "bin" / "hermes").write_text("#!/bin/sh\n", encoding="utf-8")
             module.PROJECT_DIR.mkdir()
+            (
+                module.HARDFLOW_REPO_DIR
+                / "skills"
+                / "library"
+                / "control-plane-ops"
+                / "scripts"
+                / "policy"
+            ).mkdir(parents=True)
+            (
+                module.HARDFLOW_REPO_DIR
+                / "skills"
+                / "library"
+                / "control-plane-ops"
+                / "scripts"
+                / "policy"
+                / "policy_workflow.py"
+            ).write_text("# marker\n", encoding="utf-8")
             db_path = Path(tmp) / "task_center.db"
             module.TASK_CENTER_DB = db_path
             args = SimpleNamespace(
@@ -324,8 +342,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual(str(module.RUNTIME_HOME), call_kwargs["env"]["OPENCLAW_HOME"])
         self.assertEqual(str(module.OPS_DIR / "task-center"), call_kwargs["env"]["TASK_CENTER_DIR"])
         self.assertEqual(str(module.OPS_DIR / "policy"), call_kwargs["env"]["OPENCLAW_POLICY_ROOT"])
-        self.assertEqual(str(module.PROJECT_DIR), call_kwargs["env"]["HARDFLOW_WORKFLOW_REPO"])
-        self.assertEqual(str(module.PROJECT_DIR), call_kwargs["env"]["OPENCLAW_WORKFLOW_REPO"])
+        self.assertEqual(str(module.HARDFLOW_REPO_DIR.resolve()), call_kwargs["env"]["HARDFLOW_WORKFLOW_REPO"])
+        self.assertEqual(str(module.HARDFLOW_REPO_DIR.resolve()), call_kwargs["env"]["OPENCLAW_WORKFLOW_REPO"])
         self.assertEqual(str(runtime_home / "profiles" / "spreadagent"), call_kwargs["env"]["HERMES_HOME"])
 
     def test_render_chat_summary_shows_block_reason_and_repair_decision(self):

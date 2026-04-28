@@ -21,6 +21,11 @@ from typing import Any
 PROJECT_KEY = "smart-multi-platform-arbitrage"
 RUNTIME_HOME = Path("/home/arbops/.hermes")
 PROJECT_DIR = Path("/home/arbops/projects/SmartMultiPlatformArbitrage")
+HARDFLOW_REPO_DIR = Path(
+    os.environ.get("HARDFLOW_WORKFLOW_REPO", "")
+    or os.environ.get("OPENCLAW_WORKFLOW_REPO", "")
+    or "/home/arbops/projects/openclaw-hardflow-backup-20260302"
+)
 OPS_DIR = RUNTIME_HOME / "ops"
 RUNNER = OPS_DIR / "pipeline_runner.py"
 BRIDGE = OPS_DIR / "smart_arb_live_bridge.py"
@@ -1320,6 +1325,23 @@ def resolve_agent_runner_bin(requested: str) -> str:
     return shutil.which("hermes") or value
 
 
+def resolve_hardflow_workflow_repo() -> Path | None:
+    candidates = [
+        HARDFLOW_REPO_DIR,
+        Path(__file__).resolve().parents[2],
+        Path("/home/arbops/projects/openclaw-hardflow-backup-20260302"),
+    ]
+    for candidate in candidates:
+        try:
+            resolved = candidate.expanduser().resolve()
+        except OSError:
+            continue
+        marker = resolved / "skills" / "library" / "control-plane-ops" / "scripts" / "policy" / "policy_workflow.py"
+        if marker.exists():
+            return resolved
+    return None
+
+
 def specified_agent_subprocess_env(profile: str, runner_bin: str) -> dict[str, str]:
     env = dict(os.environ)
     env.setdefault("OPENCLAW_HOME", str(RUNTIME_HOME))
@@ -1328,9 +1350,10 @@ def specified_agent_subprocess_env(profile: str, runner_bin: str) -> dict[str, s
     env.setdefault("POLICY_FILE", str(OPS_DIR / "policy" / "policy-config.json"))
     env.setdefault("POLICY_ROUTING_FILE", str(OPS_DIR / "policy" / "routing-rules.json"))
     env.setdefault("POLICY_PRICING_FILE", str(OPS_DIR / "policy" / "token-pricing.json"))
-    if PROJECT_DIR.exists():
-        env.setdefault("HARDFLOW_WORKFLOW_REPO", str(PROJECT_DIR))
-        env.setdefault("OPENCLAW_WORKFLOW_REPO", str(PROJECT_DIR))
+    workflow_repo = resolve_hardflow_workflow_repo()
+    if workflow_repo is not None:
+        env.setdefault("HARDFLOW_WORKFLOW_REPO", str(workflow_repo))
+        env.setdefault("OPENCLAW_WORKFLOW_REPO", str(workflow_repo))
     if Path(str(runner_bin or "")).name.lower() in {"hermes", "hermes.exe"}:
         profile_dir = RUNTIME_HOME / "profiles" / profile
         if profile_dir.exists():
