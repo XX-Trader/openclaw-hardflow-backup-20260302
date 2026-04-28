@@ -286,7 +286,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                         "stage": "test-loop",
                         "status": "executed",
                         "task_status_after": "passed",
-                        "solved": True,
+                        "solved": False,
                         "executor_run_id": "exec-1",
                         "session_id": "task-session-1",
                         "agent_run_id": "agent-run-1",
@@ -304,7 +304,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             snapshot_reports = [
                 {
                     "status": "passed",
-                    "solved": True,
+                    "solved": False,
                     "details": {
                         "run_id": "exec-1",
                         "session_id": "task-session-1",

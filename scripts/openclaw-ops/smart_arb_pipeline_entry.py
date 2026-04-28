@@ -1666,7 +1666,7 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
         int(proc.returncode or 0) == 0
         and str(task_snapshot.get("status") or "").strip().lower() == "passed"
         and report_status in {"passed", "partial"}
-        and specified_agent_solved(result, reports)
+        and (report_status == "passed" or specified_agent_solved(result, reports))
     )
     failure_reason = "none" if completed else specified_agent_failure_reason(result, reports, proc.stderr)
     return {
