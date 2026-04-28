@@ -14,6 +14,7 @@ import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 
 PROJECT_KEY = "smart-multi-platform-arbitrage"
@@ -22,9 +23,11 @@ PROJECT_DIR = Path("/home/arbops/projects/SmartMultiPlatformArbitrage")
 OPS_DIR = RUNTIME_HOME / "ops"
 RUNNER = OPS_DIR / "pipeline_runner.py"
 BRIDGE = OPS_DIR / "smart_arb_live_bridge.py"
+TASK_EXECUTOR_RUNNER = OPS_DIR / "policy" / "task_executor_runner.py"
 WORKSPACE_ROOT = RUNTIME_HOME / "pipeline-runs"
 PROJECT_MEMORY_ROOT = PROJECT_DIR / "memory"
 TASK_CENTER_DB = OPS_DIR / "task-center" / "task_center.db"
+LOCAL_POLICY_DIR = Path(__file__).resolve().parents[2] / "skills" / "library" / "control-plane-ops" / "scripts" / "policy"
 STAGE_AGENT_MAP = {
     "intake": "coordinator",
     "context_snapshot": "project-agent",
@@ -118,7 +121,7 @@ VALID_ROUTE_CHOICES = PIPELINE_ROUTE_CHOICES | NON_PIPELINE_ROUTE_CHOICES
 ROUTE_SELECTION_OPTIONS = (
     ("direct_run", "直接运行", "当前 Discord profile 直接处理，不进入 coordinator pipeline。"),
     ("requirement_discussion", "需求探讨", "先澄清目标、范围、风险和验收，不改代码。"),
-    ("specified_agent", "指定 agent", "用户指定具体 agent/owner 后再交给对应执行面。"),
+    ("specified_agent", "指定 agent", "用户指定具体 agent/owner 后创建 Task Center 任务并分配执行。"),
     ("coding_workflow", "指定编码工作流", "进入完整 coordinator pipeline，包含测试、审查和写回门禁。"),
     ("todo_auto_candidate", "TODO 自动候选", "确认后才允许 backlog runner 作为受控候选推进。"),
 )
@@ -411,6 +414,23 @@ def parse_runner_state(stdout: str) -> dict | None:
     return payload if isinstance(payload, dict) and "stages" in payload else None
 
 
+def parse_json_payload(stdout: str) -> dict[str, Any]:
+    text = (stdout or "").strip()
+    if not text:
+        return {}
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
 def normalize_route_choice(value: object) -> str:
     return str(value or "").strip().lower().replace("-", "_")
 
@@ -442,7 +462,7 @@ def render_route_selection_card(*, source: str, profile: str, requirement: str) 
     lines.extend(
         [
             "",
-            "下一步: 请回复其中一个选项。只有选择 `coding_workflow` 或 `todo_auto_candidate` 后，才会启动 coordinator pipeline。",
+            "下一步: 请回复其中一个选项。选择 `specified_agent` 必须同时指定 agent；选择 `coding_workflow` 或 `todo_auto_candidate` 后启动 coordinator pipeline。",
             "防误触发: 当前调用没有携带人工选择凭证，已阻止直接启动 `smart-arb-pipeline`。",
             "回答状态: 等待人工选择",
         ]
@@ -481,7 +501,7 @@ def discord_route_choice_required(source: str) -> bool:
 def should_block_for_discord_route_choice(source: str, route_choice: str) -> bool:
     if not discord_route_choice_required(source):
         return False
-    return normalize_route_choice(route_choice) not in PIPELINE_ROUTE_CHOICES
+    return normalize_route_choice(route_choice) not in (PIPELINE_ROUTE_CHOICES | {"specified_agent"})
 
 
 def short_evidence_label(label: str, limit: int = SHORT_EVIDENCE_LIMIT) -> str:
@@ -560,6 +580,47 @@ def command_reports(state: dict | None, stage_name: str | None = None) -> list[d
     return reports
 
 
+def agent_invocations(state: dict | None, stage_name: str | None = None) -> list[dict]:
+    if not isinstance(state, dict):
+        return []
+    items = state.get("agent_invocations") if isinstance(state.get("agent_invocations"), list) else []
+    out: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        if stage_name and str(item.get("stage") or "").strip() != stage_name:
+            continue
+        out.append(item)
+    return out
+
+
+def runtime_ref_parts(*, session_id: str = "", run_id: str = "", session_key: str = "") -> list[str]:
+    parts: list[str] = []
+    if session_id:
+        parts.append(f"session={session_id}")
+    if run_id:
+        parts.append(f"run={run_id}")
+    if session_key:
+        parts.append(f"session_key={session_key}")
+    return parts
+
+
+def stage_runtime_ref_parts(state: dict | None, stage_name: str) -> list[str]:
+    refs = agent_invocations(state, stage_name)
+    if not refs:
+        return []
+    session_ids = [str(item.get("session_id") or "").strip() for item in refs if str(item.get("session_id") or "").strip()]
+    run_ids = [str(item.get("run_id") or "").strip() for item in refs if str(item.get("run_id") or "").strip()]
+    parts: list[str] = []
+    if session_ids:
+        parts.append("session=" + ",".join(session_ids[:2]))
+    if run_ids:
+        parts.append("run=" + ",".join(run_ids[:2]))
+    if not parts:
+        parts.append("session=-；run=-")
+    return parts
+
+
 def stage_record(state: dict | None, stage_name: str) -> dict:
     if not isinstance(state, dict):
         return {}
@@ -615,6 +676,13 @@ def report_line(report: dict, *, include_output: bool = False) -> str:
     returncode = report.get("returncode")
     ok = "通过" if report.get("ok") else "失败"
     parts = [f"{label}: {agent} -> {ok}", f"returncode={returncode}"]
+    parts.extend(
+        runtime_ref_parts(
+            session_id=str(report.get("agent_session_id") or "").strip(),
+            run_id=str(report.get("agent_run_id") or "").strip(),
+            session_key=str(report.get("agent_session_key") or "").strip(),
+        )
+    )
     artifact = report_artifact_name(report)
     if artifact:
         parts.append(f"证据={artifact}")
@@ -735,7 +803,7 @@ def render_progress_update(
     if run_dir:
         lines.append(f"- 证据目录: {run_dir}")
     if current_stage:
-        lines.append(f"- 当前阶段: {render_stage_line(current_stage).lstrip('- ')}")
+        lines.append(f"- 当前阶段: {render_stage_line(current_stage, state=state).lstrip('- ')}")
     next_action = str(state.get("next_action") or "").strip()
     failed_stage = str(state.get("failed_stage") or "").strip()
     if next_action and next_action != "none":
@@ -747,7 +815,7 @@ def render_progress_update(
         lines.append("")
         lines.append("## 最近阶段")
         for stage in visible_stages:
-            lines.append(render_stage_line(stage, state.get("stage_agents") if isinstance(state.get("stage_agents"), dict) else None))
+            lines.append(render_stage_line(stage, state.get("stage_agents") if isinstance(state.get("stage_agents"), dict) else None, state))
 
     reports = latest_command_reports(state, command_limit)
     if reports:
@@ -856,7 +924,7 @@ def write_repair_context_file(
         return None
 
 
-def render_stage_line(stage: dict, stage_agents: dict | None = None) -> str:
+def render_stage_line(stage: dict, stage_agents: dict | None = None, state: dict | None = None) -> str:
     name = str(stage.get("name") or "").strip()
     label = STAGE_LABELS.get(name, name or "未知阶段")
     raw_agents = stage_agents.get(name) if isinstance(stage_agents, dict) else None
@@ -867,6 +935,7 @@ def render_stage_line(stage: dict, stage_agents: dict | None = None) -> str:
     status = str(stage.get("status") or "").strip()
     status_label = STATUS_LABELS.get(status, status or "未知")
     parts = [f"{label}: {agent} -> {status_label}"]
+    parts.extend(stage_runtime_ref_parts(state, name))
     verdict = str(stage.get("verdict") or "").strip()
     if verdict:
         parts.append(f"结论={verdict}")
@@ -935,9 +1004,28 @@ def render_chat_summary(
     lines.append("## agent 分工与完成情况")
     stage_agents = state.get("stage_agents") if isinstance(state.get("stage_agents"), dict) else {}
     for stage in stages[: max(1, int(stage_limit or 20))]:
-        lines.append(render_stage_line(stage, stage_agents))
+        lines.append(render_stage_line(stage, stage_agents, state))
     if len(stages) > stage_limit:
         lines.append(f"- 还有 {len(stages) - stage_limit} 个阶段未展开，详见 pipeline_state.json")
+
+    invocations = agent_invocations(state)
+    if invocations:
+        lines.append("")
+        lines.append("## 被调用 agent 明细")
+        for item in invocations[: max(1, int(command_limit or 24))]:
+            stage = str(item.get("stage") or "").strip()
+            status_text = "完成" if item.get("completed") else "失败"
+            parts = [
+                f"{STAGE_LABELS.get(stage, stage or '阶段')}: {item.get('agent_id') or '-'}",
+                f"session={item.get('session_id') or '-'}",
+                f"run={item.get('run_id') or '-'}",
+                f"当前阶段={STAGE_LABELS.get(stage, stage or '-')}",
+                f"是否完成={status_text}",
+            ]
+            failure = compact_text(item.get("failure_reason") or "", 180)
+            if failure:
+                parts.append(f"失败原因={failure}")
+            lines.append("- " + "；".join(parts))
 
     reports = command_reports(state)
     if reports:
@@ -1175,6 +1263,323 @@ def env_flag(name: str, default: bool = False) -> bool:
     return default
 
 
+def slugify(value: str, fallback: str = "item") -> str:
+    text = re.sub(r"[^A-Za-z0-9_.-]+", "-", str(value or "").strip()).strip("-._")
+    return text[:80] or fallback
+
+
+def policy_dir_candidates() -> list[Path]:
+    return [
+        OPS_DIR / "policy",
+        LOCAL_POLICY_DIR,
+    ]
+
+
+def policy_dir() -> Path:
+    for candidate in policy_dir_candidates():
+        if candidate.exists():
+            return candidate
+    return policy_dir_candidates()[0]
+
+
+def load_task_center_classes() -> tuple[Any, Any]:
+    path = policy_dir()
+    if not path.exists():
+        checked = ", ".join(str(candidate) for candidate in policy_dir_candidates())
+        raise RuntimeError(f"Task Center policy dir not found; checked: {checked}")
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
+    from task_center import TaskCenter, TaskCenterError  # type: ignore
+
+    return TaskCenter, TaskCenterError
+
+
+def task_executor_runner_path() -> Path:
+    candidates = [
+        TASK_EXECUTOR_RUNNER,
+        LOCAL_POLICY_DIR / "task_executor_runner.py",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+
+def specified_agent_task_id(run_id: str, assignee: str) -> str:
+    return f"specified-agent:{slugify(assignee, 'agent')}:{slugify(run_id, 'run')}"
+
+
+def create_or_update_specified_agent_task(
+    *,
+    task_id: str,
+    source: str,
+    profile: str,
+    assignee: str,
+    requirement: str,
+    run_id: str,
+) -> dict[str, Any]:
+    TaskCenter, TaskCenterError = load_task_center_classes()
+    task_center = TaskCenter(TASK_CENTER_DB)
+    payload = {
+        "task_id": task_id,
+        "pool": "jobs",
+        "task_type": "specified_agent_dispatch",
+        "reason": f"{PROJECT_KEY}: 指定 agent 执行；{compact_text(requirement, 160)}",
+        "source": f"{source}:{profile}",
+        "request_source": "human",
+        "trace_id": run_id,
+        "attempt_id": run_id,
+        "priority": "medium",
+        "risk_level": "low",
+        "assignee": assignee,
+        "status": "pending",
+        "need_human_confirm": False,
+        "human_confirmed": True,
+        "context_payload": {
+            "route_choice": "specified_agent",
+            "entry_run_id": run_id,
+            "source": source,
+            "profile": profile,
+            "project_key": PROJECT_KEY,
+        },
+        "requirement": requirement,
+        "result_output": "由用户指定 agent 执行并回写统一状态卡",
+        "acceptance": "Task Center 有任务、agent report 有 session/run id、Discord 状态卡有完成/失败原因",
+        "observable_outputs": "agent_task_reports,task_outputs,module_communications",
+        "acceptance_thresholds": "task_status=passed,agent_report_status=passed_or_partial,session_or_run_id_recorded",
+        "required_capabilities": "specified_agent_execution,task_center_report,discord_status_card",
+        "required_skills": "control-plane-ops",
+        "allowed_agents": assignee,
+        "workflow_profile_id": "specified_agent@discord",
+        "workflow_channel": "stable",
+        "selection_reason": "user_selected_specified_agent",
+        "selection_inputs": {
+            "selected_route": "specified_agent",
+            "selected_agent": assignee,
+            "entry_run_id": run_id,
+        },
+        "score_raw": 100,
+        "score_normalized": 100,
+        "score_payload": {
+            "selected_route": "specified_agent",
+            "assignee": assignee,
+            "entry_run_id": run_id,
+        },
+        "action": "specified_agent_dispatch",
+    }
+    try:
+        task_center.init_schema()
+        try:
+            task = task_center.get_task(task_id, display_safe=False)
+        except TaskCenterError:
+            task = task_center.create_task(payload, actor=f"discord:{profile}")
+        else:
+            task = task_center.update_task(
+                task_id,
+                actor=f"discord:{profile}",
+                fields={key: value for key, value in payload.items() if key not in {"task_id", "pool"}},
+            )
+        task_center.record_module_communication(
+            task_id=task_id,
+            from_module=f"discord:{profile}",
+            to_module=assignee,
+            protocol="specified_agent_route",
+            message_type="agent_dispatch",
+            status="sent",
+            payload_ref=run_id,
+            details={
+                "route_choice": "specified_agent",
+                "entry_run_id": run_id,
+                "assignee": assignee,
+            },
+            actor=f"discord:{profile}",
+        )
+        return task
+    finally:
+        task_center.close()
+
+
+def task_center_snapshot(task_id: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    TaskCenter, _TaskCenterError = load_task_center_classes()
+    task_center = TaskCenter(TASK_CENTER_DB)
+    try:
+        task_center.init_schema()
+        task = task_center.get_task(task_id, display_safe=False)
+        reports = task_center.list_agent_task_reports(task_id=task_id, limit=10, display_safe=False)
+        return task, reports
+    finally:
+        task_center.close()
+
+
+def first_executor_result(summary: dict[str, Any]) -> dict[str, Any]:
+    results = summary.get("results") if isinstance(summary.get("results"), list) else []
+    for item in results:
+        if isinstance(item, dict):
+            return item
+    return {}
+
+
+def report_runtime_refs(result: dict[str, Any], reports: list[dict[str, Any]]) -> dict[str, str]:
+    details = {}
+    if reports:
+        latest = reports[0]
+        details = latest.get("details") if isinstance(latest.get("details"), dict) else {}
+    return {
+        "executor_run_id": str(result.get("executor_run_id") or result.get("run_id") or details.get("run_id") or "").strip(),
+        "session_id": str(result.get("session_id") or details.get("session_id") or "").strip(),
+        "agent_run_id": str(result.get("agent_run_id") or details.get("agent_run_id") or "").strip(),
+        "agent_session_key": str(result.get("agent_session_key") or details.get("agent_session_key") or "").strip(),
+        "agent_runtime_session_id": str(result.get("agent_runtime_session_id") or details.get("agent_runtime_session_id") or "").strip(),
+    }
+
+
+def specified_agent_failure_reason(result: dict[str, Any], reports: list[dict[str, Any]], stderr: str = "") -> str:
+    failed_items = result.get("failed_items") if isinstance(result.get("failed_items"), list) else []
+    parts = [
+        str(result.get("reason") or "").strip(),
+        ",".join(str(item).strip() for item in failed_items if str(item).strip()),
+        str(result.get("resolution_summary") or "").strip(),
+        str(stderr or "").strip(),
+    ]
+    if reports:
+        latest = reports[0]
+        parts.extend(
+            [
+                ",".join(str(item).strip() for item in latest.get("failed_items", []) if str(item).strip()),
+                str(latest.get("resolution_summary") or "").strip(),
+            ]
+        )
+    return compact_text("; ".join(part for part in parts if part), 260) or "none"
+
+
+def render_specified_agent_card(payload: dict[str, Any]) -> str:
+    refs = payload.get("refs") if isinstance(payload.get("refs"), dict) else {}
+    result = payload.get("result") if isinstance(payload.get("result"), dict) else {}
+    task = payload.get("task") if isinstance(payload.get("task"), dict) else {}
+    stage = str(result.get("stage") or task.get("stage_id") or "dispatch").strip()
+    completed = bool(payload.get("completed"))
+    lines = [
+        "# nofx 指定 agent 执行状态",
+        f"来源: {payload.get('source', '-')}/{payload.get('profile', '-')}",
+        "路线: specified_agent",
+        f"Task Center: {payload.get('task_id', '-')}",
+        f"被调用 agent: {payload.get('assignee', '-')}",
+        f"executor run id: {refs.get('executor_run_id') or '-'}",
+        f"agent session id: {refs.get('session_id') or refs.get('agent_runtime_session_id') or '-'}",
+        f"agent run id: {refs.get('agent_run_id') or '-'}",
+        f"session key: {refs.get('agent_session_key') or '-'}",
+        f"当前阶段: {stage}",
+        f"是否完成: {'是' if completed else '否'}",
+        f"总状态: task={task.get('status') or '-'}；report={result.get('report_status') or result.get('status') or '-'}",
+        f"失败原因: {payload.get('failure_reason') or 'none'}",
+        f"回答状态: {'已回答完毕' if completed else '未回答完毕，指定 agent 未通过或执行失败'}",
+    ]
+    return "\n".join(lines)
+
+
+def render_specified_agent_assignee_required_card(*, source: str, profile: str, requirement: str) -> str:
+    recommended_route, reason = recommend_discord_route(requirement)
+    return "\n".join(
+        [
+            "# nofx 指定 agent 执行状态",
+            f"来源: {source}/{profile}",
+            "路线: specified_agent",
+            "总状态: 等待指定 agent",
+            f"推荐链路: {recommended_route}",
+            f"推荐原因: {reason}",
+            "下一步: 请补充 agent id，例如 project-agent、reviewer、backend-dev、frontend-dev、tester、deployer、doc-writer。",
+            "回答状态: 等待人工选择 agent",
+        ]
+    )
+
+
+def run_specified_agent_route(args: argparse.Namespace, requirement: str, profile: str) -> dict[str, Any]:
+    assignee = str(args.assignee or "").strip()
+    if not assignee:
+        return {
+            "status": "blocked",
+            "next_action": "await_specified_agent_assignee",
+            "source": args.source,
+            "profile": profile,
+            "route_choice": "specified_agent",
+            "completed": False,
+            "failure_reason": "missing_assignee",
+        }
+
+    run_id = utc_run_id(f"{args.source}-{profile}-specified-{assignee}")
+    task_id = specified_agent_task_id(run_id, assignee)
+    task = create_or_update_specified_agent_task(
+        task_id=task_id,
+        source=args.source,
+        profile=profile,
+        assignee=assignee,
+        requirement=requirement,
+        run_id=run_id,
+    )
+    runner = task_executor_runner_path()
+    report_dir = OPS_DIR / "task-executor-runs"
+    cmd = [
+        sys.executable,
+        str(runner),
+        "--db",
+        str(TASK_CENTER_DB),
+        "--only-task-id",
+        task_id,
+        "--max-tasks",
+        "1",
+        "--actor",
+        f"discord:{profile}",
+        "--planner-id",
+        profile,
+        "--openclaw-bin",
+        str(args.openclaw_bin),
+        "--timeout-sec",
+        str(max(30, int(args.specified_agent_timeout_seconds or 1200))),
+        "--report-dir",
+        str(report_dir),
+        "--emit-json",
+    ]
+    proc = subprocess.run(
+        cmd,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        timeout=max(60, int(args.specified_agent_timeout_seconds or 1200) + 120),
+        check=False,
+    )
+    summary = parse_json_payload(proc.stdout)
+    result = first_executor_result(summary)
+    task_snapshot, reports = task_center_snapshot(task_id)
+    refs = report_runtime_refs(result, reports)
+    completed = (
+        int(proc.returncode or 0) == 0
+        and str(task_snapshot.get("status") or "").strip().lower() == "passed"
+        and str(result.get("report_status") or "").strip().lower() in {"passed", "partial"}
+        and bool(result.get("solved", False))
+    )
+    failure_reason = "none" if completed else specified_agent_failure_reason(result, reports, proc.stderr)
+    return {
+        "status": "completed" if completed else "blocked",
+        "next_action": "none" if completed else "inspect_specified_agent_result",
+        "source": args.source,
+        "profile": profile,
+        "route_choice": "specified_agent",
+        "run_id": run_id,
+        "task_id": task_id,
+        "assignee": assignee,
+        "task": task_snapshot,
+        "created_task": task,
+        "executor_summary": summary,
+        "result": result,
+        "refs": refs,
+        "completed": completed,
+        "returncode": int(proc.returncode or 0),
+        "failure_reason": failure_reason,
+        "stderr": compact_text(proc.stderr, 600),
+    }
+
+
 def bridge_command(stage: str, args: argparse.Namespace, reviewer_role: str | None = None) -> str:
     command = [
         sys.executable,
@@ -1256,6 +1661,14 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(VALID_ROUTE_CHOICES),
         default=os.environ.get("SMART_ARB_ROUTE_CHOICE", ""),
         help="manual route selected by the Discord user; Discord pipeline execution requires a pipeline route",
+    )
+    parser.add_argument("--assignee", default=os.environ.get("SMART_ARB_SPECIFIED_AGENT", ""), help="agent id used by the specified_agent route")
+    parser.add_argument("--openclaw-bin", default=os.environ.get("SMART_ARB_OPENCLAW_BIN", "openclaw"), help="OpenClaw binary used by task_executor_runner for specified_agent dispatch")
+    parser.add_argument(
+        "--specified-agent-timeout-seconds",
+        type=int,
+        default=int(os.environ.get("SMART_ARB_SPECIFIED_AGENT_TIMEOUT_SECONDS", "1200")),
+        help="timeout for the specified_agent Task Center executor",
     )
     parser.add_argument("--live", action="store_true", help="kept for compatibility; this entrypoint always runs live")
     parser.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
@@ -1347,6 +1760,16 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(render_route_selection_card(source=args.source, profile=profile, requirement=requirement_text))
         return 0
+
+    if route_choice == "specified_agent":
+        payload = run_specified_agent_route(args, requirement_text, profile)
+        if args.emit_json or args.no_chat_summary:
+            print(json.dumps(payload, ensure_ascii=False))
+        elif not str(args.assignee or "").strip():
+            print(render_specified_agent_assignee_required_card(source=args.source, profile=profile, requirement=requirement_text))
+        else:
+            print(render_specified_agent_card(payload))
+        return int(payload.get("returncode") or 0)
 
     run_id = utc_run_id(f"{args.source}-{profile}")
     cmd = [

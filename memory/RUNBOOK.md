@@ -16,7 +16,7 @@
 
 类型：runbook
 范围：nofx Discord profile `SOUL.md`、`smart-arb-pipeline` 入口、Task Center/backlog runner、SmartMultiPlatformArbitrage 安全仓库同步
-事实：连接 Discord 的 Hermes profile 是 nofx Discord 入口的最高权限调度入口，但最高权限不等于跳过人工路线选择。所有 Discord 新任务都必须先发“执行链路选择”卡，固定选项为 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`，并以 `回答状态: 等待人工选择` 结束。只读状态查询、简单解释、监控查询、“不要走工作流”、安全仓库同步、业务执行、TODO 推进和 hardflow workflow/runtime/profile 自修都必须先选择；用户选择 `direct_run` 后，当前 Discord profile 才可以作为最高权限 operator 直接处理。只有 `coding_workflow` / `todo_auto_candidate` 会启动 `smart-arb-pipeline`。2026-04-29 起，入口脚本也有代码层硬门禁：Discord source 必须携带 `--route-choice coding_workflow` 或 `--route-choice todo_auto_candidate` 才会启动 coordinator pipeline；缺失时只返回选择卡，显式选择非 pipeline route 时跳过 pipeline。
+事实：连接 Discord 的 Hermes profile 是 nofx Discord 入口的最高权限调度入口，但最高权限不等于跳过人工路线选择。所有 Discord 新任务都必须先发“执行链路选择”卡，固定选项为 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`，并以 `回答状态: 等待人工选择` 结束。只读状态查询、简单解释、监控查询、“不要走工作流”、安全仓库同步、业务执行、TODO 推进和 hardflow workflow/runtime/profile 自修都必须先选择；用户选择 `direct_run` 后，当前 Discord profile 才可以作为最高权限 operator 直接处理。`specified_agent` 必须带 `--assignee <agent-id>`，入口会创建 Task Center `specified_agent_dispatch` 任务并调用指定 agent；`coding_workflow` / `todo_auto_candidate` 会启动 `smart-arb-pipeline` coordinator pipeline。2026-04-29 起，入口脚本也有代码层硬门禁：Discord source 缺少 `--route-choice` 时只返回选择卡；选择 `coding_workflow` / `todo_auto_candidate` 才进入 coordinator pipeline；选择 `specified_agent` 且有 assignee 才进入 Task Center 指定 agent 执行器；选择 `direct_run` / `requirement_discussion` 不进 pipeline。
 证据：2026-04-28 23:23 Discord run `discord-spreadagent-20260428T152135225120Z` 没有询问用户，直接进入 `smart-arb-pipeline` 并卡在 `solution_review`；artifact 显示旧 profile 仍把普通任务导向 pipeline，且只读/普通沟通存在直答例外。已将两个 profile 模板改为“收到任何 Discord 新任务，不要先执行、不要先启动 pipeline、不要直接做只读查询或普通沟通”，并增加模板测试覆盖。2026-04-29 已补 `smart_arb_pipeline_entry.py` 的 `--route-choice` 门禁和回归测试，证明缺少人工选择凭证时不会调用 `run_pipeline_command`。nofx 已安装提交 `8d952c0d`，安装态入口 SHA256 与仓库一致，缺失 `--route-choice` 的 smoke 只返回选择卡且没有启动 pipeline。
 最后验证：2026-04-29 01:24，nofx live runtime 已安装该代码层硬门禁，arbitrageagent / spreadagent gateway 均 `running/connected`
 复用建议：排查“为什么 Discord 没问我”时，先查 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 前 20 行是否包含“所有来自 Discord 的新任务”“最高权限 operator”“回答状态: 等待人工选择”，再查安装态 `/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py` 是否要求 `--route-choice`。如果只改了仓库模板没有同步 live profile、没重启 gateway，或只改了本仓入口脚本没有运行 runtime installer，Discord 仍会沿用旧规则。用户明确要求“做好了没问题就上传并安装”时，默认继续做 push、nofx pull/install/smoke 和记忆回写闭环。
@@ -29,9 +29,9 @@
 4. 查 `agent-workspaces/manifest.json`，确认每个阶段 owner 是否有独立 workspace。
 5. 查 `command-runs/code_execution-1.patch` 是否生成并成功应用回主项目目录。
 6. 查 `smart_arb_pipeline_entry.py` 和 `smart_arb_live_bridge.py` 的安装态版本，确认是否与本仓库 HEAD 对齐。
-7. 若用户关心“是否转发到其他 agent”，必须检查是否有独立 agent session/run id，而不是只看 Task Center 的 `agent_id` 字段。
+7. 若用户关心“是否转发到其他 agent”，必须检查状态卡 `被调用 agent 明细`、`command-runs/*.json` 的 `agent_session_id/agent_run_id`、Task Center `agent_task_reports.details`，而不是只看 Task Center 的 `agent_id` 字段。
 
-注意：当前 live bridge 已证明 workspace 隔离和阶段命令执行；2026-04-25 22:06 的 nofx smoke `codex-arbitrageagent-20260425T140605083467Z` 里，命令阶段均记录为 `runtime-agent-workspace` / `isolated-agent-workspace`。native 多 agent fan-out 仍需以独立宿主 session/run id 为准。
+注意：当前 live bridge 已证明 workspace 隔离和阶段命令执行；2026-04-25 22:06 的 nofx smoke `codex-arbitrageagent-20260425T140605083467Z` 里，命令阶段均记录为 `runtime-agent-workspace` / `isolated-agent-workspace`。2026-04-29 本仓已新增 session/run id 抽取和指定 agent 执行器回写；仍需以真实独立宿主 session/run id 为准，不能把没有 id 的 stage label 当成 native fan-out。
 
 ## 2026-04-27 - nofx agent/model 实时口径
 

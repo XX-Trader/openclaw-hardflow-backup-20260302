@@ -85,6 +85,9 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertTrue((runtime_home / "ops" / "project_memory_writer.py").exists())
             self.assertTrue((runtime_home / "ops" / "smart_arb_live_bridge.py").exists())
             self.assertTrue((runtime_home / "ops" / "smart_arb_pipeline_entry.py").exists())
+            self.assertTrue((runtime_home / "ops" / "chat_output.py").exists())
+            self.assertTrue((runtime_home / "ops" / "utf8_runtime.py").exists())
+            self.assertTrue((runtime_home / "ops" / "workflow_views.py").exists())
             self.assertTrue(os.access(runtime_home / "ops" / "smart_arb_pipeline_entry.py", os.X_OK))
             self.assertTrue((runtime_home / "ops" / "policy" / "human_inbox.py").exists())
 
@@ -149,6 +152,26 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             )
             report = module.install_runtime(config)
             self.assertTrue(report.ok)
+
+            for module_name in (
+                "task_executor_runner",
+                "policy_enforcer",
+                "policy_cli",
+                "policy_utils",
+                "task_center",
+                "utf8_runtime",
+                "chat_output",
+                "workflow_views",
+            ):
+                sys.modules.pop(module_name, None)
+            installed_task_executor = load_module_from_path(
+                "task_executor_runner",
+                runtime_home / "ops" / "policy" / "task_executor_runner.py",
+            )
+            self.assertEqual(
+                "agent_returned_no_structured_output",
+                installed_task_executor.contract_from_agent_result(0, "", "")[0]["resolution_summary"],
+            )
 
             installed_runner = load_module_from_path(
                 "installed_project_delivery_pipeline_runner",

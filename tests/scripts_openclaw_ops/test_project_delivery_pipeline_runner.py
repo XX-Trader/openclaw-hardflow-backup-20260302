@@ -123,6 +123,55 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             memory_dir = Path(tmp) / "project-memory" / "demo"
             self.assertTrue((memory_dir / "RETRIEVAL_MANIFEST.json").exists())
 
+    def test_pipeline_state_collects_agent_session_and_run_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir()
+            report = run_dir / "command-runs" / "code_execution-1.json"
+            report.parent.mkdir()
+            report.write_text(
+                json.dumps(
+                    {
+                        "stage": "code_execution",
+                        "index": 1,
+                        "agent_id": "backend-dev",
+                        "dispatch_mode": "native-agent-session",
+                        "agent_session_id": "sess-123",
+                        "agent_run_id": "run-456",
+                        "agent_session_key": "agent:backend-dev:run:task-1",
+                        "returncode": 0,
+                        "ok": True,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            state = _mod.pipeline_state(
+                PipelineConfig(project_key="demo", requirement="x", workspace_root=Path(tmp), dry_run=True),
+                "run",
+                run_dir,
+                {},
+                [_mod.StageRecord(name="code_execution", status="completed")],
+                {"command_code_execution_1": str(report)},
+                "completed",
+                "none",
+            )
+
+        self.assertEqual("sess-123", state["agent_invocations"][0]["session_id"])
+        self.assertEqual("run-456", state["agent_invocations"][0]["run_id"])
+        self.assertEqual("backend-dev", state["agent_invocations"][0]["agent_id"])
+
+    def test_extract_agent_runtime_refs_from_bridge_output(self):
+        refs = _mod.extract_agent_runtime_refs(
+            "session_id: sess-123\nLIVE_BRIDGE_AGENT_RUN_ID: run-456\n",
+            "LIVE_BRIDGE_AGENT_SESSION_KEY: agent:backend-dev:run:task-1",
+        )
+
+        self.assertEqual("sess-123", refs["session_id"])
+        self.assertEqual("run-456", refs["run_id"])
+        self.assertEqual("agent:backend-dev:run:task-1", refs["session_key"])
+
     def test_live_command_writes_running_pipeline_state_before_completion(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

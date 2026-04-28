@@ -175,6 +175,11 @@ def recover_hermes_session_output(profile_dir: Path, command_text: str) -> str:
     return ""
 
 
+def extract_hermes_session_id(command_text: str) -> str:
+    match = SESSION_ID_RE.search(command_text or "")
+    return match.group(1).strip() if match else ""
+
+
 def recovered_stage_pass(stage: str, text: str) -> bool:
     if not text.strip():
         return False
@@ -475,6 +480,9 @@ def run_hermes_stage(stage: str, args: argparse.Namespace) -> int:
         print(proc.stderr.rstrip())
 
     plain = strip_ansi((proc.stdout or "") + "\n" + (proc.stderr or ""))
+    session_id = extract_hermes_session_id(plain)
+    if session_id:
+        print(f"LIVE_BRIDGE_AGENT_SESSION_ID: {session_id}")
     recovered = recover_hermes_session_output(profile_dir, plain)
     if recovered and recovered not in plain:
         print("\n# recovered_session_output")

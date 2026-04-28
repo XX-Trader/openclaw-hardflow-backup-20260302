@@ -19,9 +19,24 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
+POLICY_DIR = Path(__file__).resolve().parent
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+ROOT = POLICY_DIR.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+SOURCE_SHARED_DIR = Path(__file__).resolve().parents[5] / "scripts" / "openclaw-ops" / "shared"
+if SOURCE_SHARED_DIR.exists() and str(SOURCE_SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SOURCE_SHARED_DIR))
+SOURCE_WORKFLOW_MANAGER_DIR = (
+    Path(__file__).resolve().parents[5]
+    / "skills"
+    / "library"
+    / "openclaw-workflow-manager"
+    / "scripts"
+)
+if SOURCE_WORKFLOW_MANAGER_DIR.exists() and str(SOURCE_WORKFLOW_MANAGER_DIR) not in sys.path:
+    sys.path.insert(0, str(SOURCE_WORKFLOW_MANAGER_DIR))
 
 from utf8_runtime import configure_process_utf8_stdio
 from chat_output import format_beijing_time
@@ -1989,6 +2004,11 @@ def main() -> int:
             except Exception:
                 pass
             contract, agent_json, reply_text, sanitized_stderr = contract_from_agent_result(rc, out, err)
+            meta = agent_json.get("meta", {}) if isinstance(agent_json, dict) else {}
+            agent_meta = meta.get("agentMeta", {}) if isinstance(meta, dict) else {}
+            agent_runtime_run_id = str(agent_meta.get("runId", "")).strip() if isinstance(agent_meta, dict) else ""
+            agent_session_key = str(agent_meta.get("sessionKey", "")).strip() if isinstance(agent_meta, dict) else ""
+            agent_runtime_session_id = str(agent_meta.get("sessionId", "")).strip() if isinstance(agent_meta, dict) else ""
             in_tokens, out_tokens, duration_ms = extract_usage(agent_json)
             if duration_ms <= 0:
                 duration_ms = max(0, int((datetime.now(tz=UTC) - started).total_seconds() * 1000))
@@ -2025,6 +2045,9 @@ def main() -> int:
             details = {
                 "run_id": run_id,
                 "session_id": session_id,
+                "agent_run_id": agent_runtime_run_id,
+                "agent_session_key": agent_session_key,
+                "agent_runtime_session_id": agent_runtime_session_id,
                 "model": task_model_name,
                 "model_source": task_model_source,
                 "thinking": task_thinking,
@@ -2092,6 +2115,11 @@ def main() -> int:
                     "status": "executed",
                     "reason": ("stage_contract_failed" if not bool(stage_contract.get("contract_passed", True)) else ""),
                     "task_status_after": end_status,
+                    "executor_run_id": run_id,
+                    "session_id": session_id,
+                    "agent_run_id": agent_runtime_run_id,
+                    "agent_session_key": agent_session_key,
+                    "agent_runtime_session_id": agent_runtime_session_id,
                     "report_status": str(contract.get("status", "partial")),
                     "solved": bool(contract.get("solved", False)),
                     "quality_score": float(contract.get("quality_score", 0.0) or 0.0),

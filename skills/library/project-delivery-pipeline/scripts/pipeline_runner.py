@@ -80,6 +80,15 @@ REVIEWER_ROLE_ARG_RE = re.compile(
 REVIEWER_ROLE_OUTPUT_RE = re.compile(
     r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:\s*([A-Za-z0-9_.-]+)\s*$"
 )
+AGENT_SESSION_ID_RE = re.compile(
+    r"(?im)^\s*(?:LIVE_BRIDGE_AGENT_SESSION_ID|agent_session_id|session_id|sessionId)\s*[:=]\s*([A-Za-z0-9_.:-]+)\s*$"
+)
+AGENT_RUN_ID_RE = re.compile(
+    r"(?im)^\s*(?:LIVE_BRIDGE_AGENT_RUN_ID|agent_run_id|agentRunId|runId)\s*[:=]\s*([A-Za-z0-9_.:-]+)\s*$"
+)
+AGENT_SESSION_KEY_RE = re.compile(
+    r"(?im)^\s*(?:LIVE_BRIDGE_AGENT_SESSION_KEY|agent_session_key|sessionKey)\s*[:=]\s*([A-Za-z0-9_.:/-]+)\s*$"
+)
 PATH_TOKEN_RE = re.compile(
     r"(?:`([^`\r\n]+)`)|"
     r"(?:(?<![A-Za-z0-9_./\\])((?:[A-Za-z]:[\\/]|/(?!/))[A-Za-z0-9_.\-/\\]*"
@@ -332,6 +341,47 @@ def reviewer_role_from_output(stdout: str, stderr: str) -> str:
     text = "\n".join([str(stdout or ""), str(stderr or "")])
     match = REVIEWER_ROLE_OUTPUT_RE.search(text)
     return normalize_reviewer_role(match.group(1) if match else "")
+
+
+def first_regex_group(pattern: re.Pattern[str], text: str) -> str:
+    match = pattern.search(text or "")
+    return str(match.group(1) or "").strip() if match else ""
+
+
+def first_json_object(text: str) -> dict[str, Any]:
+    raw = str(text or "").strip()
+    if not raw:
+        return {}
+    decoder = json.JSONDecoder()
+    for idx, char in enumerate(raw):
+        if char != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(raw[idx:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
+def extract_agent_runtime_refs(stdout: str, stderr: str) -> dict[str, str]:
+    text = "\n".join([str(stdout or ""), str(stderr or "")])
+    refs = {
+        "session_id": first_regex_group(AGENT_SESSION_ID_RE, text),
+        "run_id": first_regex_group(AGENT_RUN_ID_RE, text),
+        "session_key": first_regex_group(AGENT_SESSION_KEY_RE, text),
+    }
+
+    payload = first_json_object(text)
+    meta = payload.get("meta", {}) if isinstance(payload, dict) else {}
+    agent_meta = meta.get("agentMeta", {}) if isinstance(meta, dict) else {}
+    if isinstance(agent_meta, dict):
+        refs["run_id"] = refs["run_id"] or str(agent_meta.get("runId", "")).strip()
+        refs["session_id"] = refs["session_id"] or str(agent_meta.get("sessionId", "")).strip()
+        refs["session_key"] = refs["session_key"] or str(agent_meta.get("sessionKey", "")).strip()
+
+    return {key: value for key, value in refs.items() if value}
 
 
 def reviewer_role_for_report(report: dict[str, Any]) -> str:
@@ -1700,6 +1750,7 @@ def run_stage_command(
         stdout = str(exc.stdout or "")
         stderr = str(exc.stderr or "")
         error = f"timeout after {config.command_timeout_seconds}s"
+    runtime_refs = extract_agent_runtime_refs(stdout, stderr)
 
     if (
         stage_name in {"code_execution", "memory_writeback"}
@@ -1747,7 +1798,11 @@ def run_stage_command(
         "agent_id": primary_workspace.agent_id,
         "agent_workspace": primary_workspace.as_dict(),
         "agent_workspaces": [workspace.as_dict() for workspace in workspaces],
-        "dispatch_mode": "isolated-agent-workspace",
+        "dispatch_mode": "native-agent-session" if runtime_refs else "isolated-agent-workspace",
+        "runtime_agent_refs": runtime_refs,
+        "agent_session_id": runtime_refs.get("session_id", ""),
+        "agent_run_id": runtime_refs.get("run_id", ""),
+        "agent_session_key": runtime_refs.get("session_key", ""),
         "started_at": started_at,
         "ended_at": utc_now(),
         "returncode": returncode,
@@ -2195,6 +2250,7 @@ def pipeline_state(
             stage.name: stage_agent_ids(stage.name, config)
             for stage in stages
         },
+        "agent_invocations": pipeline_agent_invocations(artifacts, run_dir),
         "stages": [stage.as_dict() for stage in stages],
         "updated_at": utc_now(),
     }
@@ -2306,22 +2362,78 @@ def stage_output_ref(run_dir: Path, stage: dict[str, Any]) -> str:
     return str(run_dir / artifact)
 
 
-def stage_command_execution_details(state: dict[str, Any], stage_name: str) -> dict[str, Any]:
-    artifacts = state.get("artifacts", {})
-    command_refs = {
-        key: value
-        for key, value in artifacts.items()
-        if str(key).startswith(f"command_{stage_name}_")
-    }
-    reports: list[dict[str, Any]] = []
-    for ref in command_refs.values():
-        path = Path(str(ref))
+def command_reports_from_artifacts(
+    artifacts: dict[str, Any],
+    run_dir: Path,
+    stage_name: str = "",
+) -> list[tuple[str, str, dict[str, Any]]]:
+    prefix = f"command_{stage_name}_" if stage_name else "command_"
+    reports: list[tuple[str, str, dict[str, Any]]] = []
+    for key, value in sorted(artifacts.items()):
+        if not str(key).startswith(prefix):
+            continue
+        path = Path(str(value))
+        if not path.is_absolute():
+            path = run_dir / path
         if not path.exists():
             continue
         try:
-            reports.append(json.loads(path.read_text(encoding="utf-8")))
-        except json.JSONDecodeError:
+            report = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
             continue
+        if isinstance(report, dict):
+            reports.append((str(key), str(path), report))
+    return reports
+
+
+def agent_invocation_from_report(
+    report: dict[str, Any],
+    *,
+    artifact_key: str = "",
+    artifact_ref: str = "",
+) -> dict[str, Any]:
+    stage_name = str(report.get("stage") or "").strip()
+    returncode = int(report.get("returncode") or 0)
+    ok = bool(report.get("ok"))
+    return {
+        "stage": stage_name,
+        "index": int(report.get("index") or 0),
+        "agent_id": str(report.get("agent_id") or STAGE_AGENT_MAP.get(stage_name, "coordinator")).strip(),
+        "dispatch_mode": str(report.get("dispatch_mode") or "").strip(),
+        "session_id": str(report.get("agent_session_id") or "").strip(),
+        "run_id": str(report.get("agent_run_id") or "").strip(),
+        "session_key": str(report.get("agent_session_key") or "").strip(),
+        "status": "completed" if ok else "failed",
+        "returncode": returncode,
+        "completed": ok,
+        "failure_reason": str(report.get("error") or report.get("stderr") or "").strip()[:600],
+        "command_ref": artifact_ref,
+        "artifact_key": artifact_key,
+    }
+
+
+def agent_invocations_from_reports(
+    reports: list[tuple[str, str, dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    return [
+        agent_invocation_from_report(report, artifact_key=artifact_key, artifact_ref=artifact_ref)
+        for artifact_key, artifact_ref, report in reports
+    ]
+
+
+def pipeline_agent_invocations(
+    artifacts: dict[str, Any],
+    run_dir: Path,
+) -> list[dict[str, Any]]:
+    return agent_invocations_from_reports(command_reports_from_artifacts(artifacts, run_dir))
+
+
+def stage_command_execution_details(state: dict[str, Any], stage_name: str) -> dict[str, Any]:
+    artifacts = state.get("artifacts", {})
+    run_dir = Path(str(state.get("run_dir") or "."))
+    report_items = command_reports_from_artifacts(artifacts, run_dir, stage_name)
+    command_refs = {artifact_key: artifact_ref for artifact_key, artifact_ref, _report in report_items}
+    reports = [report for _artifact_key, _artifact_ref, report in report_items]
     agent_workspaces: list[dict[str, Any]] = []
     for report in reports:
         for workspace in report.get("agent_workspaces", []) or []:
@@ -2337,6 +2449,7 @@ def stage_command_execution_details(state: dict[str, Any], stage_name: str) -> d
             for report in reports
             if report.get("workspace_patch_file")
         ],
+        "agent_invocations": agent_invocations_from_reports(report_items),
     }
 
 
@@ -2357,6 +2470,7 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
         "run_dir": str(run_dir),
         "project_memory_dir": str(memory_dir),
         "stage_names": stage_names,
+        "agent_invocations": state.get("agent_invocations", []),
     }
 
     task_payload = {
@@ -2483,6 +2597,7 @@ def mirror_state_to_task_center(config: PipelineConfig, state: dict[str, Any], r
                 "failed_stage": state.get("failed_stage"),
                 "project_memory_dir": str(memory_dir),
                 "artifacts": state.get("artifacts", {}),
+                "agent_invocations": state.get("agent_invocations", []),
             },
             actor="project-delivery-pipeline",
         )

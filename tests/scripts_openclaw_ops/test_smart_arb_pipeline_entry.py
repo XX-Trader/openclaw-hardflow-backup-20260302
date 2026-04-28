@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 
@@ -190,6 +191,124 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertIn("摘要=changed files", text)
         self.assertIn("关键证据: verification", text)
+
+    def test_render_chat_summary_shows_agent_runtime_refs(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            command_report = Path(tmp) / "code_execution-1.json"
+            command_report.write_text(
+                json.dumps(
+                    {
+                        "stage": "code_execution",
+                        "agent_id": "backend-dev",
+                        "returncode": 0,
+                        "ok": True,
+                        "agent_session_id": "sess-123",
+                        "agent_run_id": "run-456",
+                        "agent_session_key": "agent:backend-dev:run:task-1",
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            state = {
+                "run_id": "discord-spreadagent-test",
+                "status": "completed",
+                "next_action": "none",
+                "failed_stage": None,
+                "run_dir": tmp,
+                "artifacts": {"command_code_execution_1": str(command_report)},
+                "agent_invocations": [
+                    {
+                        "stage": "code_execution",
+                        "agent_id": "backend-dev",
+                        "session_id": "sess-123",
+                        "run_id": "run-456",
+                        "completed": True,
+                    }
+                ],
+                "stages": [{"name": "code_execution", "status": "completed", "artifact": "/tmp/patch_summary.md"}],
+            }
+
+            text = module.render_chat_summary(state, source="discord", profile="spreadagent", returncode=0)
+
+        self.assertIn("代码执行: backend-dev -> 完成；session=sess-123；run=run-456", text)
+        self.assertIn("## 被调用 agent 明细", text)
+        self.assertIn("session=sess-123；run=run-456；当前阶段=代码执行；是否完成=完成", text)
+        self.assertIn("代码执行: backend-dev -> 通过；returncode=0；session=sess-123；run=run-456", text)
+
+    def test_specified_agent_route_creates_task_and_renders_ids(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            db_path = Path(tmp) / "task_center.db"
+            module.TASK_CENTER_DB = db_path
+            args = SimpleNamespace(
+                source="discord",
+                profile="spreadagent",
+                assignee="tester",
+                openclaw_bin="openclaw",
+                specified_agent_timeout_seconds=30,
+            )
+            summary = {
+                "run_id": "exec-1",
+                "results": [
+                    {
+                        "task_id": "placeholder",
+                        "assignee": "tester",
+                        "stage": "test-loop",
+                        "status": "executed",
+                        "task_status_after": "passed",
+                        "report_status": "passed",
+                        "solved": True,
+                        "executor_run_id": "exec-1",
+                        "session_id": "task-session-1",
+                        "agent_run_id": "agent-run-1",
+                        "agent_session_key": "agent:tester:cron:task-executor:run:task-session-1",
+                    }
+                ],
+            }
+            completed = module.subprocess.CompletedProcess(
+                args=["task_executor_runner"],
+                returncode=0,
+                stdout=json.dumps(summary, ensure_ascii=False),
+                stderr="",
+            )
+            snapshot_task = {"task_id": "placeholder", "status": "passed", "assignee": "tester"}
+            snapshot_reports = [
+                {
+                    "details": {
+                        "run_id": "exec-1",
+                        "session_id": "task-session-1",
+                        "agent_run_id": "agent-run-1",
+                        "agent_session_key": "agent:tester:cron:task-executor:run:task-session-1",
+                    }
+                }
+            ]
+            with mock.patch.object(module.subprocess, "run", return_value=completed) as mocked_run, mock.patch.object(
+                module,
+                "task_center_snapshot",
+                return_value=(snapshot_task, snapshot_reports),
+            ):
+                payload = module.run_specified_agent_route(args, "请测试一次", "spreadagent")
+
+            TaskCenter, _TaskCenterError = module.load_task_center_classes()
+            task_center = TaskCenter(db_path)
+            try:
+                task = task_center.get_task(payload["task_id"], display_safe=False)
+            finally:
+                task_center.close()
+
+        self.assertEqual("tester", task["assignee"])
+        self.assertEqual("specified_agent_dispatch", task["task_type"])
+        self.assertTrue(payload["completed"])
+        self.assertEqual("agent-run-1", payload["refs"]["agent_run_id"])
+        rendered = module.render_specified_agent_card(payload)
+        self.assertIn("被调用 agent: tester", rendered)
+        self.assertIn("agent session id: task-session-1", rendered)
+        self.assertIn("agent run id: agent-run-1", rendered)
+        executor_cmd = mocked_run.call_args.args[0]
+        self.assertIn("--only-task-id", executor_cmd)
+        self.assertIn(payload["task_id"], executor_cmd)
 
     def test_render_chat_summary_shows_block_reason_and_repair_decision(self):
         module = load_module()

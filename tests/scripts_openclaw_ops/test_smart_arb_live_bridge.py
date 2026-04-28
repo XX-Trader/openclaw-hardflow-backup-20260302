@@ -85,6 +85,12 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"PIPELINE_REPAIR_CONTEXT": "previous failure evidence"}, clear=False):
             self.assertEqual("previous failure evidence", bridge.repair_context_text())
 
+    def test_extract_hermes_session_id_from_cli_output(self):
+        bridge = self._load_bridge_module()
+
+        self.assertEqual("abc_123", bridge.extract_hermes_session_id("session_id: abc_123\nok"))
+        self.assertEqual("", bridge.extract_hermes_session_id("no session here"))
+
     def test_memory_writeback_uses_pipeline_memory_parent(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

@@ -56,17 +56,18 @@ runtime installer 会把以下 hardflow 脚本安装到 Hermes ops 目录：
 
 Discord 入口默认不是直接执行，而是先由连接 Discord 的 profile 作为最高权限调度入口发送“执行链路选择”卡。所有来自 Discord 的新任务都走这一步：只读查询、方案讨论、安全仓库同步、业务代码修改、部署排障、TODO 推进和 hardflow workflow/runtime/profile 自修都不能因为“看起来低风险”而直接执行。
 
-固定选项为 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`。推荐链路只作为建议，不等于授权；只有用户明确选择 `coding_workflow` 或 `todo_auto_candidate` 后，profile 才启动真实 coordinator pipeline：
+固定选项为 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`。推荐链路只作为建议，不等于授权；用户选择 `specified_agent` 时必须同时指定 assignee，入口会创建 Task Center 任务并调用指定 agent；只有用户明确选择 `coding_workflow` 或 `todo_auto_candidate` 后，profile 才启动真实 coordinator pipeline：
 
 ```bash
 /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice coding_workflow --progress-interval-seconds 60 --requirement "<需求文本>"
+/home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice specified_agent --assignee tester --requirement "<需求文本>"
 ```
 
-`--route-choice` 是代码层人工选择凭证，不只是提示词约定。`smart_arb_pipeline_entry.py` 默认要求 Discord source 携带 `coding_workflow` 或 `todo_auto_candidate` 才会启动 coordinator pipeline；缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`。如果显式传入 `direct_run`、`requirement_discussion` 或 `specified_agent`，入口会跳过 pipeline，避免 profile 把非 pipeline 选择误送进工作流。
+`--route-choice` 是代码层人工选择凭证，不只是提示词约定。`smart_arb_pipeline_entry.py` 默认要求 Discord source 携带有效路线才会执行：缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`；`coding_workflow` / `todo_auto_candidate` 进入 coordinator pipeline；`specified_agent` 必须带 `--assignee <agent-id>`，并生成 `specified_agent_dispatch` Task Center 任务交给 `task_executor_runner.py` 调用指定 agent。如果显式传入 `direct_run` 或 `requirement_discussion`，入口仍跳过 pipeline，避免 profile 把非 pipeline 选择误送进工作流。
 
 如果用户选择 `direct_run`，当前 Discord profile 作为最高权限 operator 直接处理，不进入 pipeline；仍必须遵守凭证、生产、资金、真实交易、force push、删除生产数据等安全边界。安全仓库同步只允许 clean 工作树上的 `git fetch` + `git pull --ff-only`，并做 `git status`、`HEAD == origin/main` 和内控 API smoke。
 
-默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况、阶段命令状态、阻塞证据、自动修复判断和证据目录。默认不展开 reviewer/tester/terminal stdout/stderr，也不额外输出“关键证据”列表。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`；需要脱敏命令摘要时，加 `--chat-include-command-output`。
+默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、真实 agent session/run id（存在时）、完成/阻塞情况、阶段命令状态、阻塞证据、自动修复判断和证据目录。`specified_agent` 状态卡必须明确显示被调用 agent、Task Center task id、executor run id、agent session/run id、当前阶段、是否完成和失败原因。默认不展开 reviewer/tester/terminal stdout/stderr，也不额外输出“关键证据”列表。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`；需要脱敏命令摘要时，加 `--chat-include-command-output`。
 
 聊天输出还会在运行中默认每 60 秒打印 `# nofx 任务执行进度`，从 `pipeline_state.json` 与最近 `command-runs/*.json` 汇总已完成阶段、当前阶段、最近命令状态和证据目录。Hermes 通用 `Still working...` 心跳、tool progress 和 `[Background process ...]` wrapper 由 profile 配置关闭，长任务反馈只走 pipeline 中文状态卡。`--emit-json` / `--no-chat-summary` 会关闭运行中进度卡；间隔和摘要条数可用 `--progress-interval-seconds`、`--progress-stage-limit`、`--progress-command-limit` 调整。
 
@@ -120,9 +121,9 @@ Discord 状态卡必须回答三个问题：
 - `code_execution` 阶段默认在 `backend-dev` workspace 中修改代码；前端/UI/页面/交互类需求可通过 `--code-agent frontend-dev` 或入口推断切到 `frontend-dev` workspace。成功后 runner 导出 `command-runs/code_execution-1.patch`，再应用回主项目目录，然后把同一 patch 注入后续 `tester`、`reviewer`、`deployer` workspace。`git_publish` 不再对应独立 `git-master` agent，而是由 `coordinator` 负责的发布门禁。
 - `git_publish` 只在前序门禁通过后执行，发布输入优先使用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码变更和写回变更一起进入发布工作区且不夹带未验收脏改动；默认提交信息为中文并脱敏，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态。secret scan 会输出 `## Secret Scan Findings`，包含脱敏后的文件、行号、规则、风险等级和片段；真实 secret/header/cookie/高熵值、hardcoded fallback secret、PEM private key hard block，测试假值、环境变量名、文档占位和 Basic Auth 说明不阻塞。远端冲突、认证失败或非密钥发布失败可阻塞为 `fix_git_publish` 并进入自动回流；真实 secret/high-risk evidence 仍停人工确认，不做 force push。
 - `command-runs/*.json`、`agent-workspaces/manifest.json`、Task Center `stage_runs.details_json` / `module_communications.details_json` 会记录 agent id、workspace、repo dir、dispatch mode 和 patch 文件。
-- Task Center 中的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester` 等字段仍然是阶段 owner 与交接记录；是否真正启动多个宿主 native session，要以 command evidence 中的独立 session/run id 为准。
+- Task Center 中的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester` 等字段如果没有 session/run id，仍然只是阶段 owner 与交接记录；是否真正启动多个宿主 native session，要以 command evidence 中的独立 session/run id 为准。
 
-因此，如果用户观察到“Hermes 在工作，但任务没有转发到其他 agent”，现在要分两层判断：第一层检查 `agent-workspaces/manifest.json` 和 `command-runs/*.json`，确认是否进入了独立 workspace；第二层检查 command evidence 中是否出现宿主 native session/run id。workspace 隔离已经落地，宿主级 native 多 agent spawn 仍需要继续接 runtime agent dispatch 能力，并把独立 session id / run id 写入 `command-runs`、Task Center 和最终状态卡。
+因此，如果用户观察到“Hermes 在工作，但任务没有转发到其他 agent”，现在要分两层判断：第一层检查 `agent-workspaces/manifest.json` 和 `command-runs/*.json`，确认是否进入了独立 workspace；第二层检查 command evidence、Task Center `agent_task_reports.details` 和最终状态卡中是否出现宿主 native session/run id。workspace 隔离已经落地；coding_workflow 现在会记录 bridge/executor 暴露的 session/run id，specified_agent 已接 Task Center 指定 agent 执行器。仍不能把没有 session/run id 的 stage label 宣称为真实 native fan-out。
 
 ### Discord profile 提示词规则
 
@@ -136,7 +137,7 @@ nofx 两个 Discord Hermes profile 的 `SOUL.md` 使用本仓库模板维护：
 1. 连接 Discord 的 profile 是最高权限调度入口，负责路线选择、推荐理由、执行调度、状态回传和最终口径。
 2. 所有 Discord 新任务都必须先发“执行链路选择”卡；只读查询、简单解释、监控查询、“不要走工作流”、工作流自身修复等都不能绕过选择。
 3. 执行链路选择卡固定包含 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`，并以 `回答状态: 等待人工选择` 结束。
-4. 用户明确选择后才执行所选路线；只有 `coding_workflow` / `todo_auto_candidate` 会启动 `smart-arb-pipeline`，`direct_run` 由当前 Discord profile 直接处理。
+4. 用户明确选择后才执行所选路线；`specified_agent` 会创建 Task Center 任务并调用指定 agent，`coding_workflow` / `todo_auto_candidate` 会启动 `smart-arb-pipeline` coordinator pipeline，`direct_run` 由当前 Discord profile 直接处理。
 5. 当用户选择 `direct_run` 且目标是 hardflow workflow/runtime/profile 自身，例如修 `smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、profile/SOUL、dual review、auto-repair、git_publish、runtime installer 或 cron workflow 时，进入“高权限工作流维护模式”：不要递归启动同一条 `smart-arb-pipeline`，直接切到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 修改 workflow 宿主，跑测试，必要时安装到 `/home/arbops/.hermes` 并同步 live profile。
 6. pipeline 运行期间必须回传 `# nofx 任务执行进度`，完成后必须回传 `# nofx 任务执行状态`；不要转发 Hermes 通用心跳、background wrapper 或 command 原始输出。
 7. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。

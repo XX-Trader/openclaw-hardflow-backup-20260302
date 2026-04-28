@@ -11,12 +11,13 @@
 5. 执行链路选择卡必须包含以下固定选项，并以 `回答状态: 等待人工选择` 结束：
    - `direct_run`：当前 Discord profile 以最高权限 operator 直接处理，不进入 pipeline。适合只读查询、状态核对、方案说明、安全仓库同步、低风险单步修复、或 hardflow workflow/runtime/profile 维护；涉及仓库同步必须先确认工作树 clean，只允许 `git fetch` 和 `git pull --ff-only`，禁止 `reset/stash/checkout --/merge commit/force push/真实交易/下单/划转/删除生产数据`，完成后做 `git status`、`HEAD == origin/main` 和内控 API smoke。涉及代码或配置修改时仍要测试、审查状态说明、文档/记忆写回。
    - `requirement_discussion`：先澄清目标、范围、风险和验收，不改代码、不启动 pipeline。
-   - `specified_agent`：用户指定具体 agent/owner 后再交给对应执行面；未给出 assignee 时必须继续询问，不能把任务移出人工选择状态。
+   - `specified_agent`：用户指定具体 agent/owner 后，必须用 `--route-choice specified_agent --assignee <agent-id>` 创建 Task Center 任务并调用指定 agent；未给出 assignee 时必须继续询问，不能把任务移出人工选择状态。
    - `coding_workflow`：进入完整 coordinator pipeline，包含需求、方案、执行、测试、审查、写回等门禁。
    - `todo_auto_candidate`：作为 TODO/Task Center 候选进入受控推进；仍只允许已人工确认的 pipeline route 被 backlog runner 续跑。
-6. 只有用户明确回复某个路线选项，或自然语言等价表达“选 direct_run / 先需求讨论 / 指定某 agent / 走编码工作流 / 进入 pipeline / 按推荐工作流执行 / 作为 TODO 候选”后，才执行所选路线。只有选择 `coding_workflow` 或 `todo_auto_candidate` 时才启动 live coordinator pipeline，不跑 simulation/dry-run；启动命令必须携带 `--route-choice coding_workflow` 或 `--route-choice todo_auto_candidate` 作为人工选择凭证，缺失时入口会只返回选择卡并拒绝启动 pipeline。
+6. 只有用户明确回复某个路线选项，或自然语言等价表达“选 direct_run / 先需求讨论 / 指定某 agent / 走编码工作流 / 进入 pipeline / 按推荐工作流执行 / 作为 TODO 候选”后，才执行所选路线。选择 `specified_agent` 时必须带 assignee 并走 Task Center 指定 agent 执行；选择 `coding_workflow` 或 `todo_auto_candidate` 时才启动 live coordinator pipeline，不跑 simulation/dry-run；启动命令必须携带 `--route-choice coding_workflow`、`--route-choice todo_auto_candidate` 或 `--route-choice specified_agent --assignee <agent-id>` 作为人工选择凭证，缺失时入口会只返回选择卡并拒绝启动 pipeline。
    ```bash
    /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice coding_workflow --progress-interval-seconds 60 --requirement "<原始用户需求>"
+   /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice specified_agent --assignee tester --requirement "<原始用户需求>"
    ```
 7. pipeline 运行期间，只把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行进度` 中文状态卡回传到聊天 channel，说明已完成阶段、当前阶段、最近命令状态、证据目录和 `回答状态: 正在回复/执行中`；证据项使用 20 字以内中文短说明；不要转发 Hermes 通用 `Still working...` 心跳、`[Background process ...]` wrapper 或 command stdout/stderr 原文。
 8. pipeline 完成、阻塞或失败后，必须把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行状态` 中文状态卡回传到聊天 channel；状态卡必须包含 `回答状态: 已回答完毕` 或 `回答状态: 未回答完毕...`，并保留 `agent 分工与完成情况`、`阶段命令状态`、`阻塞原因`、`自动修复判断` 和证据目录，证据项保持 20 字以内中文短说明。不要展开 reviewer/tester/terminal 原始输出，也不要额外发送“关键证据”列表；如果 Discord 单条过长，按状态卡段落分多条连续发送。
@@ -35,7 +36,7 @@
 ## 多 agent 边界
 
 - Task Center 里的 `web-agent`、`project-agent`、`reviewer`、`backend-dev`、`tester` 等字段是阶段责任 owner。
-- 当前 `smart-arb-pipeline --live` 的默认 live bridge 仍是 Hermes 单会话 stage bridge；除非 command-runs 里出现独立 agent session/run id，否则不要声称已经真实 fan-out 到多个 native agent。
+- 当前 `smart-arb-pipeline --live` 的 coding_workflow 会把 live bridge / executor 暴露的 agent session/run id 写入 `command-runs`、Task Center 和状态卡；除非这些字段真实存在，否则不要只凭 stage label 声称已经 fan-out 到多个 native agent。`specified_agent` 路线必须显示被调用 agent、Task Center task id、executor run id、agent session/run id、当前阶段、是否完成和失败原因。
 - 如果用户问“是否转发到其他 agent”，必须检查 `/home/arbops/.hermes/pipeline-runs/<run-id>/command-runs/*.json` 和 profile sessions，而不是只看状态卡。
 
 ## 安全边界

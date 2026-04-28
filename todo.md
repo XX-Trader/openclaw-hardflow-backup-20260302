@@ -85,7 +85,7 @@
 - [x] [🟡 P1] 将需求/方案/代码审查升级为两条独立 reviewer command report 门禁
 - [x] [🟡 P1] 修复 nofx Discord 工作流自修循环：工作流自身修复不再套进同一条 pipeline，review 失败补丁自动回滚并隔离旧业务漂移
 - [x] [🟡 P1] 将 nofx Discord profile 高权限工作流维护模板同步到 live profile，并在无活跃 pipeline 时重启 gateway 验证
-- [ ] [🟡 P1] 将 nofx Smart Arb live bridge 继续升级为宿主 native agent dispatch，并在 Task Center 记录独立 agent session/run id
+- [ ] [🟡 P1] 将 specified_agent/session-run-id 批次推送并安装到 nofx live runtime，完成远端 `smart-arb-pipeline --route-choice specified_agent --assignee <agent>` smoke
 - [x] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
 

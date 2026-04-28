@@ -48,6 +48,11 @@ OPS_SCRIPT_MAP = {
     "smart_arb_live_bridge.py": "scripts/openclaw-ops/smart_arb_live_bridge.py",
     "smart_arb_pipeline_entry.py": "scripts/openclaw-ops/smart_arb_pipeline_entry.py",
 }
+OPS_SHARED_SCRIPT_MAP = {
+    "chat_output.py": "scripts/openclaw-ops/shared/chat_output.py",
+    "utf8_runtime.py": "scripts/openclaw-ops/shared/utf8_runtime.py",
+    "workflow_views.py": "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
+}
 
 
 @dataclass(frozen=True)
@@ -308,6 +313,16 @@ def install_runtime(config: InstallConfig) -> InstallReport:
         if copy_file(src, dst, dry_run=config.dry_run):
             report.changed = True
         if ensure_executable(dst, dry_run=config.dry_run):
+            report.changed = True
+        report.installed_ops_scripts.append(dst_name)
+
+    for dst_name, rel_src in OPS_SHARED_SCRIPT_MAP.items():
+        src = config.repo_root / rel_src
+        dst = config.ops_dir / dst_name
+        if not src.exists():
+            report.missing_sources.append(str(src))
+            continue
+        if copy_file(src, dst, dry_run=config.dry_run):
             report.changed = True
         report.installed_ops_scripts.append(dst_name)
 
