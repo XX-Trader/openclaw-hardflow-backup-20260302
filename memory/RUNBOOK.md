@@ -256,14 +256,14 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 - bridge 会在前序 artifact 注入后续 prompt 前脱敏常见 header、assignment、长 token 和 GitHub PAT / OpenAI `sk-` / Slack / HF / Google / AWS access key 等短格式 secret；排障时不要把原始 token 放进 artifact。
 - 排障时优先看最终状态卡，再看原 run 与 `-repair<n>` run 各自的 `command-runs/*.json`，以及原 run 下的 `auto_repair_context_<n>.md`。
 
-### 2026-04-28 - DeliveryPlan 目标路径过滤
+### 2026-04-28 - DeliveryPlan 目标路径过滤与异常反馈
 
 类型：runbook
 范围：`pipeline_runner.py`、`delivery_plan.json`、`solution_review`
-事实：`delivery_plan.json.target_files` 不再把低信任上下文里的 workflow 控制面路径当成业务修改目标。可信顺序是：用户原始需求 / 自动修复上下文中的显式路径优先；`requirements_review`、`research_report`、`project_memory_context` 只作为低信任补充，且必须过滤 `.workflow/`、`agent-workspaces/`、`command-runs/`、`task-center/`、`.hermes/`、`.openclaw/`、`.codex/`、`auth-profiles/`、`credential-imports/`、`sessions/` 和项目记忆控制文件名。没有可靠业务文件时保持 `discovery_required=true`，由实现阶段先定位，不猜测编辑控制面。
-证据：`pipeline_runner.py` 新增低信任路径过滤 helper；回归测试覆盖简单任务不再把 `API_REGISTRY.json`、`.workflow` 或 `.hermes` 放入 `target_files`，并覆盖 review context 中同时出现真实实现文件和控制面路径时只保留真实实现文件。
-最后验证：2026-04-28 17:25 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
-复用建议：方案评审卡在敏感路径时不要放松 reviewer，先看 `target_files` 的来源；如果路径来自 `project_memory_context` 或 runtime host，只能作为检索/证据路径，不应作为修改目标。
+事实：`delivery_plan.json.target_files` 不再把低信任上下文里的 workflow 控制面路径当成业务修改目标。可信顺序是：用户原始需求 / 自动修复上下文中的显式路径优先；`requirements_review`、`research_report`、`project_memory_context` 只作为低信任补充，且必须过滤 `.workflow/`、`agent-workspaces/`、`command-runs/`、`task-center/`、`.hermes/`、`.openclaw/`、`.codex/`、`auth-profiles/`、`credential-imports/`、`sessions/` 和项目记忆控制文件名。没有可靠业务文件时保持 `discovery_required=true`，由实现阶段先定位，不猜测编辑控制面。被过滤的异常候选会写入 `plan_findings.filtered_target_candidates`，并在 `solution.md` 的 `Filtered Target Candidates` 段展示 path/source/reason，避免 `solution_review` 只能看到空目标而不知道过滤原因。
+证据：`pipeline_runner.py` 新增低信任路径过滤 helper、候选拒绝原因记录和 solution 展示；回归测试覆盖简单任务不再把 `API_REGISTRY.json`、`.workflow` 或 `.hermes` 放入 `target_files`，同时记录 `project_memory_control_file` / `negated_context` 等过滤原因；review context 中同时出现真实实现文件和控制面路径时只保留真实实现文件，并展示被排除候选。
+最后验证：2026-04-28 18:29 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
+复用建议：方案评审卡在敏感路径时不要放松 reviewer，先看 `target_files` 的来源和 `plan_findings.filtered_target_candidates`；如果路径来自 `project_memory_context`、runtime host 或否定上下文，只能作为检索/证据路径，不应作为修改目标。
 
 ### 2026-04-28 - DeliveryPlan 结构化方案契约
 

@@ -9,7 +9,7 @@
 > 2026-04-27 治理增强：流水线在验收和记忆回写通过后可进入 `git_publish` 受控发布阶段，提交说明/备注必须使用中文；`source_registry_watcher` 与仓库精简巡检均调整为每 2 天一次，仓库精简由 `coordinator` 触发只读候选报告并进入人工确认。
 > 2026-04-27 nofx 运行态口径：服务器 live 入口是 `arbitrageagent` 与 `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`；执行链路是 `/home/arbops/.local/bin/smart-arb-pipeline -> /home/arbops/.hermes/ops/pipeline_runner.py`；`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是 workflow 阶段 owner / workspace 标签，不是 nofx 上 14 个常驻 agent。
 > 2026-04-27 持续推进补齐：新增 `backlog_runner.py` 与 `backlog_runner_30m` cron。到期 TODO 会先按风险分流：低风险直接进入可调度队列，高风险仍停在 `human_inbox.py`；runner 只选择低风险、无需人工确认、无需澄清的 pending 待办，或带允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进。
-> 2026-04-28 方案契约收敛：`delivery_plan.json.target_files` 只把用户原始需求/修复上下文中的显式路径作为高可信目标；review/research/project memory 仅作低信任补充，并过滤 `.workflow`、runtime host、Task Center、agent workspace、command report 和项目记忆控制文件，简单任务找不到可靠业务文件时保持 discovery required，不猜测编辑 workflow 宿主。
+> 2026-04-28 方案契约收敛：`delivery_plan.json.target_files` 只把用户原始需求/修复上下文中的显式路径作为高可信目标；review/research/project memory 仅作低信任补充，并过滤 `.workflow`、runtime host、Task Center、agent workspace、command report 和项目记忆控制文件。简单任务找不到可靠业务文件时保持 discovery required，不猜测编辑 workflow 宿主；被过滤的异常候选会进入 `plan_findings.filtered_target_candidates` 并展示到 `solution.md`。
 
 ## 功能概述
 

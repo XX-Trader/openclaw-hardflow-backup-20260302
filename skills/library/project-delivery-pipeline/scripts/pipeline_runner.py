@@ -81,7 +81,10 @@ REVIEWER_ROLE_OUTPUT_RE = re.compile(
     r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:\s*([A-Za-z0-9_.-]+)\s*$"
 )
 PATH_TOKEN_RE = re.compile(
-    r"(?:`([^`\r\n]+)`)|(?:(?<![A-Za-z0-9_./\\])([.]?[A-Za-z0-9_][A-Za-z0-9_.\-/\\]*"
+    r"(?:`([^`\r\n]+)`)|"
+    r"(?:(?<![A-Za-z0-9_./\\])((?:[A-Za-z]:[\\/]|/(?!/))[A-Za-z0-9_.\-/\\]*"
+    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))|"
+    r"(?:(?<![A-Za-z0-9_./\\])([.]?[A-Za-z0-9_][A-Za-z0-9_.\-/\\]*"
     r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))"
 )
 PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)$)", re.IGNORECASE)
@@ -137,6 +140,7 @@ CONTROL_PLANE_PATH_PARTS = (
     "/credential-imports/",
     "/sessions/",
 )
+MAX_FILTERED_TARGET_FINDINGS = 24
 
 
 class PipelineError(RuntimeError):
@@ -753,27 +757,50 @@ def render_resolved_requirement(requirement: str, artifacts: dict[str, str]) -> 
     )
 
 
-def clean_plan_path(value: str) -> str:
+def normalize_plan_path_token(value: str) -> str:
     path = str(value or "").strip().strip(",;:()[]{}<>\"'").rstrip(".")
     if not path:
         return ""
     path = path.replace("\\", "/")
+    return path
+
+
+def plan_path_rejection_reason(path: str) -> str:
+    if not path:
+        return "empty_path"
     name = Path(path).name
     if name in PIPELINE_ARTIFACT_FILES:
-        return ""
+        return "pipeline_artifact_file"
     if not PLAN_PATH_RE.search(path):
-        return ""
-    if path.startswith(("/tmp/", "/home/", "C:/", "c:/")):
+        return "not_repository_plan_path"
+    if path.startswith(("/tmp/", "/home/")) or re.match(r"^[A-Za-z]:/", path):
+        return "external_or_runtime_absolute_path"
+    return ""
+
+
+def clean_plan_path(value: str) -> str:
+    path = normalize_plan_path_token(value)
+    if plan_path_rejection_reason(path):
         return ""
     return path
+
+
+def iter_plan_path_tokens(text: str) -> list[tuple[str, str, str]]:
+    candidates: list[tuple[str, str, str]] = []
+    for match in PATH_TOKEN_RE.finditer(str(text or "")):
+        raw = next((group for group in match.groups() if group), "")
+        path = normalize_plan_path_token(raw)
+        candidates.append((raw, path, plan_path_rejection_reason(path)))
+    return candidates
 
 
 def extract_plan_paths(*texts: str, limit: int = 24) -> list[str]:
     paths: list[str] = []
     seen: set[str] = set()
     for text in texts:
-        for match in PATH_TOKEN_RE.finditer(str(text or "")):
-            candidate = clean_plan_path(match.group(1) or match.group(2) or "")
+        for _raw, candidate, rejection_reason in iter_plan_path_tokens(text):
+            if rejection_reason:
+                continue
             if not candidate or candidate in seen:
                 continue
             seen.add(candidate)
@@ -791,25 +818,62 @@ def is_negated_path_context(text: str) -> bool:
     return bool(NEGATED_PATH_CONTEXT_RE.search(str(text or "")))
 
 
-def is_control_plane_plan_path(path: str) -> bool:
+def control_plane_plan_path_reason(path: str) -> str:
     normalized = str(path or "").replace("\\", "/").strip()
     if not normalized:
-        return True
+        return "empty_path"
     trimmed = normalized
     while trimmed.startswith("./"):
         trimmed = trimmed[2:]
     trimmed = trimmed.lstrip("/")
     name = Path(trimmed).name
-    if name in PIPELINE_ARTIFACT_FILES or name in PROJECT_MEMORY_FILES:
-        return True
+    if name in PIPELINE_ARTIFACT_FILES:
+        return "pipeline_artifact_file"
+    if name in PROJECT_MEMORY_FILES:
+        return "project_memory_control_file"
     if any(trimmed.startswith(prefix) for prefix in CONTROL_PLANE_PATH_PREFIXES):
-        return True
+        return "workflow_or_runtime_control_path"
     wrapped = f"/{trimmed.strip('/')}/"
-    return any(part in wrapped for part in CONTROL_PLANE_PATH_PARTS)
+    if any(part in wrapped for part in CONTROL_PLANE_PATH_PARTS):
+        return "workflow_or_runtime_control_path"
+    return ""
+
+
+def is_control_plane_plan_path(path: str) -> bool:
+    return bool(control_plane_plan_path_reason(path))
 
 
 def allows_control_plane_targets(text: str) -> bool:
     return bool(CONTROL_PLANE_TARGET_REQUEST_RE.search(str(text or "")))
+
+
+def add_filtered_target_finding(
+    findings: list[dict[str, str]] | None,
+    path: str,
+    source: str,
+    reason: str,
+    segment: str,
+) -> None:
+    if findings is None or not path or reason in {"", "empty_path", "not_repository_plan_path", "pipeline_artifact_file"}:
+        return
+    if len(findings) >= MAX_FILTERED_TARGET_FINDINGS:
+        return
+    normalized_path = normalize_plan_path_token(path)
+    for item in findings:
+        if (
+            item.get("path") == normalized_path
+            and item.get("source") == source
+            and item.get("reason") == reason
+        ):
+            return
+    findings.append(
+        {
+            "path": clip_text(normalized_path, 240),
+            "source": source,
+            "reason": reason,
+            "context": clip_text(" ".join(str(segment or "").split()), 220),
+        }
+    )
 
 
 def contextual_plan_paths(
@@ -817,17 +881,47 @@ def contextual_plan_paths(
     limit: int = 24,
     filter_control_plane: bool = False,
     allow_control_plane: bool = False,
+    filtered_findings: list[dict[str, str]] | None = None,
+    source_label: str = "unknown",
 ) -> list[str]:
     paths: list[str] = []
     seen: set[str] = set()
     for text in texts:
         for segment in path_context_segments(text):
+            segment_paths: list[str] = []
+            for _raw, path, rejection_reason in iter_plan_path_tokens(segment):
+                if rejection_reason:
+                    add_filtered_target_finding(
+                        filtered_findings,
+                        path,
+                        source_label,
+                        rejection_reason,
+                        segment,
+                    )
+                    continue
+                segment_paths.append(path)
             if is_negated_path_context(segment):
+                for path in segment_paths:
+                    add_filtered_target_finding(
+                        filtered_findings,
+                        path,
+                        source_label,
+                        "negated_context",
+                        segment,
+                    )
                 continue
-            for path in extract_plan_paths(segment, limit=limit * 2):
+            for path in segment_paths:
                 if path in seen:
                     continue
-                if filter_control_plane and is_control_plane_plan_path(path) and not allow_control_plane:
+                control_reason = control_plane_plan_path_reason(path)
+                if filter_control_plane and control_reason and not allow_control_plane:
+                    add_filtered_target_finding(
+                        filtered_findings,
+                        path,
+                        source_label,
+                        control_reason,
+                        segment,
+                    )
                     continue
                 seen.add(path)
                 paths.append(path)
@@ -836,8 +930,19 @@ def contextual_plan_paths(
     return paths
 
 
-def low_trust_plan_paths(*texts: str, limit: int = 24) -> list[str]:
-    return contextual_plan_paths(*texts, limit=limit, filter_control_plane=True)
+def low_trust_plan_paths(
+    *texts: str,
+    limit: int = 24,
+    filtered_findings: list[dict[str, str]] | None = None,
+    source_label: str = "low_trust_context",
+) -> list[str]:
+    return contextual_plan_paths(
+        *texts,
+        limit=limit,
+        filter_control_plane=True,
+        filtered_findings=filtered_findings,
+        source_label=source_label,
+    )
 
 
 def merge_plan_paths(*path_groups: list[str], limit: int = 24) -> list[str]:
@@ -1019,16 +1124,28 @@ def compile_delivery_plan(
     ) or requirements_review
     task_type = infer_task_type(classification_text)
     allow_control_targets = allows_control_plane_targets("\n".join([original_requirement_full, repair_context]))
+    filtered_target_candidates: list[dict[str, str]] = []
     explicit_target_paths = contextual_plan_paths(
         original_requirement_full,
         repair_context,
         filter_control_plane=True,
         allow_control_plane=allow_control_targets,
+        filtered_findings=filtered_target_candidates,
+        source_label="original_requirement_or_repair_context",
     )
-    review_target_paths = low_trust_plan_paths(requirements_review)
+    review_target_paths = low_trust_plan_paths(
+        requirements_review,
+        filtered_findings=filtered_target_candidates,
+        source_label="requirements_review",
+    )
     target_paths = merge_plan_paths(explicit_target_paths, review_target_paths)
     if not target_paths:
-        target_paths = low_trust_plan_paths(research, memory)
+        target_paths = low_trust_plan_paths(
+            research,
+            memory,
+            filtered_findings=filtered_target_candidates,
+            source_label="research_or_project_memory",
+        )
     target_files = [
         {
             "path": path,
@@ -1127,6 +1244,14 @@ def compile_delivery_plan(
         "plan_findings": {
             "discovery_required": discovery_required,
             "repair_context_present": bool(repair_context),
+            "target_source_policy": (
+                "Target files come from the original requirement or repair context first, "
+                "then requirements review, then low-trust research/project memory only as fallback. "
+                "Pipeline artifacts are ignored. Negated paths, project memory control files, runtime state, "
+                "and workflow host paths are filtered and reported."
+            ),
+            "filtered_target_candidates": filtered_target_candidates,
+            "abnormal_feedback_required": bool(filtered_target_candidates),
         },
     }
 
@@ -1138,6 +1263,12 @@ def render_solution(delivery_plan: dict[str, Any]) -> str:
     human_blockers = delivery_plan.get("human_blockers") if isinstance(delivery_plan.get("human_blockers"), list) else []
     out_of_scope = delivery_plan.get("out_of_scope") if isinstance(delivery_plan.get("out_of_scope"), list) else []
     split_policy = delivery_plan.get("task_split_policy") if isinstance(delivery_plan.get("task_split_policy"), dict) else {}
+    plan_findings = delivery_plan.get("plan_findings") if isinstance(delivery_plan.get("plan_findings"), dict) else {}
+    filtered_target_candidates = (
+        plan_findings.get("filtered_target_candidates")
+        if isinstance(plan_findings.get("filtered_target_candidates"), list)
+        else []
+    )
     return "\n".join(
         [
             "# Solution Package",
@@ -1171,6 +1302,16 @@ def render_solution(delivery_plan: dict[str, Any]) -> str:
             "",
             "## Target Files",
             render_markdown_items([item.get("path", "") for item in target_files if isinstance(item, dict)] or ["Discovery required before editing; do not guess."]),
+            "",
+            "## Filtered Target Candidates",
+            render_markdown_items(
+                [
+                    f"{item.get('path', '')}: {item.get('reason', '')} (source: {item.get('source', '')})"
+                    for item in filtered_target_candidates
+                    if isinstance(item, dict)
+                ]
+                or ["No filtered target candidates."]
+            ),
             "",
             "## Implementation Steps",
             render_markdown_items([item.get("description", "") for item in implementation_steps if isinstance(item, dict)]),

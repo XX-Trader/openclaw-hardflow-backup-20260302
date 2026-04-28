@@ -309,13 +309,20 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             )
 
             delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
             target_paths = [item["path"] for item in delivery_plan["target_files"]]
+            filtered_candidates = delivery_plan["plan_findings"]["filtered_target_candidates"]
 
             self.assertEqual([], target_paths)
             self.assertTrue(delivery_plan["plan_findings"]["discovery_required"])
+            self.assertTrue(delivery_plan["plan_findings"]["abnormal_feedback_required"])
             self.assertNotIn("API_REGISTRY.json", target_paths)
             self.assertNotIn("SOURCE_REGISTRY.json", target_paths)
             self.assertFalse(any(".workflow" in path or ".hermes" in path for path in target_paths))
+            self.assertTrue(any(item["path"] == "API_REGISTRY.json" for item in filtered_candidates))
+            self.assertTrue(any(item["reason"] == "project_memory_control_file" for item in filtered_candidates))
+            self.assertIn("## Filtered Target Candidates", solution)
+            self.assertIn("API_REGISTRY.json: project_memory_control_file", solution)
 
     def test_delivery_plan_skips_negated_control_paths_in_original_requirement(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -333,10 +340,22 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             )
 
             delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
             target_paths = [item["path"] for item in delivery_plan["target_files"]]
+            filtered_candidates = delivery_plan["plan_findings"]["filtered_target_candidates"]
 
             self.assertEqual([], target_paths)
             self.assertTrue(delivery_plan["plan_findings"]["discovery_required"])
+            self.assertIn(
+                {
+                    "path": ".workflow/pipeline-runs/demo/retry.py",
+                    "source": "original_requirement_or_repair_context",
+                    "reason": "negated_context",
+                    "context": "Do not edit .workflow/pipeline-runs/demo/retry.py",
+                },
+                filtered_candidates,
+            )
+            self.assertIn(".workflow/pipeline-runs/demo/retry.py: negated_context", solution)
 
     def test_delivery_plan_reads_explicit_target_from_multiline_original_requirement(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -359,6 +378,36 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 ["scripts/openclaw-ops/smart_arb_pipeline_entry.py"],
                 [item["path"] for item in delivery_plan["target_files"]],
             )
+            self.assertEqual([], delivery_plan["plan_findings"]["filtered_target_candidates"])
+
+    def test_delivery_plan_filters_windows_absolute_target_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Target file: E:/repo/src/app.py，把状态卡文案改短。",
+                    workspace_root=Path(tmp),
+                    run_id="windows-absolute-target-path",
+                    dry_run=True,
+                )
+            )
+
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
+            filtered_candidates = delivery_plan["plan_findings"]["filtered_target_candidates"]
+
+            self.assertEqual([], [item["path"] for item in delivery_plan["target_files"]])
+            self.assertTrue(delivery_plan["plan_findings"]["discovery_required"])
+            self.assertTrue(delivery_plan["plan_findings"]["abnormal_feedback_required"])
+            self.assertTrue(
+                any(
+                    item["path"] == "E:/repo/src/app.py"
+                    and item["reason"] == "external_or_runtime_absolute_path"
+                    and item["source"] == "original_requirement_or_repair_context"
+                    for item in filtered_candidates
+                )
+            )
+            self.assertIn("E:/repo/src/app.py: external_or_runtime_absolute_path", solution)
 
     def test_delivery_plan_filters_control_paths_from_review_context(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -395,6 +444,35 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual(
                 ["scripts/openclaw-ops/smart_arb_pipeline_entry.py"],
                 [item["path"] for item in delivery_plan["target_files"]],
+            )
+            filtered_candidates = delivery_plan["plan_findings"]["filtered_target_candidates"]
+            solution = _mod.render_solution(delivery_plan)
+            self.assertTrue(
+                any(
+                    item["path"] == ".workflow/pipeline-runs/demo/retry.py"
+                    and item["reason"] == "negated_context"
+                    and item["source"] == "requirements_review"
+                    for item in filtered_candidates
+                )
+            )
+            self.assertTrue(
+                any(
+                    item["path"] == "/home/arbops/.hermes/profiles/spreadagent/sessions/session_1.json"
+                    and item["reason"] == "external_or_runtime_absolute_path"
+                    and item["source"] == "requirements_review"
+                    for item in filtered_candidates
+                )
+            )
+            self.assertIn(
+                "/home/arbops/.hermes/profiles/spreadagent/sessions/session_1.json: external_or_runtime_absolute_path",
+                solution,
+            )
+            self.assertTrue(
+                any(
+                    item["path"] == ".workflow/project-memory/demo/API_REGISTRY.json"
+                    and item["reason"] == "negated_context"
+                    for item in filtered_candidates
+                )
             )
 
     def test_delivery_plan_splits_heavy_multi_item_requirement(self):

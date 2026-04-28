@@ -14,7 +14,7 @@
 
 - [x] [2026-04-28] **DeliveryPlan 目标路径收敛**
   - 修复简单任务生成 `delivery_plan.json` 时把 `project_memory_context` 里的 `.workflow`、`.hermes`、项目记忆控制文件等当成业务目标文件的问题。
-  - `target_files` 现在优先使用用户原始需求/修复上下文中的显式路径；review/research/memory 只作为低信任补充并过滤控制面路径。找不到可靠业务文件时保持 `discovery_required=true`，不猜测编辑 workflow 宿主。
+  - `target_files` 现在优先使用用户原始需求/修复上下文中的显式路径；review/research/memory 只作为低信任补充并过滤控制面路径。找不到可靠业务文件时保持 `discovery_required=true`，不猜测编辑 workflow 宿主；被过滤的异常候选会写入 `plan_findings.filtered_target_candidates` 并展示在 `solution.md`，方便 `solution_review` 判断为什么没有进入业务目标。
   - `human_blockers` 改为 stop-boundary 文案，避免 `revise_solution` 自动回流被误判为正向凭证/资金请求。
   - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
 

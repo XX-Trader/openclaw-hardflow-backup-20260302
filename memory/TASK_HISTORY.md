@@ -9,14 +9,14 @@
 最后验证：2026-04-28 17:44
 复用建议：本机 WSL 多 profile 登录排障时，先查 `hermes -p <profile> status` 里显示的 profile 级 auth file，不要只查 `/home/ubuntu/.codex/auth.json` 或 Windows `C:\Users\Administrator\.codex\auth.json`。新增 profile 若复用同一 Codex 账号，可从已登录 profile 复制 `auth.json` 并设置 `chmod 600`，然后重启对应 tmux gateway。
 
-## 2026-04-28 - DeliveryPlan 目标路径收敛与 solution_review 卡点修复
+## 2026-04-28 - DeliveryPlan 目标路径收敛与异常反馈
 
 类型：bugfix
 范围：`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py`、`tests/scripts_openclaw_ops/test_smart_arb_pipeline_entry.py`
-事实：修复简单任务在 `solution_package` / `delivery_plan.json` 生成时被扩散到 workflow 宿主和控制面路径的问题。`target_files` 现在优先信任用户原始需求与修复上下文；`requirements_review`、`research_report` 和 `project_memory_context` 只作为低信任补充，并过滤 `.workflow/`、`agent-workspaces/`、`command-runs/`、`task-center/`、`.hermes/`、`.openclaw/`、`.codex/`、`auth-profiles/`、`credential-imports/`、`sessions/` 以及项目记忆控制文件名。`human_blockers` 文案从 `Requires credentials...` 收敛为 stop-boundary 表达，避免 `revise_solution` 自动回流被风险扫描误判为正向凭证/资金请求。
-证据：新增 `is_control_plane_plan_path()`、`low_trust_plan_paths()`、`merge_plan_paths()`；新增回归测试覆盖简单任务不把 `API_REGISTRY.json` / `.workflow` / `.hermes` 作为目标文件、review context 中保留真实实现文件但过滤控制面路径、生成的方案边界文案不阻断 `revise_solution`。
-最后验证：2026-04-28 17:25 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
-复用建议：以后 `solution_review` 因方案“触碰 workflow 宿主 / 敏感路径 / 控制面路径”卡住时，先查 `delivery_plan.json.target_files` 是否来自低信任 context。用户没有明确点名文件时，宁可让 `discovery_required=true`，也不要把项目记忆、runtime host 或 pipeline artifact 路径当成业务修改目标。
+事实：修复简单任务在 `solution_package` / `delivery_plan.json` 生成时被扩散到 workflow 宿主和控制面路径的问题，并补齐异常候选的可观测反馈。`target_files` 现在优先信任用户原始需求与修复上下文；`requirements_review`、`research_report` 和 `project_memory_context` 只作为低信任补充，并过滤 `.workflow/`、`agent-workspaces/`、`command-runs/`、`task-center/`、`.hermes/`、`.openclaw/`、`.codex/`、`auth-profiles/`、`credential-imports/`、`sessions/` 以及项目记忆控制文件名。被过滤的异常候选写入 `plan_findings.filtered_target_candidates`，`solution.md` 同步展示 path/source/reason。`human_blockers` 文案从 `Requires credentials...` 收敛为 stop-boundary 表达，避免 `revise_solution` 自动回流被风险扫描误判为正向凭证/资金请求。
+证据：新增 `control_plane_plan_path_reason()`、`low_trust_plan_paths()`、`merge_plan_paths()`、候选拒绝原因记录和 `Filtered Target Candidates` 渲染；新增回归测试覆盖简单任务不把 `API_REGISTRY.json` / `.workflow` / `.hermes` 作为目标文件但会反馈 `project_memory_control_file`，review context 中保留真实实现文件但过滤并反馈控制面路径，否定 `.workflow` 路径反馈 `negated_context`，生成的方案边界文案不阻断 `revise_solution`。
+最后验证：2026-04-28 18:29 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 72 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过。
+复用建议：以后 `solution_review` 因方案“触碰 workflow 宿主 / 敏感路径 / 控制面路径”卡住时，先查 `delivery_plan.json.target_files` 和 `plan_findings.filtered_target_candidates`。用户没有明确点名文件时，宁可让 `discovery_required=true`，也不要把项目记忆、runtime host 或 pipeline artifact 路径当成业务修改目标。
 
 ## 2026-04-28 - nofx profile 普通沟通/独立协作边界上线
 
