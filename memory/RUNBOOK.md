@@ -12,6 +12,15 @@
 - Task Center DB：`/home/arbops/.hermes/ops/task-center/task_center.db`
 - nofx profile SOUL 模板：`config/nofx-hermes-profiles/<profile>/SOUL.md`
 
+## 2026-04-28 - Discord 全任务路线选择
+
+类型：runbook
+范围：nofx Discord profile `SOUL.md`、`smart-arb-pipeline` 入口、Task Center/backlog runner、SmartMultiPlatformArbitrage 安全仓库同步
+事实：连接 Discord 的 Hermes profile 是 nofx Discord 入口的最高权限调度入口，但最高权限不等于跳过人工路线选择。所有 Discord 新任务都必须先发“执行链路选择”卡，固定选项为 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`，并以 `回答状态: 等待人工选择` 结束。只读状态查询、简单解释、监控查询、“不要走工作流”、安全仓库同步、业务执行、TODO 推进和 hardflow workflow/runtime/profile 自修都必须先选择；用户选择 `direct_run` 后，当前 Discord profile 才可以作为最高权限 operator 直接处理。只有 `coding_workflow` / `todo_auto_candidate` 会启动 `smart-arb-pipeline`。
+证据：2026-04-28 23:23 Discord run `discord-spreadagent-20260428T152135225120Z` 没有询问用户，直接进入 `smart-arb-pipeline` 并卡在 `solution_review`；artifact 显示旧 profile 仍把普通任务导向 pipeline，且只读/普通沟通存在直答例外。已将两个 profile 模板改为“收到任何 Discord 新任务，不要先执行、不要先启动 pipeline、不要直接做只读查询或普通沟通”，并增加模板测试覆盖。
+最后验证：2026-04-28 23:54，nofx live profile 已同步，arbitrageagent / spreadagent gateway 均 `running/connected`
+复用建议：排查“为什么 Discord 没问我”时，先查 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 前 20 行是否包含“所有来自 Discord 的新任务”“最高权限 operator”“回答状态: 等待人工选择”。如果只改了仓库模板没有同步 live profile 或没重启 gateway，Discord 仍会沿用旧规则。
+
 排障顺序：
 
 1. 查 `tmux ls`，确认 `hermes-tg`、`hermes-discord-arbitrage`、`hermes-discord-spread`、`smart-arb-api` 是否存在。
@@ -130,17 +139,14 @@
    - `cat /home/arbops/.hermes/profiles/<profile>/gateway_state.json`
    - 读取 `SOUL.md` 前 10 行确认中文不是问号乱码。
 
-### 2026-04-28 - 普通沟通/独立协作三分流
+### 2026-04-28 - 普通沟通/独立协作三分流（已被全任务路线选择取代）
 
 类型：runbook
 范围：nofx `arbitrageagent` / `spreadagent` Discord profile SOUL、`smart-arb-pipeline` 入口边界
-事实：profile SOUL 现在按三类请求分流：
-1. 普通沟通/独立协作：用户明确说“不要走工作流”“不走 workflow”“绕过工作流”“可以绕过”“别进 pipeline”“直接沟通”“先讨论”“先自己开发”“这次不用自动流程”等时，不启动 `smart-arb-pipeline`，只允许直接沟通、澄清、读取 memory/docs/API/logs/监控、给状态结论、给方案或说明下一步。
-2. 正常项目执行：继续做、依次完成、修复、实现、部署、测试一遍、把任务跑完、上传代码、改配置、重启服务、整理并落文档等执行类请求，默认进入 live coordinator pipeline，不在 profile 会话里直接改代码、部署、装依赖或提交 Git。
-3. 工作流自身修复：用户要求不走工作流且目标是修 `smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、Hermes profile/SOUL、dual-review、auto-repair 或 git_publish 门禁时，不启动自修 pipeline，只做只读诊断并提示外部 operator/Codex 经 SSH 修复。
+事实：该三分流是 2026-04-28 17:01 的旧口径，已被 23:45 的“所有 Discord 新任务先执行链路选择”取代。现在“不走工作流 / 直接沟通 / 先讨论 / 先自己开发”也不能直接执行；如果不是上一张选择卡的明确回复，必须先发执行链路选择卡。选择 `direct_run` 后，当前 Discord profile 才直接沟通、只读查询或做低风险直接操作；选择 `coding_workflow` / `todo_auto_candidate` 后才启动 pipeline。
 证据：2026-04-28 17:01 已把模板和 live profile 同步到 nofx，并重启两个 gateway；`arbitrageagent` / `spreadagent` 均 `gateway_state=running` 且 Discord `connected`。
-最后验证：2026-04-28 17:01
-复用建议：不要把所有“不走工作流”都归为自修；普通沟通可以直接答，真实修改必须外部 operator 或重新进 pipeline。
+最后验证：2026-04-28 23:45
+复用建议：排查当前行为时优先使用本 RUNBOOK 顶部“Discord 全任务路线选择”条目，不再按三分流旧口径判断。
 
 ## nofx live verification 门禁
 
@@ -267,7 +273,7 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 2. `阶段命令状态` 从 `command-runs/*.json` 读取 stage、agent、returncode 和证据文件，默认把证据文件显示为 20 字以内中文短说明；失败时才追加脱敏摘要。
 3. `阻塞原因` 展示失败阶段、stage detail、脱敏命令摘要或 artifact 摘要，不直接贴原始命令输出。
 4. `自动修复判断` 记录是否回流、回流次数、风险分类和每次结果。
-5. 最终 `# nofx 任务执行状态` 必须显示 `回答状态: 已回答完毕` 或 `回答状态: 未回答完毕...`。只读直接回复不走 pipeline 时，profile SOUL 要求末尾补 `回答状态: 已回答完毕`；长只读查询可先发 `回答状态: 正在回复/查询中`。
+5. 最终 `# nofx 任务执行状态` 必须显示 `回答状态: 已回答完毕` 或 `回答状态: 未回答完毕...`。如果用户选择 `direct_run`，profile SOUL 要求直接回复末尾补 `回答状态: 已回答完毕`；长直接处理可先发 `回答状态: 正在回复/查询中`。
 
 默认自动修复策略：
 

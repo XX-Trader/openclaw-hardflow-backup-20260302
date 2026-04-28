@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-04-28 23:45 - nofx Discord 全任务路线选择与最高权限入口
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302/config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways、SmartMultiPlatformArbitrage 安全同步
+事实：已把 nofx Discord profile 规则从“普通执行类任务先选择、只读可直接处理”收紧为“所有 Discord 新任务先执行链路选择”。连接 Discord 的 profile 被定义为最高权限调度入口，负责路线选择、推荐理由、执行调度、状态回传和最终口径；只读查询、简单解释、方案讨论、监控查询、“不要走工作流”、安全仓库同步、业务执行、TODO 推进和 workflow/runtime/profile 自修都不能绕过选择。只有用户明确选择 `coding_workflow` / `todo_auto_candidate` 时才启动 `smart-arb-pipeline`；选择 `direct_run` 时由当前 Discord profile 作为最高权限 operator 直接处理，但仍受凭证、生产、资金、真实交易、force push 和删除生产数据等安全边界约束。本轮同时已按用户要求在 nofx 将 SmartMultiPlatformArbitrage 从 `df6f2c7` fast-forward 到 `00f3690a542bd65f2b16b9d8ae07c5df900c8dba`。
+证据：本地 `test_nofx_profile_templates` 增加断言“所有来自 Discord 的新任务”“不要直接做只读查询或普通沟通”“Discord profile 是本入口的最高权限 operator”，并拒绝旧的只读直答口径。已同步两个仓库 profile 模板和 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，live 备份后缀为 `all-route-choice-20260428T1545Z`；live `SOUL.md` 命中“所有来自 Discord 的新任务”“收到任何 Discord 新任务”“最高权限 operator”“回答状态: 等待人工选择”，旧规则 grep 未命中；重启后 arbitrageagent PID `1342103`、spreadagent PID `1342107`，两者 `gateway_state=running` 且 Discord `connected`。SmartMultiPlatformArbitrage 远端同步前 `## main...origin/main [behind 1]` 且工作树 clean，执行 `git fetch origin main` 与 `git pull --ff-only origin main` 后 `HEAD...origin/main=0 0`，`HEAD` 与 `origin/main` 均为 `00f3690a542bd65f2b16b9d8ae07c5df900c8dba`；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`。
+最后验证：2026-04-28 23:54
+复用建议：以后 Discord 里任何新任务都先看 live `SOUL.md` 是否含“收到任何 Discord 新任务”和“最高权限 operator”。若没有询问用户，优先检查 profile 模板是否同步到 `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 并重启 gateway；不要只修 `human_inbox` 或 backlog runner。
+
 ## 2026-04-28 23:15 - nofx 安装 d2e530b7 并同步高权限 profile
 
 类型：deploy

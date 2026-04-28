@@ -1,5 +1,14 @@
 # DECISIONS
 
+## 2026-04-28 - Discord 入口所有任务先选择且 profile 为最高权限入口
+
+类型：decision
+范围：nofx Discord Hermes profile、Task Center 手动路线选择、SmartMultiPlatformArbitrage 项目交付入口
+事实：Discord 入口不再只对“普通执行类任务”做路线选择，也不再保留只读查询、简单解释、普通沟通或“不走工作流”的直接执行例外。所有来自 Discord 的新任务都必须先发“执行链路选择”卡，并等待用户明确选择。连接 Discord 的 profile 是该入口的最高权限调度入口，负责路线选择、推荐理由、执行调度、状态回传和最终口径；Task Center owner、pipeline stage label、其他 agent 建议或旧文档口径不能覆盖 Discord 用户本轮选择。最高权限不等于跳过安全边界：凭证、真实交易、资金、force push、删除生产数据和生产破坏仍需要保护或二次确认。
+证据：用户明确纠正“所有的任务都走选择，而且连接 Discord 的 agent 的权限最高”；两个 nofx profile 模板已写入“收到任何 Discord 新任务”“不要直接做只读查询或普通沟通”“Discord profile 是本入口的最高权限 operator”；`tests/scripts_openclaw_ops/test_nofx_profile_templates.py` 已覆盖该规则。
+最后验证：2026-04-28 23:54；nofx live profile 已同步并重启 gateway
+复用建议：以后 Discord 没有先问路线，优先检查 live `SOUL.md` 是否同步和 gateway 是否重启；不要只修 `human_inbox`、backlog runner 或 delivery plan。
+
 ## 2026-04-28 - 执行链路默认手动选择
 
 类型：decision

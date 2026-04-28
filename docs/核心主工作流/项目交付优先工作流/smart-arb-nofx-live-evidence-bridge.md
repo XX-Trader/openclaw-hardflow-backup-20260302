@@ -54,11 +54,15 @@ runtime installer 会把以下 hardflow 脚本安装到 Hermes ops 目录：
 
 ## live 流程
 
-Discord 入口默认就是真实执行：
+Discord 入口默认不是直接执行，而是先由连接 Discord 的 profile 作为最高权限调度入口发送“执行链路选择”卡。所有来自 Discord 的新任务都走这一步：只读查询、方案讨论、安全仓库同步、业务代码修改、部署排障、TODO 推进和 hardflow workflow/runtime/profile 自修都不能因为“看起来低风险”而直接执行。
+
+固定选项为 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`。推荐链路只作为建议，不等于授权；只有用户明确选择 `coding_workflow` 或 `todo_auto_candidate` 后，profile 才启动真实 coordinator pipeline：
 
 ```bash
-/home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --requirement "<需求文本>"
+/home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --progress-interval-seconds 60 --requirement "<需求文本>"
 ```
+
+如果用户选择 `direct_run`，当前 Discord profile 作为最高权限 operator 直接处理，不进入 pipeline；仍必须遵守凭证、生产、资金、真实交易、force push、删除生产数据等安全边界。安全仓库同步只允许 clean 工作树上的 `git fetch` + `git pull --ff-only`，并做 `git status`、`HEAD == origin/main` 和内控 API smoke。
 
 默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、完成/阻塞情况、阶段命令状态、阻塞证据、自动修复判断和证据目录。默认不展开 reviewer/tester/terminal stdout/stderr，也不额外输出“关键证据”列表。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`；需要脱敏命令摘要时，加 `--chat-include-command-output`。
 
@@ -127,12 +131,13 @@ nofx 两个 Discord Hermes profile 的 `SOUL.md` 使用本仓库模板维护：
 
 提示词必须把以下规则放在最前面：
 
-1. 普通业务执行类请求先创建 `smart-arb-pipeline` run。
-2. 不允许在 profile 会话里直接实现、部署、安装依赖、修改 SmartMulti 业务代码或提交业务 Git。
-3. 只有只读状态查询、简单解释或监控数据查询可以直接处理。
-4. 当目标是 hardflow workflow/runtime/profile 自身，例如修 `smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、profile/SOUL、dual review、auto-repair、git_publish、runtime installer 或 cron workflow 时，进入“高权限工作流维护模式”：不要递归启动同一条 `smart-arb-pipeline`，直接切到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 修改 workflow 宿主，跑测试，必要时安装到 `/home/arbops/.hermes` 并同步 live profile。
-5. 运行期间必须回传 `# nofx 任务执行进度`，完成后必须回传 `# nofx 任务执行状态`；不要转发 Hermes 通用心跳、background wrapper 或 command 原始输出。
-6. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
+1. 连接 Discord 的 profile 是最高权限调度入口，负责路线选择、推荐理由、执行调度、状态回传和最终口径。
+2. 所有 Discord 新任务都必须先发“执行链路选择”卡；只读查询、简单解释、监控查询、“不要走工作流”、工作流自身修复等都不能绕过选择。
+3. 执行链路选择卡固定包含 `direct_run`、`requirement_discussion`、`specified_agent`、`coding_workflow`、`todo_auto_candidate`，并以 `回答状态: 等待人工选择` 结束。
+4. 用户明确选择后才执行所选路线；只有 `coding_workflow` / `todo_auto_candidate` 会启动 `smart-arb-pipeline`，`direct_run` 由当前 Discord profile 直接处理。
+5. 当用户选择 `direct_run` 且目标是 hardflow workflow/runtime/profile 自身，例如修 `smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、profile/SOUL、dual review、auto-repair、git_publish、runtime installer 或 cron workflow 时，进入“高权限工作流维护模式”：不要递归启动同一条 `smart-arb-pipeline`，直接切到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 修改 workflow 宿主，跑测试，必要时安装到 `/home/arbops/.hermes` 并同步 live profile。
+6. pipeline 运行期间必须回传 `# nofx 任务执行进度`，完成后必须回传 `# nofx 任务执行状态`；不要转发 Hermes 通用心跳、background wrapper 或 command 原始输出。
+7. 不允许把 Task Center 的阶段 owner 标签说成真实 native agent fan-out。
 
 高权限工作流维护模式不是“跳过门禁”。它只绕过有问题的 workflow 编排本身，仍必须检查 Git 脏工作区、保护凭证、运行 `git diff --check`、相关 `unittest` 和 `compileall`；如果修改 profile 模板，必须备份并同步 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，再重启对应 Discord gateway 并核对 `gateway_state=running`。如果 profile 无法启动真正独立 code-reviewer，最终状态卡必须标记 `review=pending_external`，不能谎称审查通过。
 

@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-04-28 - Discord 全任务路线选择与 SmartMulti 拉最新
+
+类型：task
+范围：`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`tests/scripts_openclaw_ops/test_nofx_profile_templates.py`、nofx live profile、SmartMultiPlatformArbitrage 远端仓库、项目记忆和 nofx live evidence 文档
+事实：定位 `discord-spreadagent-20260428T152135225120Z` 没有询问用户的根因：Discord profile 仍按旧规则把普通执行类请求直接导向 `smart-arb-pipeline`，且只读/普通沟通存在直答例外；本仓前一轮手动链路选择只覆盖 Task Center / `human_inbox` / backlog runner，没有覆盖 Discord profile 直达入口。已把 profile 规则收紧为“所有 Discord 新任务先执行链路选择”，并把连接 Discord 的 profile 定义为最高权限调度入口。用户明确选择后才执行所选路线；只有 `coding_workflow` / `todo_auto_candidate` 启动 pipeline，`direct_run` 由当前 Discord profile 直接处理。已直接帮用户在 nofx 将 SmartMultiPlatformArbitrage 最新 main 拉取完成。
+证据：旧 run 的 `pipeline_state.json` 为 `status=blocked`、`failed_stage=solution_review`、`next_action=revise_solution`；`delivery_plan.json` 将命令误写入 `target_files`，没有描述真实任务“拉取 SmartMultiPlatformArbitrage 最新 main”。SmartMultiPlatformArbitrage 远端执行 `git fetch origin main`、`git pull --ff-only origin main` 后，`HEAD...origin/main=0 0`，`HEAD` 与 `origin/main` 均为 `00f3690a542bd65f2b16b9d8ae07c5df900c8dba`；内控 API `/health` 为 `status=ok`，`/api/strategy/status` 为 `running=false`。
+最后验证：2026-04-28 23:54；nofx live profile 已同步，arbitrageagent PID `1342103`、spreadagent PID `1342107`，两者 Discord connected
+复用建议：以后 Discord 入口没有询问用户时，先查 live profile SOUL，而不是只查 `human_inbox` 或 backlog runner；所有新任务都必须有“执行链路选择”卡和 `回答状态: 等待人工选择`。
+
 ## 2026-04-28 - nofx 安装 workflow runtime d2e530b7
 
 类型：deploy

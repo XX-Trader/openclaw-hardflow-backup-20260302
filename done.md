@@ -7,6 +7,12 @@
 
 ## 2026-04-28 已完成
 
+- [x] [2026-04-28] **nofx Discord 全任务路线选择与 SmartMulti 拉最新**
+  - 定位 `discord-spreadagent-20260428T152135225120Z` 没有询问用户的根因：Discord profile 仍按旧规则把普通执行类请求直接导向 `smart-arb-pipeline`，且只读/普通沟通存在直答例外；Task Center / backlog runner 的手动选择没有覆盖 Discord profile 直达入口。
+  - 两个 nofx profile 模板已收紧为“所有 Discord 新任务先执行链路选择”，连接 Discord 的 profile 是最高权限调度入口；用户选择后才执行所选路线，只有 `coding_workflow` / `todo_auto_candidate` 启动 pipeline，`direct_run` 由当前 profile 直接处理。
+  - 已同步到 nofx live profile 并重启 gateway；arbitrageagent PID `1342103`、spreadagent PID `1342107`，两者 `running/connected`，旧规则 grep 未命中。
+  - 已在 nofx 将 SmartMultiPlatformArbitrage 从 `df6f2c7` fast-forward 到 `00f3690a542bd65f2b16b9d8ae07c5df900c8dba`，`HEAD...origin/main=0 0`；内控 API `/health` 与 `/api/strategy/status` smoke 通过。
+
 - [x] [2026-04-28] **nofx 安装 workflow runtime `d2e530b7` 并同步高权限 profile**
   - 已把本机提交 `d2e530b7` 推送到 `origin/main`；nofx 仓库从 `17d9b36` fast-forward 到 `d2e530b`，`HEAD...origin/main=0 0` 且最终工作树 clean。
   - `runtime_installer.py install` 已把新增 `policy_route_selection.py`、更新后的 `backlog_runner.py`、`human_inbox.py`、`policy_task.py`、`deadline_to_task_bridge.py` 等安装到 `/home/arbops/.hermes/ops`；两个 live profile `SOUL.md` 已同步高权限工作流维护模式，备份后缀为 `manual-route-20260428T151420Z`，并重启 `hermes-discord-arbitrage` / `hermes-discord-spread`。
