@@ -568,6 +568,21 @@ def current_stage_record(state: dict | None) -> dict:
     return stages[-1] if stages else {}
 
 
+def answer_status_label(status: str, *, parsed: bool = True, returncode: int = 0) -> str:
+    if not parsed:
+        return "未回答完毕，无法解析执行结果"
+    normalized = str(status or "").strip()
+    if normalized == "completed" and returncode == 0:
+        return "已回答完毕"
+    if normalized == "blocked":
+        return "未回答完毕，等待人工确认或自动修复"
+    if normalized in {"", "running"}:
+        return "正在回复/执行中"
+    if returncode != 0:
+        return "未回答完毕，执行失败"
+    return f"未回答完毕，当前状态={STATUS_LABELS.get(normalized, normalized or '未知')}"
+
+
 def render_progress_start(run_id: str, *, source: str, profile: str) -> str:
     run_dir = WORKSPACE_ROOT / run_id
     return "\n".join(
@@ -575,6 +590,7 @@ def render_progress_start(run_id: str, *, source: str, profile: str) -> str:
             "# nofx 任务执行进度",
             f"- 来源: {source}/{profile}",
             f"- Run ID: {run_id}",
+            f"- 回答状态: {answer_status_label('running')}",
             "- 状态: 已启动 coordinator pipeline，等待第一份阶段状态",
             f"- 证据目录: {run_dir}",
             "- 说明: 后续只输出工作流阶段状态、当前卡点和证据位置；不会展开命令原始输出。",
@@ -603,6 +619,7 @@ def render_progress_update(
         "# nofx 任务执行进度",
         f"- 来源: {source}/{profile}",
         f"- Run ID: {state.get('run_id', '-')}",
+        f"- 回答状态: {answer_status_label(status)}",
         f"- 总状态: {status_label or '运行中'}",
         f"- 已运行: {human_duration(elapsed_seconds)}",
         f"- 阶段进度: {completed}/{len(stages)} 完成",
@@ -777,6 +794,7 @@ def render_chat_summary(
             [
                 "# nofx 任务执行状态",
                 f"- 来源: {source}/{profile}",
+                f"- 回答状态: {answer_status_label('', parsed=False, returncode=returncode)}",
                 f"- 状态: 无法解析 pipeline JSON，returncode={returncode}",
                 f"- 输出: {tail}",
             ]
@@ -797,6 +815,7 @@ def render_chat_summary(
         "# nofx 任务执行状态",
         f"- 来源: {source}/{profile}",
         f"- Run ID: {state.get('run_id', '-')}",
+        f"- 回答状态: {answer_status_label(status, returncode=returncode)}",
         f"- 总状态: {status_label}",
         f"- Task Center: {task_id}",
         f"- 阶段进度: {completed}/{len(stages)} 完成，阻塞 {blocked}",

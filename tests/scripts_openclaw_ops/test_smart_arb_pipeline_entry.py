@@ -103,6 +103,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertIn("# nofx 任务执行状态", text)
         self.assertIn("Run ID: discord-arbitrageagent-test", text)
+        self.assertIn("回答状态: 已回答完毕", text)
         self.assertIn("Task Center: project-delivery:discord-arbitrageagent-test", text)
         self.assertIn("任务接入: coordinator -> 完成", text)
         self.assertIn("外部资料核对: web-agent -> 完成", text)
@@ -222,6 +223,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             text = module.render_chat_summary(state, source="discord", profile="spreadagent", returncode=1)
 
         self.assertIn("## 阻塞原因", text)
+        self.assertIn("回答状态: 未回答完毕，等待人工确认或自动修复", text)
         self.assertIn("卡点: 代码执行", text)
         self.assertIn("pytest failed", text)
         self.assertIn("可自动修复", text)
@@ -317,6 +319,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             )
 
         self.assertIn("# nofx 任务执行进度", text)
+        self.assertIn("回答状态: 正在回复/执行中", text)
         self.assertIn("总状态: 运行中", text)
         self.assertIn("已运行: 2分5秒", text)
         self.assertIn("阶段进度: 2/3 完成", text)
@@ -331,6 +334,29 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertIn("api_key=[REDACTED]", text_with_output)
         self.assertNotIn("short-secret-value", text_with_output)
+
+    def test_render_progress_start_shows_answer_status(self):
+        module = load_module()
+
+        text = module.render_progress_start("discord-spreadagent-test", source="discord", profile="spreadagent")
+
+        self.assertIn("# nofx 任务执行进度", text)
+        self.assertIn("回答状态: 正在回复/执行中", text)
+        self.assertIn("状态: 已启动 coordinator pipeline", text)
+
+    def test_render_chat_summary_marks_unparsed_output_not_finished(self):
+        module = load_module()
+
+        text = module.render_chat_summary(
+            None,
+            source="discord",
+            profile="spreadagent",
+            returncode=1,
+            raw_stderr="runner traceback",
+        )
+
+        self.assertIn("回答状态: 未回答完毕，无法解析执行结果", text)
+        self.assertIn("returncode=1", text)
 
     def test_latest_command_reports_orders_by_command_timestamps(self):
         module = load_module()

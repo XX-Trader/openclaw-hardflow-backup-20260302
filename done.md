@@ -7,6 +7,11 @@
 
 ## 2026-04-28 已完成
 
+- [x] [2026-04-28] **nofx Discord 回复状态标识**
+  - `smart-arb-pipeline` 启动卡和运行中进度卡新增 `回答状态: 正在回复/执行中`，最终状态卡新增 `回答状态: 已回答完毕` 或 `未回答完毕...`，让 Discord channel 能直接判断任务是否仍在回复。
+  - 两个 nofx profile SOUL 要求只读直接回复末尾补 `回答状态: 已回答完毕`，长只读查询可先发 `回答状态: 正在回复/查询中`。
+  - 验证：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry tests.scripts_openclaw_ops.test_project_delivery_runtime_installer` 39 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`python -B -m py_compile scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`git diff --check` 通过。
+
 - [x] [2026-04-28] **DeliveryPlan 结构化方案契约与 revise_solution 自动回流**
   - `solution_package` 新增 `delivery_plan.json` 结构化交付契约，字段覆盖任务类型、切片、目标文件/定位策略、实施步骤、验证命令、发布/回滚门禁、人工阻塞条件和安全边界。
   - `solution.md` 改为由契约渲染的人工展示层；`solution_review`、`code_execution` 和后续阶段上下文都读取 `delivery_plan.json`，不再靠润色 Markdown 通过审查。

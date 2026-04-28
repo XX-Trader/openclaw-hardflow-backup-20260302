@@ -197,11 +197,12 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 
 Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_action`：
 
-0. 运行中每 60 秒输出一次 `# nofx 任务执行进度`，从 `pipeline_state.json` 和 `command-runs/*.json` 读取已完成阶段、当前阶段、最近命令状态和证据目录；默认不展开 command stdout/stderr/error；`--emit-json` / `--no-chat-summary` 会关闭进度卡，保持机器可读原始输出。
+0. 启动后先输出 `# nofx 任务执行进度`，并显示 `回答状态: 正在回复/执行中`，让 Discord channel 先看到任务已接入；运行中每 60 秒继续输出进度卡，从 `pipeline_state.json` 和 `command-runs/*.json` 读取已完成阶段、当前阶段、最近命令状态和证据目录；默认不展开 command stdout/stderr/error；`--emit-json` / `--no-chat-summary` 会关闭进度卡，保持机器可读原始输出。
 1. `agent 分工与完成情况` 展示每个阶段对应 owner、状态、verdict、score 和证据文件。
 2. `阶段命令状态` 从 `command-runs/*.json` 读取 stage、agent、returncode 和证据文件，默认把证据文件显示为 20 字以内中文短说明；失败时才追加脱敏摘要。
 3. `阻塞原因` 展示失败阶段、stage detail、脱敏命令摘要或 artifact 摘要，不直接贴原始命令输出。
 4. `自动修复判断` 记录是否回流、回流次数、风险分类和每次结果。
+5. 最终 `# nofx 任务执行状态` 必须显示 `回答状态: 已回答完毕` 或 `回答状态: 未回答完毕...`。只读直接回复不走 pipeline 时，profile SOUL 要求末尾补 `回答状态: 已回答完毕`；长只读查询可先发 `回答状态: 正在回复/查询中`。
 
 默认自动修复策略：
 

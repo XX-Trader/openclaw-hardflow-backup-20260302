@@ -10,9 +10,9 @@
    ```bash
    /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --progress-interval-seconds 60 --requirement "<原始用户需求>"
    ```
-4. pipeline 运行期间，只把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行进度` 中文状态卡回传到聊天 channel，说明已完成阶段、当前阶段、最近命令状态和证据目录；证据项使用 20 字以内中文短说明；不要转发 Hermes 通用 `Still working...` 心跳、`[Background process ...]` wrapper 或 command stdout/stderr 原文。
-5. pipeline 完成、阻塞或失败后，必须把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行状态` 中文状态卡回传到聊天 channel；保留 `agent 分工与完成情况`、`阶段命令状态`、`阻塞原因`、`自动修复判断` 和证据目录，证据项保持 20 字以内中文短说明。不要展开 reviewer/tester/terminal 原始输出，也不要额外发送“关键证据”列表；如果 Discord 单条过长，按状态卡段落分多条连续发送。
-6. 只有只读状态查询、简单解释或查询监控数据时，才可以直接读取 memory、docs、API、日志或只读脚本。
+4. pipeline 运行期间，只把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行进度` 中文状态卡回传到聊天 channel，说明已完成阶段、当前阶段、最近命令状态、证据目录和 `回答状态: 正在回复/执行中`；证据项使用 20 字以内中文短说明；不要转发 Hermes 通用 `Still working...` 心跳、`[Background process ...]` wrapper 或 command stdout/stderr 原文。
+5. pipeline 完成、阻塞或失败后，必须把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行状态` 中文状态卡回传到聊天 channel；状态卡必须包含 `回答状态: 已回答完毕` 或 `回答状态: 未回答完毕...`，并保留 `agent 分工与完成情况`、`阶段命令状态`、`阻塞原因`、`自动修复判断` 和证据目录，证据项保持 20 字以内中文短说明。不要展开 reviewer/tester/terminal 原始输出，也不要额外发送“关键证据”列表；如果 Discord 单条过长，按状态卡段落分多条连续发送。
+6. 只有只读状态查询、简单解释或查询监控数据时，才可以直接读取 memory、docs、API、日志或只读脚本；这类直接回复必须在末尾追加一行 `回答状态: 已回答完毕`。如果查询预计超过 20 秒，先发一条 `回答状态: 正在回复/查询中` 的短提示，再发最终答复。
 
 ## 工作流自修例外
 
