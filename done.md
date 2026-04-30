@@ -492,3 +492,10 @@
 - 2026-04-25: 将 SmartMultiPlatformArbitrage nofx Discord live evidence bridge 的归属文档迁入 hardflow：新增 `docs/核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md`，明确工作流代码归 hardflow、套利业务代码归 SmartMultiPlatformArbitrage，并记录 nofx runtime 路径、live 阶段证据、deployment 边界和验收 run id。
 - 2026-04-25: 修复 nofx Discord Hermes live pipeline 卡顿与入口不稳：profile SOUL 改为绝对 `/home/arbops/.local/bin/smart-arb-pipeline`，`smart_arb_live_bridge.py` verification 默认收敛为 `git diff --check` + `compileall -q scripts strategy_runtime`，新增显式 `--verification-command-timeout-seconds`，并在 nofx 安装态通过 echo live smoke `codex-spreadagent-20260425T154609125415Z` 与真实 verification smoke。
 - 2026-04-27: 修复 nofx Discord 工作流自修循环和未验收业务补丁残留，并已部署到 nofx：需求/方案 artifact 保留用户具体目标，不再泛化为通用 pipeline 模板；`verification` / `code_review` 阻塞时自动反向撤回已应用到主项目目录的 code workspace patch；两个 nofx profile SOUL 增加并安装“工作流自修例外”，用户明确说“不要走工作流”或目标是修 pipeline/bridge/profile 时只做只读诊断并提示外部 SSH/operator 修复；远端 75 项定向测试、gateway connected 和内控 API smoke 已通过。
+
+## 2026-04-30 multicorerouter 维护入口
+
+- 克隆并接管仓库：`/home/ubuntu/projects/openclaw-hardflow-backup-20260302`。
+- 新增只读健康检查：`skills/library/log-monitor/scripts/multicorerouter_healthcheck.py`。
+- 安装到本机指定 runtime：`/home/ubuntu/.hermes/ops/multicorerouter_healthcheck.py`。
+- 验证：健康检查总状态 OK；日志仅有历史 DNS warning，硬错误 0。

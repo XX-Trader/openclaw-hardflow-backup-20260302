@@ -38,6 +38,7 @@ OPS_SCRIPT_MAP = {
     "deadline_to_task_bridge.py": "skills/library/todo-patrol/scripts/deadline_to_task_bridge.py",
     "unified_exception_logger.py": "skills/library/log-monitor/scripts/unified_exception_logger.py",
     "exception_to_task_bridge.py": "skills/library/log-monitor/scripts/exception_to_task_bridge.py",
+    "multicorerouter_healthcheck.py": "skills/library/log-monitor/scripts/multicorerouter_healthcheck.py",
     "claim_verification_auditor.py": "skills/library/openclaw-security-audit/scripts/claim_verification_auditor.py",
     "config_watchdog.py": "skills/library/config-watchdog/scripts/config_watchdog.py",
     "source_registry_watcher.py": "scripts/openclaw-ops/source_registry_watcher.py",

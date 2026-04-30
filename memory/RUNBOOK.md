@@ -351,3 +351,30 @@ runuser -u arbops -- sudo -n id
 证据：修复后 `hermes -p multicore status` 显示 `OpenAI Codex ✓ logged in`，auth file 为 `/home/ubuntu/.hermes/profiles/multicore/auth.json`；`multicore-gateway` tmux session 重建于 2026-04-28 17:43，PID `5169`；`hermes -p multicore chat -q '只回复 OK，不要调用工具。'` 返回 `OK`。
 最后验证：2026-04-28 17:44
 复用建议：后续新增本机 WSL Hermes profile 时，不要只同步 `.env`、SOUL、cwd 和 Discord channel；还要补 profile 级 `auth.json`，否则 gateway connected 也会在实际模型调用时失败。
+
+## multicorerouter 本机维护入口
+
+- 本地仓库：`/home/ubuntu/projects/openclaw-hardflow-backup-20260302`
+- Git 远程：`https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git`
+- 本机 Hermes runtime：`/home/ubuntu/.hermes`
+- multicorerouter profile：`/home/ubuntu/.hermes/profiles/multicorerouter`
+- 安装态健康检查：`/home/ubuntu/.hermes/ops/multicorerouter_healthcheck.py`
+
+常用检查命令：
+
+```bash
+/home/ubuntu/.hermes/ops/multicorerouter_healthcheck.py --format markdown --log-tail-lines 120
+```
+
+本机安装命令：
+
+```bash
+cd /home/ubuntu/projects/openclaw-hardflow-backup-20260302
+python3 skills/library/project-delivery-pipeline/scripts/runtime_installer.py install \
+  --runtime-home /home/ubuntu/.hermes \
+  --runtime-name hermes \
+  --repo-root /home/ubuntu/projects/openclaw-hardflow-backup-20260302 \
+  --project-memory-dir /home/ubuntu/.hermes/profiles/multicorerouter/.workflow/project-memory \
+  --task-center-db /home/ubuntu/.hermes/profiles/multicorerouter/ops/task-center/task_center.db \
+  --emit-json
+```

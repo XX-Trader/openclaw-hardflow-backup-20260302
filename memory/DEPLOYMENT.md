@@ -123,3 +123,12 @@ python3 skills/library/project-delivery-pipeline/scripts/runtime_installer.py in
 证据：远端执行 `python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol` 通过；定向单测 53 项 OK；`arbitrageagent` 与 `spreadagent` 的 `gateway_state=running`、`discord=connected`；`curl http://127.0.0.1:18080/health` 返回 `status=ok` 且 `strategy_running=false`；echo smoke `install-smoke-arbitrageagent-20260427T065537Z` 写入 Task Center 且状态 `passed`；受控 backlog runner smoke 任务 `todo-hardflow-install-smoke-20260427T070123Z` 被标记 `passed`，且 Task Center 中 `backlog_runner_attempt` 数量为 1。
 最后验证：2026-04-27 15:01
 复用建议：这次目标 TODO “将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`”已完成。后续真实 backlog runner 若没有推进，先查任务来源、风险、人类确认、澄清状态和 `max_attempts_per_task`。
+
+## 2026-04-30 - multicorerouter 本机维护入口安装
+
+类型：deploy
+范围：本机 WSL `/home/ubuntu/projects/openclaw-hardflow-backup-20260302`、Hermes runtime `/home/ubuntu/.hermes`、multicorerouter profile `/home/ubuntu/.hermes/profiles/multicorerouter`。
+事实：openclaw hardflow backup 仓库已克隆到 `/home/ubuntu/projects/openclaw-hardflow-backup-20260302`。新增 `multicorerouter_healthcheck.py` 只读健康检查脚本，覆盖 profile 必要路径、Discord 配置摘要、gateway 进程/screen、pipeline-runs、仓库状态和日志 tail 分类。runtime installer 已把该脚本安装到 `/home/ubuntu/.hermes/ops/multicorerouter_healthcheck.py`，并更新 `/home/ubuntu/.hermes/ops/install/project-delivery-runtime-install.json`。
+证据：本地 `py_compile` 通过；`python3 tests/scripts_openclaw_ops/test_multicorerouter_healthcheck.py -v` 3 项 OK；`python3 tests/scripts_openclaw_ops/test_project_delivery_runtime_installer.py -v` 3 项 OK；安装命令 `runtime_installer.py install --runtime-home /home/ubuntu/.hermes --runtime-name hermes --repo-root /home/ubuntu/projects/openclaw-hardflow-backup-20260302 --project-memory-dir /home/ubuntu/.hermes/profiles/multicorerouter/.workflow/project-memory --task-center-db /home/ubuntu/.hermes/profiles/multicorerouter/ops/task-center/task_center.db --emit-json` 返回 `ok=true`。安装态健康检查返回总状态 OK，检查项 required_paths/config/logs/processes/pipeline_runs/repo 均 OK；日志中仅保留历史 Discord DNS warning，`hard_error_count=0`。
+复用建议：以后检查本机 multicorerouter 工作流，优先运行 `/home/ubuntu/.hermes/ops/multicorerouter_healthcheck.py --format markdown --log-tail-lines 120`。如果脚本报 ATTENTION，再按输出定位 profile、日志、pipeline-runs 或 Git 状态。修改 hardflow 代码后先跑定向单测，再安装到 `/home/ubuntu/.hermes`，确认安装态脚本 smoke OK 后再提交推送。
+最后验证：2026-04-30 15:38 +0800

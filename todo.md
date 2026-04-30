@@ -161,3 +161,9 @@
 - 完整执行计划与细节见：[docs/execution-roadmap.md](docs/execution-roadmap.md)
 - 功能文档索引见：[docs/INDEX.md](docs/INDEX.md)
 - 已完成清单见：[done.md](done.md)
+
+## multicorerouter 后续维护
+
+- [ ] 每次修 workflow 前先运行 `/home/ubuntu/.hermes/ops/multicorerouter_healthcheck.py --format markdown --log-tail-lines 120`。
+- [ ] 若发现 ATTENTION，先读 profile 日志和 `.workflow/pipeline-runs`，确认根因再改代码。
+- [ ] 修改 hardflow 后必须执行定向单测、runtime install、安装态 smoke、git commit/push。
