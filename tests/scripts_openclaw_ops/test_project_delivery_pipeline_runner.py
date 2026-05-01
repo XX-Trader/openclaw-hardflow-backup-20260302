@@ -60,8 +60,10 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         path: Path,
         code_review_check: str = "",
         reviewer_role: str = "reviewer-a",
+        reviewer_model = None,
     ) -> None:
         check_body = "\n".join(f"    {line}" for line in code_review_check.strip().splitlines()) or "    pass"
+        reviewer_model = reviewer_model or f"test-model-{reviewer_role}"
         path.write_text(
             (
                 "import os, pathlib\n"
@@ -76,6 +78,8 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 "print(f\"Final verdict: {verdicts.get(stage, 'pass')}\")\n"
                 "print('Confidence: high')\n"
                 f"print('Reviewer role: {reviewer_role}')\n"
+                "print('Reviewer provider: test-provider')\n"
+                f"print('Reviewer model: {reviewer_model}')\n"
             ),
             encoding="utf-8",
         )
@@ -83,8 +87,8 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
     def _write_review_pair(self, scripts_dir: Path, code_review_check: str = "") -> tuple[Path, Path]:
         review_a = scripts_dir / "review_a.py"
         review_b = scripts_dir / "review_b.py"
-        self._write_stage_review_script(review_a, code_review_check, "reviewer-a")
-        self._write_stage_review_script(review_b, code_review_check, "reviewer-b")
+        self._write_stage_review_script(review_a, code_review_check, "reviewer-a", "test-model-a")
+        self._write_stage_review_script(review_b, code_review_check, "reviewer-b", "test-model-b")
         return review_a, review_b
 
     def test_dry_run_happy_path_creates_required_artifacts(self):
@@ -106,12 +110,15 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 "run_meta",
                 "context_snapshot",
                 "project_memory_context",
+                "git_repository_context",
                 "external_research",
                 "requirements_package",
                 "requirements_review",
                 "delivery_plan",
                 "solution_package",
                 "solution_review",
+                "pre_execution_risk",
+                "plan_publish",
                 "code_execution",
                 "verification",
                 "code_review",
@@ -122,8 +129,132 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 self.assertIn(name, state["artifacts"])
                 self.assertTrue(Path(state["artifacts"][name]).exists(), name)
             self.assertTrue((run_dir / "pipeline_state.json").exists())
+            risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
+            self.assertEqual("auto_execute", risk["execution_decision"])
+            plan_publish = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
+            self.assertIn("群回传执行方案", plan_publish)
+            self.assertIn("已收集上下文", plan_publish)
             memory_dir = Path(tmp) / "project-memory" / "demo"
             self.assertTrue((memory_dir / "RETRIEVAL_MANIFEST.json").exists())
+
+
+    def test_delivery_plan_uses_holistic_scope_without_deferred_slices(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Fix API, dashboard, and docs together after reviewers agree.",
+                    workspace_root=Path(tmp),
+                    run_id="holistic",
+                    dry_run=True,
+                )
+            )
+
+            plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+            self.assertFalse(plan["task_split_policy"]["enabled"])
+            self.assertEqual(["holistic-scope"], [item["id"] for item in plan["scope_slices"]])
+            self.assertEqual([], plan["task_split_policy"]["deferred_slice_ids"])
+            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
+            self.assertIn("Task-splitting granularity control is disabled", solution)
+
+    def test_dual_review_requires_distinct_reviewer_models(self):
+        report_a = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-a --provider p --model same",
+            "stdout": "Final verdict: ready_for_solution\nReviewer role: reviewer-a\nReviewer provider: p\nReviewer model: same\n",
+            "stderr": "",
+        }
+        report_b_same = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-b --provider p --model same",
+            "stdout": "Final verdict: ready_for_solution\nReviewer role: reviewer-b\nReviewer provider: p\nReviewer model: same\n",
+            "stderr": "",
+        }
+        report_b_other = {**report_b_same, "command": "review --reviewer-role reviewer-b --provider q --model other", "stdout": "Final verdict: ready_for_solution\nReviewer role: reviewer-b\nReviewer provider: q\nReviewer model: other\n"}
+
+        self.assertFalse(_mod.dual_review_pass("requirements_review", [report_a, report_b_same]))
+        self.assertTrue(_mod.dual_review_pass("requirements_review", [report_a, report_b_other]))
+
+    def test_git_repository_context_fetches_remote_branches_for_project_agent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            remote = tmp_path / "remote.git"
+            repo = tmp_path / "repo"
+            subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True, text=True)
+            subprocess.run(["git", "clone", str(remote), str(repo)], check=True, capture_output=True, text=True)
+            subprocess.run(["git", "config", "user.name", "Test Bot"], cwd=repo, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.invalid"], cwd=repo, check=True)
+            (repo / "README.md").write_text("main\n", encoding="utf-8")
+            subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "push", "origin", "HEAD:main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "checkout", "-b", "feature/context"], cwd=repo, check=True, capture_output=True, text=True)
+            (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+            subprocess.run(["git", "add", "feature.txt"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "feature"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "push", "origin", "HEAD:feature/context"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "checkout", "main"], cwd=repo, check=True, capture_output=True, text=True)
+
+            snapshot = _mod.collect_git_repository_context(repo)
+            rendered = _mod.render_git_repository_context(snapshot)
+
+            self.assertTrue(snapshot["is_git_repository"])
+            self.assertIn("origin/feature/context", "\n".join(snapshot["remote_branches"]))
+            self.assertIn("fetch_all_prune", rendered)
+            self.assertIn("Project-agent must consider", rendered)
+
+    def test_high_risk_plan_blocks_before_code_execution_and_records_group_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            scripts_dir = tmp_path / "scripts"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass_stage.py"
+            pass_script.write_text("print('LIVE_BRIDGE_STATUS: pass')\n", encoding="utf-8")
+            review_a, review_b = self._write_review_pair(scripts_dir)
+            command_repo = tmp_path / "command-repo"
+            command_repo.mkdir()
+            (command_repo / "README.md").write_text("fixture\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=command_repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "README.md"], cwd=command_repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test Bot", "-c", "user.email=test@example.invalid", "commit", "-m", "fixture"],
+                cwd=command_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f"{sys.executable} {path}"
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="开启真实交易并设置 PRODUCTION_TRADING_ENABLED=true",
+                    workspace_root=tmp_path,
+                    run_id="high-risk-plan",
+                    source_urls=("https://example.invalid/docs",),
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    command_cwd=command_repo,
+                    agent_workspace_root=tmp_path / "agent-workspaces",
+                )
+            )
+
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("risk_gate", state["failed_stage"])
+            self.assertEqual("await_human_confirmation", state["next_action"])
+            self.assertNotIn("code_execution", [stage["name"] for stage in state["stages"]])
+            risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
+            self.assertEqual("high", risk["risk_level"])
+            self.assertTrue(risk["human_confirmation_required"])
+            group_plan = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
+            self.assertIn("等待用户确认", group_plan)
+            failure_summary = Path(state["artifacts"]["failure_summary"]).read_text(encoding="utf-8")
+            self.assertIn("失败步骤群回传摘要", failure_summary)
+            self.assertIn("risk_gate", failure_summary)
 
     def test_pipeline_state_collects_agent_session_and_run_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -322,7 +453,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("bugfix", delivery_plan["task_type"])
             self.assertEqual("backend-dev", delivery_plan["owner"])
             self.assertIn(
-                "Run the focused tests or compile checks that cover changed files.",
+                "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests",
                 [item["command"] for item in delivery_plan["verification_commands"]],
             )
 
@@ -343,7 +474,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("feature", delivery_plan["task_type"])
             self.assertEqual("backend-dev", delivery_plan["owner"])
             self.assertIn(
-                "Run the focused tests or compile checks that cover changed files.",
+                "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests",
                 [item["command"] for item in delivery_plan["verification_commands"]],
             )
 
@@ -526,7 +657,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 )
             )
 
-    def test_delivery_plan_splits_heavy_multi_item_requirement(self):
+    def test_delivery_plan_keeps_heavy_multi_item_requirement_holistic(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = run_pipeline(
                 PipelineConfig(
@@ -541,12 +672,13 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
             delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
 
-            self.assertEqual("slice-1", delivery_plan["task_split_policy"]["current_slice_id"])
-            self.assertIn("slice-2", delivery_plan["task_split_policy"]["deferred_slice_ids"])
+            self.assertEqual("holistic-scope", delivery_plan["task_split_policy"]["current_slice_id"])
+            self.assertEqual([], delivery_plan["task_split_policy"]["deferred_slice_ids"])
             self.assertEqual("current", delivery_plan["scope_slices"][0]["status"])
-            self.assertEqual("deferred", delivery_plan["scope_slices"][1]["status"])
+            self.assertEqual(1, len(delivery_plan["scope_slices"]))
+            self.assertFalse(delivery_plan["task_split_policy"]["enabled"])
             self.assertTrue(
-                any("Do not implement deferred scope slices" in item for item in delivery_plan["out_of_scope"])
+                any("complete accepted requirement" in item for item in delivery_plan["out_of_scope"])
             )
             self.assertIn("## Task Split Policy", solution)
 
@@ -1089,7 +1221,9 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 "    'code_review': 'requires_revision',\n"
                 "}\n"
                 "print(f\"Final verdict: {verdicts.get(stage, 'requires_revision')}\")\n"
-                "print('Reviewer role: reviewer-b')\n",
+                "print('Reviewer role: reviewer-b')\n"
+                "print('Reviewer provider: test-provider')\n"
+                "print('Reviewer model: test-model-b')\n",
                 encoding="utf-8",
             )
 
@@ -1661,6 +1795,85 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("no_accepted_patch", input_report["source"])
             git_publish_report = json.loads(Path(state["artifacts"]["command_git_publish_1"]).read_text(encoding="utf-8"))
             self.assertIn("git publish input is clean", git_publish_report["stdout"])
+
+    def test_delivery_plan_uses_original_requirement_not_template_scope_fragments(self):
+        requirement = (
+            "【原始需求】按用户确认的顺序依次推进 SmartMultiPlatformArbitrage：第一轮先执行 P0 口径修正。"
+            "删除 Kraken/MEXC 币股 public adapter 代码和测试/文档口径；币股现货不进入 MVP；"
+            "借币套利放到最后，并拆成交易所借币与链上借币两个后期阶段。保持 PRODUCTION_TRADING_ENABLED=false，不启动真实交易、不下单、不划转、不读取或打印凭证。\n\n"
+            "【强制目标文件约束】target_files 必须使用真实 repo-relative 路径，至少检查/按需修改："
+            "智能多平台套利/api/stock_token_public_adapter.py、智能多平台套利/api/routes/stock_tokens.py、"
+            "智能多平台套利/api/static/dashboard/index.html、tests/test_stock_token_public_adapter.py、todo.md。"
+            "运行证据目录包含 run_meta.json 和 pipeline_state.json，但这些只是 pipeline artifact，不是 target_files。"
+            "上一轮 reviewer 文本提到 PROJECT_PROFILE.md、DECISIONS.md、code_review.md、deployment_report.md、"
+            "stock_token_public_adapter.py、routes/stock_tokens.py、PROJECT_PROFILE.md/DECISIONS.md；这些都是 basename/artifact drift，"
+            "不能进入 target_files，只有 memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md 和 "
+            "memory/smart-multi-platform-arbitrage/DECISIONS.md 才是合法 repo-relative memory 目标。"
+            "禁止使用 /api/... 这种仓库根外路径。\n\n"
+            "【强制验证】必须运行并记录：pytest targeted tests tests/test_stock_token_public_adapter.py tests/test_dashboard_api.py、"
+            "python -m compileall -q 智能多平台套利 tests、git diff --check、残留口径扫描 Kraken/MEXC/spot MVP/cross_venue_spot_public_snapshot、"
+            "安全扫描确认无凭证/POST私有端点/下单/划转/签名调用/PRODUCTION_TRADING_ENABLED=true、"
+            "只读内控 API smoke：GET /health、GET /api/strategy/status。"
+        )
+        resolved = (
+            "# Resolved Requirement\n\n## Original Requirement\n"
+            f"{requirement}\n\n"
+            "## Accepted Requirement Source\n"
+            "The accepted implementation scope is the original requirement plus the\n"
+            "completed requirements discussion and requirements review below. Downstream\n"
+            "stages must use this artifact as the handoff contract and must not fall\n"
+            "back to a generic pipeline template.\n"
+        )
+        plan = _mod.compile_delivery_plan(
+            PipelineConfig(
+                project_key="demo",
+                verification_commands=("/usr/bin/python3 /home/arbops/.hermes/ops/smart_arb_live_bridge.py --stage verification",),
+            ),
+            {"host": "hermes"},
+            resolved,
+            {},
+        )
+
+        scope_text = "\n".join(item["description"] for item in plan["scope_slices"])
+        self.assertIn("P0 口径修正", scope_text)
+        self.assertNotIn("accepted implementation scope", scope_text)
+        self.assertNotIn("generic pipeline template", scope_text)
+        paths = [item["path"] for item in plan["target_files"]]
+        self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", paths)
+        self.assertIn("智能多平台套利/api/routes/stock_tokens.py", paths)
+        self.assertIn("智能多平台套利/api/static/dashboard/index.html", paths)
+        self.assertNotIn("run_meta.json", paths)
+        self.assertNotIn("pipeline_state.json", paths)
+        self.assertNotIn("PROJECT_PROFILE.md", paths)
+        self.assertNotIn("DECISIONS.md", paths)
+        self.assertNotIn("code_review.md", paths)
+        self.assertNotIn("deployment_report.md", paths)
+        self.assertNotIn("stock_token_public_adapter.py", paths)
+        self.assertNotIn("routes/stock_tokens.py", paths)
+        self.assertNotIn("PROJECT_PROFILE.md/DECISIONS.md", paths)
+        self.assertNotIn("memory/smart-multi-platform-arbitrage/", paths)
+        self.assertFalse(any(path.startswith("curl ") for path in paths))
+        self.assertIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", paths)
+        self.assertIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", paths)
+        self.assertIn("tests/test_stock_token_public_adapter.py", paths)
+        self.assertNotIn("/api/stock_token_public_adapter.py", paths)
+        negated = [item for item in plan.get("plan_findings", {}).get("filtered_target_candidates", []) if item.get("reason") == "negated_context"]
+        self.assertFalse(any(item.get("path") == "智能多平台套利/api/static/dashboard/index.html" for item in negated))
+        commands = [item["command"] for item in plan["verification_commands"]]
+        self.assertIn("/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_stock_token_public_adapter.py tests/test_dashboard_api.py", commands)
+        self.assertIn("/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests", commands)
+        self.assertIn("git diff --check", commands)
+        self.assertIn("test -f memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", commands)
+        self.assertIn("test -f memory/smart-multi-platform-arbitrage/DECISIONS.md", commands)
+        self.assertTrue(any("git diff --name-only" in command for command in commands))
+        self.assertTrue(any("Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot" in command for command in commands))
+        self.assertTrue(any("PRODUCTION_TRADING_ENABLED" in command for command in commands))
+        self.assertIn("curl -fsS http://127.0.0.1:18080/health", commands)
+        self.assertIn("curl -fsS http://127.0.0.1:18080/api/strategy/status", commands)
+        self.assertFalse(any("smart_arb_live_bridge.py" in command for command in commands))
+        self.assertNotIn("pytest", commands)
+        self.assertFalse(any(command.endswith("`") for command in commands))
+        self.assertFalse(any("通过" in command or "必须" in command or "pytest:" == command for command in commands))
 
 
 if __name__ == "__main__":

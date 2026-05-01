@@ -38,3 +38,4 @@ scripts/hardflow/
 /backtest/freqtrade_single_pair/user_data/config.private.json
 /backtest
 /graphify-out
+.worktrees/

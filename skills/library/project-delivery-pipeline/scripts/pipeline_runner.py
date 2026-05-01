@@ -47,12 +47,15 @@ STAGE_AGENT_MAP = {
     "intake": "coordinator",
     "context_snapshot": "project-agent",
     "project_memory_context": "project-agent",
+    "git_repository_context": "project-agent",
     "external_research": "web-agent",
     "requirements_package": "project-agent",
     "requirements_discussion": "project-agent,reviewer",
     "requirements_review": "reviewer",
     "solution_package": "project-agent",
     "solution_review": "reviewer",
+    "plan_publish": "coordinator",
+    "risk_gate": "coordinator",
     "code_execution": "backend-dev",
     "verification": "tester",
     "code_review": "reviewer",
@@ -60,6 +63,7 @@ STAGE_AGENT_MAP = {
     "acceptance": "tester",
     "writeback": "doc-writer",
     "git_publish": "coordinator",
+    "failure_summary": "coordinator",
 }
 SIMULATED_FAILURES = {
     "requirements",
@@ -80,6 +84,18 @@ REVIEWER_ROLE_ARG_RE = re.compile(
 REVIEWER_ROLE_OUTPUT_RE = re.compile(
     r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:\s*([A-Za-z0-9_.-]+)\s*$"
 )
+REVIEWER_MODEL_ARG_RE = re.compile(
+    r"(?:^|\s)(?:--model|-m)(?:=|\s+)(?:\"([^\"\s]+)\"|'([^'\s]+)'|([^\s]+))"
+)
+REVIEWER_PROVIDER_ARG_RE = re.compile(
+    r"(?:^|\s)--provider(?:=|\s+)(?:\"([^\"\s]+)\"|'([^'\s]+)'|([^\s]+))"
+)
+REVIEWER_MODEL_OUTPUT_RE = re.compile(
+    r"(?im)^\s*(?:Reviewer model|reviewer_model|model)\s*:\s*([A-Za-z0-9_./:-]+)\s*$"
+)
+REVIEWER_PROVIDER_OUTPUT_RE = re.compile(
+    r"(?im)^\s*(?:Reviewer provider|reviewer_provider|provider)\s*:\s*([A-Za-z0-9_.-]+)\s*$"
+)
 AGENT_SESSION_ID_RE = re.compile(
     r"(?im)^\s*(?:LIVE_BRIDGE_AGENT_SESSION_ID|agent_session_id|session_id|sessionId)\s*[:=]\s*([A-Za-z0-9_.:-]+)\s*$"
 )
@@ -92,13 +108,19 @@ AGENT_SESSION_KEY_RE = re.compile(
 PATH_TOKEN_RE = re.compile(
     r"(?:`([^`\r\n]+)`)|"
     r"(?:(?<![A-Za-z0-9_./\\])((?:[A-Za-z]:[\\/]|/(?!/))[A-Za-z0-9_.\-/\\]*"
-    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))|"
+    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))|"
     r"(?:(?<![A-Za-z0-9_./\\])([.]?[A-Za-z0-9_][A-Za-z0-9_.\-/\\]*"
-    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))"
+    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))",
+    re.IGNORECASE,
 )
-PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|sh|ps1|sql)$)", re.IGNORECASE)
+UNICODE_PATH_TOKEN_RE = re.compile(
+    r"(?<![\w./\\-])([\w\u4e00-\u9fff][\w\u4e00-\u9fff_.\-/\\]*"
+    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![\w/\\-])",
+    re.IGNORECASE,
+)
+PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)$)", re.IGNORECASE)
 PATH_CONTEXT_SPLIT_RE = re.compile(
-    r"[\r\n;；]+|\b(?:but|however|yet|and)\b|(?:但|但是|不过|然而|并且|然后|同时)",
+    r"[\r\n;；。]+|\b(?:but|however|yet|and)\b|(?:但|但是|不过|然而|并且|然后|同时)",
     re.IGNORECASE,
 )
 NEGATED_PATH_CONTEXT_RE = re.compile(
@@ -113,13 +135,17 @@ CONTROL_PLANE_TARGET_REQUEST_RE = re.compile(
     re.IGNORECASE,
 )
 PIPELINE_ARTIFACT_FILES = {
+    "code_review.md",
     "context_snapshot.md",
     "delivery_evidence.md",
     "delivery_plan.json",
+    "deployment_report.md",
     "git_publish_report.md",
     "patch_summary.md",
     "pipeline_state.json",
+    "run_meta.json",
     "project_memory_context.md",
+    "git_repository_context.md",
     "requirements.md",
     "requirements_discussion.md",
     "requirements_review.md",
@@ -394,6 +420,41 @@ def reviewer_role_for_report(report: dict[str, Any]) -> str:
     return reviewer_role_from_output(str(report.get("stdout") or ""), str(report.get("stderr") or ""))
 
 
+def first_nonempty_regex_group(pattern: re.Pattern[str], text: str) -> str:
+    match = pattern.search(str(text or ""))
+    if not match:
+        return ""
+    for group in match.groups():
+        if group:
+            return str(group).strip()
+    return ""
+
+
+def reviewer_model_from_command(command: str) -> str:
+    return first_nonempty_regex_group(REVIEWER_MODEL_ARG_RE, command)
+
+
+def reviewer_provider_from_command(command: str) -> str:
+    return first_nonempty_regex_group(REVIEWER_PROVIDER_ARG_RE, command)
+
+
+def reviewer_model_from_output(stdout: str, stderr: str) -> str:
+    return first_regex_group(REVIEWER_MODEL_OUTPUT_RE, "\n".join([str(stdout or ""), str(stderr or "")]))
+
+
+def reviewer_provider_from_output(stdout: str, stderr: str) -> str:
+    return first_regex_group(REVIEWER_PROVIDER_OUTPUT_RE, "\n".join([str(stdout or ""), str(stderr or "")]))
+
+
+def reviewer_model_key_for_report(report: dict[str, Any]) -> str:
+    command = str(report.get("command") or "")
+    stdout = str(report.get("stdout") or "")
+    stderr = str(report.get("stderr") or "")
+    provider = str(report.get("reviewer_provider") or "").strip() or reviewer_provider_from_command(command) or reviewer_provider_from_output(stdout, stderr) or "unknown-provider"
+    model = str(report.get("reviewer_model") or "").strip() or reviewer_model_from_command(command) or reviewer_model_from_output(stdout, stderr)
+    return f"{provider}/{model}" if model else ""
+
+
 def dual_review_pass(stage_name: str, reports: list[dict[str, Any]]) -> bool:
     expected = EXPECTED_VERDICTS[stage_name]
     if len(reports) < 2:
@@ -406,12 +467,16 @@ def dual_review_pass(stage_name: str, reports: list[dict[str, Any]]) -> bool:
     roles = [reviewer_role_for_report(item) for item in reports]
     if any(not role for role in roles):
         return False
-    return len(set(roles)) >= 2
+    model_keys = [reviewer_model_key_for_report(item) for item in reports]
+    if any(not model for model in model_keys):
+        return False
+    return len(set(roles)) >= 2 and len(set(model_keys)) >= 2
 
 
 def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdict: str) -> str:
     expected = EXPECTED_VERDICTS[stage_name]
     roles = [reviewer_role_for_report(item) or "missing" for item in reports]
+    model_keys = [reviewer_model_key_for_report(item) or "missing" for item in reports]
     commands = [str(item.get("command") or "").strip() for item in reports]
     distinct_commands = len({command for command in commands if command}) == len(commands) if commands else False
     return dedent(
@@ -426,6 +491,8 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
         - Reviewer-A evidence: {"present" if "reviewer-a" in roles else "missing"}
         - Reviewer-B evidence: {"present" if "reviewer-b" in roles else "missing"}
         - Reviewer roles: {", ".join(roles) if roles else "missing"}
+        - Reviewer models: {", ".join(model_keys) if model_keys else "missing"}
+        - Distinct reviewer models: {str(len(set(model_keys)) >= 2 and "missing" not in set(model_keys)).lower()}
         - Distinct commands: {str(distinct_commands).lower()}
         - Independent command reports: {len(reports)}
 
@@ -450,7 +517,7 @@ def consensus_review(review_type: str, verdict: str, requirement: str) -> str:
         ## Consensus discussion
         - Round 1: Reviewer-A checks scope and artifact completeness.
         - Round 2: Reviewer-B checks reuse, failure routing, and missing external research.
-        - Round 3: Both reviewers agree on the final gate signal.
+        - Round 3+: Reviewers merge all blocking and non-blocking findings, revise the plan, and continue until no reviewer has a remaining blocker.
 
         ## Joint conclusion
         Final verdict: {verdict}
@@ -500,6 +567,104 @@ def render_context_snapshot(requirement: str, runtime: dict[str, Any]) -> str:
         - The runner records orchestration artifacts only.
         - Product code changes must be performed by coding agents or by the coordinator.
         - Host-specific details stay inside the runtime adapter.
+        """
+    )
+
+
+def run_git_probe(repo: Path, args: list[str], *, timeout: int = 20) -> dict[str, Any]:
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except Exception as exc:  # pragma: no cover - defensive for missing git/timeouts
+        return {"ok": False, "returncode": 127, "stdout": "", "stderr": str(exc)}
+    return {
+        "ok": proc.returncode == 0,
+        "returncode": proc.returncode,
+        "stdout": redact_remote_urls(proc.stdout.strip()),
+        "stderr": redact_remote_urls(proc.stderr.strip()),
+    }
+
+
+def redact_remote_urls(text: str) -> str:
+    value = str(text or "")
+    value = re.sub(r"(https?://)([^/@\s]+)@", r"\1[REDACTED]@", value)
+    value = re.sub(r"(://)([^:/@\s]+):([^/@\s]+)@", r"\1[REDACTED]@", value)
+    return value
+
+
+def git_lines(result: dict[str, Any], limit: int = 40) -> list[str]:
+    lines = []
+    for line in str(result.get("stdout") or "").splitlines():
+        text = line.strip()
+        if text:
+            lines.append(text)
+    return lines[:limit]
+
+
+def collect_git_repository_context(repo: Path) -> dict[str, Any]:
+    repo = repo.resolve()
+    inside = run_git_probe(repo, ["rev-parse", "--is-inside-work-tree"])
+    if not inside.get("ok") or str(inside.get("stdout") or "").strip() != "true":
+        return {"is_git_repository": False, "repo": str(repo), "error": inside.get("stderr") or inside.get("stdout") or "not a git worktree"}
+
+    remotes = run_git_probe(repo, ["remote", "-v"])
+    fetch = {"skipped": True, "reason": "no git remotes configured"}
+    if git_lines(remotes):
+        fetch = run_git_probe(repo, ["fetch", "--all", "--prune"], timeout=60)
+    return {
+        "is_git_repository": True,
+        "repo": str(repo),
+        "fetch_all_prune": fetch,
+        "current_branch": git_lines(run_git_probe(repo, ["branch", "--show-current"]), 1),
+        "head": git_lines(run_git_probe(repo, ["rev-parse", "--short", "HEAD"]), 1),
+        "status_short_branch": git_lines(run_git_probe(repo, ["status", "--short", "--branch"]), 80),
+        "remotes": git_lines(remotes, 40),
+        "local_branches": git_lines(run_git_probe(repo, ["branch", "--list", "--format=%(refname:short) %(objectname:short) %(committerdate:short) %(subject)"]), 80),
+        "remote_branches": git_lines(run_git_probe(repo, ["branch", "-r", "--format=%(refname:short) %(objectname:short) %(committerdate:short) %(subject)"]), 120),
+    }
+
+
+def render_git_repository_context(snapshot: dict[str, Any]) -> str:
+    if not snapshot.get("is_git_repository"):
+        return f"# Git Repository Context\n\n- is_git_repository: false\n- repo: `{snapshot.get('repo', '')}`\n- error: {snapshot.get('error', '')}\n"
+    fetch = snapshot.get("fetch_all_prune") if isinstance(snapshot.get("fetch_all_prune"), dict) else {}
+    def items(name: str) -> str:
+        values = snapshot.get(name) if isinstance(snapshot.get(name), list) else []
+        return "\n".join(f"- `{item}`" for item in values) or "- none"
+    return dedent(
+        f"""
+        # Git Repository Context
+
+        ## Project-agent Git Update
+        - repo: `{snapshot.get('repo', '')}`
+        - fetch_all_prune: `{fetch.get('ok', False)}`
+        - fetch_returncode: `{fetch.get('returncode', 'skipped')}`
+        - fetch_note: `{fetch.get('stderr') or fetch.get('reason') or 'ok'}`
+
+        ## Current Worktree
+        - current_branch: `{', '.join(snapshot.get('current_branch') or []) or 'unknown'}`
+        - head: `{', '.join(snapshot.get('head') or []) or 'unknown'}`
+
+        ## Status
+        {items('status_short_branch')}
+
+        ## Remotes
+        {items('remotes')}
+
+        ## Local Branches
+        {items('local_branches')}
+
+        ## Remote Branches
+        {items('remote_branches')}
+
+        ## Project-agent Rule
+        Project-agent must consider the refreshed remote refs, local branches, remote branches, current HEAD, and dirty worktree state before locating current logic or recommending modifications. It may fetch refs, but must not merge, reset, checkout, stash, or discard changes without explicit human approval.
         """
     )
 
@@ -645,6 +810,7 @@ def render_project_memory_context(config: PipelineConfig, requirement: str, runt
         - existing module or file most likely to own the change
         - related tests and docs that must move with the change
         - prior decisions that constrain the implementation
+        - refreshed git context: current branch, HEAD, dirty state, remotes, local branches, and remote branches from `git_repository_context.md`
         - source/API registry entries that require current external checks
 
         ## Retrieval Strategy
@@ -807,6 +973,138 @@ def render_resolved_requirement(requirement: str, artifacts: dict[str, str]) -> 
     )
 
 
+HIGH_RISK_PLAN_PATTERNS = (
+    ("enable_live_trading", re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘")),
+    ("place_real_order", re.compile(r"(?i)\b(place|create|submit)[-_ ]?(real[-_ ]?)?order\b|真实下单|实盘下单|下真实订单")),
+    ("fund_transfer", re.compile(r"(?i)\btransfer\b.*\b(fund|asset|coin|token)\b|划转资金|资金划转|提现|withdraw")),
+    ("credential_access", re.compile(r"(?i)\b(print|read|dump|move|modify|rotate)\b.*\b(token|secret|credential|api[-_ ]?key|cookie|oauth|private key)\b|打印.*(密钥|凭证|token|cookie)|读取.*(密钥|凭证|token|cookie)")),
+)
+
+MEDIUM_RISK_PLAN_PATTERNS = (
+    ("deployment_or_restart", re.compile(r"(?i)\b(deploy|restart|reload|systemctl|tmux)\b|部署|重启|发布")),
+    ("dependency_or_migration", re.compile(r"(?i)\b(pip install|npm install|migration|schema|database)\b|安装依赖|数据库迁移|表结构")),
+)
+
+
+def scrub_negated_risk_lines(text: str) -> str:
+    kept: list[str] = []
+    risk_terms = re.compile(r"(?i)token|secret|credential|api[-_ ]?key|cookie|oauth|order|transfer|trading|PRODUCTION_TRADING_ENABLED|凭证|密钥|下单|划转|交易")
+    negation = re.compile(r"(?i)\b(do not|don't|never|must not|no )\b|不要|不得|禁止|不能|不允许|保持.*false")
+    for line in str(text or "").splitlines():
+        if risk_terms.search(line) and negation.search(line):
+            continue
+        kept.append(line)
+    return "\n".join(kept)
+
+
+def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], artifacts: dict[str, str]) -> dict[str, Any]:
+    """Classify the refined plan before code execution."""
+    artifact_texts = [
+        read_optional_file(Path(artifacts.get("requirements_discussion", "")), ""),
+        read_optional_file(Path(artifacts.get("requirements_review", "")), ""),
+        read_optional_file(Path(artifacts.get("solution_review", "")), ""),
+    ]
+    plan_text = json.dumps(delivery_plan, ensure_ascii=False)
+    scan_text = scrub_negated_risk_lines("\n".join([requirement, plan_text, *artifact_texts]))
+    high_reasons = [label for label, pattern in HIGH_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
+    medium_reasons = [label for label, pattern in MEDIUM_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
+    risk_level = "high" if high_reasons else "medium" if medium_reasons else "low"
+    return {
+        "schema_version": "pre-execution-risk/v1",
+        "risk_level": risk_level,
+        "human_confirmation_required": risk_level == "high",
+        "execution_decision": "block_for_human_confirmation" if risk_level == "high" else "auto_execute",
+        "high_risk_reasons": high_reasons,
+        "medium_risk_reasons": medium_reasons,
+        "low_risk_reason": "No real trading, credential access, fund transfer, dependency/deployment, or migration trigger was found." if risk_level == "low" else "",
+        "group_publish_required": True,
+    }
+
+
+def render_group_plan_publish(requirement: str, artifacts: dict[str, str], delivery_plan: dict[str, Any], risk: dict[str, Any]) -> str:
+    research = read_optional_file(Path(artifacts.get("external_research", "")), "")
+    memory = read_optional_file(Path(artifacts.get("project_memory_context", "")), "")
+    discussion = read_optional_file(Path(artifacts.get("requirements_discussion", "")), "")
+    requirements_review = read_optional_file(Path(artifacts.get("requirements_review", "")), "")
+    solution_review = read_optional_file(Path(artifacts.get("solution_review", "")), "")
+    target_files = "\n".join(f"- `{item.get('path')}`" for item in delivery_plan.get("target_files", [])[:40]) or "- 待 code agent 基于项目记忆继续定位"
+    verification_commands = "\n".join(f"- `{item.get('command')}`" for item in delivery_plan.get("verification_commands", [])[:40]) or "- 待 tester/code agent 补齐"
+    return dedent(
+        f"""
+        # 群回传执行方案
+
+        ## 原始需求
+        {requirement}
+
+        ## 已收集上下文
+        - 项目记忆/文档：已读取并写入 `project_memory_context.md`，project-agent 必须据此定位最可能修改位置。
+        - 外部调研：已写入 `research_report.md`；如无需联网，web-agent 必须说明 `NO_EXTERNAL_LOOKUP_NEEDED` 与原因。
+        - 需求讨论：已写入 `requirements_discussion.md`，至少包含 project-agent 与 reviewer 的多轮讨论。
+        - 双 reviewer 审查：已写入 `requirements_review.md` 与 `solution_review.md`，reviewer-a/reviewer-b 必须独立给出结论。
+
+        ## 目标文件
+        {target_files}
+
+        ## 验收命令
+        {verification_commands}
+
+        ## 风险判断
+        - risk_level: `{risk.get('risk_level')}`
+        - execution_decision: `{risk.get('execution_decision')}`
+        - human_confirmation_required: `{risk.get('human_confirmation_required')}`
+        - high_risk_reasons: `{', '.join(risk.get('high_risk_reasons') or []) or 'none'}`
+        - medium_risk_reasons: `{', '.join(risk.get('medium_risk_reasons') or []) or 'none'}`
+
+        ## 执行规则
+        - 高风险：必须先把本方案发到群里，等待用户确认，不进入 code_execution。
+        - 低/中风险：本方案仍作为群回传摘要与证据 artifact，随后自动进入 code_execution。
+        - 测试、审核、部署或 git publish 任一失败时，必须生成失败摘要，记录失败阶段、命令、证据目录和下一步修复动作，再回流修复。
+
+        ## 摘要引用
+        - project_memory_context 摘要长度: {len(memory)} 字符
+        - research_report 摘要长度: {len(research)} 字符
+        - requirements_discussion 摘要长度: {len(discussion)} 字符
+        - requirements_review 摘要长度: {len(requirements_review)} 字符
+        - solution_review 摘要长度: {len(solution_review)} 字符
+        """
+    )
+
+
+def render_failure_summary(stage_name: str, next_action: str, detail: str, artifact: str | None, verdict: str | None, run_dir: Path) -> str:
+    artifact_path = run_dir / artifact if artifact else None
+    artifact_text = read_optional_file(artifact_path, "") if artifact_path and artifact_path.exists() else ""
+    excerpt = artifact_text[:3000] if artifact_text else "无"
+    return dedent(
+        f"""
+        # 失败步骤群回传摘要
+
+        ## 失败阶段
+        - stage: `{stage_name}`
+        - verdict: `{verdict or 'unknown'}`
+        - next_action: `{next_action}`
+
+        ## 失败原因
+        {detail}
+
+        ## 证据目录
+        `{run_dir}`
+
+        ## 关联 artifact
+        `{artifact or 'not_applicable'}`
+
+        ## 失败内容摘录
+        ```text
+        {excerpt}
+        ```
+
+        ## 处理规则
+        - 低/中风险修复：总结后自动回流给对应 agent。
+        - 高风险或需要人工决策：把本摘要发到群里等待确认。
+        - 修复后必须重新测试、审核；部署/git publish 失败也要记录并回流。
+        """
+    )
+
+
 def normalize_plan_path_token(value: str) -> str:
     path = str(value or "").strip().strip(",;:()[]{}<>\"'").rstrip(".")
     if not path:
@@ -823,7 +1121,16 @@ def plan_path_rejection_reason(path: str) -> str:
         return "pipeline_artifact_file"
     if not PLAN_PATH_RE.search(path):
         return "not_repository_plan_path"
-    if path.startswith(("/tmp/", "/home/")) or re.match(r"^[A-Za-z]:/", path):
+    # Delivery plans are repository-relative contracts.  Absolute-looking paths
+    # such as /api/foo.py are often copied from API routes or reviewer examples;
+    # keeping them as target_files sends implementers outside the repo layout.
+    if path.endswith("/"):
+        return "directory_path_not_file"
+    if re.search(r"\b(?:https?|ws|wss)://", path, re.IGNORECASE):
+        return "url_or_command_not_file_path"
+    if re.match(r"^(?:curl|pytest|python|python3|git|grep|rg|find|npm|pnpm|yarn)\b", path.strip(), re.IGNORECASE):
+        return "command_not_file_path"
+    if path.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:/", path):
         return "external_or_runtime_absolute_path"
     return ""
 
@@ -837,8 +1144,17 @@ def clean_plan_path(value: str) -> str:
 
 def iter_plan_path_tokens(text: str) -> list[tuple[str, str, str]]:
     candidates: list[tuple[str, str, str]] = []
+    seen_raw: set[str] = set()
     for match in PATH_TOKEN_RE.finditer(str(text or "")):
         raw = next((group for group in match.groups() if group), "")
+        path = normalize_plan_path_token(raw)
+        candidates.append((raw, path, plan_path_rejection_reason(path)))
+        if raw:
+            seen_raw.add(raw)
+    for match in UNICODE_PATH_TOKEN_RE.finditer(str(text or "")):
+        raw = match.group(1)
+        if raw in seen_raw:
+            continue
         path = normalize_plan_path_token(raw)
         candidates.append((raw, path, plan_path_rejection_reason(path)))
     return candidates
@@ -864,8 +1180,22 @@ def path_context_segments(text: str) -> list[str]:
     return [segment.strip() for segment in PATH_CONTEXT_SPLIT_RE.split(str(text or "")) if segment.strip()]
 
 
+def is_explicit_target_path_context(text: str) -> bool:
+    value = str(text or "")
+    return bool(
+        re.search(
+            r"(?:target_files?|目标文件|目标路径|至少检查|按需修改|检查/按需修改|repo-relative|仓库真实|真实路径|writeback|写回)",
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+
 def is_negated_path_context(text: str) -> bool:
-    return bool(NEGATED_PATH_CONTEXT_RE.search(str(text or "")))
+    value = str(text or "")
+    if is_explicit_target_path_context(value):
+        return False
+    return bool(NEGATED_PATH_CONTEXT_RE.search(value))
 
 
 def control_plane_plan_path_reason(path: str) -> str:
@@ -879,7 +1209,7 @@ def control_plane_plan_path_reason(path: str) -> str:
     name = Path(trimmed).name
     if name in PIPELINE_ARTIFACT_FILES:
         return "pipeline_artifact_file"
-    if name in PROJECT_MEMORY_FILES:
+    if name in PROJECT_MEMORY_FILES and not trimmed.startswith("memory/"):
         return "project_memory_control_file"
     if any(trimmed.startswith(prefix) for prefix in CONTROL_PLANE_PATH_PREFIXES):
         return "workflow_or_runtime_control_path"
@@ -1009,6 +1339,45 @@ def merge_plan_paths(*path_groups: list[str], limit: int = 24) -> list[str]:
     return merged
 
 
+def post_filter_target_paths(paths: list[str], findings: list[dict[str, str]] | None = None) -> list[str]:
+    """Drop low-trust basename/artifact drift after merging target candidates.
+
+    Repair context and reviewer prose frequently mention artifact names and
+    basenames while explaining what went wrong.  If a concrete repo-relative
+    path already exists in the contract, the basename form is ambiguous and
+    should not be handed to implementers as a second target.
+    """
+    normalized = [normalize_plan_path_token(path) for path in paths if normalize_plan_path_token(path)]
+    concrete_basenames = {Path(path).name for path in normalized if "/" in path}
+    concrete_paths = {path for path in normalized if "/" in path}
+    filtered: list[str] = []
+    seen: set[str] = set()
+    for path in normalized:
+        parts = [part for part in path.split("/") if part]
+        name = Path(path).name
+        reason = ""
+        if name in PIPELINE_ARTIFACT_FILES:
+            reason = "pipeline_artifact_file"
+        elif parts and parts[0] in PIPELINE_ARTIFACT_FILES:
+            reason = "pipeline_artifact_path"
+        elif parts and parts[0] in PROJECT_MEMORY_FILES and not path.startswith("memory/"):
+            reason = "ambiguous_project_memory_basename_path"
+        elif "/" not in path and name in PROJECT_MEMORY_FILES:
+            reason = "ambiguous_project_memory_basename"
+        elif "/" not in path and name in concrete_basenames:
+            reason = "ambiguous_basename_duplicate"
+        elif "/" in path and any(other != path and other.endswith("/" + path) for other in concrete_paths):
+            reason = "ambiguous_suffix_duplicate"
+        if reason:
+            add_filtered_target_finding(findings, path, "post_filter", reason, path)
+            continue
+        if path in seen:
+            continue
+        seen.add(path)
+        filtered.append(path)
+    return filtered
+
+
 def infer_task_type(text: str) -> str:
     value = str(text or "")
     lowered = value.lower()
@@ -1050,15 +1419,42 @@ def original_requirement_excerpt(requirement: str) -> str:
     return next((line for line in lines if not line.startswith("#")), "")
 
 
+def task_slice_title(text: str) -> str:
+    value = re.sub(r"\s+", " ", str(text or "")).strip()
+    match = re.search(r"(P\d+\s*[^。；;，,：:\n]{1,24})", value, re.IGNORECASE)
+    if match:
+        return clip_text(match.group(1).strip(), 48)
+    for marker in ("口径修正", "修复", "实现", "部署", "验收", "清理"):
+        idx = value.find(marker)
+        if 0 <= idx <= 40:
+            return clip_text(value[idx : idx + 48].strip(" ：:"), 48)
+    return "当前需求"
+
+
+def is_template_scope_text(text: str) -> bool:
+    value = str(text or "")
+    return bool(
+        re.search(
+            r"(accepted implementation scope|handoff contract|generic pipeline template|Two AI roles|project-agent|reviewer|Delivery Plan Contract|solution_package|delivery_plan|scope_slices|target_files|verification plan|上一轮|重跑原因|本次重跑原因|强制方案|强制目标文件|强制验证|安全措辞)",
+            value,
+            re.IGNORECASE,
+        )
+    )
+
+
 def plan_scope_slice(requirement: str, review: str, repair_context: str) -> dict[str, Any]:
-    original = original_requirement_excerpt(requirement)
-    source = repair_context or original or review or requirement
-    lines = [line.strip(" -\t") for line in str(source or "").splitlines() if line.strip(" -\t")]
-    summary = next((line for line in lines if not line.startswith("#")), "Deliver the accepted requirement.")
+    original_block = original_requirement_block(requirement)
+    original = original_requirement_excerpt(original_block)
+    source = original or original_requirement_excerpt(requirement) or review or requirement
+    title = task_slice_title(source)
+    description = source
+    if title != "当前需求" and not source.strip().startswith(title):
+        description = f"{title}：{source}"
     return {
-        "id": "primary",
-        "description": clip_text(summary, 280),
-        "source": "repair_context" if repair_context else ("original_requirement" if original else "requirements_review"),
+        "id": re.sub(r"[^A-Za-z0-9_-]+", "-", title.lower()).strip("-") or "primary",
+        "description": clip_text(description, 420),
+        "status": "current",
+        "source": "original_requirement",
     }
 
 
@@ -1097,44 +1493,140 @@ def is_scope_control_text(text: str) -> bool:
 
 
 def plan_scope_slices(requirement: str, review: str, repair_context: str) -> list[dict[str, Any]]:
-    candidates = split_scope_candidates(repair_context or requirement)
-    actionable = []
-    seen: set[str] = set()
-    for item in candidates:
-        normalized = re.sub(r"\s+", " ", item).strip()
-        if not normalized or normalized in seen or is_scope_control_text(normalized):
-            continue
-        seen.add(normalized)
-        actionable.append(normalized)
+    # The OpenClaw backup workflow no longer enforces artificial task-splitting
+    # granularity.  Keep this compatibility field as a single holistic scope so
+    # downstream agents and multiple reviewers can consider all accepted findings
+    # together until the complete plan passes.
+    original_block = original_requirement_block(requirement) or requirement
+    whole = plan_scope_slice(original_block, review, repair_context)
+    whole["id"] = "holistic-scope"
+    whole["status"] = "current"
+    whole["source"] = "holistic_requirement"
+    whole["review_policy"] = "multiple reviewers synthesize all findings; no deferred slices are created by the runner"
+    return [whole]
 
-    if len(actionable) < 2:
-        return [plan_scope_slice(requirement, review, repair_context)]
 
-    out: list[dict[str, Any]] = []
-    for index, item in enumerate(actionable[:6], start=1):
-        out.append(
-            {
-                "id": f"slice-{index}",
-                "description": clip_text(item, 280),
-                "status": "current" if index == 1 else "deferred",
-                "source": "task_decomposition",
-            }
+def normalize_verification_command(command: str) -> str:
+    value = str(command or "").strip().strip("` ")
+    value = re.sub(r"\s+", " ", value)
+    value = value.rstrip("。；;:")
+    return value
+
+
+def verification_command_rejection_reason(command: str) -> str:
+    value = normalize_verification_command(command)
+    lowered = value.lower()
+    if not value:
+        return "empty_command"
+    if "smart_arb_live_bridge.py" in lowered or "--stage verification" in lowered:
+        return "pipeline_runner_orchestration_command"
+    if re.search(r"(?:通过|必须|进入 diff|验收|运行并记录|建议|例如|应|需要|不能|不要|缺少|包含上述)", value):
+        return "natural_language_not_command"
+    if lowered in {"pytest", "pytest:", "python", "python3", "git"}:
+        return "too_broad_or_incomplete_command"
+    if value.endswith("`"):
+        return "malformed_backtick_command"
+    if re.match(r"^pytest\b", value):
+        if "tests/" not in value or re.search(r"[\u4e00-\u9fff]", value):
+            return "malformed_pytest_command"
+        return ""
+    if re.match(r"^(?:/home/arbops/\.venvs/[^\s]+/bin/python|python|python3|/usr/bin/python3)\s+", value):
+        if " -m pytest" in value or " -B -m compileall" in value or " -m compileall" in value:
+            return ""
+        return "unsupported_python_verification_command"
+    if value == "git diff --check":
+        return ""
+    if re.match(r"^test\s+-f\s+[^\s]+$", value):
+        return ""
+    if re.match(r"^git\s+diff\s+--name-only\b", value):
+        return ""
+    if re.match(r"^curl\s+-fsS\s+http://127\.0\.0\.1:18080/", value):
+        return ""
+    if re.match(r"^(?:grep|rg)\b", value):
+        return ""
+    if lowered.startswith("run ") or lowered.startswith("read-only internal api smoke"):
+        return "natural_language_not_command"
+    return "unsupported_verification_command"
+
+
+def add_verification_command(commands: list[dict[str, Any]], command: str, source: str = "accepted_requirement") -> None:
+    normalized = normalize_verification_command(command)
+    if verification_command_rejection_reason(normalized):
+        return
+    if normalized and normalized not in [item["command"] for item in commands]:
+        commands.append({"command": normalized, "required": True, "source": source})
+
+
+def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
+    value = str(text or "")
+    commands: list[dict[str, Any]] = []
+
+    # Prefer canonical executable gates over prose fragments extracted from
+    # reviewer text.  Only concrete commands enter delivery_plan; descriptions
+    # such as "pytest 测试必须通过" are intentionally ignored.
+    if re.search(r"tests/test_stock_token_public_adapter\.py", value) and re.search(r"tests/test_dashboard_api\.py", value):
+        add_verification_command(
+            commands,
+            "/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_stock_token_public_adapter.py tests/test_dashboard_api.py",
         )
-    return out
+    for match in re.finditer(r"(?:/home/arbops/\.venvs/[^\s]+/bin/python|python|python3|/usr/bin/python3)\s+(?:-B\s+)?-m\s+(?:pytest|compileall)[^\r\n；;。、`]*", value, re.IGNORECASE):
+        add_verification_command(commands, match.group(0).strip())
+    for match in re.finditer(r"(?m)^\s*pytest\s+-q\s+tests/[^\r\n；;。、`]*", value, re.IGNORECASE):
+        add_verification_command(commands, match.group(0).strip())
+    if re.search(r"compileall.{0,80}(智能多平台套利|tests)", value, re.IGNORECASE):
+        add_verification_command(commands, "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests")
+    if "git diff --check" in value:
+        add_verification_command(commands, "git diff --check")
+    for memory_path in (
+        "memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md",
+        "memory/smart-multi-platform-arbitrage/DECISIONS.md",
+    ):
+        if memory_path in value:
+            add_verification_command(commands, f"test -f {memory_path}")
+    if all(path in value for path in ("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", "memory/smart-multi-platform-arbitrage/DECISIONS.md")):
+        add_verification_command(
+            commands,
+            "git diff --name-only | grep -E 'memory/smart-multi-platform-arbitrage/(PROJECT_PROFILE|DECISIONS)\\.md'",
+        )
+    if re.search(r"残留|residual|Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot", value, re.IGNORECASE):
+        add_verification_command(
+            commands,
+            "rg -n 'Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot' todo.md done.md MEMORY.md memory docs 智能多平台套利 tests",
+        )
+    if re.search(r"安全扫描|credential|credentials|PRODUCTION_TRADING_ENABLED=true|签名调用|下单|划转", value, re.IGNORECASE):
+        add_verification_command(
+            commands,
+            "rg -n 'PRODUCTION_TRADING_ENABLED\\s*=\\s*true|credential|credentials|private endpoint|place_order|transfer|signing' 智能多平台套利 tests todo.md done.md MEMORY.md memory docs",
+        )
+    for endpoint in ("/health", "/api/strategy/status", "/api/stock-tokens/status", "/api/stock-tokens/markets", "/api/stock-tokens/opportunities"):
+        if endpoint in value:
+            add_verification_command(commands, f"curl -fsS http://127.0.0.1:18080{endpoint}")
+    return commands
 
 
-def configured_verification_commands(config: PipelineConfig, task_type: str) -> list[dict[str, Any]]:
+def configured_verification_commands(config: PipelineConfig, task_type: str, evidence_text: str = "") -> list[dict[str, Any]]:
+    explicit = explicit_verification_commands(evidence_text)
     commands = [
-        {"command": command, "required": True, "source": "runner_config"}
+        {"command": normalize_verification_command(command), "required": True, "source": "runner_config"}
         for command in config.verification_commands
+        if not verification_command_rejection_reason(str(command or ""))
     ]
+    if explicit:
+        merged: list[dict[str, Any]] = []
+        seen: set[str] = set()
+        for item in [*explicit, *commands]:
+            command = normalize_verification_command(str(item.get("command") or ""))
+            if command and command not in seen and not verification_command_rejection_reason(command):
+                seen.add(command)
+                merged.append({**item, "command": command})
+        return merged
     if commands:
         return commands
     fallback = [{"command": "git diff --check", "required": True, "source": "default"}]
     if task_type != "docs":
         fallback.append(
             {
-                "command": "Run the focused tests or compile checks that cover changed files.",
+                "command": "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests",
                 "required": True,
                 "source": "agent_selected",
             }
@@ -1177,18 +1669,25 @@ def compile_delivery_plan(
     filtered_target_candidates: list[dict[str, str]] = []
     explicit_target_paths = contextual_plan_paths(
         original_requirement_full,
-        repair_context,
         filter_control_plane=True,
         allow_control_plane=allow_control_targets,
         filtered_findings=filtered_target_candidates,
         source_label="original_requirement_or_repair_context",
+    )
+    repair_target_paths = low_trust_plan_paths(
+        repair_context,
+        filtered_findings=filtered_target_candidates,
+        source_label="repair_context",
     )
     review_target_paths = low_trust_plan_paths(
         requirements_review,
         filtered_findings=filtered_target_candidates,
         source_label="requirements_review",
     )
-    target_paths = merge_plan_paths(explicit_target_paths, review_target_paths)
+    target_paths = post_filter_target_paths(
+        merge_plan_paths(explicit_target_paths, review_target_paths, repair_target_paths),
+        filtered_target_candidates,
+    )
     if not target_paths:
         target_paths = low_trust_plan_paths(
             research,
@@ -1232,7 +1731,7 @@ def compile_delivery_plan(
         },
     ]
     scope_slices = plan_scope_slices(requirement, requirements_review, repair_context)
-    deferred_slices = [item for item in scope_slices if item.get("status") == "deferred"]
+    deferred_slices: list[dict[str, Any]] = []
     return {
         "schema_version": "delivery-plan/v1",
         "task_type": task_type,
@@ -1245,6 +1744,7 @@ def compile_delivery_plan(
                 "requirements_discussion",
                 "external_research",
                 "project_memory_context",
+                "git_repository_context",
             )
             if key in artifacts
         },
@@ -1254,10 +1754,10 @@ def compile_delivery_plan(
         },
         "scope_slices": scope_slices,
         "task_split_policy": {
-            "enabled": True,
-            "current_slice_id": scope_slices[0].get("id", "primary") if scope_slices else "primary",
+            "enabled": False,
+            "current_slice_id": scope_slices[0].get("id", "holistic-scope") if scope_slices else "holistic-scope",
             "deferred_slice_ids": [str(item.get("id")) for item in deferred_slices],
-            "rule": "If multiple independent scope slices are present, execute only the current slice in this run and leave deferred slices for follow-up Task Center runs unless the user explicitly approves grouping.",
+            "rule": "Task-splitting granularity control is disabled for the OpenClaw backup multi-agent workflow; reviewers and implementers consider the whole accepted requirement together until all reviewer blockers are resolved.",
         },
         "target_files": target_files,
         "entry_points": [
@@ -1266,12 +1766,12 @@ def compile_delivery_plan(
         ],
         "out_of_scope": [
             "Do not broaden the task beyond the accepted requirement.",
-            "Do not implement deferred scope slices in the current run.",
+            "Do not invent artificial deferred slices; handle the complete accepted requirement unless risk_gate blocks for human confirmation.",
             "Do not use secrets, credentials, private keys, cookies, or auth state files.",
             "Do not start real trading, place orders, transfer funds, or change production trading controls.",
         ],
         "implementation_steps": implementation_steps,
-        "verification_commands": configured_verification_commands(config, task_type),
+        "verification_commands": configured_verification_commands(config, task_type, "\n".join([original_requirement_full, requirements_review, repair_context])),
         "release_gates": [
             "All required verification commands pass.",
             "Dual review gates pass with the expected final verdicts.",
@@ -2665,6 +3165,9 @@ def block_pipeline(
     failure_path = run_dir / "failure_learning_check.json"
     write_json(failure_path, failure_learning_payload(config, run_id, "blocked", stage_name, next_action))
     artifacts["failure_learning_check"] = str(failure_path)
+    failure_summary_path = run_dir / "failure_summary.md"
+    write_text(failure_summary_path, render_failure_summary(stage_name, next_action, detail, artifact, verdict, run_dir))
+    artifacts["failure_summary"] = str(failure_summary_path)
     state = pipeline_state(config, run_id, run_dir, runtime, stages, artifacts, "blocked", next_action, stage_name)
     write_json(run_dir / "pipeline_state.json", state)
     return state
@@ -2722,6 +3225,8 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
 
     record("context_snapshot", "context_snapshot.md", render_context_snapshot(requirement, runtime))
     record("project_memory_context", "project_memory_context.md", render_project_memory_context(config, requirement, runtime))
+    git_snapshot = collect_git_repository_context(config.command_cwd)
+    record("git_repository_context", "git_repository_context.md", render_git_repository_context(git_snapshot), verdict="pass" if git_snapshot.get("is_git_repository") else "missing")
     research_command_reports = run_stage_commands(
         config,
         run_dir,
@@ -2899,6 +3404,33 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 "solution review did not allow implementation",
                 "solution_review.md",
                 parsed_verdict,
+            ),
+            requirement,
+        )
+
+    pre_execution_risk = assess_pre_execution_risk(requirement, delivery_plan, artifacts)
+    record_payload("pre_execution_risk", "pre_execution_risk.json", pre_execution_risk)
+    record(
+        "plan_publish",
+        "group_plan_publish.md",
+        render_group_plan_publish(requirement, artifacts, delivery_plan, pre_execution_risk),
+        verdict=pre_execution_risk.get("execution_decision"),
+    )
+    if not config.dry_run and pre_execution_risk.get("human_confirmation_required"):
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "risk_gate",
+                "await_human_confirmation",
+                "pre-execution risk gate requires group-visible human confirmation before code execution",
+                "group_plan_publish.md",
+                str(pre_execution_risk.get("risk_level") or "high"),
             ),
             requirement,
         )

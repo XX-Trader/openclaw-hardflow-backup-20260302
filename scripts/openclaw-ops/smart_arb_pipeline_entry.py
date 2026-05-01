@@ -90,6 +90,8 @@ STAGE_LABELS = {
     "requirements_review": "需求评审",
     "solution_package": "方案整理",
     "solution_review": "方案评审",
+    "plan_publish": "群发方案",
+    "risk_gate": "风险门禁",
     "code_execution": "代码执行",
     "verification": "验证",
     "code_review": "代码审查",
@@ -111,6 +113,9 @@ ARTIFACT_EVIDENCE_LABELS = {
     "delivery_plan.json": "交付计划契约",
     "solution.md": "方案整理报告",
     "solution_review.md": "方案评审报告",
+    "group_plan_publish.md": "群发执行方案",
+    "pre_execution_risk.json": "执行风险门禁",
+    "failure_summary.md": "失败群发摘要",
     "patch_summary.md": "代码补丁摘要",
     "verification_report.md": "验证报告",
     "code_review.md": "代码审查报告",
@@ -208,7 +213,7 @@ NEGATED_CLAUSE_RE = re.compile(
     re.IGNORECASE,
 )
 SAFE_NEGATED_COORDINATE_RE = re.compile(
-    r"\b(?:or|nor)\s+(?:use|read|print|show|dump|export|upload|commit|modify|delete|place|start|enable|execute|transfer|withdraw)?\s*"
+    r"\b(?:or|nor)\s+(?:use|read|print|show|dump|export|upload|commit|modify|move|delete|place|start|enable|execute|transfer|withdraw|read/print|read/print/move|read/print/move/modify)?\s*"
     r"(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b",
     re.IGNORECASE,
 )
@@ -217,8 +222,12 @@ SAFE_NEGATED_FRAGMENT_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
         r"\b(?:do\s+not|don't|never|without|no)\b\s+(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?|enable\s+(?:real|live)\s+trading|start\s+(?:real|live)\s+trading)\b",
-        r"\b(?:do\s+not|don't|never|without|no)\b\s+(?:use|read|print|show|dump|export|upload|commit|modify|delete|place|start|enable|execute|transfer|withdraw)?\s*(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdrawals?|transfer\s+funds)\s*(?:required|needed|used|enabled|disabled)?",
+        r"\b(?:do\s+not|don't|never|without|no)\b\s+(?:use|read|print|show|dump|export|upload|commit|modify|move|delete|place|start|enable|execute|transfer|withdraw|read/print|read/print/move|read/print/move/modify)?\s*(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdrawals?|transfer\s+funds)\s*(?:required|needed|used|enabled|disabled)?",
         r"\bkeep\s+(?:live\s+trading|real\s+trading|orders?|funds?|withdrawals?|transfers?)\s+disabled\b",
+        r"\bno\s+`?PRODUCTION_TRADING_ENABLED\s*=\s*true`?\s+(?:was\s+)?(?:found|detected|present|residual)\b",
+        r"\b(?:found|detected)\s+no\s+`?PRODUCTION_TRADING_ENABLED\s*=\s*true`?\b",
+        r"\bno\s+`?PRODUCTION_TRADING_ENABLED\s*=\s*true`?\s+(?:residual\s+)?(?:was\s+)?(?:found|detected|present)?\b",
+        r"(?:没有|未发现|未检测到|不存在).{0,40}`?PRODUCTION_TRADING_ENABLED\s*=\s*true`?",
         r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露)(?:读取|泄露|使用|输出|打印|查看|启动|启用|执行|进行|允许|下单|划转|转账|提现|出金)?(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)?(?:关闭|false)?",
         r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|关闭|false)",
     )
@@ -226,8 +235,9 @@ SAFE_NEGATED_FRAGMENT_PATTERNS = [
 SAFE_NEGATED_LIST_FRAGMENT_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
+        r"\b(?:do\s+not|don't|never|without)\b(?:(?![\r\n.;；。!?！？]).){0,260}\b(?:place\s+orders?|submit\s+orders?|transfer\s+funds|withdraw(?:als?)?|live\s+trading|real\s+trading)\b(?:(?![\r\n.;；。!?！？]).){0,120}",
         r"\b(?:no\s+need(?:ed)?\s+for|do\s+not\s+need|don't\s+need|not\s+(?:required|needed))\b.{0,120}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|authorization|auth\s+state\s+files?)\b\s*(?::|=)?\s*(?:\[[^\]]*REDACTED[^\]]*\])?",
-        r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:use|read|print|show|dump|export|upload|commit|modify|delete|place|start|enable|execute|transfer|withdraw|set|configure|turn\s+on|switch\s+on)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|and|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,160}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|auth\s+state\s+files?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds)\b",
+        r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:use|read|print|show|dump|export|upload|commit|modify|delete|move|place|start|enable|execute|transfer|withdraw|set|configure|turn\s+on|switch\s+on|read/print|read/print/move|read/print/move/modify)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,260}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|auth\s+state\s+files?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b",
         r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:set|configure)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|and|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,160}\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b",
         r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未在|未启动|未下单|未划转|未转账|未提现|未出金|未读取|未泄露|未打印|未移动|未修改|未保留|不保留|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露|不打印|不移动|不修改)(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许|下单后|划转后|转账后|提现后|出金后|资金操作)).){0,160}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|credential(?:-imports)?|credentials?|secrets?|tokens?|cookies?|oauth|api[_ /-]?keys?)",
         r"(?:不得|不要|不能|禁止|不允许|不应|不会)(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许)).){0,160}PRODUCTION_TRADING_ENABLED\s*=\s*true",
@@ -370,6 +380,14 @@ def strip_safe_documentation_history(text: str) -> str:
     return cleaned
 
 
+REGEX_PATTERN_CLAUSE_RE = re.compile(r"(?:\\[bBsSdDwW]|\(\?:|\{0,\d+\}|\[A-Za-z|\[\\^).{0,220}")
+
+
+def is_regex_pattern_clause(text: str) -> bool:
+    value = str(text or "")
+    return bool(REGEX_PATTERN_CLAUSE_RE.search(value))
+
+
 def mark_pre_redacted_sensitive_markers(text: str) -> str:
     def replacement(match: re.Match, separator: str) -> str:
         key = re.sub(r"[^A-Za-z0-9_-]+", "_", match.group(1).strip()).strip("_").lower()
@@ -392,10 +410,14 @@ def restore_or_strip_pre_redacted_sensitive_markers(text: str) -> str:
 
 def risk_scan_text(value: object) -> str:
     text = redact_text(mark_pre_redacted_sensitive_markers(str(value or "")))
+    if is_regex_pattern_clause(text):
+        return ""
     text = strip_safe_negated_fragments(strip_safe_documentation_history(text))
     clauses = [clause.strip() for clause in RISK_CLAUSE_SPLIT_RE.split(text) if clause.strip()]
     risky_clauses = []
     for clause in clauses:
+        if is_regex_pattern_clause(clause):
+            continue
         cleaned_clause = strip_safe_negated_fragments(strip_safe_documentation_history(clause))
         cleaned_clause = restore_or_strip_pre_redacted_sensitive_markers(cleaned_clause)
         for pattern in SAFE_NEGATED_FRAGMENT_PATTERNS:
@@ -554,6 +576,31 @@ def read_text_excerpt(path: Path, limit: int = 420) -> str:
     except OSError:
         return ""
     return compact_text(text, limit)
+
+
+def read_artifact_excerpt(state: dict | None, key: str, limit: int = 900) -> str:
+    if not isinstance(state, dict):
+        return ""
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    path = artifact_path(artifacts.get(key), str(state.get("run_dir") or ""))
+    if path is None:
+        return ""
+    return read_text_excerpt(path, limit)
+
+
+def risk_gate_summary(state: dict | None) -> dict:
+    if not isinstance(state, dict):
+        return {}
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    path = artifact_path(artifacts.get("pre_execution_risk"), str(state.get("run_dir") or ""))
+    if path is None:
+        return {}
+    return read_json_file(path)
+
+
+def group_publish_excerpt(state: dict | None, *, failure: bool = False, limit: int = 900) -> str:
+    key = "failure_summary" if failure else "plan_publish"
+    return read_artifact_excerpt(state, key, limit)
 
 
 def artifact_path(value: object, run_dir: str = "") -> Path | None:
@@ -764,11 +811,50 @@ def answer_status_label(status: str, *, parsed: bool = True, returncode: int = 0
     return f"未回答完毕，当前状态={STATUS_LABELS.get(normalized, normalized or '未知')}"
 
 
-def render_progress_start(run_id: str, *, source: str, profile: str) -> str:
+def extract_task_title(text: str, *, fallback: str = "项目任务") -> str:
+    """Return a short human task title for Discord status-card headings."""
+    raw = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not raw:
+        return fallback
+    p_match = re.search(r"(P\d+\s*[^。；;，,：:\n]{1,24})", raw, re.IGNORECASE)
+    if p_match:
+        return compact_text(p_match.group(1).strip(), 32)
+    for marker in ("需求", "任务", "修正", "部署", "验收", "实现", "删除"):
+        idx = raw.find(marker)
+        if 0 <= idx <= 24:
+            sentence = re.split(r"[。；;\n]", raw[idx:], maxsplit=1)[0]
+            return compact_text(sentence.strip(), 32)
+    sentence = re.split(r"[。；;\n]", raw, maxsplit=1)[0]
+    return compact_text(sentence.strip(), 32)
+
+
+def task_title_from_state(state: dict | None, *, fallback: str = "项目任务") -> str:
+    if not isinstance(state, dict):
+        return fallback
+    raw = ""
+    artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
+    run_meta_path = str(artifacts.get("run_meta") or "").strip()
+    if run_meta_path:
+        meta = read_json_file(Path(run_meta_path))
+        if isinstance(meta, dict):
+            raw = str(meta.get("requirement_preview") or "").strip()
+    if not raw:
+        raw = str(state.get("requirement_preview") or "").strip()
+    return extract_task_title(raw, fallback=fallback)
+
+
+def render_progress_heading(kind: str, title: str) -> str:
+    clean = compact_text(str(title or "项目任务").strip(), 32)
+    return f"# nofx {clean}执行{kind}"
+
+
+def render_progress_start(run_id: str, *, source: str, profile: str, requirement: str = "") -> str:
     run_dir = WORKSPACE_ROOT / run_id
+    title = extract_task_title(requirement)
     return "\n".join(
         [
-            "# nofx 任务执行进度",
+            render_progress_heading("进度", title),
+            f"- 任务名称: {title}",
             f"- 来源: {source}/{profile}",
             f"- Run ID: {run_id}",
             f"- 回答状态: {answer_status_label('running')}",
@@ -796,8 +882,10 @@ def render_progress_update(
     stages = [stage for stage in state.get("stages", []) if isinstance(stage, dict)]
     completed = sum(1 for stage in stages if stage.get("status") == "completed")
     current_stage = current_stage_record(state)
+    title = task_title_from_state(state)
     lines = [
-        "# nofx 任务执行进度",
+        render_progress_heading("进度", title),
+        f"- 任务名称: {title}",
         f"- 来源: {source}/{profile}",
         f"- Run ID: {state.get('run_id', '-')}",
         f"- 回答状态: {answer_status_label(status)}",
@@ -856,16 +944,43 @@ def failure_evidence(state: dict | None, *, redact: bool = True) -> str:
     return redact_text(text) if redact else text
 
 
+REPAIRABLE_REVIEW_CONTRACT_RE = re.compile(
+    r"(?:requires_revision|Required revision|Blocking issue|contract drift|delivery_plan|target_files|"
+    r"missing from the reviewed workspace|not part of the diff|ignored by git|MISSING|缺失|未进入\s*diff|未交付|未创建)",
+    re.IGNORECASE,
+)
+
+
+def is_repairable_review_contract_issue(state: dict | None, raw_evidence: str) -> bool:
+    if not isinstance(state, dict):
+        return False
+    next_action = str(state.get("next_action") or "").strip()
+    failed_stage = str(state.get("failed_stage") or "").strip()
+    if next_action != "return_to_code_execution" or failed_stage not in {"code_review", "solution_review"}:
+        return False
+    return bool(REPAIRABLE_REVIEW_CONTRACT_RE.search(raw_evidence or ""))
+
+
 def classify_repair_risk(state: dict | None) -> tuple[str, list[str]]:
     if not isinstance(state, dict):
         return "unknown", ["没有可解析的 pipeline 状态"]
     if str(state.get("status") or "") != "blocked":
         return "none", ["当前不是阻塞态"]
-    evidence = risk_scan_text(failure_evidence(state, redact=False))
+    next_action = str(state.get("next_action") or "").strip()
+    raw_evidence = failure_evidence(state, redact=False)
+    evidence = risk_scan_text(raw_evidence)
     reasons = [pattern.pattern for pattern in HIGH_RISK_PATTERNS if pattern.search(evidence)]
     if reasons:
+        if is_repairable_review_contract_issue(state, raw_evidence) and not any(
+            pattern.search(evidence)
+            for pattern in (
+                HIGH_RISK_PATTERNS[0],  # explicit credential/header assignment
+                HIGH_RISK_PATTERNS[2],  # sensitive header assignment
+                HIGH_RISK_PATTERNS[4],  # secret scanner rules
+            )
+        ):
+            return "medium", [f"可回流审查返工: {next_action}"]
         return "high", reasons[:4]
-    next_action = str(state.get("next_action") or "").strip()
     if next_action in REPAIRABLE_NEXT_ACTIONS:
         return "medium", [f"可回流动作: {next_action}"]
     return "high", [f"不在自动修复白名单: {next_action or 'none'}"]
@@ -974,7 +1089,8 @@ def render_chat_summary(
         tail = compact_text((raw_stderr or raw_stdout or "pipeline runner 没有返回可解析状态"), 360)
         return "\n".join(
             [
-                "# nofx 任务执行状态",
+                render_progress_heading("状态", "项目任务"),
+                "- 任务名称: 项目任务",
                 f"- 来源: {source}/{profile}",
                 f"- 回答状态: {answer_status_label('', parsed=False, returncode=returncode)}",
                 f"- 状态: 无法解析 pipeline JSON，returncode={returncode}",
@@ -993,8 +1109,10 @@ def render_chat_summary(
     next_action = str(state.get("next_action") or "none").strip()
     run_dir = str(state.get("run_dir") or "").strip()
 
+    title = task_title_from_state(state)
     lines = [
-        "# nofx 任务执行状态",
+        render_progress_heading("状态", title),
+        f"- 任务名称: {title}",
         f"- 来源: {source}/{profile}",
         f"- Run ID: {state.get('run_id', '-')}",
         f"- 回答状态: {answer_status_label(status, returncode=returncode)}",
@@ -1066,6 +1184,23 @@ def render_chat_summary(
                 )
             )
 
+    plan_excerpt = group_publish_excerpt(state, limit=1100)
+    risk_summary = risk_gate_summary(state)
+    if plan_excerpt:
+        lines.append("")
+        lines.append("## 群回传执行方案")
+        if risk_summary:
+            lines.append(
+                "- 风险门禁: "
+                + compact_text(
+                    f"risk={risk_summary.get('risk_level')}; decision={risk_summary.get('execution_decision')}; "
+                    f"human_confirmation_required={risk_summary.get('human_confirmation_required')}",
+                    260,
+                )
+            )
+        lines.append(f"- 摘要: {plan_excerpt}")
+        lines.append("- 说明: 以上内容来自 group_plan_publish.md；如单条消息过长，应按段落拆分连续回传。")
+
     if status == "blocked":
         risk, reasons = classify_repair_risk(state)
         failed_stage_label = STAGE_LABELS.get(failed_stage, failed_stage or "未知阶段")
@@ -1081,6 +1216,12 @@ def render_chat_summary(
             lines.append(f"- 处理: 可自动修复，下一轮会回流到 {next_action}。")
         else:
             lines.append(f"- 处理: 暂无自动修复路径，下一步={next_action or 'none'}。")
+        failure_excerpt = group_publish_excerpt(state, failure=True, limit=1100)
+        if failure_excerpt:
+            lines.append("")
+            lines.append("## 群回传失败摘要")
+            lines.append(f"- 摘要: {failure_excerpt}")
+            lines.append("- 说明: 以上内容来自 failure_summary.md，用于把具体失败内容发到群里并指导下一轮修复。")
 
     if show_key_artifacts:
         artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
@@ -1139,9 +1280,18 @@ def run_pipeline_command(
         )
 
     run_id = option_value(cmd, "--run-id")
+    requirement = option_value(cmd, "--requirement") or ""
     started_at = time.monotonic()
     if run_id:
-        print(render_progress_start(run_id, source=source or "unknown", profile=profile or "unknown"), flush=True)
+        print(
+            render_progress_start(
+                run_id,
+                source=source or "unknown",
+                profile=profile or "unknown",
+                requirement=requirement,
+            ),
+            flush=True,
+        )
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as stdout_file, tempfile.TemporaryFile(
         mode="w+",
         encoding="utf-8",
@@ -1726,6 +1876,14 @@ def run_specified_agent_route(args: argparse.Namespace, requirement: str, profil
 
 
 def bridge_command(stage: str, args: argparse.Namespace, reviewer_role: str | None = None) -> str:
+    provider = args.live_bridge_provider
+    model = args.live_bridge_model
+    if reviewer_role == "reviewer-a":
+        provider = args.reviewer_a_provider or provider
+        model = args.reviewer_a_model or model
+    elif reviewer_role == "reviewer-b":
+        provider = args.reviewer_b_provider or provider
+        model = args.reviewer_b_model or model
     command = [
         sys.executable,
         str(BRIDGE),
@@ -1736,9 +1894,9 @@ def bridge_command(stage: str, args: argparse.Namespace, reviewer_role: str | No
         "--agent-mode",
         args.live_bridge_agent_mode,
         "--provider",
-        args.live_bridge_provider,
+        provider,
         "--model",
-        args.live_bridge_model,
+        model,
     ]
     if reviewer_role:
         command.extend(["--reviewer-role", reviewer_role])
@@ -1821,6 +1979,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--live-bridge-agent-mode", choices=["hermes", "echo"], default=os.environ.get("SMART_ARB_LIVE_BRIDGE_AGENT_MODE", "hermes"))
     parser.add_argument("--live-bridge-provider", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROVIDER", "openai-codex"))
     parser.add_argument("--live-bridge-model", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_MODEL", "gpt-5.5"))
+    parser.add_argument("--reviewer-a-provider", default=os.environ.get("SMART_ARB_REVIEWER_A_PROVIDER"))
+    parser.add_argument("--reviewer-a-model", default=os.environ.get("SMART_ARB_REVIEWER_A_MODEL"))
+    parser.add_argument("--reviewer-b-provider", default=os.environ.get("SMART_ARB_REVIEWER_B_PROVIDER"))
+    parser.add_argument("--reviewer-b-model", default=os.environ.get("SMART_ARB_REVIEWER_B_MODEL"))
     parser.add_argument("--live-bridge-timeout-seconds", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_TIMEOUT_SECONDS", "1800")))
     parser.add_argument(
         "--live-bridge-verification-command-timeout-seconds",

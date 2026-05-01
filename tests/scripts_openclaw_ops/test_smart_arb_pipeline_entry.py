@@ -102,7 +102,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 returncode=0,
             )
 
-        self.assertIn("# nofx 任务执行状态", text)
+        self.assertIn("# nofx 项目任务执行状态", text)
+        self.assertIn("任务名称: 项目任务", text)
         self.assertIn("Run ID: discord-arbitrageagent-test", text)
         self.assertIn("回答状态: 已回答完毕", text)
         self.assertIn("Task Center: project-delivery:discord-arbitrageagent-test", text)
@@ -489,7 +490,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 include_command_output=True,
             )
 
-        self.assertIn("# nofx 任务执行进度", text)
+        self.assertIn("# nofx 项目任务执行进度", text)
+        self.assertIn("任务名称: 项目任务", text)
         self.assertIn("回答状态: 正在回复/执行中", text)
         self.assertIn("总状态: 运行中", text)
         self.assertIn("已运行: 2分5秒", text)
@@ -511,9 +513,25 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         text = module.render_progress_start("discord-spreadagent-test", source="discord", profile="spreadagent")
 
-        self.assertIn("# nofx 任务执行进度", text)
+        self.assertIn("# nofx 项目任务执行进度", text)
+        self.assertIn("任务名称: 项目任务", text)
         self.assertIn("回答状态: 正在回复/执行中", text)
         self.assertIn("状态: 已启动 coordinator pipeline", text)
+
+    def test_render_progress_start_uses_specific_task_title(self):
+        module = load_module()
+        requirement = "按用户确认的顺序依次推进 SmartMultiPlatformArbitrage：第一轮先执行 P0 口径修正。修正当前业务口径"
+
+        text = module.render_progress_start(
+            "discord-spreadagent-test",
+            source="discord",
+            profile="spreadagent",
+            requirement=requirement,
+        )
+
+        self.assertIn("# nofx P0 口径修正执行进度", text)
+        self.assertIn("任务名称: P0 口径修正", text)
+        self.assertNotIn("# nofx 任务执行进度", text)
 
     def test_discord_source_without_route_choice_prints_selection_card(self):
         module = load_module()
@@ -615,6 +633,52 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertEqual("git_publish", reports[0]["stage"])
 
+    def test_render_chat_summary_includes_group_plan_and_failure_summary(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            plan = tmp_path / "group_plan_publish.md"
+            plan.write_text("# 群回传执行方案\n\n## 风险判断\n- low\n\n## 目标文件\n- `todo.md`\n", encoding="utf-8")
+            risk = tmp_path / "pre_execution_risk.json"
+            risk.write_text(
+                json.dumps(
+                    {
+                        "risk_level": "high",
+                        "execution_decision": "block_for_human_confirmation",
+                        "human_confirmation_required": True,
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            failure = tmp_path / "failure_summary.md"
+            failure.write_text("# 失败步骤群回传摘要\n\n## 失败阶段\n- stage: `risk_gate`\n", encoding="utf-8")
+            state = {
+                "run_id": "discord-spreadagent-plan",
+                "status": "blocked",
+                "next_action": "await_human_confirmation",
+                "failed_stage": "risk_gate",
+                "run_dir": str(tmp_path),
+                "artifacts": {
+                    "plan_publish": str(plan),
+                    "pre_execution_risk": str(risk),
+                    "failure_summary": str(failure),
+                },
+                "stages": [
+                    {"name": "plan_publish", "status": "completed", "artifact": "group_plan_publish.md"},
+                    {"name": "risk_gate", "status": "blocked", "artifact": "group_plan_publish.md"},
+                ],
+            }
+
+            text = module.render_chat_summary(state, source="discord", profile="spreadagent", returncode=0)
+
+        self.assertIn("## 群回传执行方案", text)
+        self.assertIn("risk=high; decision=block_for_human_confirmation", text)
+        self.assertIn("group_plan_publish.md", text)
+        self.assertIn("## 群回传失败摘要", text)
+        self.assertIn("failure_summary.md", text)
+        self.assertIn("风险门禁", text)
+
     def test_main_default_prints_chat_summary(self):
         module = load_module()
         payload = {
@@ -637,10 +701,15 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "run_pipeline_command",
             return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
         ) as run_mock, redirect_stdout(out), redirect_stderr(err):
-            rc = module.main(["--profile", "arbitrageagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", "demo"])
+            rc = module.main([
+                "--profile", "arbitrageagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", "demo",
+                "--reviewer-a-provider", "openai-codex", "--reviewer-a-model", "gpt-5.5",
+                "--reviewer-b-provider", "glm", "--reviewer-b-model", "glm-5.1",
+            ])
 
         self.assertEqual(0, rc)
-        self.assertIn("# nofx 任务执行状态", out.getvalue())
+        self.assertIn("# nofx 项目任务执行状态", out.getvalue())
+        self.assertIn("任务名称: 项目任务", out.getvalue())
         self.assertIn("Run ID: discord-arbitrageagent-test", out.getvalue())
         self.assertIn("任务接入: coordinator -> 完成", out.getvalue())
         runner_cmd = run_mock.call_args.args[0]
@@ -658,6 +727,8 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         ]
         self.assertTrue(any("--reviewer-role reviewer-a" in command for command in review_commands))
         self.assertTrue(any("--reviewer-role reviewer-b" in command for command in review_commands))
+        self.assertTrue(any("--reviewer-role reviewer-a" in command and "--model gpt-5.5" in command for command in review_commands))
+        self.assertTrue(any("--reviewer-role reviewer-b" in command and "--provider glm" in command and "--model glm-5.1" in command for command in review_commands))
         self.assertNotIn("--agent-workspace-mode", runner_cmd)
         self.assertEqual(60, run_mock.call_args.kwargs["progress_interval_seconds"])
         self.assertEqual(8, run_mock.call_args.kwargs["progress_stage_limit"])
@@ -1470,6 +1541,65 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         verification_index = runner_cmd.index("--verification-command") + 1
         self.assertIn("--stage verification", runner_cmd[verification_index])
         self.assertIn("--verification-command-timeout-seconds 17", runner_cmd[verification_index])
+
+    def test_risk_scan_ignores_negated_safety_constraints_but_keeps_real_risks(self):
+        module = load_module()
+        safe_text = (
+            "Do not start real trading, place orders, transfer funds, or change production trading controls.\n"
+            "Do not read, print, move, or modify token/cookie/OAuth/API key/auth JSON/credential files.\n"
+            "do not start real trading, place orders, transfer funds, or read/print/move/modify credentials.\n"
+            "no PRODUCTION_TRADING_ENABLED=true was found in added diff.\n"
+            "不要读取、打印、移动或修改 token/cookie/OAuth/API key/auth JSON/credential files。"
+            "未发现 PRODUCTION_TRADING_ENABLED=true。"
+        )
+        safe_scan = module.risk_scan_text(safe_text)
+        self.assertFalse(any(pattern.search(safe_scan) for pattern in module.HIGH_RISK_PATTERNS), safe_scan)
+
+        regex_reason_text = (
+            r"未继续自动修复: high; \b(?:api[_ -]?keys?|secrets?|passwords?|credentials?)\b\s*[:=], "
+            r"PRODUCTION_TRADING_ENABLED\s*=\s*true, \b(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?)\b"
+        )
+        regex_scan = module.risk_scan_text(regex_reason_text)
+        self.assertFalse(any(pattern.search(regex_scan) for pattern in module.HIGH_RISK_PATTERNS), regex_scan)
+
+        risky_scan = module.risk_scan_text("Read and print API keys from credential-imports, then start real trading and place orders.")
+        self.assertTrue(any(pattern.search(risky_scan) for pattern in module.HIGH_RISK_PATTERNS), risky_scan)
+
+    def test_code_review_contract_drift_is_auto_repairable_not_high_risk(self):
+        module = load_module()
+        state = {
+            "status": "blocked",
+            "failed_stage": "code_review",
+            "next_action": "return_to_code_execution",
+            "stages": [
+                {
+                    "name": "code_review",
+                    "status": "blocked",
+                    "detail": (
+                        "code review failed and must be fixed by implementation agent. "
+                        "Final verdict: requires_revision. Blocking issue: Required memory target files are "
+                        "missing from the reviewed workspace and are not part of the diff; ignored by git; "
+                        "memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md: MISSING. "
+                        "Residual scan found no `PRODUCTION_TRADING_ENABLED=true` and reviewer pattern "
+                        r"PRODUCTION_TRADING_ENABLED\s*=\s*true was used only as a scan rule."
+                    ),
+                }
+            ],
+        }
+        risk, reasons = module.classify_repair_risk(state)
+        self.assertEqual("medium", risk, reasons)
+        self.assertIn("return_to_code_execution", reasons[0])
+
+        high_state = dict(state)
+        high_state["stages"] = [
+            {
+                "name": "code_review",
+                "status": "blocked",
+                "detail": "requires_revision but patch contains authorization: Bearer real-token-like-value",
+            }
+        ]
+        risk, reasons = module.classify_repair_risk(high_state)
+        self.assertEqual("high", risk, reasons)
 
 
 if __name__ == "__main__":

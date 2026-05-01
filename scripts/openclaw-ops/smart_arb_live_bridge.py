@@ -225,6 +225,8 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
             "delivery_plan.json",
             "solution.md",
             "solution_review.md",
+            "pre_execution_risk.json",
+            "group_plan_publish.md",
         )
     if stage in {"verification", "code_review", "deployment", "memory_writeback", "git_publish"}:
         return (
@@ -232,6 +234,9 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
             "requirements_discussion.md",
             "delivery_plan.json",
             "solution.md",
+            "solution_review.md",
+            "pre_execution_risk.json",
+            "group_plan_publish.md",
             "patch_summary.md",
             "verification_report.md",
             "code_review.md",
@@ -369,18 +374,23 @@ LIVE_BRIDGE_STATUS: pass
 """
     if stage == "external_research":
         specific = """
-Act as web-agent. Check whether current external docs or online references are needed before implementation.
-Use available browser/search tools when the requirement depends on external facts. If no external lookup is needed, explicitly say NO_EXTERNAL_LOOKUP_NEEDED, explain why, and give local evidence instead.
-Return concise research evidence and implementation constraints.
+Act as web-agent. First decide whether current external docs or online references are needed before implementation.
+Use available browser/search tools when the requirement depends on external facts, third-party APIs, exchange behavior, library versions, deployment patterns, or unknown best practices.
+If no external lookup is needed, explicitly say NO_EXTERNAL_LOOKUP_NEEDED, explain why, and give local project evidence instead.
+Return concise research evidence, source URLs when used, constraints, and how the findings affect implementation.
 Do not modify files. Do not write the stage output artifact yourself.
 """
     elif stage == "requirements_discussion":
         specific = """
-Act as two agents: project-agent and reviewer.
-Run at least two short rounds of discussion:
-1. project-agent clarifies the user goal, affected modules, constraints, and acceptance criteria.
-2. reviewer challenges ambiguity, hidden risks, missing tests, deployment impact, and safety boundaries.
-3. project-agent produces the final refined requirement document.
+Act as project-agent plus reviewer, using the project memory and `git_repository_context.md` as primary context sources.
+Before proposing changes, read or use the supplied project memory/docs/todo/done context and identify the most likely modules/files to modify.
+Project-agent must consider refreshed git state: current branch, HEAD, dirty worktree, local branches, remote branches, and fetched remote refs. It may use git fetch evidence supplied by the runner, but must not merge, reset, checkout, stash, or discard changes.
+Run at least four short rounds of discussion:
+1. project-agent summarizes the user goal, git/branch context, available project context, existing memory decisions, likely change locations, and missing context.
+2. reviewer challenges ambiguity, hidden risks, missing tests, deployment impact, safety boundaries, and whether web research is still missing.
+3. project-agent revises a whole-task requirement: acceptance criteria, target files, verification commands, non-goals, and current logic. Do not split the task into deferred slices merely for granularity.
+4. reviewer gives final risk routing: low/medium can auto-execute; high risk must be sent to the group for human confirmation before code execution.
+Return the final refined requirement and a group-ready summary with context used, assumptions, risks, branch/git observations, and open questions.
 """
     elif stage == "code_execution":
         role = "frontend-dev" if agent_id == "frontend-dev" else "backend-dev"
@@ -392,7 +402,7 @@ Run at least two short rounds of discussion:
         specific = """
 Act as {role} executor for {focus}. Read project memory/docs/todo/done and the relevant code before editing.
 Treat Prior accepted stage context, `delivery_plan.json`, and Repair context as hard constraints. Do not implement later-phase strategy work if the current requirement or research context says to stay on P0 memory/environment work.
-Implement the smallest safe change that satisfies the refined requirement.
+Implement the complete accepted requirement as constrained by the reviewed plan; do not create artificial deferred task slices.
 Run the most relevant local checks you can run in this environment.
 Return a patch summary with changed files, commands run, and remaining risk.
 """.format(role=role, focus=focus)
@@ -407,20 +417,43 @@ Return a patch summary with changed files, commands run, and remaining risk.
         else:
             expected = "pass"
             focus = "bugs, regressions, missing tests, unsafe behavior, and doc or memory drift"
+        reviewer_provider = effective_reviewer_provider(args, role)
+        reviewer_model = effective_reviewer_model(args, role)
         specific = """
 Act as {role}. Review the pipeline artifacts for {focus}.
-You are one side of a dual-AI review gate. Produce your own independent verdict and evidence.
+You are one side of a multi-model review gate. Produce your own independent verdict and evidence, then explain how your findings should be merged with other reviewers until no blocker remains.
 For solution review, validate the structured `delivery_plan.json` contract first; `solution.md` is only the human-readable rendering.
-Include exactly this reviewer role line:
+Do not require artificial task-splitting granularity; review the whole accepted requirement and block only for concrete risk, missing context, invalid target files, missing tests, or unsafe execution.
+Include exactly these reviewer identity lines:
 Reviewer role: {role}
+Reviewer provider: {reviewer_provider}
+Reviewer model: {reviewer_model}
 If the material is acceptable, include exactly this line:
 Final verdict: {expected}
 If it is not acceptable, include:
 Final verdict: requires_revision
-""".format(role=role, focus=focus, expected=expected)
+""".format(role=role, focus=focus, expected=expected, reviewer_provider=reviewer_provider, reviewer_model=reviewer_model)
     else:
         specific = "Return concise stage evidence."
     return common.strip() + "\n\n" + specific.strip()
+
+
+def effective_reviewer_provider(args: argparse.Namespace, role: str) -> str:
+    suffix = "A" if role == "reviewer-a" else "B" if role == "reviewer-b" else ""
+    if suffix:
+        value = os.environ.get(f"SMART_ARB_REVIEWER_{suffix}_PROVIDER", "").strip()
+        if value:
+            return value
+    return str(args.provider)
+
+
+def effective_reviewer_model(args: argparse.Namespace, role: str) -> str:
+    suffix = "A" if role == "reviewer-a" else "B" if role == "reviewer-b" else ""
+    if suffix:
+        value = os.environ.get(f"SMART_ARB_REVIEWER_{suffix}_MODEL", "").strip()
+        if value:
+            return value
+    return str(args.model)
 
 
 def run_echo_stage(stage: str, reviewer_role: str = "") -> int:
@@ -428,14 +461,20 @@ def run_echo_stage(stage: str, reviewer_role: str = "") -> int:
         print("# Smart Arb Live Bridge Echo Requirements Review")
         print("Final verdict: ready_for_solution")
         print(f"Reviewer role: {reviewer_role or 'reviewer-a'}")
+        print("Reviewer provider: echo")
+        print(f"Reviewer model: echo-{reviewer_role or 'reviewer-a'}")
     elif stage == "solution_review":
         print("# Smart Arb Live Bridge Echo Solution Review")
         print("Final verdict: ready_for_implement")
         print(f"Reviewer role: {reviewer_role or 'reviewer-a'}")
+        print("Reviewer provider: echo")
+        print(f"Reviewer model: echo-{reviewer_role or 'reviewer-a'}")
     elif stage == "code_review":
         print("# Smart Arb Live Bridge Echo Review")
         print("Final verdict: pass")
         print(f"Reviewer role: {reviewer_role or 'reviewer-a'}")
+        print("Reviewer provider: echo")
+        print(f"Reviewer model: echo-{reviewer_role or 'reviewer-a'}")
     elif stage == "deployment":
         print("# Smart Arb Live Bridge Echo Deployment")
         print("- Internal API restart skipped in echo mode.")
@@ -451,14 +490,20 @@ def run_hermes_stage(stage: str, args: argparse.Namespace) -> int:
     requirement = requirement_text()
     prompt = stage_prompt(stage, args, requirement)
     profile_dir = profile_home(args.runtime_home, args.profile)
+    provider = args.provider
+    model = args.model
+    if stage in {"requirements_review", "solution_review", "code_review"}:
+        role = str(args.reviewer_role or "").strip() or "reviewer-a"
+        provider = effective_reviewer_provider(args, role)
+        model = effective_reviewer_model(args, role)
     command = [
         str(args.hermes_bin),
         "chat",
         "--ignore-user-config",
         "--provider",
-        args.provider,
+        provider,
         "-m",
-        args.model,
+        model,
         "-q",
         prompt,
         "-Q",
