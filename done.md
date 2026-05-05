@@ -5,7 +5,19 @@
 
 ---
 
+## 2026-04-30 已完成
+
+- [x] [2026-04-30] **本机 WSL 多agent路由 profile 重装当前 hardflow 项目**
+  - 已先 `git fetch origin main` 并确认 `HEAD...origin/main=0 0`，再将当前仓库重新安装到 `/home/ubuntu/.hermes/profiles/multicorerouter`，该 profile 对应 Discord bot `多agent路由`，是本地多 agent 默认规划者/路由入口。
+  - 安装态包含 5 个 workflow skills、21 个 ops 脚本、12 个 cron jobs；本机 wrapper `/home/ubuntu/.local/bin/multicorerouter-workflow` 指向当前仓库并调用 profile 内 `pipeline_runner.py`。
+  - 验证：安装器 `ok=true`、`missing_sources=[]`；安装态 `py_compile`、`compileall`、wrapper dry-run smoke 通过；`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 与仓库源码 SHA256 一致；`multicorerouter` Hermes status 显示 gateway running、Discord connected、12 active jobs。
+
 ## 2026-04-29 已完成
+
+- [x] [2026-04-29] **本机 WSL Discord 双 bot 频道级 @ 策略修正**
+  - 最新 Discord 服务器 `大白量化社群管理群` 已按用户口径配置：`多核电脑` 与 `多agent路由` 两个 bot 在 `总群` 必须 @，其它频道免 @ 回复。
+  - `multicore` 保留历史兼容：旧 guild `本地项目` 仍强制 @，不清理、不覆盖历史 memories/sessions；`multicorerouter` 限定在最新服务器频道内响应。
+  - 验证：两个 profile 均为 `gateway_state=running`、Discord `connected`；两枚 bot 对最新服务器全部频道 REST `/typing` 探针均返回 204；`hermes -p multicore chat` 与 `hermes -p multicorerouter chat` 均返回 OK。
 
 - [x] [2026-04-29] **specified_agent 指定 agent 路线与 session/run id 状态卡上线**
   - `specified_agent` 路线已从占位跳过改为真实执行：用户选择 agent 后，入口创建 Task Center `specified_agent_dispatch` 任务，分配给指定 agent，并由执行器回写 agent session/run 证据。

@@ -1,5 +1,59 @@
 # RUNBOOK
 
+## 本机 WSL multicorerouter 工作流入口
+
+常用事实源：
+
+- router profile：`/home/ubuntu/.hermes/profiles/multicorerouter`
+- workflow ops：`/home/ubuntu/.hermes/profiles/multicorerouter/ops`
+- wrapper：`/home/ubuntu/.local/bin/multicorerouter-workflow`
+- Task Center：`/home/ubuntu/.hermes/profiles/multicorerouter/ops/task-center/task_center.db`
+- 自启动脚本：`/home/ubuntu/wsl-boot-services.sh`
+
+当前口径：
+
+1. `multicorerouter` 是 `多agent路由` Discord bot 的独立 profile，作为本机多 agent 默认规划者/路由入口。
+2. `multicore` 是既有历史 profile，保持原来的 SOUL、sessions、memories 和 Discord 策略；不要把 router 的初始化逻辑写回 `multicore`。
+3. 当前 hardflow 工作流项目通过 `runtime_installer.py` 安装到 `multicorerouter` profile runtime；安装态包含 workflow skills、ops 脚本、policy 文件、cron jobs 和 manifest。
+4. 本机 router 只使用 `multicorerouter-workflow` 或通用 `pipeline_runner.py`；nofx/SmartMulti 专用 `smart_arb_pipeline_entry.py` 仍硬编码 `/home/arbops` 与 SmartMulti 路径，不能作为本机 router 默认入口。
+5. 真实执行类 pipeline 必须提供明确 evidence commands，或由 Hermes/Codex 会话按项目门禁直接执行；不要用空 evidence 把流程伪装成完成。
+
+验证：
+
+- `hermes -p multicorerouter status`
+- `python3 -m py_compile /home/ubuntu/.hermes/profiles/multicorerouter/ops/pipeline_runner.py`
+- `python3 -m compileall -q /home/ubuntu/.hermes/profiles/multicorerouter/ops /home/ubuntu/.hermes/profiles/multicorerouter/skills/project-delivery-pipeline`
+- `/home/ubuntu/.local/bin/multicorerouter-workflow --dry-run --requirement "安装 smoke" --emit-json`
+- `/home/ubuntu/.hermes/profiles/multicorerouter/gateway_state.json` 中 `gateway_state=running` 且 Discord `connected`
+
+## 本机 WSL multicore Discord 免 @ 策略
+
+常用事实源：
+
+- Hermes runtime：`/home/ubuntu/.hermes/hermes-agent/gateway/platforms/discord.py`
+- multicore profile：`/home/ubuntu/.hermes/profiles/multicore/.env`
+- multicore 配置：`/home/ubuntu/.hermes/profiles/multicore/config.yaml`
+- router profile：`/home/ubuntu/.hermes/profiles/multicorerouter/.env`
+- router 配置：`/home/ubuntu/.hermes/profiles/multicorerouter/config.yaml`
+
+当前口径：
+
+1. 默认不需要 @：`DISCORD_REQUIRE_MENTION=false`。
+2. 只有强制 @ 的频道/服务器才写入例外：`DISCORD_REQUIRE_MENTION_CHANNELS=<channel_id>` 或 `DISCORD_REQUIRE_MENTION_GUILDS=<guild_id>`。
+3. 2026-04-29 起，本机 Hermes runtime 已补 `require_mention_guilds` / `require_mention_channels` 解析。
+4. 最新 Discord 服务器 `大白量化社群管理群` 当前要求两个 bot 都在 `总群`（`1498952273500311675`）必须 @，其它频道不用 @ 即可回复；因此两个 profile 都设置 `DISCORD_REQUIRE_MENTION_CHANNELS=1498952273500311675`。
+5. `multicore` 保留历史兼容：`DISCORD_ALLOWED_CHANNELS=` 留空，旧 guild `本地项目`（`1498225530921811990`）仍在 `DISCORD_REQUIRE_MENTION_GUILDS`，避免旧多机器人群抢消息。
+6. `multicorerouter` 限定在最新服务器频道：`总群`、`飞书文档`、`多agent-使用-测试中`、`多agent-维修`、`文案编辑`、`coding`、`运维`；新增普通频道时要把新频道加入 `DISCORD_ALLOWED_CHANNELS`。
+7. 修改策略后重启对应 gateway 即可；重启时记得设置 `SCREENDIR=/home/ubuntu/.screen`，或直接走 `/home/ubuntu/wsl-boot-services.sh`。
+
+验证：
+
+- `/home/ubuntu/.hermes/hermes-agent/venv/bin/python -m py_compile /home/ubuntu/.hermes/hermes-agent/gateway/platforms/discord.py`
+- `hermes profile list`
+- `hermes -p multicore status`
+- `/home/ubuntu/.hermes/profiles/multicore/gateway_state.json` 中 `gateway_state=running` 且 `platforms.discord.state=connected`
+- 如需验证 Discord 发送权限，用带 User-Agent 的 REST `/channels/<id>/typing` 探针；不要输出 token。
+
 ## nofx 项目交付入口排障
 
 常用事实源：
@@ -378,3 +432,12 @@ python3 skills/library/project-delivery-pipeline/scripts/runtime_installer.py in
   --task-center-db /home/ubuntu/.hermes/profiles/multicorerouter/ops/task-center/task_center.db \
   --emit-json
 ```
+
+### 2026-04-29 - 本机 WSL boot-start 改为启动两个 profile gateway
+
+类型：runbook
+范围：Windows Task Scheduler `WSL-Boot-Services` / `WSL-Boot-Services-Logon`、WSL `/home/ubuntu/wsl-boot-services.sh`、screen `hermes-trend-backtest-gateway` / `hermes-multicore-gateway`
+事实：Hermes 官方 profile 模型要求每个 profile 独立运行 gateway；plain `hermes gateway run` 只代表 default profile，不会自动托管 `~/.hermes/profiles/*`。本机旧 `/home/ubuntu/wsl-boot-services.sh` 只启动 default gateway，导致 `trend-backtest` / `multicore` 在 WSL 重启或进程丢失后变成 stopped；default `.env` 又与 `multicore` 共享 Discord token，会占用多核电脑 bot。2026-04-29 已将 Windows 计划任务固定为 `Administrator` + `S4U` + `Highest`，并将 WSL 启动脚本改为：启动 Qdrant 后分别用 profile 自己的 `start-gateway.sh` 拉起 `hermes-trend-backtest-gateway` 与 `hermes-multicore-gateway`，不再启动 default gateway。两个 profile 已额外接入全局可用的 ZAI/OpenRouter env，并把 fallback 调整为 `zhipu/glm-5.1 -> zhipu/glm-4.7`。Windows Codex auth 可直接复制到 WSL `/home/ubuntu/.codex/auth.json` 给 Codex CLI 使用；Hermes auth 不是同一 schema，必须把 tokens 转写到 `.hermes/auth.json` / `.hermes/profiles/<profile>/auth.json` 的 `providers.openai-codex.tokens` 和 `credential_pool.openai-codex`，再设 `0600`。
+证据：`bash -n /home/ubuntu/wsl-boot-services.sh` 通过；`Start-ScheduledTask WSL-Boot-Services` 返回 `LastTaskResult=0`；`hermes profile list` 显示 default stopped、`multicore` running、`trend-backtest` running；`screen -ls` 显示 `qdrant`、`hermes-trend-backtest-gateway`、`hermes-multicore-gateway`；`ps` 显示两个 profile 进程分别为 `hermes -p trend-backtest gateway run --replace` 与 `hermes -p multicore gateway run --replace`；两个 profile 的 `gateway_state.json` 均显示 Discord connected；`npx @openai/codex login status` 在 WSL 返回 `Logged in using ChatGPT`；Hermes default 和两个 profile status 均显示 OpenAI Codex logged in；default `hermes chat -q '只回复 OK，不要调用工具。'` 返回 OK。
+最后验证：2026-04-29 15:16
+复用建议：后续不要用 default gateway 代替 profile gateway。新增 profile 时必须同步更新 `/home/ubuntu/wsl-boot-services.sh`，用独立 screen/tmux 会话启动 profile 的 `start-gateway.sh`；若 Windows Codex 已登录，先复制到 WSL `.codex/auth.json` 验证 Codex CLI，再按 Hermes schema 同步；若状态显示 connected 但频道无回复，继续用 Discord `POST /channels/<id>/messages` smoke 验证发送权限。

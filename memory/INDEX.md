@@ -1,6 +1,6 @@
 # 项目记忆索引
 
-最后更新：2026-04-29
+最后更新：2026-04-30
 
 ## 阅读顺序
 
@@ -14,6 +14,7 @@
 
 ## 当前重点
 
+- 本机 WSL 现在有独立 `multicorerouter` Hermes profile，对应 Discord bot `多agent路由`，作为本地多 agent 默认规划者/路由入口。当前 hardflow 工作流已通过 `runtime_installer.py` 安装到 `/home/ubuntu/.hermes/profiles/multicorerouter`，本机 wrapper 为 `/home/ubuntu/.local/bin/multicorerouter-workflow`；2026-04-30 已先 `git fetch origin main` 并确认 `HEAD...origin/main=0 0`，再重新同步当前仓库到该 profile，安装 manifest 显示 5 个 workflow skills、21 个 ops 脚本、12 个 cron jobs 且 `missing_sources=[]`。`multicore` 历史 profile 已还原并保持独立，不继承、不覆盖、不清理它的 memories/sessions。最新 Discord 服务器 `大白量化社群管理群` 的频道级策略是：两个 bot 在 `总群` 必须 @，其它频道免 @；排查这条链路先看 `RUNBOOK.md` 和 `TASK_HISTORY.md` 的 2026-04-29/2026-04-30 记录。
 - nofx 上 SmartMultiPlatformArbitrage 的项目交付入口由本仓库提供：`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`pipeline_runner.py` 和 runtime installer。
 - nofx 当前 agent/model 口径已修正：live 入口只有两个 Hermes Discord profile：`arbitrageagent` 与 `spreadagent`；2026-04-27 服务器实测两者均为 `model.provider=openai-codex`、`model.default=gpt-5.5`、`gateway_state=running`。本仓库 active workflow owner 严格为 9 个：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer`；cron / Task Center 定时任务只挂 `coordinator/project-agent`，不再注册 `ops-agent/optimization-agent`。以上都不是 nofx 上 14 个常驻 agent 进程；`git_publish` 是 `coordinator` 负责的发布门禁，不再单独建 `git-master` agent。
 - nofx 两个 Discord Hermes profile 已按本机 WSL 的有效模式改为 profile 级 `approvals.mode: 'off'`；遇到 `Command Approval Required` 先查 `/home/arbops/.hermes/profiles/<profile>/config.yaml`，不要只看全局配置。

@@ -1,5 +1,50 @@
 # TASK_HISTORY
 
+## 2026-04-30 - 本机 WSL multicorerouter 当前项目重装验收
+
+类型：deploy
+范围：WSL Ubuntu `/home/ubuntu/.hermes/profiles/multicorerouter`、`/home/ubuntu/.local/bin/multicorerouter-workflow`、本仓库 `/mnt/h/GitHub/openclaw-hardflow-backup-20260302`
+事实：已按“先拉取/核对最新代码，再执行安装”的顺序，将当前 hardflow 项目重新安装到本机 WSL Hermes `multicorerouter` profile。该 profile 是 Discord bot `多agent路由` 的本地多 agent 路由入口，wrapper `/home/ubuntu/.local/bin/multicorerouter-workflow` 指向本仓库并调用 profile 内通用 `ops/pipeline_runner.py`；本轮没有覆盖 `multicore` 历史 profile，也没有触碰 nofx 远端 runtime。
+证据：`git fetch origin main` 成功，Windows 与 WSL 中 `HEAD` 和 `origin/main` 均为 `e19df0839034713d500fb2415c7fa4469cbc5680`，`git rev-list --left-right --count HEAD...origin/main` 为 `0 0`，因此无需 pull。随后执行 `runtime_installer.py install --runtime-home /home/ubuntu/.hermes/profiles/multicorerouter --runtime-name multicorerouter --repo-root /mnt/h/GitHub/openclaw-hardflow-backup-20260302 --emit-json` 返回 `ok=true`、`changed=true`、5 个 workflow skills、21 个 ops 脚本、12 个 cron jobs、`missing_sources=[]`，manifest `generated_at=2026-04-30T05:26:56+00:00`。`py_compile` 与 `compileall` 覆盖安装态 ops 和 `skills/project-delivery-pipeline` 并返回 `compile_ok`；`multicorerouter-workflow --dry-run --requirement "本机 WSL 多agent路由 pull后安装 smoke 2026-04-30" --emit-json` 生成 run `20260430T052709090316Z-openclaw-hardflow-backup-20260302`，`pipeline_state.status=completed`、Task Center `status=passed`。安装态 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 与仓库源码 SHA256 一致；`/home/ubuntu/.local/bin/hermes -p multicorerouter status` 显示 `gpt-5.5`、OpenAI Codex logged in、Discord configured、gateway running、12 active jobs；`gateway_state.json` 为 `gateway_state=running`、`discord_state=connected`、PID `28276`。
+最后验证：2026-04-30 13:27
+复用建议：后续要让本机 `多agent路由` 使用当前项目，先执行 `git fetch origin main` 并确认 `HEAD...origin/main=0 0`；若本地落后，先保护脏工作树再 `git pull --ff-only`。代码对齐后重跑同一条 `runtime_installer.py install` 命令，再按 RUNBOOK 的 `py_compile`、`compileall`、wrapper dry-run、gateway state 顺序验收。不要把 nofx `/home/arbops/.local/bin/smart-arb-pipeline` 入口或 `multicore` 历史 profile 当成本机 router 的安装目标。
+
+## 2026-04-29 - 最新 Discord 群频道级 mention 策略
+
+类型：runbook
+范围：WSL Ubuntu `/home/ubuntu/.hermes/profiles/{multicore,multicorerouter}/config.yaml`、`/home/ubuntu/.hermes/profiles/{multicore,multicorerouter}/.env`
+事实：用户确认最新 Discord 服务器 `大白量化社群管理群` 内，两个 bot 都应在 `总群` 需要 @，其它频道不用 @ 就能回复。已将 `multicore` 与 `multicorerouter` 都配置为 `DISCORD_REQUIRE_MENTION=false` + `DISCORD_REQUIRE_MENTION_CHANNELS=1498952273500311675`；`multicorerouter` 的 `DISCORD_ALLOWED_CHANNELS` 限定为该服务器的 `总群`、`飞书文档`、`多agent-使用-测试中`、`多agent-维修`、`文案编辑`、`coding`、`运维`。`multicore` 保留历史兼容：`DISCORD_ALLOWED_CHANNELS=` 为空，且旧 guild `本地项目` 仍在 `DISCORD_REQUIRE_MENTION_GUILDS=1498225530921811990`，避免旧多机器人群免 @ 抢消息。
+证据：Discord API `users/@me/guilds` 与 `guilds/<id>/channels` 显示 `多核电脑` 在 `本地项目` 与 `大白量化社群管理群`，`多agent路由` 在 `大白量化社群管理群`；最新服务器频道为 `总群=1498952273500311675`、`飞书文档=1498983823864627300`、`多agent-使用-测试中=1498985068889374822`、`多agent-维修=1498985274175127632`、`文案编辑=1498987053684232192`、`coding=1498987589191995442`、`运维=1498989006774337547`。两枚 bot 对上述频道的 REST `/typing` 探针均返回 204。重启后 `hermes profile list` 显示 `multicore` / `multicorerouter` running；两个 `gateway_state.json` 均为 `gateway_state=running`、Discord `connected`；`hermes -p multicore chat` 与 `hermes -p multicorerouter chat` 均返回 OK。
+最后验证：2026-04-29 22:37
+复用建议：以后调整“总群需要 @、其它频道免 @”时，优先维护 `DISCORD_REQUIRE_MENTION_CHANNELS`，不要把 `DISCORD_REQUIRE_MENTION` 全局改回 true；否则 free list 很容易漏新频道。新增普通频道时，`multicorerouter` 需要把新频道加入 `DISCORD_ALLOWED_CHANNELS`，`multicore` 若保持 allowed 为空则不需要改。
+
+## 2026-04-29 - 本机 WSL multicorerouter 路由 profile 与工作流安装
+
+类型：runbook
+范围：WSL Ubuntu `/home/ubuntu/.hermes/profiles/{multicore,multicorerouter}`、`/home/ubuntu/wsl-boot-services.sh`、`/home/ubuntu/.local/bin/multicorerouter-workflow`
+事实：已新增独立 Hermes profile `multicorerouter`，对应 Discord bot `多agent路由`，作为本机多 agent 默认规划者/路由入口；`multicore` 历史 profile 已从备份还原，保持原有 `DISCORD_ALLOWED_CHANNELS=`、`DISCORD_FREE_RESPONSE_CHANNELS=`、`DISCORD_REQUIRE_MENTION=false` 与原 SOUL/记忆，不再被路由 profile 覆盖或继承。`runtime_installer.py` 已把当前 hardflow 工作流安装到 `/home/ubuntu/.hermes/profiles/multicorerouter`，包含 5 个 workflow skills、21 个 ops 脚本、policy 文件与 12 个 cron jobs；本机 wrapper `/home/ubuntu/.local/bin/multicorerouter-workflow` 调用通用 `pipeline_runner.py`，不调用 nofx/SmartMulti 专用 `smart_arb_pipeline_entry.py`。`/home/ubuntu/wsl-boot-services.sh` 已加入 `multicorerouter` gateway 自启动。
+证据：`hermes profile list` 显示 `trend-backtest`、`multicore`、`multicorerouter` 均 running；三个 profile 的 `gateway_state.json` 均为 `gateway_state=running`、Discord `connected`。`hermes -p multicorerouter status` 显示 OpenAI Codex logged in、Discord home `1498985068889374822`、12 active jobs；`multicorerouter-workflow --dry-run --requirement ... --emit-json` 返回 `status=completed`、Task Center `passed`，运行目录在 `/home/ubuntu/.hermes/profiles/multicorerouter/.workflow/pipeline-runs/...`。`py_compile` 和 `compileall` 已覆盖安装态 ops 与 workflow skills。
+最后验证：2026-04-29 18:57
+复用建议：后续要让本机 `多agent路由` 使用当前工作流项目，走 `/home/ubuntu/.local/bin/multicorerouter-workflow` 或 `/home/ubuntu/.hermes/profiles/multicorerouter/ops/pipeline_runner.py`；不要复用 nofx 的 `/home/arbops/.local/bin/smart-arb-pipeline` 口径。涉及 `multicore` 时先确认是否是历史维修 profile，禁止再复制、清理或覆盖它的 sessions/memories。
+
+## 2026-04-29 - 本机 WSL multicore Discord 默认免 @ 与多机器人群例外
+
+类型：runbook
+范围：WSL Ubuntu `/home/ubuntu/.hermes/hermes-agent/gateway/platforms/discord.py`、`/home/ubuntu/.hermes/profiles/multicore/.env`、`/home/ubuntu/.hermes/profiles/multicore/config.yaml`
+事实：Hermes v0.10.0 原生 Discord adapter 只有全局 `require_mention` 与 `free_response_channels` 白名单，不能表达“默认所有群免 @，只有多机器人群必须 @”。已在本机 Hermes runtime 增加 `DISCORD_REQUIRE_MENTION_GUILDS` / `DISCORD_REQUIRE_MENTION_CHANNELS` 及对应 `discord.require_mention_guilds` / `discord.require_mention_channels` 配置。`multicore` 当前策略为：全局 `DISCORD_REQUIRE_MENTION=false`，`DISCORD_ALLOWED_CHANNELS=` 留空表示不再只限制两个旧频道，默认所有可见群/频道免 @；旧 guild `本地项目`（`1498225530921811990`）先作为多机器人群例外，必须 @ 才处理；新 guild `大白量化管理员群` 的 `常规` 频道（`1498952273500311675`）默认免 @。已重启 `hermes-multicore-gateway`，当前 `multicore` gateway running 且 Discord connected。
+证据：`python -m py_compile /home/ubuntu/.hermes/hermes-agent/gateway/platforms/discord.py` 通过；helper smoke 显示 `_discord_require_mention()` 为 `False`、`_discord_require_mention_guilds()` 返回 `{'1498225530921811990'}`；`hermes profile list` 显示 `multicore` running；`gateway_state.json` 显示 PID `26588`、`gateway_state=running`、`platforms.discord.state=connected`；Discord REST `/typing` 探针在新旧频道均返回 `204`（请求带 User-Agent，不输出 token）。
+最后验证：2026-04-29 15:56
+复用建议：以后要让某个本机 WSL `multicore` Discord 群必须 @，优先改 `DISCORD_REQUIRE_MENTION_GUILDS` 或 `DISCORD_REQUIRE_MENTION_CHANNELS`；不要再把所有免 @ 频道逐个塞进 `DISCORD_FREE_RESPONSE_CHANNELS`。如果 bot 在新群不回复，先区分 Hermes mention 策略、`DISCORD_ALLOWED_CHANNELS` 白名单、Discord 频道发送权限三层。
+
+## 2026-04-29 - 本机 WSL Hermes 开机任务、Codex 与 Discord token 排查
+
+类型：runbook
+范围：Windows Task Scheduler、WSL Ubuntu `/home/ubuntu/.hermes`、Hermes `trend-backtest` / `multicore` profiles
+事实：本机 WSL 里启用的开机任务是 `WSL-Boot-Services` / `WSL-Boot-Services-Logon`，旧 `HermesAgent-BootStart` / `HermesAgent-AutoStart` 已禁用。排查时新任务原本以 `SYSTEM` 运行，手动触发也返回 `LastTaskResult=4294967295`；已改为 `Administrator` + `S4U` + `Highest` 后，手动同路径触发返回 `LastTaskResult=0`。直接根因是 `/home/ubuntu/wsl-boot-services.sh` 只启动 Qdrant 和全局 Hermes gateway，未启动 `trend-backtest` / `multicore` 两个 profile gateway；同时全局 `.env` 与 `multicore` 复用同一个 Discord token，会占用 `multicore` bot。已备份并改造 `/home/ubuntu/wsl-boot-services.sh`，现在保留 Qdrant，停止依赖 default gateway，分别用 screen 会话 `hermes-trend-backtest-gateway` / `hermes-multicore-gateway` 启动两个 profile 的 `start-gateway.sh`。当前 default gateway 已停止，两个 profile gateway 均 running 且 Discord adapter connected。Discord token 没有丢：全局 `.env`、`trend-backtest/.env`、`multicore/.env` 都存在 token；全局与 `multicore` token 指纹一致，`trend-backtest` 是另一枚 token。Discord API `users/@me` 能识别 `多核电脑#8868` 与 `趋势回测机器人#9621`，但两个 profile 配置频道的发送 smoke 当前仍返回 403，说明剩余问题是 Discord 频道权限/可见性，不是本机 Hermes gateway 未启动或 token 文件缺失。Codex 登录侧已验证：`C:\Users\Administrator\.codex\auth.json` 可直接复制到 WSL `/home/ubuntu/.codex/auth.json` 供 Codex CLI 使用；Hermes auth schema 不同，不能原样覆盖 `.hermes/auth.json`，需要把 Windows Codex tokens 写入 Hermes schema 的 `providers.openai-codex.tokens` 和 `credential_pool.openai-codex`。本轮已同步到 default、`trend-backtest`、`multicore` 三个 Hermes auth 文件，权限均为 `0600`，Hermes default 与两个 profile 均显示 OpenAI Codex logged in。两个 profile 还保留 ZAI/OpenRouter 环境变量和 `zhipu/glm-5.1 -> zhipu/glm-4.7` fallback 作为额度/服务降级兜底。
+证据：`wsl.exe -l -v` 显示 Ubuntu running；`schtasks /Query` 与 `Get-ScheduledTaskInfo` 显示任务状态；`Start-ScheduledTask WSL-Boot-Services` 修复后返回 `LastTaskResult=0`；`hermes profile list` 显示 default stopped、`trend-backtest` running、`multicore` running；`ps` 显示 Qdrant、`hermes -p trend-backtest gateway run --replace` 和 `hermes -p multicore gateway run --replace`；两个 profile 的 `gateway_state.json` 均为 `gateway_state=running`、`platforms.discord.state=connected`；`npx @openai/codex login status` 在 WSL 返回 `Logged in using ChatGPT`；`hermes status`、`hermes -p trend-backtest status`、`hermes -p multicore status` 均显示 OpenAI Codex logged in；`hermes chat -q '只回复 OK，不要调用工具。'` 返回 OK；Discord API token smoke 只输出 bot 身份和频道 403，不输出 token。
+最后验证：2026-04-29 15:16
+复用建议：后续排查本机 WSL Hermes 时先分清四层：Windows 计划任务是否成功、启动脚本拉起的是 default gateway 还是 profile gateway、Codex CLI auth 与 Hermes auth schema 是否同步、Discord gateway connected 是否等于频道可发送。若 Windows Codex 已登录，可复制到 WSL `.codex/auth.json`；若要给 Hermes 用，需要按 Hermes auth schema 转换。若 Discord 仍无响应，先修频道权限 403。
+
 ## 2026-04-29 - specified_agent 指定 agent 执行与 session/run id 状态卡
 
 类型：feature

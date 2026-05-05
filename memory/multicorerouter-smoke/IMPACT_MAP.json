@@ -1,0 +1,7 @@
+{
+  "schema_version": "1.0",
+  "project_key": "multicorerouter-smoke",
+  "modules": [],
+  "last_indexed_at": "",
+  "note": "Populate module, owner, entrypoint, tests, docs, and related files before live coding."
+}
