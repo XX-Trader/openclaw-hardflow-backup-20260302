@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-05-05 - graphify 不读 .gitignore，项目级排除必须写 .graphifyignore
+
+类型：pitfall
+范围：`.graphifyignore`、`graphify-out/`、`vendor/`、项目知识图谱索引
+事实：graphify 的扫描边界由 `.graphifyignore` / `.graphifyinclude` 控制，不会自动沿用 `.gitignore`。本仓库首次直接运行 `graphify update .` 时，因为没有 `.graphifyignore`，`vendor/` 被纳入扫描，导致 7675 个支持文件中 7029 个来自 `vendor`，生成图达到 38625 nodes / 100707 edges，`graph.html` 因超过 5000 节点限制被跳过，God Nodes 出现 `str()` / `print()` 等第三方噪声。已新增 `.graphifyignore` 排除 `vendor/`，并删除旧 `graphify-out/` 后重新生成 AST-only 图。
+证据：新增 `.graphifyignore` 内容为 `vendor/`；重新运行 `graphify update .` 后输出 `4414 nodes, 8324 edges, 295 communities` 且生成 `graph.html`；`graphify.detect` 复核 `total_files=646`、`graphifyignore_patterns=1`、`vendor_detected=false`；读取 `graphify-out/graph.json` 复核 `vendor_nodes=0`。
+最后验证：2026-05-05 21:16
+复用建议：后续给任意项目启用 graphify 前，先按项目边界写 `.graphifyignore`，至少排除第三方源码快照、超大运行态目录和生成物；如果已有污染图，不能只跑 `graphify update`，要先删除旧 `graphify-out/` 或做干净重建，否则旧节点可能被保留。
+
 ## 2026-04-29 - WSL 访问 GitHub 偶发超时优先查 v2rayN/sing-box TUN 与 WSL2 NAT
 
 类型：pitfall
