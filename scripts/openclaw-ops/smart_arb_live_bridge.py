@@ -323,6 +323,16 @@ def command_block(title: str, command: str | list[str], proc: subprocess.Complet
     )
 
 
+def lark_cli_profile() -> str:
+    """Return the lark-cli profile used by nofx pipeline agents.
+
+    This is a profile name only, not a secret. Agents should still use the
+    configured lark-cli auth store and must never read or print credential files.
+    """
+
+    return os.environ.get("SMART_ARB_LARK_CLI_PROFILE", "cli_a953bab500b89cd1").strip()
+
+
 def bridge_env(args: argparse.Namespace, profile_dir: Path, stage: str = "") -> dict[str, str]:
     env = dict(os.environ)
     if stage in NON_CODE_HERMES_STAGES:
@@ -332,10 +342,30 @@ def bridge_env(args: argparse.Namespace, profile_dir: Path, stage: str = "") -> 
     env["HERMES_HOME"] = str(profile_dir)
     env["HERMES_ACCEPT_HOOKS"] = "1"
     env["PYTHONIOENCODING"] = "utf-8"
+    profile = lark_cli_profile()
+    if profile:
+        env["SMART_ARB_LARK_CLI_PROFILE"] = profile
+        # lark-cli currently requires the explicit --profile flag for reliable
+        # cross-agent use, but exporting this marker makes the chosen profile
+        # visible to spawned Hermes agents without exposing credentials.
+        env["LARKSUITE_CLI_PROFILE"] = profile
     path_parts = [str(args.hermes_bin.parent), str(VENV_BIN), "/usr/local/bin", "/usr/bin", "/bin"]
     existing_path = env.get("PATH", "")
     env["PATH"] = ":".join([part for part in path_parts if part] + ([existing_path] if existing_path else []))
     return env
+
+
+def feishu_access_guidance() -> str:
+    profile = lark_cli_profile()
+    profile_clause = f"--profile {shlex.quote(profile)} " if profile else ""
+    return f"""
+Feishu/Lark access contract for all pipeline agents:
+- If the requirement references Feishu, Lark, Base, bitable, table, or view data, prefer lark-cli before declaring the source unreadable.
+- Use the configured lark-cli profile explicitly: `lark-cli {profile_clause}base +table-list --base-token <base_token>` and then `lark-cli {profile_clause}base +record-list --base-token <base_token> --table-id <current_table_id> [--view-id <view_id>]`.
+- A web URL that redirects to a login page does not prove the Base is unreadable; list tables with lark-cli first.
+- If a user-provided table/view id is stale or returns not_found, list the Base tables/views and use the current table id by name instead of failing immediately.
+- Do not run `lark-cli config show`, do not read `.lark-cli/config.json`, and do not print, move, or modify tokens, cookies, app secrets, OAuth state, API keys, or credential files.
+""".strip()
 
 
 def stage_prompt(stage: str, args: argparse.Namespace, requirement: str) -> str:
@@ -366,6 +396,8 @@ Repair context from previous blocked attempt:
 
 Prior accepted stage context:
 {prior_stage_context}
+
+{feishu_access_guidance()}
 
 Safety contract:
 - Do not print, move, or modify secrets, tokens, cookies, credentials, auth state files, or private API keys.

@@ -80,6 +80,32 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
 
         self.assertEqual(Path(tmpdir), args.project_dir)
 
+    def test_bridge_env_exports_lark_profile_marker_without_credentials(self):
+        bridge = self._load_bridge_module()
+        args = SimpleNamespace(home=Path("/tmp/home"), hermes_bin=Path("/tmp/bin/hermes"))
+        with mock.patch.dict(os.environ, {"SMART_ARB_LARK_CLI_PROFILE": "team_feishu"}, clear=True):
+            env = bridge.bridge_env(args, Path("/tmp/profile"), "external_research")
+
+        self.assertEqual("team_feishu", env["SMART_ARB_LARK_CLI_PROFILE"])
+        self.assertEqual("team_feishu", env["LARKSUITE_CLI_PROFILE"])
+        self.assertNotIn("FEISHU_APP_SECRET", env)
+        self.assertNotIn("LARK_APP_SECRET", env)
+
+    def test_stage_prompt_includes_feishu_lark_cli_profile_guidance(self):
+        bridge = self._load_bridge_module()
+        args = SimpleNamespace(project_dir=Path("/repo"), profile="spreadagent")
+        with mock.patch.dict(
+            os.environ,
+            {"SMART_ARB_LARK_CLI_PROFILE": "team_feishu", "PIPELINE_RUN_DIR": "/tmp/run"},
+            clear=True,
+        ):
+            prompt = bridge.stage_prompt("external_research", args, "根据飞书 Base 模块总览列清单")
+
+        self.assertIn("Feishu/Lark access contract", prompt)
+        self.assertIn("lark-cli --profile team_feishu base +table-list", prompt)
+        self.assertIn("stale or returns not_found", prompt)
+        self.assertIn("Do not run `lark-cli config show`", prompt)
+
     def test_repair_context_can_be_supplied_inline_env(self):
         bridge = self._load_bridge_module()
         with mock.patch.dict(os.environ, {"PIPELINE_REPAIR_CONTEXT": "previous failure evidence"}, clear=False):
