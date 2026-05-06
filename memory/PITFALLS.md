@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-05-06 - 混合句风险清洗不能整行丢弃真实交易请求
+
+类型：pitfall
+范围：`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`pre_execution_risk.json`、nofx `smart-arb-pipeline`
+事实：旧 `scrub_negated_risk_lines()` 以整行维度处理风险文本。若用户或 agent 在同一句里写“允许真实交易下单，但不读取凭证”，整行会因为包含否定式凭证边界被丢弃，导致真实交易/下单没有进入 pre-execution high-risk 分类。修复后先剥离纯否定风险列表，再按中英文标点和转折/并列词切分子句；纯否定安全边界被删除，但正向 `PRODUCTION_TRADING_ENABLED=true`、真实交易、真实下单仍触发 high-risk。人工确认后 `execution_decision=confirmed_execute`，未确认仍阻塞。
+证据：新增 `test_pre_execution_risk_keeps_positive_trading_when_same_line_has_negated_credentials` 覆盖“允许真实交易下单 smoke，不读取或打印凭证”仍判 high；新增 `test_pre_execution_risk_ignores_pure_negated_trading_and_credentials` 覆盖“不启动真实交易、不下单、不划转、Do not place orders, transfer funds, or enable live trading”仍判 low。本地 `test_project_delivery_pipeline_runner` 55 项 OK，入口/backlog/installer/profile 58 项 OK；nofx 远端定向 62 项 OK；高风险确认 smoke `cli-spreadagent-20260506T153935576001Z` 验证 high-risk confirmed 继续执行。
+最后验证：2026-05-06 23:40
+复用建议：以后遇到风险误判时不要回到“整行丢弃”或简单关键词删除；必须按子句区分否定安全边界与正向高风险动作，并同时覆盖“纯否定不阻塞”和“混合句正向风险仍识别”两类测试。
+
 ## 2026-05-06 - 高风险确认写入 Task Center 但未透传到 pipeline 会导致重复阻断
 
 类型：pitfall

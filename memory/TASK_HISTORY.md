@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-06 - nofx 高风险确认门禁部署验收
+
+类型：deploy | bugfix
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`backlog_runner.py`、nofx runtime/profile、Task Center、Discord gateway
+事实：已把 nofx 高风险确认、双 reviewer 默认异构模型和混合句风险清洗修复完整部署到 nofx。策略类真实交易、下单、划转、提现和资金项仍会识别为 high-risk，但在用户明确确认后可以通过 `--human-risk-confirmed` 继续执行；后续测试、双 reviewer、部署、写回和 git publish 门禁不变。混合句里的否定凭证/安全边界不会再把正向真实交易/下单请求误清洗掉。
+证据：本机提交 `68b536a6`、`d236192e` 已推送；nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302` 为 `HEAD=d236192`、`HEAD...origin/main=0 0`。本地 `test_project_delivery_pipeline_runner` 55 项 OK、入口/backlog/installer/profile 58 项 OK、`compileall` 与 `git diff --check` 通过；nofx 远端 `compileall` 通过、定向 unittest 62 项 OK。高风险确认 echo smoke `cli-spreadagent-20260506T153935576001Z` 完成，Task Center `passed`，`pre_execution_risk.json` 显示 `risk_level=high`、`human_confirmation_confirmed=true`、`execution_decision=confirmed_execute`。两个 Discord gateway 已重启，`arbitrageagent` 和 `spreadagent` 均为 `gateway_state=running`、Discord `connected`；内控 API `/health` 为 `status=ok`。
+最后验证：2026-05-06 23:40
+复用建议：排查“高风险确认后仍阻拦”时，先查 `pre_execution_risk.json` 是否同时具备 `risk_level=high`、`human_confirmation_confirmed=true` 和 `execution_decision=confirmed_execute`；再查 `command-runs/*review*.json` 是否两个 reviewer provider/model 不同。
+
 ## 2026-05-06 - nofx 高风险确认与双 reviewer 默认模型修复
 
 类型：bugfix

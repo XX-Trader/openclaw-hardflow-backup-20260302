@@ -18,6 +18,15 @@
 最后验证：2026-05-06 22:58
 复用建议：遇到 review 阶段 `requires_revision` 但两个 stdout 都说 ready/pass 时，打开两个 `command-runs/*review*.json`，确认 `reviewer_role`、`Reviewer provider`、`Reviewer model` 是否都存在且不同；缺失或重复时修 live bridge 参数，不要放松 `dual_review_pass()`。
 
+## 2026-05-06 - nofx 远程命令用户与 shell 选择
+
+类型：runbook
+范围：nofx SSH、`/home/arbops/projects/openclaw-hardflow-backup-20260302`、runtime installer、远端测试
+事实：root 直接在 nofx hardflow 仓库执行 Git 会触发 dubious ownership；仓库、runtime installer、单测和 smoke 都应切到 `arbops` 用户执行。`runuser -u arbops -- bash -lc ...` 会读取 `/etc/bashrc` 并触发 `/home/linuxbrew/.linuxbrew/bin/brew` 权限噪音；本次验证使用 `runuser -u arbops -- /bin/sh -c 'cd <repo> && ...'` 成功避免该问题。
+证据：root 直跑 Git 报 `dubious ownership`；`bash -lc` 输出 `/etc/bashrc: line 100: /home/linuxbrew/.linuxbrew/bin/brew: permission denied`；改用 `/bin/sh -c` 后 `git status`、`git pull --ff-only`、runtime installer、远端 62 项 unittest 和高风险确认 smoke 均通过。
+最后验证：2026-05-06 23:40
+复用建议：以后 nofx 远程闭环优先用 Paramiko 单连接；命令模板为 `runuser -u arbops -- /bin/sh -c 'cd /home/arbops/projects/openclaw-hardflow-backup-20260302 && <command>'`。只有确实需要 bash 特性时才用 bash，并避免 `-l`。
+
 ## 本机 WSL multicorerouter 工作流入口
 
 常用事实源：

@@ -5,6 +5,14 @@
 
 ---
 
+## 2026-05-06 已完成
+
+- [x] [2026-05-06] **nofx 高风险确认门禁与双 reviewer 链路修复上线**
+  - 已贯通 `--human-risk-confirmed`：Task Center/backlog 人工确认后的高风险策略任务会把确认传到 `smart-arb-pipeline` 和 `pipeline_runner.py`，不再确认后仍卡在 `risk_gate`。
+  - reviewer-b 默认切换为 `kimi-coding/kimi-k2.6`，双 reviewer gate 默认具备不同 provider/model；交易、下单、划转、提现和资金项不再作为 SmartMulti 策略项目的永久阻断项，但仍要求人工确认后继续跑测试、双 review、部署/写回/git publish 门禁。
+  - 已修复混合句误判：同一句里“允许真实交易下单”和“不读取凭证”会保留正向高风险动作；纯否定安全边界仍不会阻塞。
+  - 验证：本地 runner 55 项 OK、入口/backlog/installer/profile 58 项 OK；nofx 远端定向 62 项 OK；高风险确认 echo smoke `cli-spreadagent-20260506T153935576001Z` 完成，`pre_execution_risk.json` 为 `risk_level=high`、`execution_decision=confirmed_execute`、`human_confirmation_confirmed=true`；两个 Discord gateway 已重启且 connected。
+
 ## 2026-04-30 已完成
 
 - [x] [2026-04-30] **本机 WSL 多agent路由 profile 重装当前 hardflow 项目**
