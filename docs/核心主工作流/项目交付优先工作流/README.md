@@ -11,6 +11,7 @@
 > 2026-04-27 持续推进补齐：新增 `backlog_runner.py` 与 `backlog_runner_30m` cron。该能力已在 2026-04-28 收口为“人工确认后的受控推进”：到期 TODO 和通用 create-task 先进入路线选择，runner 只选择已确认走 pipeline、无需澄清且有 `selected_route` 正向凭证的待办，或带允许 `next_action` 且已有 pipeline 选择记录的 failed 项，调用 `smart-arb-pipeline` 继续推进。
 > 2026-04-28 方案契约收敛：`delivery_plan.json.target_files` 只把用户原始需求/修复上下文中的显式路径作为高可信目标；review/research/project memory 仅作低信任补充，并过滤 `.workflow`、runtime host、Task Center、agent workspace、command report 和项目记忆控制文件。简单任务找不到可靠业务文件时保持 discovery required，不猜测编辑 workflow 宿主；被过滤的异常候选会进入 `plan_findings.filtered_target_candidates` 并展示到 `solution.md`。
 > 2026-04-28 手动链路选择：当前默认不让系统自动决定“单 agent / 需求探讨 / 指定 agent / 编码工作流 / TODO 自动候选”。系统只输出推荐链路、原因和可选项；用户确认后才进入对应链路。到期 TODO 和通用 create-task 即使低风险，也先进入 `human_inbox.py` 的路线选择问题；只有被选择为 `coding_workflow` 或 `todo_auto_candidate` 且记录 `human_confirmed=true/action=confirmed_for_execution` 的项才允许 `backlog_runner` 推进。选择 `specified_agent` 时必须显式提供 `--assignee <agent-id>`。
+> 2026-05-06 nofx/OpenClaw backup 当前口径：AI 能力提升后，任务拆分粒度不再作为 hard gate；project-agent 必须综合项目记忆、RAG/graphify、当前 Git 分支、HEAD、dirty state、本地/远端分支和 fetch 结果；web-agent 负责外部资料或明确 `NO_EXTERNAL_LOOKUP_NEEDED`；多 reviewer 必须使用不同模型、合并所有意见并循环修复直到无 blocker、达到自动修复上限或触发高风险人工门禁。详见 [OpenClaw Backup 多 Agent 工作流当前口径](openclaw-backup-multiagent-current.md)。
 
 ## 功能概述
 
