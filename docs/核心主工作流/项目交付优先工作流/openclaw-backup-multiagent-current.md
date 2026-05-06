@@ -109,7 +109,60 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 5. 有没有历史决策约束本次改动？
 6. 哪些范围必须交给 reviewer 或人工确认？
 
-## 6. web-agent 职责
+## 6. 基于 graphify 技能写需求
+
+用户提出“基于 graphify 这个新的技能去写需求”时，OpenClaw backup 工作流要把 graphify 明确作为 **需求分析前置地图**，而不是只把它当作可有可无的附件。
+
+### 6.1 graphify 在需求里的角色
+
+`graphify` 的产物应成为需求包的结构化依据：
+
+- `graphify-out/graph.json`：项目知识图谱，提供节点、边、社区、跨模块连接；
+- `graphify-out/GRAPH_REPORT.md`：提供 God Nodes、Surprising Connections、Suggested Questions，用于发现核心模块、隐藏耦合和应该追问的问题；
+- `graphify-out/graph.html`：给人工和 reviewer 浏览整体结构；
+- `.graphify_root`：校验图谱是否属于当前仓库，防止不同项目图谱混用。
+
+写需求时不能只根据聊天记录或单个文件猜测目标文件；必须先用 graphify 回答：
+
+1. 这个需求落在哪些社区/模块？
+2. 哪些 God Nodes 是核心入口或高影响面对象？
+3. 哪些 Surprising Connections 暗示了跨模块依赖或隐藏风险？
+4. Suggested Questions 中哪些问题必须在需求讨论阶段回答？
+5. 哪些节点/边支持目标文件选择？哪些只是弱推断，需要 reviewer 挑战？
+
+### 6.2 执行顺序
+
+基于 graphify 写需求的标准顺序：
+
+1. **确认项目边界**：确定当前需求属于 OpenClaw backup workflow、SmartMultiPlatformArbitrage 业务项目，还是 nofx 运行态；不同项目使用不同图谱和不同飞书表。
+2. **检查图谱是否存在**：查看对应项目的 `graphify-out/graph.json` 与 `.graphify_root`；如果缺失，需求中要写明“先初始化 graphify 索引”。
+3. **刷新图谱**：如果项目文件已有变化，先执行 graphify update / 索引刷新，再写需求；代码-only 变更可走 AST 增量，文档/API 变化需要语义更新。
+4. **读取图谱报告**：从 `GRAPH_REPORT.md` 抽取 God Nodes、Surprising Connections、Suggested Questions。
+5. **形成需求分析**：把聊天目标映射到图谱社区、核心节点、相关文件、相关测试和潜在风险。
+6. **形成执行顺序**：先处理图谱暴露的高影响面/接口契约，再处理局部实现；不要按主观感觉排序。
+7. **交给 reviewer**：reviewer-a/reviewer-b 必须挑战 graphify 结论，尤其是跨社区边、弱推断边、缺失测试和跨仓风险。
+8. **写入 delivery_plan**：`target_files`、`entry_points`、`verification_commands` 要能解释其 graphify 依据；缺图谱时必须降级为 memory/docs/repo search 并标 warning。
+
+### 6.3 风险边界
+
+- graphify 是 **软上下文**，不是自动修改器；它不能绕过人工路线选择、review、测试和 risk gate。
+- 图谱缺失或过期默认是 warning，不应直接阻断；但跨仓路径、凭证/密钥、真实交易/下单/划转风险必须 hard block。
+- 不同项目图谱必须分开：OpenClaw backup 图谱不能用来推断 SmartMultiPlatformArbitrage 业务目标文件，反之亦然。
+- `graphify-out/` 不写入业务仓库；索引应放在 profile runtime 索引目录，避免污染项目提交。
+
+### 6.4 飞书需求表写法
+
+飞书中每条需求至少补充：
+
+- graphify 使用阶段：初始化 / 更新 / 查询 / 范围校验；
+- 关联图谱节点或社区；
+- God Nodes 对应的核心模块；
+- Surprising Connections 对应的隐藏耦合；
+- Suggested Questions 转化出的澄清项；
+- 由图谱支持的目标文件和测试；
+- 图谱不确定项与 reviewer 挑战点。
+
+## 7. web-agent 职责
 
 `web-agent` 负责外部资料，不代替 reviewer 做裁决。
 
@@ -120,7 +173,7 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 - 如果本地事实足够，必须明确写 `NO_EXTERNAL_LOOKUP_NEEDED`，并说明为什么无需联网；
 - 输出 `research_report.md`，作为 requirements discussion 和 reviewer 输入。
 
-## 7. 风险门禁
+## 8. 风险门禁
 
 `pre_execution_risk.json` 是编码前风险事实源。
 
@@ -140,7 +193,7 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 
 高风险必须停在 `risk_gate`，等待群里人工确认。
 
-## 8. 失败与自动修复循环
+## 9. 失败与自动修复循环
 
 工作流不应在第一次失败后只说“失败”。必须记录：
 
@@ -160,7 +213,7 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 - 每次修复都生成 `auto_repair_context_N.md`；
 - 最终仍需通过多 reviewer、测试和 git publish。
 
-## 9. 不同项目分开表示
+## 10. 不同项目分开表示
 
 在飞书/项目记录中，至少分开维护：
 
@@ -178,7 +231,29 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 
 这三个项目可以相互引用，但不能混成一个“SmartMultiPlatformArbitrage 文档”。
 
-## 10. 当前实现检查点
+## 11. 已完成任务详细说明表
+
+需求管理不能只有“待做规划”，还必须有完成事实与证据。飞书 Base 中应保留一张独立表：
+
+- 表名：`已完成任务-详细说明`
+- 目的：把已经完成的任务写成需求说明的一部分，让后续规划能引用已完成事实，而不是重复讨论。
+- 必备字段：`完成任务`、`所属项目`、`对应需求/规划`、`完成内容`、`证据/链接`、`graphify需求说明`、`状态`、`后续规划关系`、`备注`。
+
+写法要求：
+
+1. 每个完成项必须说明它属于哪个项目：OpenClaw backup workflow、SmartMultiPlatformArbitrage 业务项目、nofx 运行态，或跨项目需求管理。
+2. 每个完成项必须绑定“对应需求/规划”，避免完成记录和未来规划脱节。
+3. 每个完成项必须给出证据，例如 Git commit、runtime 安装结果、测试结果、飞书链接、API smoke、状态卡证据目录。
+4. 对 graphify 相关需求，完成项必须说明图谱如何影响需求：God Nodes、Surprising Connections、Suggested Questions、目标文件、测试、风险门禁。
+5. 如果需求太多，可以继续新增专题说明表，例如 `Graphify图谱需求说明`、`业务需求验收说明`、`运行态部署说明`；但总表、规划表、完成说明表必须互相引用。
+
+这样飞书结构同时包含：
+
+- **任务**：现在做了什么、谁负责、状态如何；
+- **规划**：下一步先后顺序、前置条件、风险边界；
+- **详细说明**：为什么这样做、依据是什么、验收证据在哪里。
+
+## 12. 当前实现检查点
 
 必须保留并测试以下关键字符串/产物：
 
@@ -193,7 +268,7 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 - `SMART_ARB_REVIEWER_A_PROVIDER/MODEL`
 - `SMART_ARB_REVIEWER_B_PROVIDER/MODEL`
 
-## 11. 验收命令
+## 13. 验收命令
 
 ```bash
 cd /home/arbops/projects/openclaw-hardflow-backup-20260302
