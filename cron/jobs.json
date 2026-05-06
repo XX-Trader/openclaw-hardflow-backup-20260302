@@ -351,7 +351,7 @@
       "id": "b9c8d7e6-backlog-runner-0030",
       "agentId": "coordinator",
       "name": "backlog_runner_30m（持续推进待办）",
-      "description": "每30分钟从 Task Center 选择一个低风险、无需人工确认、无需澄清的待办或可续跑失败项，调用 smart-arb-pipeline 继续推进；高风险和人工门禁任务只保留在 human inbox",
+      "description": "每30分钟从 Task Center 选择一个已人工确认且走 pipeline 的待办或可续跑失败项，调用 smart-arb-pipeline 继续推进；高风险任务只有在 human inbox 已确认且 runner 显式允许时才携带确认凭证继续",
       "enabled": true,
       "createdAtMs": 1774800000000,
       "updatedAtMs": 1774800000000,
@@ -364,7 +364,7 @@
       "wakeMode": "now",
       "payload": {
         "kind": "agentTurn",
-        "message": "你是 backlog-runner 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/backlog_runner.py --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task-center/task_center.db --pipeline-command \"python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/smart_arb_pipeline_entry.py\" --profile spreadagent --source backlog-runner --include-failed --max-items 1 --max-attempts-per-task 1 --pipeline-timeout-seconds 3600。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
+        "message": "你是 backlog-runner 子agent。仅用命令执行：python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/backlog_runner.py --task-db ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/task-center/task_center.db --pipeline-command \"python3 ${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}/ops/smart_arb_pipeline_entry.py\" --profile spreadagent --source backlog-runner --include-failed --allow-confirmed-high-risk --max-items 1 --max-attempts-per-task 1 --pipeline-timeout-seconds 3600。将命令输出原样作为唯一回复；若输出 NO_REPLY，则只回复 NO_REPLY。",
         "timeoutSeconds": 3900,
         "toolsAllow": [
           "exec",

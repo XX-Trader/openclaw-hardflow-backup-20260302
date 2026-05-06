@@ -1,6 +1,7 @@
 import importlib.util
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -745,6 +746,64 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual(8, run_mock.call_args.kwargs["progress_stage_limit"])
         self.assertEqual(3, run_mock.call_args.kwargs["progress_command_limit"])
         self.assertEqual("", err.getvalue())
+
+    def test_main_defaults_reviewer_b_to_distinct_model(self):
+        module = load_module()
+        payload = {"run_id": "discord-spreadagent-test", "status": "completed", "next_action": "none", "stages": []}
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "SMART_ARB_LIVE_BRIDGE_PROVIDER": "openai-codex",
+                "SMART_ARB_LIVE_BRIDGE_MODEL": "gpt-5.5",
+                "SMART_ARB_REVIEWER_A_PROVIDER": "",
+                "SMART_ARB_REVIEWER_A_MODEL": "",
+                "SMART_ARB_REVIEWER_B_PROVIDER": "",
+                "SMART_ARB_REVIEWER_B_MODEL": "",
+            },
+            clear=False,
+        ), mock.patch.object(
+            module,
+            "run_pipeline_command",
+            return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
+        ) as run_mock:
+            rc = module.main(["--emit-json", "--profile", "spreadagent", "--source", "discord", "--route-choice", "coding_workflow", "--requirement", "demo"])
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        review_commands = [
+            runner_cmd[index + 1]
+            for index, value in enumerate(runner_cmd)
+            if value in {"--requirements-review-command", "--solution-review-command", "--code-review-command"}
+        ]
+        self.assertTrue(any("--reviewer-role reviewer-a" in command and "--provider openai-codex" in command and "--model gpt-5.5" in command for command in review_commands))
+        self.assertTrue(any("--reviewer-role reviewer-b" in command and "--provider kimi-coding" in command and "--model kimi-k2.6" in command for command in review_commands))
+
+    def test_main_passes_human_risk_confirmation_to_runner(self):
+        module = load_module()
+        payload = {"run_id": "discord-spreadagent-test", "status": "completed", "next_action": "none", "stages": []}
+
+        with mock.patch.object(
+            module,
+            "run_pipeline_command",
+            return_value=completed_process(module, json.dumps(payload, ensure_ascii=False)),
+        ) as run_mock:
+            rc = module.main([
+                "--emit-json",
+                "--profile",
+                "spreadagent",
+                "--source",
+                "discord",
+                "--route-choice",
+                "coding_workflow",
+                "--human-risk-confirmed",
+                "--requirement",
+                "已确认允许真实交易策略执行",
+            ])
+
+        self.assertEqual(0, rc)
+        runner_cmd = run_mock.call_args.args[0]
+        self.assertIn("--human-risk-confirmed", runner_cmd)
 
     def test_main_skips_deployment_when_requirement_forbids_service_control(self):
         module = load_module()

@@ -36,7 +36,11 @@ POLICY_DIR_CANDIDATES = [
     SCRIPT_PATH.parents[2] / "skills" / "library" / "control-plane-ops" / "scripts" / "policy",
 ]
 for candidate in POLICY_DIR_CANDIDATES:
-    if (candidate / "task_center.py").exists() and str(candidate) not in sys.path:
+    if (
+        (candidate / "task_center.py").exists()
+        and (candidate / "policy_route_selection.py").exists()
+        and str(candidate) not in sys.path
+    ):
         sys.path.insert(0, str(candidate))
         break
 
@@ -73,6 +77,7 @@ class BacklogCandidate:
     risk_level: str
     requirement: str
     next_action: str = ""
+    human_risk_confirmed: bool = False
 
 
 def truthy(value: Any) -> bool:
@@ -260,6 +265,11 @@ def load_candidate_tasks(
                 risk_level=risk,
                 requirement=task_requirement(task, next_action=next_action),
                 next_action=next_action,
+                human_risk_confirmed=(
+                    risk == "high"
+                    and bool(allow_confirmed_high_risk)
+                    and truthy(task.get("human_confirmed"))
+                ),
             )
         )
     selected.sort(key=lambda item: (PRIORITY_ORDER.get(item.priority, 3), item.task_id))
@@ -331,6 +341,8 @@ def run_candidate(
         "--requirement",
         candidate.requirement,
     ]
+    if candidate.human_risk_confirmed:
+        cmd.append("--human-risk-confirmed")
     started_at = utc_now_iso()
     try:
         proc = subprocess.run(
@@ -484,6 +496,7 @@ def run_backlog(config: argparse.Namespace) -> dict[str, Any]:
                     "priority": item.priority,
                     "risk_level": item.risk_level,
                     "next_action": item.next_action,
+                    "human_risk_confirmed": item.human_risk_confirmed,
                 }
                 for item in selected
             ],

@@ -1,5 +1,23 @@
 # PITFALLS
 
+## 2026-05-06 - 高风险确认写入 Task Center 但未透传到 pipeline 会导致重复阻断
+
+类型：pitfall
+范围：`human_inbox.py`、`backlog_runner.py`、`smart_arb_pipeline_entry.py`、`pipeline_runner.py`
+事实：人工确认只写在 Task Center 的 `human_confirmed=true` 不足以让 pipeline 继续。旧链路里 `backlog_runner` 即使用人工确认选中任务，也没有把确认传给 `smart_arb_pipeline_entry.py`；`pipeline_runner.py` 的 `risk_gate` 也没有确认输入，因此高风险方案在用户确认后仍会阻塞到 `await_human_confirmation`。已新增 `--human-risk-confirmed` 并贯通入口、runner 和风险门禁。
+证据：`backlog_runner.py` 已确认高风险候选会设置 `human_risk_confirmed` 并追加 `--human-risk-confirmed`；`smart_arb_pipeline_entry.py` 会把该参数传给 runner；`pipeline_runner.py` 写入 `human_confirmation_confirmed` 与 `confirmed_execute`；`test_confirmed_high_risk_task_passes_human_risk_flag_to_pipeline`、`test_main_passes_human_risk_confirmation_to_runner`、`test_high_risk_plan_runs_after_human_risk_confirmation` 覆盖该链路。
+最后验证：2026-05-06 22:58
+复用建议：以后不要通过删除高风险扫描解决“确认后仍阻拦”；正确做法是保留 high-risk 分类，确认后传递明确凭证，并让后续测试、review、部署和发布门禁继续工作。
+
+## 2026-05-06 - 双 reviewer 同模型会被判定为伪双审
+
+类型：pitfall
+范围：`dual_review_pass()`、nofx live bridge reviewer command report
+事实：双 reviewer gate 要求不同 command、不同 `reviewer_role` 和不同 provider/model。nofx 两个 Discord profile 默认模型都是 `openai-codex/gpt-5.5`，如果没有给 reviewer-b 配不同模型，即使 reviewer-a/reviewer-b 都输出 `Final verdict: ready_for_solution`，仍会阻塞。入口已将 reviewer-b 默认设为 `kimi-coding/kimi-k2.6`，smoke echo/hybrid 输出也补齐 provider/model。
+证据：`test_dual_review_requires_distinct_reviewer_models` 覆盖同模型失败；`test_main_defaults_reviewer_b_to_distinct_model` 覆盖入口默认不同模型；`hermes_profile_smoke.py` 的 `echo_outputs()` 和 `with_reviewer_role()` 会补 reviewer provider/model。
+最后验证：2026-05-06 22:58
+复用建议：排查 review 卡住时，先读 `command-runs/requirements_review-*.json`、`solution_review-*.json` 或 `code_review-*.json` 的 metadata，不要只看 stdout 里的 verdict。
+
 ## 2026-05-05 - graphify 不读 .gitignore，项目级排除必须写 .graphifyignore
 
 类型：pitfall

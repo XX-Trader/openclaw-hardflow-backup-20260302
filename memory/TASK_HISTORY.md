@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-06 - nofx 高风险确认与双 reviewer 默认模型修复
+
+类型：bugfix
+范围：`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`scripts/openclaw-ops/backlog_runner.py`、`cron/jobs.json`、`config/nofx-hermes-profiles/*/SOUL.md`、项目交付文档和测试
+事实：修复两个 nofx pipeline 阻塞源：1. 高风险任务即使用户已确认，也因为确认没有透传到 `risk_gate` 而继续阻塞；2. reviewer-a/reviewer-b 默认都使用 `openai-codex/gpt-5.5`，导致 dual review gate 判定为同模型伪双审。现在高风险确认通过 `--human-risk-confirmed` 从 Discord/backlog runner 传到 pipeline runner；SmartMulti 策略类真实交易、下单、划转、提现和资金任务可在人工确认后继续，但测试、双 reviewer、部署、写回和 git_publish 不变。reviewer-b 默认使用 `kimi-coding/kimi-k2.6`，仍允许环境变量/CLI 覆盖。
+证据：新增/更新测试覆盖 `test_high_risk_plan_runs_after_human_risk_confirmation`、`test_confirmed_high_risk_task_passes_human_risk_flag_to_pipeline`、`test_main_passes_human_risk_confirmation_to_runner`、`test_main_defaults_reviewer_b_to_distinct_model`、runtime installer cron flag 和 nofx profile 模板；文档同步 `README.md`、架构设计、live bridge 和当前口径。
+最后验证：2026-05-06 22:58
+复用建议：部署到 nofx 后必须复核 `/home/arbops/.local/bin/smart-arb-pipeline --help` 是否包含 `--human-risk-confirmed`、cron 消息是否包含 `--allow-confirmed-high-risk`、两个 live profile SOUL 是否同步，并用 echo smoke 或定向单测验证 reviewer metadata。
+
 ## 2026-04-30 - 本机 WSL multicorerouter 当前项目重装验收
 
 类型：deploy

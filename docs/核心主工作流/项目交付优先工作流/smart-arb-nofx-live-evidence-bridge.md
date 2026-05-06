@@ -60,12 +60,13 @@ Discord 入口默认不是直接执行，而是先由连接 Discord 的 profile 
 
 ```bash
 /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice coding_workflow --progress-interval-seconds 60 --requirement "<需求文本>"
+/home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice coding_workflow --human-risk-confirmed --progress-interval-seconds 60 --requirement "<已确认高风险的需求文本>"
 /home/arbops/.local/bin/smart-arb-pipeline --profile arbitrageagent --source discord --route-choice specified_agent --assignee tester --requirement "<需求文本>"
 ```
 
 `--route-choice` 是代码层人工选择凭证，不只是提示词约定。`smart_arb_pipeline_entry.py` 默认要求 Discord source 携带有效路线才会执行：缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`；`coding_workflow` / `todo_auto_candidate` 进入 coordinator pipeline；`specified_agent` 必须带 `--assignee <agent-id>`，并生成 `specified_agent_dispatch` Task Center 任务交给 `task_executor_runner.py` 调用指定 agent。nofx 当前没有 `openclaw` CLI 时，入口会自动使用 `/home/arbops/.local/bin/hermes` 和当前 profile 的 `HERMES_HOME` 进行 Hermes chat 执行，并把 Hermes `session_id` 回写成 agent session/run 证据。如果显式传入 `direct_run` 或 `requirement_discussion`，入口仍跳过 pipeline，避免 profile 把非 pipeline 选择误送进工作流。
 
-如果用户选择 `direct_run`，当前 Discord profile 作为最高权限 operator 直接处理，不进入 pipeline；仍必须遵守凭证、生产、资金、真实交易、force push、删除生产数据等安全边界。安全仓库同步只允许 clean 工作树上的 `git fetch` + `git pull --ff-only`，并做 `git status`、`HEAD == origin/main` 和内控 API smoke。
+如果用户选择 `direct_run`，当前 Discord profile 作为最高权限 operator 直接处理，不进入 pipeline；仍必须遵守凭证、force push、删除生产数据等安全边界。安全仓库同步只允许 clean 工作树上的 `git fetch` + `git pull --ff-only`，并做 `git status`、`HEAD == origin/main` 和内控 API smoke。真实交易、下单、划转、提现和资金类策略需求不是永久阻断，但不能在 `direct_run` 中绕过测试和审查；必须走 `coding_workflow` / `todo_auto_candidate`，并在用户明确确认后携带 `--human-risk-confirmed`。
 
 默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、真实 agent session/run id（存在时）、完成/阻塞情况、阶段命令状态、阻塞证据、自动修复判断和证据目录。`specified_agent` 状态卡必须明确显示被调用 agent、Task Center task id、executor run id、agent session/run id、当前阶段、是否完成和失败原因。默认不展开 reviewer/tester/terminal stdout/stderr，也不额外输出“关键证据”列表。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`；需要脱敏命令摘要时，加 `--chat-include-command-output`。
 
@@ -108,7 +109,7 @@ Discord 状态卡必须回答三个问题：
 - 非代码 Hermes 阶段不允许直接编辑 `research_report.md`、`requirements_discussion.md`、`verification_report.md` 等 pipeline artifacts；stage evidence 必须通过 stdout/final answer 返回，由 runner 持久化。bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，避免 agent 通过环境变量直接定位并覆盖 artifact。
 - `external_research` 对本地记忆蒸馏、环境基线、权限修复这类不依赖互联网的问题，可以输出 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据，作为有效 research evidence。
 - 如果 Hermes CLI stdout/stderr 只输出 `session_id: ...`，bridge 会在 `/home/arbops/.hermes/profiles/<profile>/sessions/session_<id>.json` 恢复最新 assistant 内容并先脱敏，再用于 stage pass 判定和状态卡输出。
-- 检测到正向要求读取/输出/使用凭证、API key、token/private key、session_id，或启用真实交易、下单、资金转移、提现、破坏性数据操作或 force push 等高风险内容时，不自动继续，状态卡显示需要人工确认。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全约束不会单独触发高风险阻断；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]` 仍是 high，`No need for ...` / `Do not need ...` 可作为否定式预脱敏噪音回流；如果同一段里还有 `but needs credentials`、`但需要资金操作` 等正向子句，仍按高风险处理。
+- 检测到正向要求读取/输出/使用凭证、API key、token/private key、session_id，或启用真实交易、下单、资金转移、提现、破坏性数据操作或 force push 等高风险内容时，未带人工确认凭证不会继续，状态卡显示需要人工确认。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全约束不会单独触发高风险阻断；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]` 仍是 high，`No need for ...` / `Do not need ...` 可作为否定式预脱敏噪音回流；如果同一段里还有 `but needs credentials`、`但需要资金操作` 等正向子句，仍按高风险处理。SmartMulti 策略类真实交易/资金高风险项在用户明确确认后可携带 `--human-risk-confirmed` 继续执行，但凭证读取/打印、force push、删除生产数据和绕过风控仍不可绕过。
 - 前序 artifact 注入后续 Hermes prompt 前会脱敏常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key 和 AWS access key，避免修复上下文扩散短格式 secret。
 
 ### 当前 fan-out 与 workspace 边界

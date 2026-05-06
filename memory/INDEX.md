@@ -1,6 +1,6 @@
 # 项目记忆索引
 
-最后更新：2026-04-30
+最后更新：2026-05-06
 
 ## 阅读顺序
 
@@ -22,9 +22,9 @@
 - 2026-04-29 本仓 nofx Discord profile 模板和 `smart_arb_pipeline_entry.py` 已升级并安装为“所有任务先执行链路选择 + Discord profile 最高权限调度入口 + route-choice 入口硬门禁 + specified_agent 真实执行 + session/run-id 状态卡”：只读查询、普通沟通、方案讨论、安全仓库同步、业务代码修改、部署排障、TODO 推进和 hardflow workflow/runtime/profile 自修都必须先发“执行链路选择”卡；用户选择 `direct_run` 后由当前 Discord profile 作为最高权限 operator 直接处理，选择 `coding_workflow` / `todo_auto_candidate` 后才启动 coordinator pipeline。入口脚本现在要求 Discord source 携带有效 `--route-choice`：缺失时只返回选择卡；`specified_agent` 必须带 `--assignee <agent-id>`，并创建 Task Center 任务调用指定 agent；nofx 没有 `openclaw` CLI 时自动使用当前 Hermes profile 的 `hermes chat` 执行指定 agent，并把 Hermes `session_id` 回写为 session/run 证据；`coding_workflow` 会把真实 agent session/run id 写入 command-runs、Task Center 和状态卡。代码批次 `22cecab` 已安装，后续文档/记忆提交已拉到 nofx 且 `HEAD...origin/main=0 0`，指定 agent live smoke 已返回 Task Center、executor run id、agent session id、agent run id、session key 和 `回答状态: 已回答完毕`。
 - nofx live verification 默认收敛为 `git diff --check` + `compileall -q scripts strategy_runtime`，并通过 `--verification-command-timeout-seconds` 显式记录单命令超时；不要再把全量 `unittest discover` 当 Discord live 默认门禁。
 - nofx 当前 live bridge 固定使用每阶段 owner 的独立 Git worktree：runner 会创建 `agent-workspaces/<stage>/<agent>/repo`，并把 `PIPELINE_AGENT_REPO_DIR` 注入 Hermes bridge；不再暴露 `shared` / `copy` 模式。
-- nofx Discord 状态卡会读取 `command-runs/*.json`，展示阶段命令状态、阻塞证据和自动修复判断；证据项默认转换为 20 字以内中文短说明，完整文件仍保留在证据目录；默认只显示 stage/agent/returncode/证据短说明，不展开 reviewer/tester/terminal stdout/stderr；`run_external_research` / `revise_solution` / `return_to_code_execution` / `return_to_deployment` / `fix_memory_writeback` / `fix_git_publish` 会自动回流最多 2 次，高风险凭证、真实交易、资金或破坏性数据操作仍停人工确认。
+- nofx Discord 状态卡会读取 `command-runs/*.json`，展示阶段命令状态、阻塞证据和自动修复判断；证据项默认转换为 20 字以内中文短说明，完整文件仍保留在证据目录；默认只显示 stage/agent/returncode/证据短说明，不展开 reviewer/tester/terminal stdout/stderr；`run_external_research` / `revise_solution` / `return_to_code_execution` / `return_to_deployment` / `fix_memory_writeback` / `fix_git_publish` 会自动回流最多 2 次。高风险凭证、破坏性数据操作和 force push 仍停人工确认；SmartMulti 策略类真实交易、下单、划转、提现和资金项在用户明确确认后可携带 `--human-risk-confirmed` 继续，但后续测试、双 reviewer、部署、写回和 git publish 门禁不变。
 - nofx Discord 入口默认每 60 秒输出 `# nofx 任务执行进度`，从 `pipeline_state.json` 和最近 `command-runs/*.json` 展示已完成阶段、当前阶段、最近命令状态和证据目录；`--emit-json` / `--no-chat-summary` 会关闭该进度卡，保持机器输出原样。
-- 本仓库已新增 `backlog_runner.py` 与 `backlog_runner_30m` cron，但 2026-04-28 起默认进入“手动链路选择”阶段：系统只推荐直接运行、需求探讨、指定 agent、编码工作流或 TODO 自动候选，用户确认后才执行。到期 TODO 即使低风险，也先进入 `human_inbox.py` 路线选择；Discord 入口也同样所有新任务先走选择，只有选择为 `coding_workflow` / `todo_auto_candidate` 等 pipeline 动作后，backlog runner 或 profile 才会调用 `smart-arb-pipeline`。`cron/jobs.json` 的 announce / failureAlert 默认投递到 spreadagent Discord 群 `1494595527181078578`。
+- 本仓库已新增 `backlog_runner.py` 与 `backlog_runner_30m` cron，但 2026-04-28 起默认进入“手动链路选择”阶段：系统只推荐直接运行、需求探讨、指定 agent、编码工作流或 TODO 自动候选，用户确认后才执行。到期 TODO 即使低风险，也先进入 `human_inbox.py` 路线选择；Discord 入口也同样所有新任务先走选择，只有选择为 `coding_workflow` / `todo_auto_candidate` 等 pipeline 动作后，backlog runner 或 profile 才会调用 `smart-arb-pipeline`。2026-05-06 起 cron 默认带 `--allow-confirmed-high-risk`，runner 对已确认高风险任务会向入口传 `--human-risk-confirmed`，避免用户确认后仍卡在 `risk_gate`。`cron/jobs.json` 的 announce / failureAlert 默认投递到 spreadagent Discord 群 `1494595527181078578`。
 - 2026-04-28 用户确认：Hermes 已有记忆整理能力，本仓 `memtidy_runner` 退役，不再安装 `memtidy` skill、`memtidy_runner.py` 或 `config/memtidy_rules.json`，也不再注册每日 03:00 记忆整理 cron。待办自动推进链继续保留。
 - `delivery_plan.json` 现在承担任务拆分职责：多事项需求会拆成 `scope_slices`，第一块为本轮 `current`，其余标记 `deferred`，避免 backlog runner 或人工入口一次执行过重任务；需要核对的凭证、资金、生产破坏、需求不清和高风险事项仍停 human inbox 或回问用户。
 - `delivery_plan.json.target_files` 现在只把用户原始需求/修复上下文中的显式路径作为高可信目标；review / research / project memory 仅作低信任补充并过滤 `.workflow`、runtime host、Task Center、agent workspace、command report 和项目记忆控制文件，简单任务没有可靠业务文件时保持 `discovery_required=true`。被过滤的异常候选会写入 `plan_findings.filtered_target_candidates` 并展示在 `solution.md`。

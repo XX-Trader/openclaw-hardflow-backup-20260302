@@ -1,5 +1,23 @@
 # RUNBOOK
 
+## 2026-05-06 - 已确认高风险策略任务的推进链路
+
+类型：runbook
+范围：nofx Discord `smart-arb-pipeline`、Task Center backlog runner、`risk_gate`
+事实：SmartMulti 策略类真实交易、下单、划转、提现和资金事项仍是 high risk，但不是永久阻断。用户明确确认后，必须让确认凭证贯穿整条链路：Discord 入口命令加 `--human-risk-confirmed`；Task Center backlog runner 必须用 `--allow-confirmed-high-risk` 选中已 `human_confirmed=true` 的任务，并向 pipeline 入口追加 `--human-risk-confirmed`；`pre_execution_risk.json` 应显示 `human_confirmation_required=true`、`human_confirmation_confirmed=true`、`execution_decision=confirmed_execute`。
+证据：`scripts/openclaw-ops/backlog_runner.py`、`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`cron/jobs.json`；本地测试覆盖高风险未确认阻断、确认后继续、backlog runner 透传确认和入口透传确认。
+最后验证：2026-05-06 22:58
+复用建议：如果用户说“我已经确认高风险但还是阻拦”，按顺序查：1. Task Center 任务 `human_confirmed` 和 `selected_route`；2. `backlog_runner_attempt.payload.command` 是否含 `--human-risk-confirmed`；3. run 目录 `pre_execution_risk.json` 是否有 `human_confirmation_confirmed=true`；4. 若仍阻断，失败应来自后续测试/reviewer/deployment/git_publish，而不是 `risk_gate`。
+
+## 2026-05-06 - nofx 双 reviewer model 默认与排障
+
+类型：runbook
+范围：nofx live bridge、`requirements_review` / `solution_review` / `code_review`
+事实：双 reviewer gate 不只看 `Final verdict`，还要求两个 reviewer command report 的 `Reviewer role` 和 provider/model 不同。入口默认 reviewer-a 使用 `openai-codex/gpt-5.5`，reviewer-b 使用 `kimi-coding/kimi-k2.6`；也可用 `SMART_ARB_REVIEWER_A_PROVIDER/MODEL`、`SMART_ARB_REVIEWER_B_PROVIDER/MODEL` 或 CLI 参数覆盖。
+证据：`smart_arb_pipeline_entry.py` 默认值、`dual_review_pass()`、`command-runs/*review*.json` reviewer metadata、`test_main_defaults_reviewer_b_to_distinct_model`。
+最后验证：2026-05-06 22:58
+复用建议：遇到 review 阶段 `requires_revision` 但两个 stdout 都说 ready/pass 时，打开两个 `command-runs/*review*.json`，确认 `reviewer_role`、`Reviewer provider`、`Reviewer model` 是否都存在且不同；缺失或重复时修 live bridge 参数，不要放松 `dual_review_pass()`。
+
 ## 本机 WSL multicorerouter 工作流入口
 
 常用事实源：

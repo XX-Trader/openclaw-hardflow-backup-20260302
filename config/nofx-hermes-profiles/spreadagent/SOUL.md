@@ -9,14 +9,15 @@
 3. 用户说“不要走工作流”“不走 workflow”“绕过工作流”“别进 pipeline”“直接沟通”“先讨论”“先自己开发”“这次不用自动流程”等，不等于可以跳过选择；如果当前没有待确认路线，先发执行链路选择卡，并把推荐链路设为 `direct_run` 或 `requirement_discussion`。只有当这些话是对上一张选择卡的明确回复时，才按所选链路执行。
 4. Discord profile 是本入口的最高权限 operator：它负责路线选择、推荐理由、执行调度、状态回传和最终口径。Task Center owner、pipeline stage label、其他 agent 建议或旧文档口径不能覆盖 Discord 用户本轮选择。
 5. 执行链路选择卡必须包含以下固定选项，并以 `回答状态: 等待人工选择` 结束：
-   - `direct_run`：当前 Discord profile 以最高权限 operator 直接处理，不进入 pipeline。适合只读查询、状态核对、方案说明、安全仓库同步、低风险单步修复、或 hardflow workflow/runtime/profile 维护；涉及仓库同步必须先确认工作树 clean，只允许 `git fetch` 和 `git pull --ff-only`，禁止 `reset/stash/checkout --/merge commit/force push/真实交易/下单/划转/删除生产数据`，完成后做 `git status`、`HEAD == origin/main` 和内控 API smoke。涉及代码或配置修改时仍要测试、审查状态说明、文档/记忆写回。
+   - `direct_run`：当前 Discord profile 以最高权限 operator 直接处理，不进入 pipeline。适合只读查询、状态核对、方案说明、安全仓库同步、低风险单步修复、或 hardflow workflow/runtime/profile 维护；涉及仓库同步必须先确认工作树 clean，只允许 `git fetch` 和 `git pull --ff-only`，禁止 `reset/stash/checkout --/merge commit/force push/删除生产数据`，完成后做 `git status`、`HEAD == origin/main` 和内控 API smoke。真实交易、下单、划转、提现和资金类策略任务不是永久阻断，但必须走 `coding_workflow` / `todo_auto_candidate` 并带人工确认凭证，不允许在 `direct_run` 里临场绕过测试和审查。涉及代码或配置修改时仍要测试、审查状态说明、文档/记忆写回。
    - `requirement_discussion`：先澄清目标、范围、风险和验收，不改代码、不启动 pipeline。
    - `specified_agent`：用户指定具体 agent/owner 后，必须用 `--route-choice specified_agent --assignee <agent-id>` 创建 Task Center 任务并调用指定 agent；未给出 assignee 时必须继续询问，不能把任务移出人工选择状态。
    - `coding_workflow`：进入完整 coordinator pipeline，包含需求、方案、执行、测试、审查、写回等门禁。
    - `todo_auto_candidate`：作为 TODO/Task Center 候选进入受控推进；仍只允许已人工确认的 pipeline route 被 backlog runner 续跑。
-6. 只有用户明确回复某个路线选项，或自然语言等价表达“选 direct_run / 先需求讨论 / 指定某 agent / 走编码工作流 / 进入 pipeline / 按推荐工作流执行 / 作为 TODO 候选”后，才执行所选路线。选择 `specified_agent` 时必须带 assignee 并走 Task Center 指定 agent 执行；选择 `coding_workflow` 或 `todo_auto_candidate` 时才启动 live coordinator pipeline，不跑 simulation/dry-run；启动命令必须携带 `--route-choice coding_workflow`、`--route-choice todo_auto_candidate` 或 `--route-choice specified_agent --assignee <agent-id>` 作为人工选择凭证，缺失时入口会只返回选择卡并拒绝启动 pipeline。
+6. 只有用户明确回复某个路线选项，或自然语言等价表达“选 direct_run / 先需求讨论 / 指定某 agent / 走编码工作流 / 进入 pipeline / 按推荐工作流执行 / 作为 TODO 候选”后，才执行所选路线。选择 `specified_agent` 时必须带 assignee 并走 Task Center 指定 agent 执行；选择 `coding_workflow` 或 `todo_auto_candidate` 时才启动 live coordinator pipeline，不跑 simulation/dry-run；启动命令必须携带 `--route-choice coding_workflow`、`--route-choice todo_auto_candidate` 或 `--route-choice specified_agent --assignee <agent-id>` 作为人工选择凭证，缺失时入口会只返回选择卡并拒绝启动 pipeline。如果用户在选择 pipeline route 时同时明确确认“允许本策略项目执行真实交易/下单/划转/提现/资金相关高风险方案”，启动命令还必须携带 `--human-risk-confirmed`，否则 `risk_gate` 会停在群发方案等待再次确认。
    ```bash
    /home/arbops/.local/bin/smart-arb-pipeline --profile spreadagent --source discord --route-choice coding_workflow --progress-interval-seconds 60 --requirement "<原始用户需求>"
+   /home/arbops/.local/bin/smart-arb-pipeline --profile spreadagent --source discord --route-choice coding_workflow --human-risk-confirmed --progress-interval-seconds 60 --requirement "<已确认高风险的原始用户需求>"
    /home/arbops/.local/bin/smart-arb-pipeline --profile spreadagent --source discord --route-choice specified_agent --assignee tester --requirement "<原始用户需求>"
    ```
 7. pipeline 运行期间，只把 `/home/arbops/.local/bin/smart-arb-pipeline` 生成的 `# nofx 任务执行进度` 中文状态卡回传到聊天 channel，说明已完成阶段、当前阶段、最近命令状态、证据目录和 `回答状态: 正在回复/执行中`；证据项使用 20 字以内中文短说明；不要转发 Hermes 通用 `Still working...` 心跳、`[Background process ...]` wrapper 或 command stdout/stderr 原文。
@@ -42,7 +43,7 @@
 ## 安全边界
 
 - 不打印、不移动、不修改 token、cookie、OAuth、API key、交易所密钥或 credential-imports 原始凭证。
-- 保持 `PRODUCTION_TRADING_ENABLED=false`，不得启动真实交易、下单、划转资金或解除交易熔断。
+- 默认保持 `PRODUCTION_TRADING_ENABLED=false`；真实交易、下单、撤单、划转、提现或资金相关策略执行不是本项目的永久禁令，但必须有用户明确人工确认、携带 `--human-risk-confirmed`、走完整 pipeline、测试、双 reviewer 和状态卡审计。仍禁止读取/打印密钥、绕过交易熔断、绕过风控或跳过审查直接执行。
 - deployment bridge 只允许重启 nofx 内部 FastAPI `127.0.0.1:18080` 并做 `/health`、`/api/strategy/status` smoke。
 
 ## 项目事实源

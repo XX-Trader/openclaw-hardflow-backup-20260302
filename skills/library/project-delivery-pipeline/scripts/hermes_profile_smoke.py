@@ -141,6 +141,8 @@ def echo_outputs(stage: str, config: SmokeConfig, reviewer_role: str = "") -> st
         ]
         if reviewer_role:
             lines.append(f"Reviewer role: {reviewer_role}")
+            lines.append("Reviewer provider: hermes-smoke")
+            lines.append(f"Reviewer model: hermes-smoke-{reviewer_role}")
         lines.append(f"- Smoke output contains the required {stage} gate verdict.")
         return "\n".join(lines)
     raise SmokeError(f"unknown smoke stage: {stage}")
@@ -357,9 +359,14 @@ def write_hermes_chat_agent(path: Path, stage: str, config: SmokeConfig, reviewe
 def with_reviewer_role(output: str, reviewer_role: str) -> str:
     if not reviewer_role:
         return output
-    if re.search(r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:", output or ""):
-        return output
-    return str(output or "").rstrip() + f"\nReviewer role: {reviewer_role}"
+    lines = [str(output or "").rstrip()]
+    if re.search(r"(?im)^\s*(?:Reviewer role|reviewer_role|reviewer-role)\s*:", output or "") is None:
+        lines.append(f"Reviewer role: {reviewer_role}")
+    if re.search(r"(?im)^\s*(?:Reviewer provider|reviewer_provider|provider)\s*:", output or "") is None:
+        lines.append("Reviewer provider: hermes-smoke")
+    if re.search(r"(?im)^\s*(?:Reviewer model|reviewer_model|model)\s*:", output or "") is None:
+        lines.append(f"Reviewer model: hermes-smoke-{reviewer_role}")
+    return "\n".join(line for line in lines if line)
 
 
 def write_cached_agent(path: Path, output: str) -> None:

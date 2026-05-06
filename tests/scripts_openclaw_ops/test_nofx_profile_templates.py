@@ -23,6 +23,8 @@ class NofxProfileTemplateTests(unittest.TestCase):
                 self.assertIn("先确认没有活跃 `smart-arb-pipeline`", text)
                 self.assertIn("同步 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md`", text)
                 self.assertIn("`gateway_state=running`", text)
+                self.assertIn("--human-risk-confirmed", text)
+                self.assertIn("真实交易、下单、划转、提现和资金类策略任务不是永久阻断", text)
                 self.assertNotIn("只允许做只读诊断和状态回传", text)
 
     def test_discord_execution_requests_require_manual_route_choice(self):
@@ -44,6 +46,7 @@ class NofxProfileTemplateTests(unittest.TestCase):
                 self.assertIn("todo_auto_candidate", text)
                 self.assertIn("用户选择 `direct_run` 后", text)
                 self.assertIn("--route-choice coding_workflow", text)
+                self.assertIn("--human-risk-confirmed", text)
                 self.assertIn("缺失时入口会只返回选择卡并拒绝启动 pipeline", text)
                 self.assertIn("git pull --ff-only", text)
                 self.assertIn("HEAD == origin/main", text)

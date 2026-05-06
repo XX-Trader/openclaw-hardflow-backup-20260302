@@ -122,6 +122,7 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
                 f'--pipeline-command "python3 {runtime_text}/ops/smart_arb_pipeline_entry.py"',
                 rendered,
             )
+            self.assertIn("--allow-confirmed-high-risk", rendered)
 
     def test_installed_ops_smoke_resolves_ops_policy_dir(self):
         module = load_module()

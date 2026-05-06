@@ -27,11 +27,11 @@ SmartMultiPlatformArbitrage 只作为被交付/被修改的业务项目之一；
 8. graphify/RAG 作为软上下文补充跨模块影响面；只在跨仓路径、凭证/密钥、真实交易/下单/划转等风险时变成 hard block。
 9. 多个 reviewer 用不同模型独立审查方案；综合意见后必须全部通过，才能进入执行。
 10. `coordinator` 输出 `group_plan_publish.md`，把完整执行方案、风险和验证方式回传群里。
-11. `risk_gate` 写入 `pre_execution_risk.json`：低/中风险自动执行；高风险必须等人工确认。
+11. `risk_gate` 写入 `pre_execution_risk.json`：低/中风险自动执行；高风险未确认时必须等人工确认，已确认时必须记录 `human_confirmation_confirmed=true` 后继续。
 12. `backend-dev` / `frontend-dev` / 指定 agent 执行代码或文档修改。
 13. `tester` 运行确定性测试、compileall、diff check、API smoke 或项目指定验收。
 14. 多 reviewer 用不同模型做代码审查；任一 reviewer 有 blocker 就回到修改/测试循环。
-15. `deployer` 只在允许时部署或 smoke，不得擅自启动真实交易、下单、划转、读取凭证。
+15. `deployer` 只在允许时部署或 smoke；真实交易、下单、划转、提现和资金类策略执行需要人工确认凭证，不得擅自读取/打印凭证、解除风控或绕过审查。
 16. `git_publish` 在测试和 review 通过后提交/推送，并验证远端包含目标提交。
 17. 任一步失败时写 `failure_summary.md`，把具体失败阶段、失败原因、下一步修复建议总结回群。
 18. 完成后写回项目 memory/docs/todo/done，并输出中文状态卡。
@@ -79,6 +79,8 @@ smart-arb-pipeline \
   --reviewer-b-provider <other-provider> --reviewer-b-model <other-model> \
   ...
 ```
+
+nofx SmartMulti 入口在未显式配置 reviewer-b 时，默认 reviewer-b 使用 `kimi-coding/kimi-k2.6`，避免 reviewer-a/reviewer-b 都落到 `openai-codex/gpt-5.5` 而被 dual review gate 判为同模型伪双审。
 
 ## 5. project-agent 地图/RAG/Git 职责
 
@@ -191,7 +193,7 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 - 跨仓越权或无法确认目标文件；
 - 生产部署/权限边界不清。
 
-高风险必须停在 `risk_gate`，等待群里人工确认。
+高风险默认停在 `risk_gate`，等待群里人工确认。用户已经在路线选择或 human inbox 中明确确认的 SmartMulti 策略类真实交易/下单/划转/提现/资金方案，可以携带 `--human-risk-confirmed` 继续进入 `code_execution`；`pre_execution_risk.json` 必须写入 `execution_decision=confirmed_execute` 和 `human_confirmation_confirmed=true`。这只解除重复等待人工确认，不解除凭证保护、测试、双 reviewer、deployment、memory writeback 或 git_publish。
 
 ## 9. 失败与自动修复循环
 

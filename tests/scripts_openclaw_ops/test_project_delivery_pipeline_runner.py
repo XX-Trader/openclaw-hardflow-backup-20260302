@@ -366,7 +366,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             )
 
             def py_cmd(path: Path) -> str:
-                return f"{sys.executable} {path}"
+                return f'"{sys.executable}" "{path}"'
 
             state = run_pipeline(
                 PipelineConfig(
@@ -396,6 +396,62 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             failure_summary = Path(state["artifacts"]["failure_summary"]).read_text(encoding="utf-8")
             self.assertIn("失败步骤群回传摘要", failure_summary)
             self.assertIn("risk_gate", failure_summary)
+
+    def test_high_risk_plan_runs_after_human_risk_confirmation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            scripts_dir = tmp_path / "scripts"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass_stage.py"
+            pass_script.write_text("print('LIVE_BRIDGE_STATUS: pass')\n", encoding="utf-8")
+            review_a, review_b = self._write_review_pair(scripts_dir)
+            command_repo = tmp_path / "command-repo"
+            command_repo.mkdir()
+            (command_repo / "README.md").write_text("fixture\n", encoding="utf-8")
+            subprocess.run(["git", "init"], cwd=command_repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "README.md"], cwd=command_repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test Bot", "-c", "user.email=test@example.invalid", "commit", "-m", "fixture"],
+                cwd=command_repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="已人工确认：允许本策略项目开启真实交易并设置 PRODUCTION_TRADING_ENABLED=true",
+                    workspace_root=tmp_path,
+                    run_id="high-risk-confirmed",
+                    source_urls=("https://example.invalid/docs",),
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    code_command=py_cmd(pass_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    memory_write_command=py_cmd(pass_script),
+                    command_cwd=command_repo,
+                    agent_workspace_root=tmp_path / "agent-workspaces",
+                    human_risk_confirmed=True,
+                )
+            )
+
+            self.assertEqual("completed", state["status"])
+            self.assertEqual("none", state["next_action"])
+            self.assertIn("code_execution", [stage["name"] for stage in state["stages"]])
+            risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
+            self.assertEqual("high", risk["risk_level"])
+            self.assertTrue(risk["human_confirmation_required"])
+            self.assertTrue(risk["human_confirmation_confirmed"])
+            self.assertEqual("confirmed_execute", risk["execution_decision"])
+            group_plan = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
+            self.assertIn("human_confirmation_confirmed", group_plan)
 
     def test_pipeline_state_collects_agent_session_and_run_ids(self):
         with tempfile.TemporaryDirectory() as tmp:

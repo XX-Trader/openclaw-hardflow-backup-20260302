@@ -1,5 +1,23 @@
 # DECISIONS
 
+## 2026-05-06 - SmartMulti 策略高风险确认后可继续执行
+
+类型：decision
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`backlog_runner.py`、`cron/jobs.json`、nofx Discord profile
+事实：真实交易、下单、划转、提现和资金类需求对 SmartMultiPlatformArbitrage 属于策略业务本身，不再作为永久阻断。它们仍会被 `pre_execution_risk.json` 标记为 high risk；未确认时停在 `risk_gate`，已由用户在 Discord 路线选择或 `human_inbox` 中明确确认时，入口必须携带 `--human-risk-confirmed`，runner 写入 `human_confirmation_confirmed=true` 与 `execution_decision=confirmed_execute` 后继续执行。该确认只解除重复人工确认，不解除凭证保护、测试、双 reviewer、deployment、memory writeback 或 git_publish。
+证据：`PipelineConfig.human_risk_confirmed`、`apply_human_risk_confirmation()`、`smart_arb_pipeline_entry.py --human-risk-confirmed`、`backlog_runner.py` 已确认高风险透传、`cron/jobs.json --allow-confirmed-high-risk`、profile SOUL 模板的高风险确认命令示例；测试覆盖高风险未确认阻断、确认后继续、backlog runner 透传确认、入口透传确认和 profile 模板。
+最后验证：2026-05-06 22:58
+复用建议：后续用户确认策略类高风险执行后，排查仍卡住时先看三处：Task Center 是否 `human_confirmed=true`，backlog runner/入口命令是否带 `--human-risk-confirmed`，`pre_execution_risk.json` 是否写入 `human_confirmation_confirmed=true`。不要关闭凭证、secret scan、force push 或删除生产数据门禁。
+
+## 2026-05-06 - nofx 双 reviewer 默认不同模型
+
+类型：decision
+范围：`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、双 reviewer 门禁
+事实：双 reviewer 门禁要求 reviewer-a/reviewer-b 暴露不同 role 和不同 provider/model。nofx profile 默认模型都是 `openai-codex/gpt-5.5`，如果不配置 reviewer-b，两个 reviewer 会被判定为同模型伪双审并阻塞。入口现在保持 reviewer-a 继承 live bridge 默认 `openai-codex/gpt-5.5`，reviewer-b 默认使用 `kimi-coding/kimi-k2.6`，仍允许环境变量或 CLI 覆盖。
+证据：`DEFAULT_REVIEWER_B_PROVIDER=kimi-coding`、`DEFAULT_REVIEWER_B_MODEL=kimi-k2.6`；`test_main_defaults_reviewer_b_to_distinct_model` 断言默认注入不同 provider/model；`hermes_profile_smoke.py` echo/hybrid reviewer 输出补齐 provider/model 元数据，避免 smoke 被 dual review gate 误判。
+最后验证：2026-05-06 22:58
+复用建议：后续 requirements/solution/code review 明明两个命令都通过但仍阻塞时，优先检查 `command-runs/*review*.json` 中的 `Reviewer role/provider/model`，不能只看 Final verdict。
+
 ## 2026-04-28 - Discord 入口所有任务先选择且 profile 为最高权限入口
 
 类型：decision

@@ -224,6 +224,7 @@ class PipelineConfig:
     task_center_db: Path | None = None
     task_center_task_id: str | None = None
     force: bool = False
+    human_risk_confirmed: bool = False
 
 
 @dataclass
@@ -600,6 +601,8 @@ def run_git_probe(repo: Path, args: list[str], *, timeout: int = 20) -> dict[str
             cwd=repo,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
             check=False,
         )
@@ -1047,6 +1050,18 @@ def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], a
     }
 
 
+def apply_human_risk_confirmation(risk: dict[str, Any], config: PipelineConfig) -> dict[str, Any]:
+    """Mark a high-risk plan as confirmed when the caller carries audited human approval."""
+    payload = dict(risk)
+    confirmed = bool(config.human_risk_confirmed) and bool(payload.get("human_confirmation_required"))
+    payload["human_confirmation_confirmed"] = confirmed
+    if confirmed:
+        payload["execution_decision"] = "confirmed_execute"
+        payload["confirmation_source"] = "human_risk_confirmed_flag"
+        payload["confirmed_at"] = utc_now()
+    return payload
+
+
 def render_group_plan_publish(requirement: str, artifacts: dict[str, str], delivery_plan: dict[str, Any], risk: dict[str, Any]) -> str:
     research = read_optional_file(Path(artifacts.get("external_research", "")), "")
     memory = read_optional_file(Path(artifacts.get("project_memory_context", "")), "")
@@ -1081,11 +1096,13 @@ def render_group_plan_publish(requirement: str, artifacts: dict[str, str], deliv
         - risk_level: `{risk.get('risk_level')}`
         - execution_decision: `{risk.get('execution_decision')}`
         - human_confirmation_required: `{risk.get('human_confirmation_required')}`
+        - human_confirmation_confirmed: `{risk.get('human_confirmation_confirmed', False)}`
         - high_risk_reasons: `{', '.join(risk.get('high_risk_reasons') or []) or 'none'}`
         - medium_risk_reasons: `{', '.join(risk.get('medium_risk_reasons') or []) or 'none'}`
 
         ## 执行规则
-        - 高风险：必须先把本方案发到群里，等待用户确认，不进入 code_execution。
+        - 高风险：未带人工确认凭证时必须先把本方案发到群里，等待用户确认，不进入 code_execution。
+        - 已确认高风险：人工确认凭证会写入 `pre_execution_risk.json`，继续进入 code_execution，但后续测试、双代码审查、部署和 Git 发布门禁不变。
         - 低/中风险：本方案仍作为群回传摘要与证据 artifact，随后自动进入 code_execution。
         - 测试、审核、部署或 git publish 任一失败时，必须生成失败摘要，记录失败阶段、命令、证据目录和下一步修复动作，再回流修复。
 
@@ -3687,7 +3704,10 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             requirement,
         )
 
-    pre_execution_risk = assess_pre_execution_risk(requirement, delivery_plan, artifacts)
+    pre_execution_risk = apply_human_risk_confirmation(
+        assess_pre_execution_risk(requirement, delivery_plan, artifacts),
+        config,
+    )
     record_payload("pre_execution_risk", "pre_execution_risk.json", pre_execution_risk)
     record(
         "plan_publish",
@@ -3695,7 +3715,11 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         render_group_plan_publish(requirement, artifacts, delivery_plan, pre_execution_risk),
         verdict=pre_execution_risk.get("execution_decision"),
     )
-    if not config.dry_run and pre_execution_risk.get("human_confirmation_required"):
+    if (
+        not config.dry_run
+        and pre_execution_risk.get("human_confirmation_required")
+        and not pre_execution_risk.get("human_confirmation_confirmed")
+    ):
         return finalize_pipeline_state(
             config,
             block_pipeline(
@@ -4228,6 +4252,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-center-db", type=Path)
     parser.add_argument("--task-center-task-id")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument(
+        "--human-risk-confirmed",
+        action="store_true",
+        help="allow a high-risk pre-execution plan to continue after audited human confirmation",
+    )
     parser.add_argument("--emit-json", action="store_true")
     return parser
 
@@ -4269,6 +4298,7 @@ def config_from_args(args: argparse.Namespace) -> PipelineConfig:
         task_center_db=args.task_center_db,
         task_center_task_id=args.task_center_task_id,
         force=args.force,
+        human_risk_confirmed=bool(args.human_risk_confirmed),
     )
 
 

@@ -12,6 +12,7 @@
 > 2026-04-28 方案契约收敛：`delivery_plan.json.target_files` 只把用户原始需求/修复上下文中的显式路径作为高可信目标；review/research/project memory 仅作低信任补充，并过滤 `.workflow`、runtime host、Task Center、agent workspace、command report 和项目记忆控制文件。简单任务找不到可靠业务文件时保持 discovery required，不猜测编辑 workflow 宿主；被过滤的异常候选会进入 `plan_findings.filtered_target_candidates` 并展示到 `solution.md`。
 > 2026-04-28 手动链路选择：当前默认不让系统自动决定“单 agent / 需求探讨 / 指定 agent / 编码工作流 / TODO 自动候选”。系统只输出推荐链路、原因和可选项；用户确认后才进入对应链路。到期 TODO 和通用 create-task 即使低风险，也先进入 `human_inbox.py` 的路线选择问题；只有被选择为 `coding_workflow` 或 `todo_auto_candidate` 且记录 `human_confirmed=true/action=confirmed_for_execution` 的项才允许 `backlog_runner` 推进。选择 `specified_agent` 时必须显式提供 `--assignee <agent-id>`。
 > 2026-05-06 nofx/OpenClaw backup 当前口径：AI 能力提升后，任务拆分粒度不再作为 hard gate；需求分析必须基于 graphify 项目知识图谱来写，先用 God Nodes / Surprising Connections / Suggested Questions 定位核心模块、隐藏耦合和澄清问题；project-agent 必须综合项目记忆、RAG/graphify、当前 Git 分支、HEAD、dirty state、本地/远端分支和 fetch 结果；web-agent 负责外部资料或明确 `NO_EXTERNAL_LOOKUP_NEEDED`；多 reviewer 必须使用不同模型、合并所有意见并循环修复直到无 blocker、达到自动修复上限或触发高风险人工门禁。详见 [OpenClaw Backup 多 Agent 工作流当前口径](openclaw-backup-multiagent-current.md)。
+> 2026-05-06 高风险确认贯通：真实交易、下单、划转、提现和资金类策略需求不再作为 SmartMulti 策略项目的永久阻断；它们仍会被标记为 high risk，但用户在路线选择或 human inbox 中明确确认后，入口/runner 会携带 `--human-risk-confirmed` 通过 `risk_gate`，后续测试、双 reviewer、deployment、memory writeback 和 git_publish 门禁保持不变。
 
 ## 功能概述
 
@@ -73,6 +74,7 @@
 13. **受控 Git 发布**：只有验证、代码审查、deployment（如有）、验收和记忆回写通过后才允许 `git_publish`；发布输入优先采用 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保代码与文档/记忆写回作为同一个已验收变更集发布且不夹带未验收脏改动；提交说明、备注和变更描述必须使用中文并脱敏，禁止 force push。发布前只扫描 staged diff 的新增行：真实 token、真实 cookie、OAuth secret、交易所 key、`.env` 实值和高熵随机串 hard block；环境变量名、空值、`os.getenv(...)`、README 占位说明和测试假密码不应误报。
 14. **运行态 agent 口径分层**：nofx 当前只有两个 live Hermes profile；阶段 owner 只负责隔离 workspace、状态卡展示和 Task Center 交接，不等于独立常驻模型进程。判断是否真正 native fan-out，必须看独立 session/run id。
 15. **手动链路选择与待办推进**：系统先推荐执行链路，但默认由用户手动选择；`backlog_runner.py` 每 30 分钟最多推进 1 个已确认走 pipeline 的 Task Center 项。直接运行、需求探讨、指定 agent 等非 pipeline 选择不会被 backlog runner 偷偷执行；指定 agent 必须给出具体 assignee，避免任务从人工队列消失但没有负责人。
+16. **高风险确认凭证贯通**：`human_inbox` / Discord 路线选择确认后的高风险 pipeline 项可携带 `--human-risk-confirmed` 进入 `code_execution`；该凭证只解除重复人工等待，不解除凭证保护、测试、双 reviewer、部署和发布门禁。
 
 ## 可控性与可维护性裁决
 

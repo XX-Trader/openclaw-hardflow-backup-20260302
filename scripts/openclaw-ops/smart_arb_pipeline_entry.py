@@ -34,6 +34,8 @@ WORKSPACE_ROOT = RUNTIME_HOME / "pipeline-runs"
 PROJECT_MEMORY_ROOT = PROJECT_DIR / "memory"
 TASK_CENTER_DB = OPS_DIR / "task-center" / "task_center.db"
 LOCAL_POLICY_DIR = Path(__file__).resolve().parents[2] / "skills" / "library" / "control-plane-ops" / "scripts" / "policy"
+DEFAULT_REVIEWER_B_PROVIDER = "kimi-coding"
+DEFAULT_REVIEWER_B_MODEL = "kimi-k2.6"
 STAGE_AGENT_MAP = {
     "intake": "coordinator",
     "context_snapshot": "project-agent",
@@ -1990,8 +1992,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--live-bridge-model", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_MODEL", "gpt-5.5"))
     parser.add_argument("--reviewer-a-provider", default=os.environ.get("SMART_ARB_REVIEWER_A_PROVIDER"))
     parser.add_argument("--reviewer-a-model", default=os.environ.get("SMART_ARB_REVIEWER_A_MODEL"))
-    parser.add_argument("--reviewer-b-provider", default=os.environ.get("SMART_ARB_REVIEWER_B_PROVIDER"))
-    parser.add_argument("--reviewer-b-model", default=os.environ.get("SMART_ARB_REVIEWER_B_MODEL"))
+    parser.add_argument("--reviewer-b-provider", default=os.environ.get("SMART_ARB_REVIEWER_B_PROVIDER") or DEFAULT_REVIEWER_B_PROVIDER)
+    parser.add_argument("--reviewer-b-model", default=os.environ.get("SMART_ARB_REVIEWER_B_MODEL") or DEFAULT_REVIEWER_B_MODEL)
     parser.add_argument("--live-bridge-timeout-seconds", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_TIMEOUT_SECONDS", "1800")))
     parser.add_argument(
         "--live-bridge-verification-command-timeout-seconds",
@@ -2052,6 +2054,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="retry repairable blocked live runs through the same pipeline",
     )
     parser.add_argument("--no-auto-repair", action="store_true", help="disable automatic pipeline repair loops")
+    parser.add_argument(
+        "--human-risk-confirmed",
+        action="store_true",
+        default=env_flag("SMART_ARB_HUMAN_RISK_CONFIRMED", False),
+        help="carry audited human approval through the pre-execution high-risk gate",
+    )
     return parser
 
 
@@ -2119,6 +2127,8 @@ def main(argv: list[str] | None = None) -> int:
         "--force",
         "--emit-json",
     ]
+    if args.human_risk_confirmed:
+        cmd.append("--human-risk-confirmed")
     code_agent = normalize_code_agent(args.code_agent) or infer_code_agent(requirement_text)
     cmd += ["--code-agent", code_agent]
     cmd += default_live_bridge_args(args, [*passthrough, *requirement_passthrough])

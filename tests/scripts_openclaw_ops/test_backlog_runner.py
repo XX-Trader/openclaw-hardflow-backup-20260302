@@ -196,6 +196,67 @@ class BacklogRunnerTests(unittest.TestCase):
         self.assertIn("--requirement", cmd)
         self.assertIn("spreadagent", cmd)
 
+    def test_confirmed_high_risk_task_passes_human_risk_flag_to_pipeline(self):
+        runner = load_module("backlog_runner_test_high_risk_confirmed", RUNNER_PATH)
+        task_center = load_module("task_center", TASK_CENTER_PATH)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db = Path(tmpdir) / "task_center.db"
+            center = task_center.TaskCenter(db)
+            try:
+                center.init_schema()
+                create_task(
+                    center,
+                    task_id="todo-risky",
+                    risk_level="high",
+                    need_human_confirm=True,
+                    human_confirmed=True,
+                    action="confirmed_for_execution",
+                    selected_route="coding_workflow",
+                )
+            finally:
+                center.close()
+
+            pipeline_state = {"run_id": "backlog-run-risky", "status": "completed", "next_action": "none"}
+            completed = runner.subprocess.CompletedProcess(
+                args=["smart-arb-pipeline"],
+                returncode=0,
+                stdout=json.dumps(pipeline_state, ensure_ascii=False),
+                stderr="",
+            )
+            with mock.patch.object(runner.subprocess, "run", return_value=completed) as run_mock:
+                report = runner.run_backlog(
+                    Namespace(
+                        task_db=str(db),
+                        allowed_source="todo_patrol",
+                        failed_source="hermes",
+                        allowed_next_action="return_to_code_execution",
+                        include_failed=False,
+                        allow_confirmed_high_risk=True,
+                        max_attempts_per_task=1,
+                        scan_limit=20,
+                        max_items=1,
+                        dry_run=False,
+                        pipeline_command="smart-arb-pipeline",
+                        profile="spreadagent",
+                        source="backlog-runner",
+                        pipeline_timeout_seconds=30,
+                        actor="test",
+                    )
+                )
+
+            center = task_center.TaskCenter(db)
+            try:
+                outputs = center.list_task_outputs("todo-risky", display_safe=False)
+            finally:
+                center.close()
+
+        self.assertEqual("todo-risky", report["selected"][0]["task_id"])
+        self.assertTrue(report["selected"][0]["human_risk_confirmed"])
+        cmd = run_mock.call_args.args[0]
+        self.assertIn("--human-risk-confirmed", cmd)
+        recorded_cmd = outputs[-1]["payload"]["command"]
+        self.assertIn("--human-risk-confirmed", recorded_cmd)
+
     def test_pipeline_launch_failure_marks_task_failed(self):
         runner = load_module("backlog_runner_test_launch_failure", RUNNER_PATH)
         task_center = load_module("task_center", TASK_CENTER_PATH)
