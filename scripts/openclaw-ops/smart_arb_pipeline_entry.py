@@ -84,11 +84,14 @@ STAGE_LABELS = {
     "intake": "任务接入",
     "context_snapshot": "上下文快照",
     "project_memory_context": "项目记忆读取",
+    "git_repository_context": "Git 仓库上下文",
+    "graphify_context": "图谱上下文",
     "external_research": "外部资料核对",
     "requirements_package": "需求整理",
     "requirements_discussion": "双 AI 需求讨论",
     "requirements_review": "需求评审",
     "solution_package": "方案整理",
+    "graphify_scope_validation": "图谱范围校验",
     "solution_review": "方案评审",
     "plan_publish": "群发方案",
     "risk_gate": "风险门禁",
@@ -123,6 +126,10 @@ ARTIFACT_EVIDENCE_LABELS = {
     "delivery_evidence.md": "验收证据",
     "writeback_report.md": "记忆写回报告",
     "git_publish_report.md": "Git发布报告",
+    "git_repository_context.md": "Git仓库上下文",
+    "graphify_context.md": "图谱上下文",
+    "graphify_scope_validation.md": "图谱范围校验",
+    "graphify_scope_validation.json": "图谱校验数据",
     "pipeline_state.json": "流水线状态",
 }
 STAGE_ORDER = {name: index for index, name in enumerate(STAGE_LABELS)}
@@ -1975,6 +1982,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--live", action="store_true", help="kept for compatibility; this entrypoint always runs live")
     parser.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--requirement", default="", help="task requirement passed through to the pipeline runner")
+    parser.add_argument("--requirement-file", default="", help="file containing the task requirement passed through to the pipeline runner")
     parser.add_argument("--no-live-bridge", action="store_true", help="do not inject default live evidence commands")
     parser.add_argument("--live-bridge-agent-mode", choices=["hermes", "echo"], default=os.environ.get("SMART_ARB_LIVE_BRIDGE_AGENT_MODE", "hermes"))
     parser.add_argument("--live-bridge-provider", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROVIDER", "openai-codex"))
@@ -2039,7 +2048,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--auto-repair-attempts",
         type=int,
-        default=int(os.environ.get("SMART_ARB_AUTO_REPAIR_ATTEMPTS", "2")),
+        default=int(os.environ.get("SMART_ARB_AUTO_REPAIR_ATTEMPTS", "4")),
         help="retry repairable blocked live runs through the same pipeline",
     )
     parser.add_argument("--no-auto-repair", action="store_true", help="disable automatic pipeline repair loops")
@@ -2054,7 +2063,12 @@ def main(argv: list[str] | None = None) -> int:
     args.live = True
 
     profile = args.profile or "arbitrageagent"
-    requirement_text = requirement_from_passthrough(passthrough)
+    requirement_passthrough: list[str] = []
+    if str(getattr(args, "requirement", "") or "").strip():
+        requirement_passthrough += ["--requirement", str(args.requirement)]
+    if str(getattr(args, "requirement_file", "") or "").strip():
+        requirement_passthrough += ["--requirement-file", str(args.requirement_file)]
+    requirement_text = requirement_from_passthrough([*passthrough, *requirement_passthrough])
     route_choice = normalize_route_choice(args.route_choice)
     if should_block_for_discord_route_choice(args.source, route_choice):
         payload = route_selection_payload(source=args.source, profile=profile, requirement=requirement_text)
@@ -2107,8 +2121,9 @@ def main(argv: list[str] | None = None) -> int:
     ]
     code_agent = normalize_code_agent(args.code_agent) or infer_code_agent(requirement_text)
     cmd += ["--code-agent", code_agent]
-    cmd += default_live_bridge_args(args, passthrough)
+    cmd += default_live_bridge_args(args, [*passthrough, *requirement_passthrough])
     cmd += passthrough
+    cmd += requirement_passthrough
     progress_interval_seconds = 0 if args.emit_json or args.no_chat_summary else int(args.progress_interval_seconds or 0)
     progress_kwargs = {
         "progress_interval_seconds": progress_interval_seconds,

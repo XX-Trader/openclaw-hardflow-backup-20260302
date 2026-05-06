@@ -49,6 +49,17 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertRegex(run_id, r"^discord-arbitrageagent-\d{8}T\d{12}Z$")
 
+    def test_parser_defaults_to_four_auto_repair_attempts(self):
+        module = load_module()
+        args = module.build_parser().parse_args([
+            "--profile", "spreadagent",
+            "--source", "discord",
+            "--route-choice", "coding_workflow",
+            "--requirement", "demo",
+        ])
+
+        self.assertEqual(4, args.auto_repair_attempts)
+
     def test_render_chat_summary_shows_agents_and_stage_results(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:

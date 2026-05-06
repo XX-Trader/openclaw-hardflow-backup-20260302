@@ -102,6 +102,8 @@ ARTIFACT_PATH_ENV_NAMES = {
     "PIPELINE_DEPLOYMENT_REPORT_FILE",
     "PIPELINE_WRITEBACK_REPORT_FILE",
     "PIPELINE_GIT_PUBLISH_REPORT_FILE",
+    "PIPELINE_GRAPHIFY_CONTEXT_FILE",
+    "PIPELINE_GRAPHIFY_SCOPE_VALIDATION_FILE",
 }
 NON_CODE_HERMES_STAGES = {
     "external_research",
@@ -211,20 +213,22 @@ def repair_context_text() -> str:
 
 def stage_context_files(stage: str) -> tuple[str, ...]:
     if stage == "requirements_discussion":
-        return ("research_report.md", "project_memory_context.md")
+        return ("research_report.md", "project_memory_context.md", "git_repository_context.md", "graphify_context.md")
     if stage == "requirements_review":
-        return ("research_report.md", "project_memory_context.md", "requirements.md", "requirements_discussion.md")
+        return ("research_report.md", "project_memory_context.md", "git_repository_context.md", "graphify_context.md", "requirements.md", "requirements_discussion.md")
     if stage == "solution_review":
-        return ("requirements.md", "requirements_review.md", "delivery_plan.json", "solution.md")
+        return ("graphify_context.md", "requirements.md", "requirements_review.md", "delivery_plan.json", "solution.md", "graphify_scope_validation.md")
     if stage == "code_execution":
         return (
             "research_report.md",
             "requirements.md",
+            "graphify_context.md",
             "requirements_discussion.md",
             "requirements_review.md",
             "delivery_plan.json",
             "solution.md",
             "solution_review.md",
+            "graphify_scope_validation.md",
             "pre_execution_risk.json",
             "group_plan_publish.md",
         )
@@ -232,9 +236,11 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
         return (
             "research_report.md",
             "requirements_discussion.md",
+            "graphify_context.md",
             "delivery_plan.json",
             "solution.md",
             "solution_review.md",
+            "graphify_scope_validation.md",
             "pre_execution_risk.json",
             "group_plan_publish.md",
             "patch_summary.md",
@@ -382,15 +388,15 @@ Do not modify files. Do not write the stage output artifact yourself.
 """
     elif stage == "requirements_discussion":
         specific = """
-Act as project-agent plus reviewer, using the project memory and `git_repository_context.md` as primary context sources.
-Before proposing changes, read or use the supplied project memory/docs/todo/done context and identify the most likely modules/files to modify.
+Act as project-agent plus reviewer, using the project memory, `git_repository_context.md`, and `graphify_context.md` as primary context sources.
+Before proposing changes, read or use the supplied project memory/docs/todo/done and graphify context; identify the most likely modules/files to modify.
 Project-agent must consider refreshed git state: current branch, HEAD, dirty worktree, local branches, remote branches, and fetched remote refs. It may use git fetch evidence supplied by the runner, but must not merge, reset, checkout, stash, or discard changes.
 Run at least four short rounds of discussion:
 1. project-agent summarizes the user goal, git/branch context, available project context, existing memory decisions, likely change locations, and missing context.
 2. reviewer challenges ambiguity, hidden risks, missing tests, deployment impact, safety boundaries, and whether web research is still missing.
 3. project-agent revises a whole-task requirement: acceptance criteria, target files, verification commands, non-goals, and current logic. Do not split the task into deferred slices merely for granularity.
 4. reviewer gives final risk routing: low/medium can auto-execute; high risk must be sent to the group for human confirmation before code execution.
-Return the final refined requirement and a group-ready summary with context used, assumptions, risks, branch/git observations, and open questions.
+Return the final refined requirement and a group-ready summary with context used, graphify observations, assumptions, risks, branch/git observations, and open questions.
 """
     elif stage == "code_execution":
         role = "frontend-dev" if agent_id == "frontend-dev" else "backend-dev"
@@ -422,8 +428,8 @@ Return a patch summary with changed files, commands run, and remaining risk.
         specific = """
 Act as {role}. Review the pipeline artifacts for {focus}.
 You are one side of a multi-model review gate. Produce your own independent verdict and evidence, then explain how your findings should be merged with other reviewers until no blocker remains.
-For solution review, validate the structured `delivery_plan.json` contract first; `solution.md` is only the human-readable rendering.
-Do not require artificial task-splitting granularity; review the whole accepted requirement and block only for concrete risk, missing context, invalid target files, missing tests, or unsafe execution.
+For solution review, validate the structured `delivery_plan.json` contract first; `solution.md` is only the human-readable rendering. Use `graphify_context.md` and `graphify_scope_validation.md` to challenge missing related modules/tests and respect its policy: warning by default, block only for cross-repo paths, credential/auth material, or production trading/order/fund-transfer risk.
+Do not require artificial task-splitting granularity; review the whole accepted requirement and block only for concrete risk, missing context, invalid target files, missing tests, unsafe execution, or a graphify scope block.
 Include exactly these reviewer identity lines:
 Reviewer role: {role}
 Reviewer provider: {reviewer_provider}

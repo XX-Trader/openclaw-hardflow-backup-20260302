@@ -111,11 +111,13 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 "context_snapshot",
                 "project_memory_context",
                 "git_repository_context",
+                "graphify_context",
                 "external_research",
                 "requirements_package",
                 "requirements_review",
                 "delivery_plan",
                 "solution_package",
+                "graphify_scope_validation",
                 "solution_review",
                 "pre_execution_risk",
                 "plan_publish",
@@ -137,6 +139,120 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             memory_dir = Path(tmp) / "project-memory" / "demo"
             self.assertTrue((memory_dir / "RETRIEVAL_MANIFEST.json").exists())
 
+
+
+    def test_graphify_context_and_scope_validation_use_external_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            repo.mkdir()
+            (repo / "app.py").write_text("print('ok')\n", encoding="utf-8")
+            index_root = tmp_path / "indexes"
+            graph_out = index_root / repo.name / "graphify-out"
+            graph_out.mkdir(parents=True)
+            (graph_out / "graph.json").write_text(
+                json.dumps({"nodes": [{"id": "app", "label": "App", "community": 1}], "links": []}),
+                encoding="utf-8",
+            )
+            (graph_out / "GRAPH_REPORT.md").write_text(
+                "# Report\n\n## God Nodes\n- App\n\n## Suggested Questions\n- What owns App?\n",
+                encoding="utf-8",
+            )
+            with mock.patch.dict(os.environ, {"PIPELINE_GRAPHIFY_INDEX_ROOT": str(index_root)}):
+                state = run_pipeline(
+                    PipelineConfig(
+                        project_key="demo",
+                        requirement="Update app.py safely; no trading.",
+                        workspace_root=tmp_path / "runs",
+                        run_id="graphify",
+                        dry_run=True,
+                        command_cwd=repo,
+                        runtime_host="hermes",
+                        runtime_home=str(tmp_path / "runtime"),
+                        source_urls=("discord:spreadagent",),
+                    )
+                )
+
+            context = Path(state["artifacts"]["graphify_context"]).read_text(encoding="utf-8")
+            self.assertIn("status: `available`", context)
+            self.assertIn("nodes: `1`", context)
+            validation = json.loads(Path(state["artifacts"]["graphify_scope_validation_payload"]).read_text(encoding="utf-8"))
+            self.assertIn(validation["scope_status"], {"pass", "warning"})
+            self.assertFalse(any(item["severity"] == "block" for item in validation["findings"]))
+            risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
+            self.assertEqual("auto_execute", risk["execution_decision"])
+            plan_publish = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
+            self.assertIn("graphify_context.md", plan_publish)
+
+    def test_graphify_scope_validation_blocks_cross_repo_and_credentials_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(Path(tmp) / "runtime"))
+            runtime = {"runtime_home": str(Path(tmp) / "runtime")}
+            safe_plan = {
+                "target_files": [{"path": "missing_module.py"}],
+                "verification_commands": [{"command": "git diff --check"}],
+                "out_of_scope": ["Do not use secrets, credentials, private keys, cookies, or auth state files.", "Do not start real trading."],
+            }
+            safe_payload = _mod.validate_graphify_scope(config, runtime, safe_plan, {})
+            self.assertEqual("warning", safe_payload["scope_status"])
+            self.assertFalse(any(item["severity"] == "block" for item in safe_payload["findings"]))
+
+            unsafe_plan = {
+                "target_files": [{"path": str(Path(tmp) / "outside" / "credential.json")}],
+                "verification_commands": [],
+            }
+            unsafe_payload = _mod.validate_graphify_scope(config, runtime, unsafe_plan, {})
+            self.assertEqual("block", unsafe_payload["scope_status"])
+            reasons = "\n".join(item["reason"] for item in unsafe_payload["findings"])
+            self.assertIn("outside the command repository", reasons)
+
+
+    def test_graphify_scope_validation_blocks_positive_trading_even_with_negated_safety_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            repo.mkdir()
+            (repo / "app.py").write_text("print('ok')\n", encoding="utf-8")
+            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(Path(tmp) / "runtime"))
+            runtime = {"runtime_home": str(Path(tmp) / "runtime")}
+            risky_plan = {
+                "target_files": [{"path": "app.py"}],
+                "implementation_steps": [
+                    {"description": "Set PRODUCTION_TRADING_ENABLED=true and place real orders"},
+                ],
+                "out_of_scope": [
+                    "Do not use secrets, credentials, private keys, cookies, or auth state files.",
+                    "Do not transfer funds unless separately approved.",
+                ],
+            }
+            payload = _mod.validate_graphify_scope(config, runtime, risky_plan, {})
+            self.assertEqual("block", payload["scope_status"])
+            reasons = "\n".join(item["reason"] for item in payload["findings"])
+            self.assertIn("production trading", reasons)
+
+    def test_graphify_context_does_not_trust_mismatched_repo_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repo = tmp_path / "repo"
+            other = tmp_path / "other-repo"
+            repo.mkdir()
+            other.mkdir()
+            index_root = tmp_path / "indexes"
+            graph_out = index_root / repo.name / "graphify-out"
+            graph_out.mkdir(parents=True)
+            (graph_out / "graph.json").write_text(json.dumps({"nodes": [{"id": "x", "label": "Wrong", "community": 1}], "links": []}), encoding="utf-8")
+            (graph_out / "GRAPH_REPORT.md").write_text("## God Nodes\n- Wrong repo\n", encoding="utf-8")
+            (graph_out / ".graphify_root").write_text(str(other), encoding="utf-8")
+            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(tmp_path / "runtime"), source_urls=("discord:spreadagent",))
+            runtime = {"runtime_home": str(tmp_path / "runtime")}
+            with mock.patch.dict(os.environ, {"PIPELINE_GRAPHIFY_INDEX_ROOT": str(index_root)}):
+                context = _mod.render_graphify_context(config, runtime, "inspect graph")
+                payload = _mod.validate_graphify_scope(config, runtime, {"target_files": []}, {})
+            self.assertIn("status: `root_mismatch`", context)
+            self.assertIn("root_matches_repo: `False`", context)
+            self.assertNotIn("Wrong repo", context)
+            self.assertEqual("warning", payload["scope_status"])
 
     def test_delivery_plan_uses_holistic_scope_without_deferred_slices(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -174,6 +290,31 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
 
         self.assertFalse(_mod.dual_review_pass("requirements_review", [report_a, report_b_same]))
         self.assertTrue(_mod.dual_review_pass("requirements_review", [report_a, report_b_other]))
+
+    def test_dual_review_rendering_merges_distinct_model_findings(self):
+        report_a = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-a --provider p --model alpha",
+            "stdout": "Final verdict: ready_for_solution\nReviewer role: reviewer-a\nReviewer provider: p\nReviewer model: alpha\n",
+            "stderr": "",
+        }
+        report_b = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-b --provider q --model beta",
+            "stdout": "Final verdict: ready_for_solution\nReviewer role: reviewer-b\nReviewer provider: q\nReviewer model: beta\n",
+            "stderr": "",
+        }
+
+        rendered = _mod.render_dual_ai_review("requirements_review", [report_a, report_b], "ready_for_solution")
+
+        self.assertIn("## Merged Reviewer Consensus", rendered)
+        self.assertIn("independent multi-model review", rendered)
+        self.assertIn("No artificial task-splitting granularity gate", rendered)
+        self.assertIn("Remaining blockers", rendered)
+        self.assertIn("none; all distinct-model reviewer findings", rendered)
+
+    def test_default_repair_loop_budget_is_four_for_until_clean_review_policy(self):
+        self.assertEqual(4, PipelineConfig(project_key="demo").max_repair_loops)
 
     def test_git_repository_context_fetches_remote_branches_for_project_agent(self):
         with tempfile.TemporaryDirectory() as tmp:

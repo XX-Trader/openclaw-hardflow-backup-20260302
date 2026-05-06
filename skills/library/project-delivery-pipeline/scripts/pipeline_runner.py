@@ -48,11 +48,13 @@ STAGE_AGENT_MAP = {
     "context_snapshot": "project-agent",
     "project_memory_context": "project-agent",
     "git_repository_context": "project-agent",
+    "graphify_context": "project-agent",
     "external_research": "web-agent",
     "requirements_package": "project-agent",
     "requirements_discussion": "project-agent,reviewer",
     "requirements_review": "reviewer",
     "solution_package": "project-agent",
+    "graphify_scope_validation": "project-agent",
     "solution_review": "reviewer",
     "plan_publish": "coordinator",
     "risk_gate": "coordinator",
@@ -146,6 +148,8 @@ PIPELINE_ARTIFACT_FILES = {
     "run_meta.json",
     "project_memory_context.md",
     "git_repository_context.md",
+    "graphify_context.md",
+    "graphify_scope_validation.md",
     "requirements.md",
     "requirements_discussion.md",
     "requirements_review.md",
@@ -194,7 +198,7 @@ class PipelineConfig:
     source_urls: tuple[str, ...] = ()
     dry_run: bool = False
     simulate_failure_stage: str | None = None
-    max_repair_loops: int = 2
+    max_repair_loops: int = 4
     research_report_file: Path | None = None
     research_commands: tuple[str, ...] = ()
     requirements_discussion_commands: tuple[str, ...] = ()
@@ -479,6 +483,16 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
     model_keys = [reviewer_model_key_for_report(item) or "missing" for item in reports]
     commands = [str(item.get("command") or "").strip() for item in reports]
     distinct_commands = len({command for command in commands if command}) == len(commands) if commands else False
+    blocker_reports = [
+        f"- {reviewer_role_for_report(item) or 'missing'} / {reviewer_model_key_for_report(item) or 'missing'}: {command_report_verdict(item) or 'missing_verdict'}"
+        for item in reports
+        if command_report_verdict(item) != expected or not item.get("ok")
+    ]
+    blocker_text = "\n".join(blocker_reports) if blocker_reports else "- none; all distinct-model reviewer findings have been merged into the joint verdict"
+    pass_policy = (
+        "Only pass when reviewer-a and reviewer-b are present, use distinct provider/model identity, "
+        "return the expected verdict independently, and leave no merged blocker unresolved."
+    )
     return dedent(
         f"""
         # {stage_name.replace('_', ' ').title()}
@@ -495,6 +509,14 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
         - Distinct reviewer models: {str(len(set(model_keys)) >= 2 and "missing" not in set(model_keys)).lower()}
         - Distinct commands: {str(distinct_commands).lower()}
         - Independent command reports: {len(reports)}
+        - Pass policy: {pass_policy}
+
+        ## Merged Reviewer Consensus
+        - Review mode: independent multi-model review followed by blocker merge.
+        - No artificial task-splitting granularity gate is allowed; reviewers judge the whole accepted requirement.
+        - If any reviewer raises a concrete blocker, the pipeline returns `requires_revision` and the entrypoint auto-repair loop may rerun the same workflow with merged context until the configured attempt limit or human-risk gate is reached.
+        - Remaining blockers:
+        {blocker_text}
 
         {command_markdown("Dual AI Review Commands", reports)}
         """
@@ -1003,11 +1025,15 @@ def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], a
         read_optional_file(Path(artifacts.get("requirements_discussion", "")), ""),
         read_optional_file(Path(artifacts.get("requirements_review", "")), ""),
         read_optional_file(Path(artifacts.get("solution_review", "")), ""),
+        read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), ""),
     ]
     plan_text = json.dumps(delivery_plan, ensure_ascii=False)
     scan_text = scrub_negated_risk_lines("\n".join([requirement, plan_text, *artifact_texts]))
     high_reasons = [label for label, pattern in HIGH_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
     medium_reasons = [label for label, pattern in MEDIUM_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
+    graphify_validation = read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), "")
+    if re.search(r"(?im)^\s*-\s*scope_status:\s*`?block`?", graphify_validation):
+        high_reasons.append("graphify_scope_block")
     risk_level = "high" if high_reasons else "medium" if medium_reasons else "low"
     return {
         "schema_version": "pre-execution-risk/v1",
@@ -1027,6 +1053,8 @@ def render_group_plan_publish(requirement: str, artifacts: dict[str, str], deliv
     discussion = read_optional_file(Path(artifacts.get("requirements_discussion", "")), "")
     requirements_review = read_optional_file(Path(artifacts.get("requirements_review", "")), "")
     solution_review = read_optional_file(Path(artifacts.get("solution_review", "")), "")
+    graphify_context = read_optional_file(Path(artifacts.get("graphify_context", "")), "")
+    graphify_scope = read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), "")
     target_files = "\n".join(f"- `{item.get('path')}`" for item in delivery_plan.get("target_files", [])[:40]) or "- 待 code agent 基于项目记忆继续定位"
     verification_commands = "\n".join(f"- `{item.get('command')}`" for item in delivery_plan.get("verification_commands", [])[:40]) or "- 待 tester/code agent 补齐"
     return dedent(
@@ -1041,6 +1069,7 @@ def render_group_plan_publish(requirement: str, artifacts: dict[str, str], deliv
         - 外部调研：已写入 `research_report.md`；如无需联网，web-agent 必须说明 `NO_EXTERNAL_LOOKUP_NEEDED` 与原因。
         - 需求讨论：已写入 `requirements_discussion.md`，至少包含 project-agent 与 reviewer 的多轮讨论。
         - 双 reviewer 审查：已写入 `requirements_review.md` 与 `solution_review.md`，reviewer-a/reviewer-b 必须独立给出结论。
+        - graphify 项目图谱：已写入 `graphify_context.md`，作为软上下文；solution 后校验写入 `graphify_scope_validation.md`。
 
         ## 目标文件
         {target_files}
@@ -1066,6 +1095,8 @@ def render_group_plan_publish(requirement: str, artifacts: dict[str, str], deliv
         - requirements_discussion 摘要长度: {len(discussion)} 字符
         - requirements_review 摘要长度: {len(requirements_review)} 字符
         - solution_review 摘要长度: {len(solution_review)} 字符
+        - graphify_context 摘要长度: {len(graphify_context)} 字符
+        - graphify_scope_validation 摘要长度: {len(graphify_scope)} 字符
         """
     )
 
@@ -1648,6 +1679,242 @@ def artifact_text(artifacts: dict[str, str], key: str) -> str:
     return read_optional_file(Path(path), "")
 
 
+GRAPHIFY_INDEX_ROOT_ENV = "PIPELINE_GRAPHIFY_INDEX_ROOT"
+GRAPHIFY_BLOCK_PATTERNS = {
+    "credential_path": re.compile(r"(?i)(credential|credentials|secret|token|cookie|oauth|api[-_ ]?key|private[-_ ]?key|auth[-_ ]?state|credential-imports|private/)"),
+    "production_trading": re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘|真实下单|实盘下单|资金划转|划转资金"),
+}
+
+
+def profile_from_source_urls(source_urls: tuple[str, ...]) -> str:
+    for item in source_urls:
+        text = str(item or "").strip()
+        if text.startswith("discord:") and ":" in text:
+            value = text.split(":", 1)[1].strip()
+            if value:
+                return value
+    return os.environ.get("SMART_ARB_LIVE_BRIDGE_PROFILE", "spreadagent").strip() or "spreadagent"
+
+
+def graphify_index_root(config: PipelineConfig, runtime: dict[str, Any]) -> Path:
+    explicit = os.environ.get(GRAPHIFY_INDEX_ROOT_ENV, "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    runtime_home = Path(str(runtime.get("runtime_home") or config.runtime_home or "~/.hermes")).expanduser()
+    profile = profile_from_source_urls(config.source_urls)
+    return runtime_home / "profiles" / profile / "graphify-indexes"
+
+
+def graphify_repo_index_dir(config: PipelineConfig, runtime: dict[str, Any]) -> Path:
+    repo = config.command_cwd.expanduser().resolve()
+    return graphify_index_root(config, runtime) / repo.name / "graphify-out"
+
+
+def graphify_graph_stats(graph_path: Path) -> dict[str, Any]:
+    try:
+        if graph_path.stat().st_size > 20_000_000:
+            return {"nodes": 0, "links": 0, "communities": 0, "skipped": "graph_json_too_large"}
+        payload = json.loads(graph_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {}
+    nodes = payload.get("nodes") if isinstance(payload.get("nodes"), list) else []
+    links = payload.get("links") if isinstance(payload.get("links"), list) else []
+    communities: set[str] = set()
+    for node in nodes:
+        if isinstance(node, dict) and node.get("community") is not None:
+            communities.add(str(node.get("community")))
+    return {"nodes": len(nodes), "links": len(links), "communities": len(communities)}
+
+
+def extract_report_section(report: str, heading_hint: str, max_chars: int = 1800) -> str:
+    if not report.strip():
+        return "not_available"
+    lines = report.splitlines()
+    start = None
+    for index, line in enumerate(lines):
+        if line.lstrip("# ").strip().lower().startswith(heading_hint.lower()):
+            start = index
+            break
+    if start is None:
+        return clip_text(report, max_chars)
+    end = len(lines)
+    for index in range(start + 1, len(lines)):
+        if lines[index].startswith("#") and lines[index].strip("# "):
+            end = index
+            break
+    return clip_text("\n".join(lines[start:end]).strip(), max_chars)
+
+
+def render_graphify_context(config: PipelineConfig, runtime: dict[str, Any], requirement: str) -> str:
+    repo = config.command_cwd.expanduser().resolve()
+    index_dir = graphify_repo_index_dir(config, runtime)
+    graph_path = index_dir / "graph.json"
+    report_path = index_dir / "GRAPH_REPORT.md"
+    root_marker = index_dir / ".graphify_root"
+    root_text = read_optional_file(root_marker, "").strip() if root_marker.exists() else ""
+    root_matches = True
+    if root_text:
+        try:
+            root_matches = Path(root_text).expanduser().resolve() == repo
+        except OSError:
+            root_matches = False
+    status = "available" if graph_path.exists() and root_matches else "root_mismatch" if graph_path.exists() else "missing"
+    report = read_optional_file(report_path, "") if report_path.exists() and root_matches else ""
+    stats = graphify_graph_stats(graph_path) if graph_path.exists() and root_matches else {"nodes": 0, "links": 0, "communities": 0}
+    return dedent(
+        f"""
+        # Graphify Project Context
+
+        ## Status
+        - status: `{status}`
+        - repo: `{repo}`
+        - index_dir: `{index_dir}`
+        - graph_json: `{graph_path if graph_path.exists() else 'missing'}`
+        - graph_report: `{report_path if report_path.exists() else 'missing'}`
+        - indexed_root: `{root_text or 'unknown'}`
+        - root_matches_repo: `{root_matches}`
+        - nodes: `{stats.get('nodes', 0)}`
+        - links: `{stats.get('links', 0)}`
+        - communities: `{stats.get('communities', 0)}`
+
+        ## Usage Contract
+        - This artifact is a soft project-knowledge-graph context layer.
+        - `requirements_discussion` must use it before proposing target files.
+        - `solution_review` and `code_review` must use it to challenge missing related modules/tests.
+        - Missing graphify output is a warning only; fall back to project memory/docs and repository search.
+        - Do not mix business repository graph context with hardflow/workflow graph context unless the requirement explicitly asks for pipeline/runtime interaction debugging.
+
+        ## Original Requirement Excerpt
+        {clip_text(requirement, 1200)}
+
+        ## Graph Report Excerpt
+        {extract_report_section(report, 'God Nodes') if report else 'not_available'}
+
+        ## Suggested Questions Excerpt
+        {extract_report_section(report, 'Suggested Questions') if report else 'not_available'}
+        """
+    ).strip() + "\n"
+
+
+def normalize_plan_path(path_value: str) -> str:
+    value = str(path_value or "").strip().strip("`'\"")
+    return value.replace("\\", "/")
+
+
+def graphify_scope_validation_status(findings: list[dict[str, str]]) -> str:
+    if any(item.get("severity") == "block" for item in findings):
+        return "block"
+    if findings:
+        return "warning"
+    return "pass"
+
+
+def scope_scan_text_from_plan(delivery_plan: dict[str, Any]) -> str:
+    # Scan actionable execution fields only. The runner intentionally writes
+    # default safety boundaries such as "Stop before credentials" and
+    # "real_trading allowed=false" into delivery_plan; those must not become
+    # graphify hard blocks. Pretty JSON keeps each item on its own line so
+    # negated constraints do not erase unrelated positive risks.
+    actionable = {
+        key: delivery_plan.get(key)
+        for key in ("target_files", "entry_points", "implementation_steps", "verification_commands")
+        if delivery_plan.get(key)
+    }
+    return scrub_negated_risk_lines(json.dumps(actionable, ensure_ascii=False, indent=2))
+
+
+def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], delivery_plan: dict[str, Any], artifacts: dict[str, str]) -> dict[str, Any]:
+    repo = config.command_cwd.expanduser().resolve()
+    index_dir = graphify_repo_index_dir(config, runtime)
+    graph_path = index_dir / "graph.json"
+    root_marker = index_dir / ".graphify_root"
+    findings: list[dict[str, str]] = []
+    if not graph_path.exists():
+        findings.append({"severity": "warning", "path": str(graph_path), "reason": "graphify graph is missing; falling back to memory/docs/repository search"})
+    elif root_marker.exists():
+        root_text = read_optional_file(root_marker, "").strip()
+        try:
+            root_matches = Path(root_text).expanduser().resolve() == repo
+        except OSError:
+            root_matches = False
+        if not root_matches:
+            findings.append({"severity": "warning", "path": str(graph_path), "reason": "graphify index root does not match command repository; graph context should not be trusted"})
+    target_files = delivery_plan.get("target_files") if isinstance(delivery_plan.get("target_files"), list) else []
+    for item in target_files:
+        if not isinstance(item, dict):
+            continue
+        raw_path = normalize_plan_path(str(item.get("path") or ""))
+        if not raw_path:
+            continue
+        severity = "warning"
+        reason = "target file could not be confirmed against graph context"
+        path_obj = Path(raw_path).expanduser()
+        if path_obj.is_absolute():
+            try:
+                path_obj.resolve().relative_to(repo)
+            except ValueError:
+                severity = "block"
+                reason = "target path is outside the command repository boundary"
+        elif raw_path.startswith("../") or "/../" in raw_path:
+            severity = "block"
+            reason = "target path escapes the command repository boundary"
+        elif GRAPHIFY_BLOCK_PATTERNS["credential_path"].search(raw_path):
+            severity = "block"
+            reason = "target path appears to reference credential/auth/secret material"
+        else:
+            candidate = repo / raw_path
+            if not candidate.exists():
+                reason = "target file is not currently present; create_if_missing rationale is required"
+        if severity == "block" or reason.startswith("target file"):
+            findings.append({"severity": severity, "path": raw_path, "reason": reason})
+    scan_plan_text = scope_scan_text_from_plan(delivery_plan)
+    if GRAPHIFY_BLOCK_PATTERNS["credential_path"].search(scan_plan_text):
+        findings.append({"severity": "block", "path": "delivery_plan.json", "reason": "plan text references credential/auth/secret material"})
+    if GRAPHIFY_BLOCK_PATTERNS["production_trading"].search(scan_plan_text):
+        findings.append({"severity": "block", "path": "delivery_plan.json", "reason": "plan text appears to enable production trading, real orders, or fund transfer"})
+    status = graphify_scope_validation_status(findings)
+    return {
+        "schema_version": "graphify-scope-validation/v1",
+        "scope_status": status,
+        "graph_available": graph_path.exists(),
+        "graph_json": str(graph_path) if graph_path.exists() else "missing",
+        "repo": str(repo),
+        "policy": "warning by default; block only for cross-repo paths, credentials/auth material, or production trading/order/fund-transfer risk",
+        "findings": findings,
+        "recommended_verification": [item.get("command") for item in delivery_plan.get("verification_commands", []) if isinstance(item, dict) and item.get("command")][:12],
+        "source_artifacts": {key: artifacts[key] for key in ("graphify_context", "delivery_plan", "solution_package") if key in artifacts},
+    }
+
+
+def render_graphify_scope_validation(payload: dict[str, Any]) -> str:
+    findings = payload.get("findings") if isinstance(payload.get("findings"), list) else []
+    finding_lines = [f"- `{item.get('severity')}` `{item.get('path')}` — {item.get('reason')}" for item in findings[:40] if isinstance(item, dict)]
+    if not finding_lines:
+        finding_lines = ["- no scope findings"]
+    commands = payload.get("recommended_verification") if isinstance(payload.get("recommended_verification"), list) else []
+    command_lines = [f"- `{cmd}`" for cmd in commands[:20] if str(cmd or "").strip()] or ["- not_available"]
+    return dedent(
+        f"""
+        # Graphify Scope Validation
+
+        ## Verdict
+        - scope_status: `{payload.get('scope_status')}`
+        - graph_available: `{payload.get('graph_available')}`
+        - graph_json: `{payload.get('graph_json')}`
+        - repo: `{payload.get('repo')}`
+
+        ## Policy
+        {payload.get('policy')}
+
+        ## Findings
+        {chr(10).join(finding_lines)}
+
+        ## Recommended Verification
+        {chr(10).join(command_lines)}
+        """
+    ).strip() + "\n"
+
+
 def compile_delivery_plan(
     config: PipelineConfig,
     runtime: dict[str, Any],
@@ -1745,6 +2012,7 @@ def compile_delivery_plan(
                 "external_research",
                 "project_memory_context",
                 "git_repository_context",
+                "graphify_context",
             )
             if key in artifacts
         },
@@ -2176,6 +2444,8 @@ def command_env(
             "PIPELINE_DEPLOYMENT_REPORT_FILE": str(run_dir / "deployment_report.md"),
             "PIPELINE_WRITEBACK_REPORT_FILE": str(run_dir / "writeback_report.md"),
             "PIPELINE_GIT_PUBLISH_REPORT_FILE": str(run_dir / "git_publish_report.md"),
+            "PIPELINE_GRAPHIFY_CONTEXT_FILE": str(run_dir / "graphify_context.md"),
+            "PIPELINE_GRAPHIFY_SCOPE_VALIDATION_FILE": str(run_dir / "graphify_scope_validation.md"),
         }
     )
     if stage_name:
@@ -3227,6 +3497,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     record("project_memory_context", "project_memory_context.md", render_project_memory_context(config, requirement, runtime))
     git_snapshot = collect_git_repository_context(config.command_cwd)
     record("git_repository_context", "git_repository_context.md", render_git_repository_context(git_snapshot), verdict="pass" if git_snapshot.get("is_git_repository") else "missing")
+    record("graphify_context", "graphify_context.md", render_graphify_context(config, runtime, requirement), verdict="pass")
     research_command_reports = run_stage_commands(
         config,
         run_dir,
@@ -3365,6 +3636,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     )
     record_payload("delivery_plan", "delivery_plan.json", delivery_plan)
     record("solution_package", "solution.md", render_solution(delivery_plan))
+    graphify_scope_validation = validate_graphify_scope(config, runtime, delivery_plan, artifacts)
+    record_payload("graphify_scope_validation_payload", "graphify_scope_validation.json", graphify_scope_validation)
+    record(
+        "graphify_scope_validation",
+        "graphify_scope_validation.md",
+        render_graphify_scope_validation(graphify_scope_validation),
+        verdict=str(graphify_scope_validation.get("scope_status") or "warning"),
+    )
     sol_review_reports = run_stage_commands(
         config,
         run_dir,
