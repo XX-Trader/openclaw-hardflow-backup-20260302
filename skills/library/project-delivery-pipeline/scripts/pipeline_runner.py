@@ -999,8 +999,8 @@ def render_resolved_requirement(requirement: str, artifacts: dict[str, str]) -> 
 
 
 HIGH_RISK_PLAN_PATTERNS = (
-    ("enable_live_trading", re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘")),
-    ("place_real_order", re.compile(r"(?i)\b(place|create|submit)[-_ ]?(real[-_ ]?)?order\b|真实下单|实盘下单|下真实订单")),
+    ("enable_live_trading", re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘|(?:需要|要求|启动|启用|执行|进行|允许).{0,20}(?:真实交易|实盘交易)|\b(?:enable|start|execute|allow|perform)\b.{0,20}\b(?:real|live)[-_ ]?trading\b")),
+    ("place_real_order", re.compile(r"(?i)\b(place|create|submit)[-_ ]?(real[-_ ]?)?orders?\b|真实下单|实盘下单|下真实订单|真实交易.{0,20}下单|(?:需要|要求|执行|进行|允许).{0,20}下单")),
     ("fund_transfer", re.compile(r"(?i)\btransfer\b.*\b(fund|asset|coin|token)\b|划转资金|资金划转|提现|withdraw")),
     ("credential_access", re.compile(r"(?i)\b(print|read|dump|move|modify|rotate)\b.*\b(token|secret|credential|api[-_ ]?key|cookie|oauth|private key)\b|打印.*(密钥|凭证|token|cookie)|读取.*(密钥|凭证|token|cookie)")),
 )
@@ -1011,14 +1011,60 @@ MEDIUM_RISK_PLAN_PATTERNS = (
 )
 
 
+RISK_SEGMENT_SPLIT_RE = re.compile(
+    r"[\r\n.;；。!?！？,，]+|\b(?:but|however|yet|and)\b|(?:但|但是|不过|然而|并且|并|且|同时)",
+    re.IGNORECASE,
+)
+RISK_TERM_RE = re.compile(
+    r"(?i)token|secret|credential|api[-_ ]?key|cookie|oauth|order|transfer|withdraw|trading|"
+    r"PRODUCTION_TRADING_ENABLED|凭证|密钥|下单|划转|转账|提现|出金|交易|资金"
+)
+NEGATED_RISK_RE = re.compile(
+    r"(?i)\b(do not|don't|never|must not|without|no )\b|"
+    r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|保持.*false|未启动|不启动|不下单|不划转|不读取|不泄露"
+)
+RISK_APPROVAL_RE = re.compile(
+    r"(?i)\b(?:approved|confirmed)\b|已人工确认|人工确认|用户确认|明确确认|确认[:：]|(?<!不)允许"
+)
+SAFE_NEGATED_RISK_LIST_PATTERNS = (
+    re.compile(
+        r"(?i)\b(?:do not|don't|never|without|no|must not)\b"
+        r"(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|then|needs?|requires?|set|configure|allow)\b).){0,260}"
+        r"\b(?:api[-_ /]?keys?|secrets?|credentials?|private\s+keys?|cookies?|oauth|tokens?|"
+        r"live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b"
+        r"(?:(?![\r\n.;；。!?！？]).){0,120}"
+    ),
+    re.compile(
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露)"
+        r"(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许)).){0,180}"
+        r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|PRODUCTION_TRADING_ENABLED)",
+        re.IGNORECASE,
+    ),
+)
+
+
+def strip_negated_risk_lists(text: str) -> str:
+    cleaned = text
+    for pattern in SAFE_NEGATED_RISK_LIST_PATTERNS:
+        cleaned = pattern.sub(" ", cleaned)
+    return cleaned
+
+
 def scrub_negated_risk_lines(text: str) -> str:
     kept: list[str] = []
-    risk_terms = re.compile(r"(?i)token|secret|credential|api[-_ ]?key|cookie|oauth|order|transfer|trading|PRODUCTION_TRADING_ENABLED|凭证|密钥|下单|划转|交易")
-    negation = re.compile(r"(?i)\b(do not|don't|never|must not|no )\b|不要|不得|禁止|不能|不允许|保持.*false")
-    for line in str(text or "").splitlines():
-        if risk_terms.search(line) and negation.search(line):
+    for line in strip_negated_risk_lists(str(text or "")).splitlines():
+        segments = [segment.strip() for segment in RISK_SEGMENT_SPLIT_RE.split(line) if segment.strip()]
+        if not segments:
             continue
-        kept.append(line)
+        risky_segments: list[str] = []
+        for segment in segments:
+            has_risk = bool(RISK_TERM_RE.search(segment))
+            has_negation = bool(NEGATED_RISK_RE.search(segment))
+            if has_risk and has_negation and not RISK_APPROVAL_RE.search(segment):
+                continue
+            risky_segments.append(segment)
+        if risky_segments:
+            kept.append(" ".join(risky_segments))
     return "\n".join(kept)
 
 

@@ -231,6 +231,57 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             reasons = "\n".join(item["reason"] for item in payload["findings"])
             self.assertIn("production trading", reasons)
 
+    def test_pre_execution_risk_keeps_positive_trading_when_same_line_has_negated_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_paths = [
+                Path(tmp) / "requirements.md",
+                Path(tmp) / "requirements-review.md",
+                Path(tmp) / "solution-review.md",
+                Path(tmp) / "graphify.md",
+            ]
+            for path in artifact_paths:
+                path.write_text("", encoding="utf-8")
+            artifacts = {
+                "requirements_discussion": str(artifact_paths[0]),
+                "requirements_review": str(artifact_paths[1]),
+                "solution_review": str(artifact_paths[2]),
+                "graphify_scope_validation": str(artifact_paths[3]),
+            }
+            risk = _mod.assess_pre_execution_risk(
+                "已人工确认：允许本策略项目执行真实交易下单 smoke，不读取或打印凭证。",
+                {},
+                artifacts,
+            )
+
+        self.assertEqual("high", risk["risk_level"])
+        self.assertIn("enable_live_trading", risk["high_risk_reasons"])
+        self.assertIn("place_real_order", risk["high_risk_reasons"])
+
+    def test_pre_execution_risk_ignores_pure_negated_trading_and_credentials(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_paths = [
+                Path(tmp) / "requirements.md",
+                Path(tmp) / "requirements-review.md",
+                Path(tmp) / "solution-review.md",
+                Path(tmp) / "graphify.md",
+            ]
+            for path in artifact_paths:
+                path.write_text("", encoding="utf-8")
+            artifacts = {
+                "requirements_discussion": str(artifact_paths[0]),
+                "requirements_review": str(artifact_paths[1]),
+                "solution_review": str(artifact_paths[2]),
+                "graphify_scope_validation": str(artifact_paths[3]),
+            }
+            risk = _mod.assess_pre_execution_risk(
+                "保持 PRODUCTION_TRADING_ENABLED=false，不启动真实交易、不下单、不划转、不读取或打印凭证。Do not place orders, transfer funds, or enable live trading.",
+                {},
+                artifacts,
+            )
+
+        self.assertEqual("low", risk["risk_level"])
+        self.assertFalse(risk["high_risk_reasons"])
+
     def test_graphify_context_does_not_trust_mismatched_repo_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
