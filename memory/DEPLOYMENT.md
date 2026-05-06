@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-07 01:05 - nofx 安装 reviewer fallback 降级批次
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.local/bin/smart-arb-pipeline`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`
+事实：本机提交 `8255a65d` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `bd4df03` fast-forward 到 `8255a65`，`HEAD...origin/main=0 0` 且工作树无未提交改动。runtime installer 已把 reviewer fallback 和单有效输出放行逻辑安装到 `/home/arbops/.hermes/ops`；本轮未改 profile SOUL，因此没有重启 Discord gateway。
+证据：runtime installer 返回 `ok=true`、`changed=true`、5 个 workflow skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`。远端 `compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；远端定向 unittest 6 项 OK，覆盖单有效 reviewer 放行、具体 blocker 阻断、同模型降级、Kimi 404 后切 GLM、具体 blocker 不 fallback、entry 默认 fallback 链。`/home/arbops/.local/bin/smart-arb-pipeline --help` 已显示 `--reviewer-fallback-models`。远端 gateway 状态复核：`arbitrageagent gateway_state=running discord_state=connected`、`spreadagent gateway_state=running discord_state=connected`。
+最后验证：2026-05-07 01:05
+复用建议：后续 nofx review 阶段出现 `reviewer-b provider/model ... HTTP 404` 或 `missing_verdict` 时，先确认 wrapper 是否显示 `--reviewer-fallback-models`、command report 是否记录实际 fallback 模型、review 报告是否显示 `degraded_single_valid`。不要因为单个 provider/model 不可用就把需求评审改成人工阻塞；只有有效 reviewer 明确给出 blocker 才回流修订。
+
 ## 2026-05-06 23:40 - nofx 安装高风险确认门禁修复批次
 
 类型：deploy

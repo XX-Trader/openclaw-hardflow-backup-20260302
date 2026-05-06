@@ -10,7 +10,8 @@
 - [x] [2026-05-07] **reviewer 模型失败 fallback 与单有效输出放行**
   - review 阶段不再把某一路 provider/model HTTP 404、命令失败或缺 verdict 直接合并成 `requires_revision`；入口会按 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5` fallback。
   - runner 改为至少一个有效 reviewer 输出期望 verdict 且无明确 blocker 时可按 `degraded_single_valid` 放行；任一有效 reviewer 明确要求修订仍阻断并回流。
-  - 验证：本地 `test_project_delivery_pipeline_runner` 57 项 OK；live bridge/entry/backlog/installer/profile 95 项 OK；3 个改动脚本 `compileall` 通过。
+  - 已部署到 nofx：远端仓库 `HEAD=8255a65`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`，`smart-arb-pipeline --help` 已显示 `--reviewer-fallback-models`，两个 Discord gateway 均为 `running/connected`。
+  - 验证：本地 `test_project_delivery_pipeline_runner` 57 项 OK；live bridge/entry/backlog/installer/profile 95 项 OK；3 个改动脚本 `compileall` 通过；nofx 远端 compileall 和 6 项 reviewer fallback 定向单测通过。
 
 ## 2026-05-06 已完成
 

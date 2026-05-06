@@ -5,8 +5,8 @@
 类型：bugfix
 范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`、项目交付优先工作流文档、项目记忆、测试
 事实：修复 nofx review 阶段把 reviewer-b provider/model 失败误判成需求阻塞的问题。reviewer-a 已产出有效通过、reviewer-b 因 `kimi-coding/kimi-k2.6` HTTP 404 或缺 verdict 失败时，入口会继续尝试 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5`；若最终仍只有一个有效 reviewer，只要该 verdict 符合阶段期望且没有明确 blocker，pipeline 以 `degraded_single_valid` 放行。任何有效 reviewer 明确给出 `requires_revision` / `fail` 仍阻断并回流修复。
-证据：新增/更新测试覆盖单有效 reviewer 放行、具体 blocker 阻断、同模型不再硬阻塞、entry 默认注入 fallback 链、live bridge 在 Kimi 404 后切 GLM。文档同步 `memory/DECISIONS.md`、`memory/RUNBOOK.md`、`memory/PITFALLS.md`、`memory/INDEX.md`、项目交付 README/架构/当前口径/live bridge/state-machine。
-最后验证：2026-05-07 00:55 本地 `test_project_delivery_pipeline_runner` 57 项 OK；`test_smart_arb_live_bridge`、`test_smart_arb_pipeline_entry`、`test_backlog_runner`、`test_project_delivery_runtime_installer`、`test_nofx_profile_templates` 共 95 项 OK；`compileall` 覆盖 3 个改动脚本通过。
+证据：新增/更新测试覆盖单有效 reviewer 放行、具体 blocker 阻断、同模型不再硬阻塞、entry 默认注入 fallback 链、live bridge 在 Kimi 404 后切 GLM。文档同步 `memory/DECISIONS.md`、`memory/RUNBOOK.md`、`memory/PITFALLS.md`、`memory/INDEX.md`、`memory/DEPLOYMENT.md`、项目交付 README/架构/当前口径/live bridge/state-machine。本机提交 `8255a65d` 已推送并安装到 nofx，远端 `HEAD=8255a65`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`。
+最后验证：2026-05-07 01:05 本地 `test_project_delivery_pipeline_runner` 57 项 OK；`test_smart_arb_live_bridge`、`test_smart_arb_pipeline_entry`、`test_backlog_runner`、`test_project_delivery_runtime_installer`、`test_nofx_profile_templates` 共 95 项 OK；`compileall` 覆盖 3 个改动脚本通过。nofx 远端 `compileall` 通过，6 项 reviewer fallback 定向 unittest OK，`smart-arb-pipeline --help` 显示 `--reviewer-fallback-models`，两个 gateway 均为 `running/connected`。
 复用建议：以后看到 `reviewer-b missing_verdict`，不要直接把合并结果打成 `requires_revision`。先检查是否已有至少一个有效通过输出和是否存在真实 blocker；只有真实 blocker 才进入需求/方案/代码修订。
 
 ## 2026-05-06 - nofx 高风险确认门禁部署验收
