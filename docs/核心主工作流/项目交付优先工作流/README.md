@@ -11,8 +11,9 @@
 > 2026-04-27 持续推进补齐：新增 `backlog_runner.py` 与 `backlog_runner_30m` cron。该能力已在 2026-04-28 收口为“人工确认后的受控推进”：到期 TODO 和通用 create-task 先进入路线选择，runner 只选择已确认走 pipeline、无需澄清且有 `selected_route` 正向凭证的待办，或带允许 `next_action` 且已有 pipeline 选择记录的 failed 项，调用 `smart-arb-pipeline` 继续推进。
 > 2026-04-28 方案契约收敛：`delivery_plan.json.target_files` 只把用户原始需求/修复上下文中的显式路径作为高可信目标；review/research/project memory 仅作低信任补充，并过滤 `.workflow`、runtime host、Task Center、agent workspace、command report 和项目记忆控制文件。简单任务找不到可靠业务文件时保持 discovery required，不猜测编辑 workflow 宿主；被过滤的异常候选会进入 `plan_findings.filtered_target_candidates` 并展示到 `solution.md`。
 > 2026-04-28 手动链路选择：当前默认不让系统自动决定“单 agent / 需求探讨 / 指定 agent / 编码工作流 / TODO 自动候选”。系统只输出推荐链路、原因和可选项；用户确认后才进入对应链路。到期 TODO 和通用 create-task 即使低风险，也先进入 `human_inbox.py` 的路线选择问题；只有被选择为 `coding_workflow` 或 `todo_auto_candidate` 且记录 `human_confirmed=true/action=confirmed_for_execution` 的项才允许 `backlog_runner` 推进。选择 `specified_agent` 时必须显式提供 `--assignee <agent-id>`。
-> 2026-05-06 nofx/OpenClaw backup 当前口径：AI 能力提升后，任务拆分粒度不再作为 hard gate；需求分析必须基于 graphify 项目知识图谱来写，先用 God Nodes / Surprising Connections / Suggested Questions 定位核心模块、隐藏耦合和澄清问题；project-agent 必须综合项目记忆、RAG/graphify、当前 Git 分支、HEAD、dirty state、本地/远端分支和 fetch 结果；web-agent 负责外部资料或明确 `NO_EXTERNAL_LOOKUP_NEEDED`；多 reviewer 必须使用不同模型、合并所有意见并循环修复直到无 blocker、达到自动修复上限或触发高风险人工门禁。详见 [OpenClaw Backup 多 Agent 工作流当前口径](openclaw-backup-multiagent-current.md)。
+> 2026-05-06 nofx/OpenClaw backup 当前口径：AI 能力提升后，任务拆分粒度不再作为 hard gate；需求分析必须基于 graphify 项目知识图谱来写，先用 God Nodes / Surprising Connections / Suggested Questions 定位核心模块、隐藏耦合和澄清问题；project-agent 必须综合项目记忆、RAG/graphify、当前 Git 分支、HEAD、dirty state、本地/远端分支和 fetch 结果；web-agent 负责外部资料或明确 `NO_EXTERNAL_LOOKUP_NEEDED`；多 reviewer 优先使用不同模型、合并所有有效意见并循环修复直到无 blocker、达到自动修复上限或触发高风险人工门禁。详见 [OpenClaw Backup 多 Agent 工作流当前口径](openclaw-backup-multiagent-current.md)。
 > 2026-05-06 高风险确认贯通：真实交易、下单、划转、提现和资金类策略需求不再作为 SmartMulti 策略项目的永久阻断；它们仍会被标记为 high risk，但用户在路线选择或 human inbox 中明确确认后，入口/runner 会携带 `--human-risk-confirmed` 通过 `risk_gate`，后续测试、双 reviewer、deployment、memory writeback 和 git_publish 门禁保持不变。
+> 2026-05-07 reviewer 降级：reviewer provider/model 不可用属于运行时问题，不再自动转成人工需求阻塞。review 阶段优先双模型输出；某一路失败时按 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5` fallback，最终至少一个有效 reviewer 给出阶段期望 verdict 且无明确 blocker 时可放行。
 
 ## 功能概述
 
@@ -59,9 +60,9 @@
 1. **自动需求探索**：自动读取仓库、现有文档、项目记忆、测试、日志、接口契约和官方资料，形成 `research_report.md` 与未知项清单。
 2. **需求包生成**：把用户原始需求整理为范围、非目标、验收标准、风险、外部来源、影响面和待确认项。
 3. **双 AI 对抗式审查（需求 + 方案 + 代码）**：
-   - 需求审查：`reviewer-a` 与 `reviewer-b` 两条不同命令、不同 `reviewer_role` 的 command report 均输出 `Final verdict: ready_for_solution` 才放行。
-   - 方案审查：两条不同命令、不同 `reviewer_role` 的 reviewer command report 均输出 `Final verdict: ready_for_implement` 才进入实现。
-   - 代码审查：两条不同命令、不同 `reviewer_role` 的 reviewer command report 均输出 `Final verdict: pass` 才允许进入验收/写回/发布。
+   - 需求审查：优先收集 `reviewer-a` 与 `reviewer-b` 两路不同模型 command report；若某一路 provider/model 失败且 fallback 后仍无有效 verdict，至少一个有效 reviewer 输出 `Final verdict: ready_for_solution` 且无明确 blocker 时可降级放行。
+   - 方案审查：优先两路 reviewer 审 `delivery_plan.json`；fallback 后至少一个有效 reviewer 输出 `Final verdict: ready_for_implement` 且无明确 blocker 时进入实现。
+   - 代码审查：优先两路 reviewer 审代码；fallback 后至少一个有效 reviewer 输出 `Final verdict: pass` 且无明确 blocker 时允许进入验收/写回/发布。
 4. **编码执行编排**：通过 `--code-command` 接入 HardFlow Core / ACP / runtime agent 编码链，保证实现者只按通过审查的需求包和方案包工作。
 5. **测试与验收编排**：通过多个 `--verification-command` 统一收集 lint、typecheck、unit、integration、smoke、部署验证和人工验收证据。
 6. **修复循环**：测试失败或代码审查失败时，自动回到实现阶段；如果失败反复出现，则触发失败学习。

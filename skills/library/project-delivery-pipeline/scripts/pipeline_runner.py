@@ -455,27 +455,25 @@ def reviewer_model_key_for_report(report: dict[str, Any]) -> str:
     command = str(report.get("command") or "")
     stdout = str(report.get("stdout") or "")
     stderr = str(report.get("stderr") or "")
-    provider = str(report.get("reviewer_provider") or "").strip() or reviewer_provider_from_command(command) or reviewer_provider_from_output(stdout, stderr) or "unknown-provider"
-    model = str(report.get("reviewer_model") or "").strip() or reviewer_model_from_command(command) or reviewer_model_from_output(stdout, stderr)
+    provider = str(report.get("reviewer_provider") or "").strip() or reviewer_provider_from_output(stdout, stderr) or reviewer_provider_from_command(command) or "unknown-provider"
+    model = str(report.get("reviewer_model") or "").strip() or reviewer_model_from_output(stdout, stderr) or reviewer_model_from_command(command)
     return f"{provider}/{model}" if model else ""
 
 
-def dual_review_pass(stage_name: str, reports: list[dict[str, Any]]) -> bool:
+def valid_review_reports(stage_name: str, reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
     expected = EXPECTED_VERDICTS[stage_name]
-    if len(reports) < 2:
+    return [item for item in reports if bool(item.get("ok")) and command_report_verdict(item) == expected]
+
+
+def blocking_review_reports(stage_name: str, reports: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    expected = EXPECTED_VERDICTS[stage_name]
+    return [item for item in reports if command_report_verdict(item) not in {None, expected}]
+
+
+def dual_review_pass(stage_name: str, reports: list[dict[str, Any]]) -> bool:
+    if blocking_review_reports(stage_name, reports):
         return False
-    if not all(bool(item.get("ok")) and command_report_verdict(item) == expected for item in reports):
-        return False
-    commands = [str(item.get("command") or "").strip() for item in reports]
-    if len({command for command in commands if command}) != len(commands):
-        return False
-    roles = [reviewer_role_for_report(item) for item in reports]
-    if any(not role for role in roles):
-        return False
-    model_keys = [reviewer_model_key_for_report(item) for item in reports]
-    if any(not model for model in model_keys):
-        return False
-    return len(set(roles)) >= 2 and len(set(model_keys)) >= 2
+    return bool(valid_review_reports(stage_name, reports))
 
 
 def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdict: str) -> str:
@@ -484,15 +482,31 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
     model_keys = [reviewer_model_key_for_report(item) or "missing" for item in reports]
     commands = [str(item.get("command") or "").strip() for item in reports]
     distinct_commands = len({command for command in commands if command}) == len(commands) if commands else False
+    valid_reports = valid_review_reports(stage_name, reports)
+    concrete_blockers = blocking_review_reports(stage_name, reports)
+    valid_model_keys = [reviewer_model_key_for_report(item) or "missing" for item in valid_reports]
+    valid_distinct_models = len(valid_model_keys) >= 2 and len(set(valid_model_keys)) >= 2 and "missing" not in set(valid_model_keys)
+    runtime_failures = [
+        item
+        for item in reports
+        if item not in valid_reports
+        and item not in concrete_blockers
+        and (not item.get("ok") or command_report_verdict(item) is None)
+    ]
     blocker_reports = [
         f"- {reviewer_role_for_report(item) or 'missing'} / {reviewer_model_key_for_report(item) or 'missing'}: {command_report_verdict(item) or 'missing_verdict'}"
-        for item in reports
-        if command_report_verdict(item) != expected or not item.get("ok")
+        for item in concrete_blockers
     ]
-    blocker_text = "\n".join(blocker_reports) if blocker_reports else "- none; all distinct-model reviewer findings have been merged into the joint verdict"
+    runtime_failure_text = "\n".join(
+        f"- {reviewer_role_for_report(item) or 'missing'} / {reviewer_model_key_for_report(item) or 'missing'}: runtime_or_model_failure; returncode={item.get('returncode')}; error={clip_text(str(item.get('error') or item.get('stderr') or ''), 180)}"
+        for item in runtime_failures
+    ) or "- none"
+    blocker_text = "\n".join(blocker_reports) if blocker_reports else "- none; no concrete reviewer blocker remains"
+    review_mode = "independent_multi_model" if valid_distinct_models else "degraded_single_valid"
     pass_policy = (
-        "Only pass when reviewer-a and reviewer-b are present, use distinct provider/model identity, "
-        "return the expected verdict independently, and leave no merged blocker unresolved."
+        "Prefer two independent reviewer outputs with distinct provider/model identity. If one reviewer command fails "
+        "because its provider/model is unavailable or does not emit a verdict, continue when at least one reviewer "
+        "returns the expected verdict and no valid reviewer reports a concrete blocker."
     )
     return dedent(
         f"""
@@ -507,17 +521,21 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
         - Reviewer-B evidence: {"present" if "reviewer-b" in roles else "missing"}
         - Reviewer roles: {", ".join(roles) if roles else "missing"}
         - Reviewer models: {", ".join(model_keys) if model_keys else "missing"}
-        - Distinct reviewer models: {str(len(set(model_keys)) >= 2 and "missing" not in set(model_keys)).lower()}
+        - Distinct reviewer models: {str(valid_distinct_models).lower()}
         - Distinct commands: {str(distinct_commands).lower()}
         - Independent command reports: {len(reports)}
+        - Valid reviewer outputs: {len(valid_reports)}
+        - Review gate mode: {review_mode}
         - Pass policy: {pass_policy}
 
         ## Merged Reviewer Consensus
-        - Review mode: independent multi-model review followed by blocker merge.
+        - Review mode: prefer independent multi-model review followed by blocker merge; degrade only for provider/model runtime failures.
         - No artificial task-splitting granularity gate is allowed; reviewers judge the whole accepted requirement.
-        - If any reviewer raises a concrete blocker, the pipeline returns `requires_revision` and the entrypoint auto-repair loop may rerun the same workflow with merged context until the configured attempt limit or human-risk gate is reached.
+        - If any valid reviewer raises a concrete blocker, the pipeline returns `requires_revision` and the entrypoint auto-repair loop may rerun the same workflow with merged context until the configured attempt limit or human-risk gate is reached.
         - Remaining blockers:
         {blocker_text}
+        - Non-blocking reviewer runtime/model failures:
+        {runtime_failure_text}
 
         {command_markdown("Dual AI Review Commands", reports)}
         """
@@ -2651,6 +2669,8 @@ def run_stage_command(
             report["workspace_patch_file"] = workspace_patch["patch_file"]
     if stage_name in DUAL_REVIEW_STAGES:
         report["reviewer_role"] = reviewer_role_from_command(command_text) or reviewer_role_from_output(stdout, stderr)
+        report["reviewer_provider"] = reviewer_provider_from_output(stdout, stderr) or reviewer_provider_from_command(command_text)
+        report["reviewer_model"] = reviewer_model_from_output(stdout, stderr) or reviewer_model_from_command(command_text)
     report_dir = run_dir / "command-runs"
     report_file = report_dir / f"{stage_name}-{index}.json"
     write_json(report_file, report)

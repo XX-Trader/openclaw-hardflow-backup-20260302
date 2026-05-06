@@ -1,5 +1,14 @@
 # DECISIONS
 
+## 2026-05-07 - reviewer 模型不可用时按有效输出降级放行
+
+类型：decision
+范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`、需求/方案/代码 review 门禁
+事实：双 reviewer 仍是默认目标，但 provider/model 不可用属于运行时降级问题，不再等同于需求阻塞。入口会先用 reviewer 原始模型，再按 fallback 链 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5` 重试；如果某一路 reviewer 最终仍没有有效 verdict，只要至少另一路产出期望 verdict，且没有任何 reviewer 给出明确 blocker（例如 `requires_revision` / `fail`），该 review 阶段可按 `degraded_single_valid` 放行。若任一有效 reviewer 明确要求修订，仍必须阻断并进入修复循环。
+证据：`DEFAULT_REVIEWER_FALLBACK_MODELS`、`reviewer_model_attempts()`、`run_hermes_stage()` fallback 循环、`valid_review_reports()`、`blocking_review_reports()`、`dual_review_pass()`；测试覆盖单有效 reviewer 放行、具体 blocker 阻断、同模型不再硬阻塞、入口默认注入 fallback 链和 live bridge Kimi 404 后切到 GLM。
+最后验证：2026-05-07 00:55
+复用建议：后续遇到 `reviewer-b provider/model ... HTTP 404`、`missing_verdict` 或 `command_failed`，先看 `command-runs/*review*.json` 是否已有至少一个有效期望 verdict，以及是否存在明确 blocker。模型不可用应修 provider/model 或 fallback 配置，不应把最终 verdict 改成 `requires_revision` 要人工确认。
+
 ## 2026-05-06 - SmartMulti 策略高风险确认后可继续执行
 
 类型：decision
@@ -13,10 +22,10 @@
 
 类型：decision
 范围：`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、双 reviewer 门禁
-事实：双 reviewer 门禁要求 reviewer-a/reviewer-b 暴露不同 role 和不同 provider/model。nofx profile 默认模型都是 `openai-codex/gpt-5.5`，如果不配置 reviewer-b，两个 reviewer 会被判定为同模型伪双审并阻塞。入口现在保持 reviewer-a 继承 live bridge 默认 `openai-codex/gpt-5.5`，reviewer-b 默认使用 `kimi-coding/kimi-k2.6`，仍允许环境变量或 CLI 覆盖。
+事实：该批次的原始目标是避免 reviewer-a/reviewer-b 都落到 `openai-codex/gpt-5.5` 而形成同模型伪双审，因此入口保持 reviewer-a 继承 live bridge 默认 `openai-codex/gpt-5.5`，reviewer-b 默认使用 `kimi-coding/kimi-k2.6`，仍允许环境变量或 CLI 覆盖。2026-05-07 已进一步收敛为“优先异构双审 + fallback 降级”：模型不可用或缺 verdict 时不再硬阻塞，只要至少一个有效 reviewer 通过且无明确 blocker 即可放行。
 证据：`DEFAULT_REVIEWER_B_PROVIDER=kimi-coding`、`DEFAULT_REVIEWER_B_MODEL=kimi-k2.6`；`test_main_defaults_reviewer_b_to_distinct_model` 断言默认注入不同 provider/model；`hermes_profile_smoke.py` echo/hybrid reviewer 输出补齐 provider/model 元数据，避免 smoke 被 dual review gate 误判。
 最后验证：2026-05-06 22:58
-复用建议：后续 requirements/solution/code review 明明两个命令都通过但仍阻塞时，优先检查 `command-runs/*review*.json` 中的 `Reviewer role/provider/model`，不能只看 Final verdict。
+复用建议：后续 requirements/solution/code review 明明有有效通过却仍阻塞时，优先检查 `command-runs/*review*.json` 中的 `Reviewer role/provider/model`、`Final verdict`、fallback attempt 和明确 blocker；不能只看单个 reviewer-b 的 provider/model 失败。
 
 ## 2026-04-28 - Discord 入口所有任务先选择且 profile 为最高权限入口
 

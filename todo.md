@@ -1,7 +1,7 @@
 # TODO
 
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
-> 更新时间：2026-04-29
+> 更新时间：2026-05-07
 
 ## P0 — 项目交付优先工作流（核心战略落地）
 
@@ -54,7 +54,7 @@
 - [x] [🔴 P0] 定义 `.workflow/pipeline-runs/<run_id>/` 产物目录
 - [x] [🔴 P0] 定义 `run_meta.json`、`context_snapshot.md`、`research_report.md`
 - [x] [🔴 P0] 定义 `requirements.md`、`solution.md`（含 implementation plan）、`patch_summary.md`
-- [x] [🔴 P0] 固化双 AI 需求/方案/代码审查产物契约与 verdict gate（两条不同 reviewer role/command）
+- [x] [🔴 P0] 固化双 AI 需求/方案/代码审查产物契约与 verdict gate（优先两路 reviewer/model，provider/model 失败时 fallback，至少一个有效通过且无 blocker 可降级放行）
 - [x] [🔴 P0] 接入 HardFlow Core / ACP 可配置编码命令适配（`--code-command`）
 - [x] [🔴 P0] 接入 lint、typecheck、unit、integration、smoke、部署验证命令证据收集（`--verification-command`）
 - [x] [🔴 P0] 实现失败回退和 failure-learning 触发产物

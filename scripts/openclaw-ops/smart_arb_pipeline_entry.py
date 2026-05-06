@@ -36,6 +36,7 @@ TASK_CENTER_DB = OPS_DIR / "task-center" / "task_center.db"
 LOCAL_POLICY_DIR = Path(__file__).resolve().parents[2] / "skills" / "library" / "control-plane-ops" / "scripts" / "policy"
 DEFAULT_REVIEWER_B_PROVIDER = "kimi-coding"
 DEFAULT_REVIEWER_B_MODEL = "kimi-k2.6"
+DEFAULT_REVIEWER_FALLBACK_MODELS = "zai/glm-5.1,zhipu/glm-5.1,openai-codex/gpt-5.5"
 STAGE_AGENT_MAP = {
     "intake": "coordinator",
     "context_snapshot": "project-agent",
@@ -1909,6 +1910,8 @@ def bridge_command(stage: str, args: argparse.Namespace, reviewer_role: str | No
     ]
     if reviewer_role:
         command.extend(["--reviewer-role", reviewer_role])
+    if stage in {"requirements_review", "solution_review", "code_review"} and args.reviewer_fallback_models:
+        command.extend(["--reviewer-fallback-models", args.reviewer_fallback_models])
     if stage == "code_execution" and not args.live_bridge_no_yolo:
         command.append("--allow-yolo")
         command.extend(["--max-turns", str(args.live_bridge_code_max_turns)])
@@ -1994,6 +1997,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reviewer-a-model", default=os.environ.get("SMART_ARB_REVIEWER_A_MODEL"))
     parser.add_argument("--reviewer-b-provider", default=os.environ.get("SMART_ARB_REVIEWER_B_PROVIDER") or DEFAULT_REVIEWER_B_PROVIDER)
     parser.add_argument("--reviewer-b-model", default=os.environ.get("SMART_ARB_REVIEWER_B_MODEL") or DEFAULT_REVIEWER_B_MODEL)
+    parser.add_argument("--reviewer-fallback-models", default=os.environ.get("SMART_ARB_REVIEWER_FALLBACK_MODELS") or DEFAULT_REVIEWER_FALLBACK_MODELS)
     parser.add_argument("--live-bridge-timeout-seconds", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_TIMEOUT_SECONDS", "1800")))
     parser.add_argument(
         "--live-bridge-verification-command-timeout-seconds",

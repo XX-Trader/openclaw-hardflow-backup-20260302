@@ -324,7 +324,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
             self.assertIn("Task-splitting granularity control is disabled", solution)
 
-    def test_dual_review_requires_distinct_reviewer_models(self):
+    def test_dual_review_prefers_but_does_not_require_distinct_reviewer_models(self):
         report_a = {
             "ok": True,
             "command": "review --reviewer-role reviewer-a --provider p --model same",
@@ -339,8 +339,46 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         }
         report_b_other = {**report_b_same, "command": "review --reviewer-role reviewer-b --provider q --model other", "stdout": "Final verdict: ready_for_solution\nReviewer role: reviewer-b\nReviewer provider: q\nReviewer model: other\n"}
 
-        self.assertFalse(_mod.dual_review_pass("requirements_review", [report_a, report_b_same]))
+        self.assertTrue(_mod.dual_review_pass("requirements_review", [report_a, report_b_same]))
         self.assertTrue(_mod.dual_review_pass("requirements_review", [report_a, report_b_other]))
+
+    def test_dual_review_passes_with_one_valid_output_when_peer_model_fails(self):
+        report_a = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-a --provider openai-codex --model gpt-5.5",
+            "stdout": "Final verdict: ready_for_solution\nReviewer role: reviewer-a\nReviewer provider: openai-codex\nReviewer model: gpt-5.5\n",
+            "stderr": "",
+        }
+        report_b_failed = {
+            "ok": False,
+            "returncode": 1,
+            "command": "review --reviewer-role reviewer-b --provider kimi-coding --model kimi-k2.6",
+            "stdout": "",
+            "stderr": "API call failed after 3 retries: HTTP 404",
+        }
+
+        self.assertTrue(_mod.dual_review_pass("requirements_review", [report_a, report_b_failed]))
+        rendered = _mod.render_dual_ai_review("requirements_review", [report_a, report_b_failed], "ready_for_solution")
+        self.assertIn("Review gate mode: degraded_single_valid", rendered)
+        self.assertIn("Valid reviewer outputs: 1", rendered)
+        self.assertIn("Non-blocking reviewer runtime/model failures", rendered)
+        self.assertIn("HTTP 404", rendered)
+
+    def test_dual_review_blocks_concrete_reviewer_revision_even_when_peer_passes(self):
+        report_a = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-a --provider openai-codex --model gpt-5.5",
+            "stdout": "Final verdict: ready_for_solution\nReviewer role: reviewer-a\nReviewer provider: openai-codex\nReviewer model: gpt-5.5\n",
+            "stderr": "",
+        }
+        report_b_blocker = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-b --provider zai --model glm-5.1",
+            "stdout": "Final verdict: requires_revision\nReviewer role: reviewer-b\nReviewer provider: zai\nReviewer model: glm-5.1\n",
+            "stderr": "",
+        }
+
+        self.assertFalse(_mod.dual_review_pass("requirements_review", [report_a, report_b_blocker]))
 
     def test_dual_review_rendering_merges_distinct_model_findings(self):
         report_a = {
@@ -362,7 +400,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         self.assertIn("independent multi-model review", rendered)
         self.assertIn("No artificial task-splitting granularity gate", rendered)
         self.assertIn("Remaining blockers", rendered)
-        self.assertIn("none; all distinct-model reviewer findings", rendered)
+        self.assertIn("none; no concrete reviewer blocker remains", rendered)
 
     def test_default_repair_loop_budget_is_four_for_until_clean_review_policy(self):
         self.assertEqual(4, PipelineConfig(project_key="demo").max_repair_loops)
@@ -1333,10 +1371,13 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             )
 
             self.assertEqual("blocked", state["status"])
-            self.assertEqual("requirements_review", state["failed_stage"])
-            self.assertEqual("revise_requirements", state["next_action"])
+            self.assertEqual("solution_review", state["failed_stage"])
+            self.assertEqual("revise_solution", state["next_action"])
             self.assertIn("command_requirements_review_1", state["artifacts"])
             self.assertNotIn("command_requirements_review_2", state["artifacts"])
+            review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
+            self.assertIn("Final verdict: ready_for_solution", review)
+            self.assertIn("Review gate mode: degraded_single_valid", review)
 
     def test_live_requirements_review_rejects_duplicate_reviewer_roles(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1381,9 +1422,10 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             )
 
             self.assertEqual("blocked", state["status"])
-            self.assertEqual("requirements_review", state["failed_stage"])
+            self.assertEqual("solution_review", state["failed_stage"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Reviewer roles: reviewer-a, reviewer-a", review)
+            self.assertIn("Final verdict: ready_for_solution", review)
 
     def test_live_requirements_review_rejects_duplicate_review_command(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1427,9 +1469,10 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             )
 
             self.assertEqual("blocked", state["status"])
-            self.assertEqual("requirements_review", state["failed_stage"])
+            self.assertEqual("solution_review", state["failed_stage"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Distinct commands: false", review)
+            self.assertIn("Final verdict: ready_for_solution", review)
 
     def test_code_review_failure_rolls_back_applied_workspace_patch(self):
         with tempfile.TemporaryDirectory() as tmp:

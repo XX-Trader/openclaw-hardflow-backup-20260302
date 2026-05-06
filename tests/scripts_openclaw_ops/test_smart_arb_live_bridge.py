@@ -68,6 +68,98 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
                 self.assertIn(expected, proc.stdout)
                 self.assertIn("LIVE_BRIDGE_STATUS: pass", proc.stdout)
 
+    def test_reviewer_model_fallback_uses_next_available_model(self):
+        bridge = self._load_bridge_module()
+        parser = bridge.build_parser()
+        args = parser.parse_args([
+            "--stage", "requirements_review",
+            "--provider", "kimi-coding",
+            "--model", "kimi-k2.6",
+            "--reviewer-role", "reviewer-b",
+            "--reviewer-fallback-models", "zai/glm-5.1,openai-codex/gpt-5.5",
+            "--project-dir", str(ROOT),
+        ])
+        args.project_dir = args.project_dir.expanduser().resolve()
+        args.runtime_home = args.runtime_home.expanduser().resolve()
+        args.home = args.home.expanduser().resolve()
+        args.hermes_bin = args.hermes_bin.expanduser()
+        args.python_bin = args.python_bin.expanduser()
+        args.api_cwd = args.api_cwd.expanduser()
+        args.uvicorn_bin = args.uvicorn_bin.expanduser()
+
+        failed = subprocess.CompletedProcess(
+            ["hermes"],
+            1,
+            "",
+            "API call failed after 3 retries: HTTP 404",
+        )
+        passed = subprocess.CompletedProcess(
+            ["hermes"],
+            0,
+            "\n".join([
+                "Final verdict: ready_for_solution",
+                "Reviewer role: reviewer-b",
+                "Reviewer provider: zai",
+                "Reviewer model: glm-5.1",
+                "LIVE_BRIDGE_STATUS: pass",
+            ]),
+            "",
+        )
+
+        out = StringIO()
+        with mock.patch.object(bridge, "run_command", side_effect=[failed, passed]), redirect_stdout(out):
+            rc = bridge.run_hermes_stage("requirements_review", args)
+
+        self.assertEqual(0, rc)
+        text = out.getvalue()
+        self.assertIn("reviewer fallback attempt failed", text)
+        self.assertIn("attempted_provider: kimi-coding", text)
+        self.assertIn("Reviewer provider: zai", text)
+        self.assertIn("Reviewer model: glm-5.1", text)
+        self.assertIn("Final verdict: ready_for_solution", text)
+
+    def test_reviewer_concrete_blocker_does_not_fallback(self):
+        bridge = self._load_bridge_module()
+        parser = bridge.build_parser()
+        args = parser.parse_args([
+            "--stage", "requirements_review",
+            "--provider", "kimi-coding",
+            "--model", "kimi-k2.6",
+            "--reviewer-role", "reviewer-b",
+            "--reviewer-fallback-models", "zai/glm-5.1,openai-codex/gpt-5.5",
+            "--project-dir", str(ROOT),
+        ])
+        args.project_dir = args.project_dir.expanduser().resolve()
+        args.runtime_home = args.runtime_home.expanduser().resolve()
+        args.home = args.home.expanduser().resolve()
+        args.hermes_bin = args.hermes_bin.expanduser()
+        args.python_bin = args.python_bin.expanduser()
+        args.api_cwd = args.api_cwd.expanduser()
+        args.uvicorn_bin = args.uvicorn_bin.expanduser()
+
+        blocker = subprocess.CompletedProcess(
+            ["hermes"],
+            1,
+            "\n".join([
+                "Final verdict: requires_revision",
+                "Reviewer role: reviewer-b",
+                "Reviewer provider: kimi-coding",
+                "Reviewer model: kimi-k2.6",
+                "LIVE_BRIDGE_STATUS: fail",
+            ]),
+            "",
+        )
+
+        out = StringIO()
+        with mock.patch.object(bridge, "run_command", return_value=blocker) as run_mock, redirect_stdout(out):
+            rc = bridge.run_hermes_stage("requirements_review", args)
+
+        self.assertEqual(3, rc)
+        self.assertEqual(1, run_mock.call_count)
+        text = out.getvalue()
+        self.assertIn("concrete blocker", text)
+        self.assertNotIn("try_next_reviewer_model", text)
+
     def test_project_dir_defaults_to_pipeline_agent_repo_dir(self):
         bridge = self._load_bridge_module()
         with tempfile.TemporaryDirectory() as tmpdir, mock.patch.dict(

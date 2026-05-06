@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -21,6 +22,7 @@ RUNTIME_HOME = Path("/home/arbops/.hermes")
 HERMES_BIN = Path("/home/arbops/.local/bin/hermes")
 VENV_BIN = Path("/home/arbops/.venvs/smart-arbitrage/bin")
 API_SUBDIR = "\u667a\u80fd\u591a\u5e73\u53f0\u5957\u5229"
+DEFAULT_REVIEWER_FALLBACK_MODELS = "zai/glm-5.1,zhipu/glm-5.1,openai-codex/gpt-5.5"
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 STATUS_RE = re.compile(r"(?im)^\s*LIVE_BRIDGE_STATUS\s*:\s*(pass|fail)\s*$")
 FINAL_VERDICT_RE = re.compile(r"(?im)^\s*Final verdict\s*:\s*([a-z_]+)\s*$")
@@ -477,6 +479,9 @@ Final verdict: requires_revision
 
 
 def effective_reviewer_provider(args: argparse.Namespace, role: str) -> str:
+    override = str(getattr(args, "_reviewer_provider_override", "") or "").strip()
+    if override:
+        return override
     suffix = "A" if role == "reviewer-a" else "B" if role == "reviewer-b" else ""
     if suffix:
         value = os.environ.get(f"SMART_ARB_REVIEWER_{suffix}_PROVIDER", "").strip()
@@ -486,12 +491,102 @@ def effective_reviewer_provider(args: argparse.Namespace, role: str) -> str:
 
 
 def effective_reviewer_model(args: argparse.Namespace, role: str) -> str:
+    override = str(getattr(args, "_reviewer_model_override", "") or "").strip()
+    if override:
+        return override
     suffix = "A" if role == "reviewer-a" else "B" if role == "reviewer-b" else ""
     if suffix:
         value = os.environ.get(f"SMART_ARB_REVIEWER_{suffix}_MODEL", "").strip()
         if value:
             return value
     return str(args.model)
+
+
+def parse_provider_model(value: str) -> tuple[str, str] | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for separator in ("/", ":"):
+        if separator in text:
+            provider, model = text.split(separator, 1)
+            provider = provider.strip()
+            model = model.strip()
+            return (provider, model) if provider and model else None
+    return None
+
+
+def reviewer_model_attempts(args: argparse.Namespace, role: str) -> list[tuple[str, str]]:
+    primary = (effective_reviewer_provider(args, role), effective_reviewer_model(args, role))
+    raw_fallbacks = str(getattr(args, "reviewer_fallback_models", "") or "").strip()
+    attempts: list[tuple[str, str]] = [primary]
+    for item in re.split(r"[,;\s]+", raw_fallbacks):
+        parsed = parse_provider_model(item)
+        if parsed:
+            attempts.append(parsed)
+
+    deduped: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for provider, model in attempts:
+        key = (provider.strip().lower(), model.strip().lower())
+        if not key[0] or not key[1] or key in seen:
+            continue
+        seen.add(key)
+        deduped.append((provider.strip(), model.strip()))
+    return deduped
+
+
+def run_hermes_command_for_model(
+    stage: str,
+    args: argparse.Namespace,
+    requirement: str,
+    profile_dir: Path,
+    provider: str,
+    model: str,
+) -> tuple[subprocess.CompletedProcess[str], str]:
+    attempt_args = copy.copy(args)
+    if stage in {"requirements_review", "solution_review", "code_review"}:
+        attempt_args._reviewer_provider_override = provider
+        attempt_args._reviewer_model_override = model
+    prompt = stage_prompt(stage, attempt_args, requirement)
+    command = [
+        str(args.hermes_bin),
+        "chat",
+        "--ignore-user-config",
+        "--provider",
+        provider,
+        "-m",
+        model,
+        "-q",
+        prompt,
+        "-Q",
+        "--max-turns",
+        str(args.max_turns),
+        "--source",
+        f"smart-arb-live-bridge:{stage}",
+        "--accept-hooks",
+        "--checkpoints",
+    ]
+    if args.allow_yolo:
+        command.append("--yolo")
+    diagnostic_command = [
+        str(args.hermes_bin),
+        "chat",
+        "--ignore-user-config",
+        "--provider",
+        provider,
+        "-m",
+        model,
+        "-q",
+        "[stage prompt redacted]",
+        "-Q",
+        "--max-turns",
+        str(args.max_turns),
+        "--source",
+        f"smart-arb-live-bridge:{stage}",
+    ]
+    if args.allow_yolo:
+        diagnostic_command.append("--yolo")
+    return run_command(command, cwd=args.project_dir, env=bridge_env(args, profile_dir, stage)), " ".join(shlex.quote(str(part)) for part in diagnostic_command)
 
 
 def run_echo_stage(stage: str, reviewer_role: str = "") -> int:
@@ -526,71 +621,66 @@ def run_echo_stage(stage: str, reviewer_role: str = "") -> int:
 
 def run_hermes_stage(stage: str, args: argparse.Namespace) -> int:
     requirement = requirement_text()
-    prompt = stage_prompt(stage, args, requirement)
     profile_dir = profile_home(args.runtime_home, args.profile)
-    provider = args.provider
-    model = args.model
-    if stage in {"requirements_review", "solution_review", "code_review"}:
-        role = str(args.reviewer_role or "").strip() or "reviewer-a"
-        provider = effective_reviewer_provider(args, role)
-        model = effective_reviewer_model(args, role)
-    command = [
-        str(args.hermes_bin),
-        "chat",
-        "--ignore-user-config",
-        "--provider",
-        provider,
-        "-m",
-        model,
-        "-q",
-        prompt,
-        "-Q",
-        "--max-turns",
-        str(args.max_turns),
-        "--source",
-        f"smart-arb-live-bridge:{stage}",
-        "--accept-hooks",
-        "--checkpoints",
-    ]
-    if args.allow_yolo:
-        command.append("--yolo")
-
-    proc = run_command(command, cwd=args.project_dir, env=bridge_env(args, profile_dir, stage))
-    if proc.stdout:
-        print(proc.stdout.rstrip())
-    if proc.stderr:
-        print("\n# stderr")
-        print(proc.stderr.rstrip())
-
-    plain = strip_ansi((proc.stdout or "") + "\n" + (proc.stderr or ""))
-    session_id = extract_hermes_session_id(plain)
-    if session_id:
-        print(f"LIVE_BRIDGE_AGENT_SESSION_ID: {session_id}")
-    recovered = recover_hermes_session_output(profile_dir, plain)
-    if recovered and recovered not in plain:
-        print("\n# recovered_session_output")
-        print(recovered.rstrip())
-        plain = f"{plain}\n{recovered}"
-    if recovered_stage_pass(stage, recovered) and not STATUS_RE.search(plain):
-        plain = f"{plain}\nLIVE_BRIDGE_STAGE: {stage}\nLIVE_BRIDGE_STATUS: pass"
-        print(f"LIVE_BRIDGE_STAGE: {stage}")
-        print("LIVE_BRIDGE_STATUS: pass")
-    status = STATUS_RE.search(plain)
-    if proc.returncode != 0:
-        print(f"LIVE_BRIDGE_STAGE: {stage}")
-        print("LIVE_BRIDGE_STATUS: fail")
-        return proc.returncode or 1
-    if not status or status.group(1).lower() != "pass":
-        print(f"LIVE_BRIDGE_STAGE: {stage}")
-        print("LIVE_BRIDGE_STATUS: fail")
-        return 2
     expected_verdict = EXPECTED_REVIEW_VERDICTS.get(stage)
-    if expected_verdict and final_verdict(plain) != expected_verdict:
-        print("Final verdict: requires_revision")
+    role = str(getattr(args, "reviewer_role", "") or "").strip() or "reviewer-a"
+    attempts = reviewer_model_attempts(args, role) if expected_verdict else [(str(args.provider), str(args.model))]
+    last_failure_code = 1
+
+    for attempt_index, (provider, model) in enumerate(attempts, start=1):
+        if expected_verdict:
+            print(f"# reviewer model attempt {attempt_index}/{len(attempts)}")
+            print(f"Reviewer role: {role}")
+            print(f"Reviewer provider: {provider}")
+            print(f"Reviewer model: {model}")
+        proc, command_text = run_hermes_command_for_model(stage, args, requirement, profile_dir, provider, model)
+        if proc.stdout:
+            print(proc.stdout.rstrip())
+        if proc.stderr:
+            print("\n# stderr")
+            print(proc.stderr.rstrip())
+
+        plain = strip_ansi((proc.stdout or "") + "\n" + (proc.stderr or ""))
+        session_id = extract_hermes_session_id(plain)
+        if session_id:
+            print(f"LIVE_BRIDGE_AGENT_SESSION_ID: {session_id}")
+        recovered = recover_hermes_session_output(profile_dir, plain)
+        if recovered and recovered not in plain:
+            print("\n# recovered_session_output")
+            print(recovered.rstrip())
+            plain = f"{plain}\n{recovered}"
+        if recovered_stage_pass(stage, recovered) and not STATUS_RE.search(plain):
+            plain = f"{plain}\nLIVE_BRIDGE_STAGE: {stage}\nLIVE_BRIDGE_STATUS: pass"
+            print(f"LIVE_BRIDGE_STAGE: {stage}")
+            print("LIVE_BRIDGE_STATUS: pass")
+        status = STATUS_RE.search(plain)
+        verdict = final_verdict(plain)
+
+        if expected_verdict and verdict and verdict != expected_verdict:
+            print(f"# reviewer returned concrete blocker on {provider}/{model}; no fallback is attempted")
+            print("Final verdict: requires_revision")
+            print(f"LIVE_BRIDGE_STAGE: {stage}")
+            print("LIVE_BRIDGE_STATUS: fail")
+            return 3
+
+        if proc.returncode == 0 and status and status.group(1).lower() == "pass":
+            if not expected_verdict or verdict == expected_verdict:
+                return 0
+
+        last_failure_code = proc.returncode or 2
+        if expected_verdict and attempt_index < len(attempts):
+            print("\n# reviewer fallback attempt failed")
+            print(f"- attempted_provider: {provider}")
+            print(f"- attempted_model: {model}")
+            print(f"- command: `{command_text}`")
+            print(f"- returncode: {proc.returncode}")
+            print(f"- verdict: {verdict or 'missing_verdict'}")
+            print("- action: try_next_reviewer_model")
+            continue
+
         print(f"LIVE_BRIDGE_STAGE: {stage}")
         print("LIVE_BRIDGE_STATUS: fail")
-        return 3
-    return 0
+        return last_failure_code or 1
 
 
 def verification_commands(args: argparse.Namespace) -> list[str]:
@@ -1208,6 +1298,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--provider", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_PROVIDER", "openai-codex"))
     parser.add_argument("--model", default=os.environ.get("SMART_ARB_LIVE_BRIDGE_MODEL", "gpt-5.5"))
     parser.add_argument("--reviewer-role", choices=["reviewer-a", "reviewer-b"], default=os.environ.get("PIPELINE_REVIEWER_ROLE", "reviewer-a"))
+    parser.add_argument(
+        "--reviewer-fallback-models",
+        default=os.environ.get("SMART_ARB_REVIEWER_FALLBACK_MODELS", DEFAULT_REVIEWER_FALLBACK_MODELS),
+        help="comma-separated provider/model reviewer fallback chain used when a reviewer provider is unavailable",
+    )
     parser.add_argument("--max-turns", type=int, default=int(os.environ.get("SMART_ARB_LIVE_BRIDGE_MAX_TURNS", "24")))
     parser.add_argument("--allow-yolo", action="store_true")
     parser.add_argument("--skip-tests", action="store_true")

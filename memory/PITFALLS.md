@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-05-07 - reviewer 模型不可用不能误判为需求阻塞
+
+类型：pitfall
+范围：`smart_arb_live_bridge.py`、`pipeline_runner.py`、nofx review command reports
+事实：`kimi-coding/kimi-k2.6` 这类 reviewer provider/model 可能返回 HTTP 404 或连续重试失败。旧逻辑把 reviewer-b 的 `missing_verdict` 合并成 `final verdict: requires_revision`，导致 reviewer-a 已通过、业务需求已清楚时仍被需求评审卡住。修复后 live bridge 会对 review 阶段逐个尝试 fallback 模型；runner 只把有效 reviewer 的明确 blocker 当作阻断，模型失败/缺 verdict 本身不再阻断已有有效通过结果。
+证据：`run_hermes_stage()` 输出 `# reviewer fallback attempt failed` 并切换模型；`dual_review_pass()` 要求至少一个有效期望 verdict 且无明确 blocker；新增测试覆盖 Kimi 404 后 GLM 通过、单有效 reviewer 放行和具体 blocker 仍阻断。
+最后验证：2026-05-07 00:55
+复用建议：排查 `reviewer-b provider/model ... HTTP 404` 时，不要先降低需求质量门禁或要求人工确认；先确认 fallback 链是否配置、实际使用的 provider/model 是否写入 command report，以及是否存在真实 `requires_revision` finding。
+
 ## 2026-05-06 - 混合句风险清洗不能整行丢弃真实交易请求
 
 类型：pitfall
@@ -22,10 +31,10 @@
 
 类型：pitfall
 范围：`dual_review_pass()`、nofx live bridge reviewer command report
-事实：双 reviewer gate 要求不同 command、不同 `reviewer_role` 和不同 provider/model。nofx 两个 Discord profile 默认模型都是 `openai-codex/gpt-5.5`，如果没有给 reviewer-b 配不同模型，即使 reviewer-a/reviewer-b 都输出 `Final verdict: ready_for_solution`，仍会阻塞。入口已将 reviewer-b 默认设为 `kimi-coding/kimi-k2.6`，smoke echo/hybrid 输出也补齐 provider/model。
-证据：`test_dual_review_requires_distinct_reviewer_models` 覆盖同模型失败；`test_main_defaults_reviewer_b_to_distinct_model` 覆盖入口默认不同模型；`hermes_profile_smoke.py` 的 `echo_outputs()` 和 `with_reviewer_role()` 会补 reviewer provider/model。
+事实：该问题在 2026-05-06 表现为两个 reviewer 都使用 `openai-codex/gpt-5.5` 时会被判定为伪双审。入口已将 reviewer-b 默认设为 `kimi-coding/kimi-k2.6`，smoke echo/hybrid 输出也补齐 provider/model。2026-05-07 起，同模型/缺失第二路只作为质量降级信号；如果至少一个有效 reviewer 通过且没有明确 blocker，不再因为第二路模型失败或重复模型而硬阻断。
+证据：`test_dual_review_prefers_but_does_not_require_distinct_reviewer_models` 覆盖同模型降级；`test_main_defaults_reviewer_b_to_distinct_model` 覆盖入口默认不同模型；`hermes_profile_smoke.py` 的 `echo_outputs()` 和 `with_reviewer_role()` 会补 reviewer provider/model。
 最后验证：2026-05-06 22:58
-复用建议：排查 review 卡住时，先读 `command-runs/requirements_review-*.json`、`solution_review-*.json` 或 `code_review-*.json` 的 metadata，不要只看 stdout 里的 verdict。
+复用建议：排查 review 卡住时，先读 `command-runs/requirements_review-*.json`、`solution_review-*.json` 或 `code_review-*.json` 的 metadata 和 `reviewer_fallback` 输出，确认是运行时降级还是有效 blocker。
 
 ## 2026-05-05 - graphify 不读 .gitignore，项目级排除必须写 .graphifyignore
 

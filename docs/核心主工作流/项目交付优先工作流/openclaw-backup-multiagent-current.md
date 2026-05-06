@@ -1,6 +1,6 @@
 # OpenClaw Backup 多 Agent 工作流当前口径
 
-更新时间：2026-05-06
+更新时间：2026-05-07
 
 ## 1. 项目边界
 
@@ -22,15 +22,15 @@ SmartMultiPlatformArbitrage 只作为被交付/被修改的业务项目之一；
 3. `project-agent` 先读取项目上下文、项目记忆、RAG/图谱、Git 当前分支、HEAD、脏工作区、本地分支、远端分支、fetch 结果，输出“项目地图”。
 4. `web-agent` 查官方资料、外部方案、成熟项目或明确输出 `NO_EXTERNAL_LOOKUP_NEEDED` 与本地证据。
 5. `project-agent` 与 reviewer 做需求讨论，综合项目地图和外部资料，形成完整需求、验收标准、风险边界、目标文件和测试命令。
-6. 多个 reviewer 用不同模型独立审查需求；所有 blocker 合并后修订，直到无 blocker 或达到自动修复上限/高风险人工门禁。
+6. 多个 reviewer 优先用不同模型独立审查需求；某一路 provider/model 失败时按 fallback 链重试，所有有效 blocker 合并后修订，直到无 blocker、达到自动修复上限或高风险人工门禁。
 7. `project-agent` 生成结构化 `delivery_plan.json`，`solution.md` 只作为人工可读渲染。
 8. graphify/RAG 作为软上下文补充跨模块影响面；只在跨仓路径、凭证/密钥、真实交易/下单/划转等风险时变成 hard block。
-9. 多个 reviewer 用不同模型独立审查方案；综合意见后必须全部通过，才能进入执行。
+9. 多个 reviewer 优先用不同模型独立审查方案；若某一路模型不可用，至少一个有效通过且无明确 blocker 可降级进入执行。
 10. `coordinator` 输出 `group_plan_publish.md`，把完整执行方案、风险和验证方式回传群里。
 11. `risk_gate` 写入 `pre_execution_risk.json`：低/中风险自动执行；高风险未确认时必须等人工确认，已确认时必须记录 `human_confirmation_confirmed=true` 后继续。
 12. `backend-dev` / `frontend-dev` / 指定 agent 执行代码或文档修改。
 13. `tester` 运行确定性测试、compileall、diff check、API smoke 或项目指定验收。
-14. 多 reviewer 用不同模型做代码审查；任一 reviewer 有 blocker 就回到修改/测试循环。
+14. 多 reviewer 优先用不同模型做代码审查；任一有效 reviewer 有 blocker 就回到修改/测试循环，模型失败本身走 fallback 或降级。
 15. `deployer` 只在允许时部署或 smoke；真实交易、下单、划转、提现和资金类策略执行需要人工确认凭证，不得擅自读取/打印凭证、解除风控或绕过审查。
 16. `git_publish` 在测试和 review 通过后提交/推送，并验证远端包含目标提交。
 17. 任一步失败时写 `failure_summary.md`，把具体失败阶段、失败原因、下一步修复建议总结回群。
@@ -52,15 +52,16 @@ SmartMultiPlatformArbitrage 只作为被交付/被修改的业务项目之一；
 
 reviewer 不是走过场。当前规则：
 
-- 至少需要 reviewer-a 与 reviewer-b；
-- reviewer-a 与 reviewer-b 必须有不同 `reviewer_role`；
-- 必须暴露 provider/model 元数据；
-- provider/model 组合必须不同，不能同一命令/同一模型伪装双 reviewer；
+- 默认目标是 reviewer-a 与 reviewer-b 两路独立输出；
+- reviewer-a 与 reviewer-b 优先使用不同 `reviewer_role` 与不同 provider/model；
+- 命令报告必须尽量暴露 provider/model 元数据，fallback 成功时以实际使用模型为准；
+- 不能把同一命令/同一模型伪装成高质量双 reviewer；如果第二路模型失败，只能标记为 `degraded_single_valid`，不能伪装成双审完整通过；
 - requirements_review 期望 verdict：`ready_for_solution`；
 - solution_review 期望 verdict：`ready_for_implement`；
 - code_review 期望 verdict：`pass`；
-- 任一 reviewer 未通过、命令失败、缺少角色、缺少模型或模型重复，都不能通过 dual review gate；
-- 通过前必须把所有 reviewer 意见合并为 `Merged Reviewer Consensus`。
+- 任一有效 reviewer 明确未通过或提出 blocker，都不能通过 review gate；
+- provider/model 不可用、HTTP 404、命令失败或缺 verdict 先走 fallback 链；fallback 后仍无有效输出时，只要至少一个有效 reviewer 通过且无明确 blocker，可按 `degraded_single_valid` 放行；
+- 通过前必须把所有有效 reviewer 意见合并为 `Merged Reviewer Consensus`，并在报告里标明 `Review gate mode`。
 
 默认入口支持环境变量或 CLI 指定 reviewer 模型：
 
@@ -69,6 +70,7 @@ SMART_ARB_REVIEWER_A_PROVIDER=...
 SMART_ARB_REVIEWER_A_MODEL=...
 SMART_ARB_REVIEWER_B_PROVIDER=...
 SMART_ARB_REVIEWER_B_MODEL=...
+SMART_ARB_REVIEWER_FALLBACK_MODELS=zai/glm-5.1,zhipu/glm-5.1,openai-codex/gpt-5.5
 ```
 
 或：
@@ -77,10 +79,11 @@ SMART_ARB_REVIEWER_B_MODEL=...
 smart-arb-pipeline \
   --reviewer-a-provider openai-codex --reviewer-a-model gpt-5.5 \
   --reviewer-b-provider <other-provider> --reviewer-b-model <other-model> \
+  --reviewer-fallback-models zai/glm-5.1,zhipu/glm-5.1,openai-codex/gpt-5.5 \
   ...
 ```
 
-nofx SmartMulti 入口在未显式配置 reviewer-b 时，默认 reviewer-b 使用 `kimi-coding/kimi-k2.6`，避免 reviewer-a/reviewer-b 都落到 `openai-codex/gpt-5.5` 而被 dual review gate 判为同模型伪双审。
+nofx SmartMulti 入口在未显式配置 reviewer-b 时，默认 reviewer-b 使用 `kimi-coding/kimi-k2.6`，并默认携带 fallback 链 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5`。如果 Kimi 返回 HTTP 404 或缺 verdict，会自动尝试下一可用模型；若仍只有一路有效输出且无 blocker，按降级模式放行。
 
 ## 5. project-agent 地图/RAG/Git 职责
 

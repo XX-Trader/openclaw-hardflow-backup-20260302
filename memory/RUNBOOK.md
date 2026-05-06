@@ -1,5 +1,14 @@
 # RUNBOOK
 
+## 2026-05-07 - reviewer provider/model 失败的降级排障
+
+类型：runbook
+范围：nofx live bridge、`requirements_review` / `solution_review` / `code_review`
+事实：review 阶段优先产出 reviewer-a/reviewer-b 两路不同模型意见，但某一路 provider/model 不可用、HTTP 404、命令失败或缺少 verdict 时，入口应自动尝试 fallback 链 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5`。若 fallback 后仍只有一路有效输出，只要该输出是期望 verdict 且所有报告里没有明确 blocker，runner 会以 `degraded_single_valid` 放行；若任何有效 reviewer 明确返回 `requires_revision`、`fail` 或非期望 verdict，则仍阻断。
+证据：`smart_arb_live_bridge.py --reviewer-fallback-models`、`SMART_ARB_REVIEWER_FALLBACK_MODELS`、`reviewer_model_attempts()`、`dual_review_pass()`、`render_dual_ai_review()`；相关单测覆盖 Kimi 404 后切 GLM、单有效 reviewer 放行和具体 blocker 阻断。
+最后验证：2026-05-07 00:55
+复用建议：遇到 `reviewer-b missing_verdict` 时，按顺序查：1. `command-runs/*review*.json` 的 `reviewer_provider/reviewer_model` 是否记录了实际 fallback 模型；2. stdout 是否有 `# reviewer fallback attempt failed`；3. `requirements_review.md` / `solution_review.md` / `code_review.md` 是否显示 `Review gate mode: degraded_single_valid`；4. 是否存在明确 blocker。不要因为单个 provider/model 404 就要求人工确认。
+
 ## 2026-05-06 - 已确认高风险策略任务的推进链路
 
 类型：runbook
@@ -13,10 +22,10 @@
 
 类型：runbook
 范围：nofx live bridge、`requirements_review` / `solution_review` / `code_review`
-事实：双 reviewer gate 不只看 `Final verdict`，还要求两个 reviewer command report 的 `Reviewer role` 和 provider/model 不同。入口默认 reviewer-a 使用 `openai-codex/gpt-5.5`，reviewer-b 使用 `kimi-coding/kimi-k2.6`；也可用 `SMART_ARB_REVIEWER_A_PROVIDER/MODEL`、`SMART_ARB_REVIEWER_B_PROVIDER/MODEL` 或 CLI 参数覆盖。
+事实：该条记录描述的是 2026-05-06 的默认异构模型修复：入口默认 reviewer-a 使用 `openai-codex/gpt-5.5`，reviewer-b 使用 `kimi-coding/kimi-k2.6`；也可用 `SMART_ARB_REVIEWER_A_PROVIDER/MODEL`、`SMART_ARB_REVIEWER_B_PROVIDER/MODEL` 或 CLI 参数覆盖。2026-05-07 起，provider/model 不同是双审质量目标，不再是运行时硬阻塞条件；某一路模型失败时应先走 fallback，最终按“至少一个有效通过且无明确 blocker”判定。
 证据：`smart_arb_pipeline_entry.py` 默认值、`dual_review_pass()`、`command-runs/*review*.json` reviewer metadata、`test_main_defaults_reviewer_b_to_distinct_model`。
 最后验证：2026-05-06 22:58
-复用建议：遇到 review 阶段 `requires_revision` 但两个 stdout 都说 ready/pass 时，打开两个 `command-runs/*review*.json`，确认 `reviewer_role`、`Reviewer provider`、`Reviewer model` 是否都存在且不同；缺失或重复时修 live bridge 参数，不要放松 `dual_review_pass()`。
+复用建议：遇到 review 阶段阻塞时，打开 `command-runs/*review*.json`，区分“模型/命令失败导致 missing verdict”和“有效 reviewer 明确给出 blocker”。前者应修 fallback 或 provider 配置；后者才回到需求/方案/代码修复。
 
 ## 2026-05-06 - nofx 远程命令用户与 shell 选择
 

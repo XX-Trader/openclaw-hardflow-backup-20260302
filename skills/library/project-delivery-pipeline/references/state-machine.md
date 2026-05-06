@@ -9,12 +9,12 @@
 | `project_memory_context` | `project_memory_context.md` | project memory module loaded and change-localization gate recorded |
 | `external_research` | `research_report.md` | source URLs, report file, or `--research-command` evidence present |
 | `requirements_package` | `requirements.md` | acceptance criteria and non-goals present |
-| `requirements_discussion -> requirements_review` | `requirements_discussion -> requirements_review.md` + `command_requirements_review_1/2.json` | two distinct reviewer commands with distinct `reviewer_role` values emit `Final verdict: ready_for_solution` |
+| `requirements_discussion -> requirements_review` | `requirements_discussion -> requirements_review.md` + `command_requirements_review_1/2.json` | prefer two reviewer commands with distinct models; pass with at least one valid `Final verdict: ready_for_solution` and no concrete reviewer blocker after fallback |
 | `solution_package` | `solution.md` | implementation and verification plan present |
-| `solution_review` | `solution_review.md` + `command_solution_review_1/2.json` | two distinct reviewer commands with distinct `reviewer_role` values emit `Final verdict: ready_for_implement` |
+| `solution_review` | `solution_review.md` + `command_solution_review_1/2.json` | prefer two reviewer commands with distinct models; pass with at least one valid `Final verdict: ready_for_implement` and no concrete reviewer blocker after fallback |
 | `code_execution` | `patch_summary.md` | implementation artifact or `--code-command` evidence present |
 | `verification` | `verification_report.md` | `--verification-command` / report status `pass` and acceptable score |
-| `code_review` | `code_review.md` + `command_code_review_1/2.json` | `Final verdict: pass` from file or two distinct reviewer commands with distinct `reviewer_role` values |
+| `code_review` | `code_review.md` + `command_code_review_1/2.json` | `Final verdict: pass` from file, or at least one valid reviewer command verdict with no concrete blocker after fallback |
 | `acceptance` | `delivery_evidence.md` | acceptance status `pass` |
 | `writeback` | `writeback_report.md` | live memory writeback completed or dry-run recommendation present |
 | `git_publish` | `git_publish_report.md` | optional publish command completed after all prior gates |
@@ -81,9 +81,9 @@ runtime:
 - `--code-command`: HardFlow Core / ACP / backend-dev command.
 - `--verification-command`: repeatable lint, typecheck, unit, integration,
   smoke, or deployment verification commands.
-- `--requirements-review-command`: reviewer command that must emit `Final verdict: ready_for_solution`; provide at least two distinct commands with distinct `reviewer_role` values in live mode.
-- `--solution-review-command`: reviewer command that must emit `Final verdict: ready_for_implement`; provide at least two distinct commands with distinct `reviewer_role` values in live mode.
-- `--code-review-command`: reviewer command that must emit `Final verdict: pass`; provide at least two distinct commands with distinct `reviewer_role` values in live mode.
+- `--requirements-review-command`: reviewer command that should emit `Final verdict: ready_for_solution`; live mode prefers two distinct reviewer/model outputs, but may degrade to one valid output when a peer provider/model fails and no concrete blocker remains.
+- `--solution-review-command`: reviewer command that should emit `Final verdict: ready_for_implement`; live mode prefers two distinct reviewer/model outputs, but may degrade to one valid output when a peer provider/model fails and no concrete blocker remains.
+- `--code-review-command`: reviewer command that should emit `Final verdict: pass`; live mode prefers two distinct reviewer/model outputs, but may degrade to one valid output when a peer provider/model fails and no concrete blocker remains.
 - `--memory-write-command`: custom project memory writeback command.
 - `--write-project-memory`: built-in `project_memory_writer.py` writeback.
 - `--git-publish-command`: safe commit/push command that only runs after all

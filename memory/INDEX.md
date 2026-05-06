@@ -1,6 +1,6 @@
 # 项目记忆索引
 
-最后更新：2026-05-06
+最后更新：2026-05-07
 
 ## 阅读顺序
 
@@ -39,7 +39,7 @@
 - `git_publish` 是可选发布门禁，只在验证、代码审查、deployment（如有）、验收和记忆回写通过后执行；提交说明、备注和变更描述必须使用中文，提交前运行 `git diff --check` 与 `git diff --cached --check`，并扫描 staged diff 中的密钥形态。secret scan 会输出脱敏的文件、行号、规则和风险等级；真实 secret、hardcoded fallback secret、PEM private key hard block，测试/文档占位不阻塞，非密钥类发布失败回流为 `fix_git_publish`。
 - `source_registry_watcher` 与 `repo_hygiene_reviewer` 默认每 2 天执行一次；前者只检查已注册来源，后者由 `coordinator` 只读扫描冗余、冲突、缓存、重复文件并创建人工确认候选，不自动删除、不自动推送。
 - 到期 TODO 与通用 `create-task` 已改为手动链路选择：任务先写入 `route_selection.mode=manual_selection`，由人工选择直接运行、需求探讨、指定 agent、编码工作流或 TODO 自动候选；backlog runner 只正向推进已确认的 `coding_workflow` / `todo_auto_candidate`，会跳过未选择路线和非 pipeline 选择。
-- 双 AI 审核现在有真实产物门禁：需求、方案、代码三个 review 阶段都需要两条不同命令、不同 `reviewer_role`（`reviewer-a`/`reviewer-b`）的 reviewer command report，且都输出对应 `Final verdict` 才放行。
+- 双 AI 审核现在采用“优先双模型、允许运行时降级”的真实产物门禁：需求、方案、代码三个 review 阶段优先收集 reviewer-a/reviewer-b 两路不同模型输出；若某一路 provider/model 不可用、HTTP 404、命令失败或缺 verdict，入口按 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5` fallback。最终至少一个 reviewer 输出阶段期望 `Final verdict` 且无明确 blocker 时可按 `degraded_single_valid` 放行；任一有效 reviewer 明确要求修订仍阻断。
 - `solution_package` 当前以 `delivery_plan.json` 作为结构化交付契约，`solution.md` 只是人工展示层；`solution_review` 与 `code_execution` 都优先读取该契约。遇到“方案太泛 / 不是 implementation plan”的阻塞，优先修 `delivery_plan.json` 字段或走 `revise_solution` 自动回流，不要通过放松 reviewer 或润色 Markdown 绕过。
 - 2026-04-27 工作流自修修复：`requirements.md` / `solution.md` 不再回落到通用流水线模板，必须保留用户本轮具体目标、禁止范围和安全边界；requirements review 通过后会生成 `resolved_requirement.md` 作为下游 handoff。应用 code workspace patch 前会检查主工作区脏路径是否与补丁路径重叠，重叠则拒绝应用；`verification` 或 `code_review` 阻塞时会对已应用到主项目目录的 code workspace patch 执行反向回滚并写入 `rollback_*` artifact，回滚失败会阻塞为 `rollback_cleanup/manual_cleanup_required`。2026-04-28 起 profile 的“工作流自修例外”升级为高权限工作流维护模式：仍不允许用同一条 pipeline 递归修自己，但可由 Discord profile 直接维护 hardflow 宿主、测试并安装 runtime。
 - 最后远端安装态 smoke：`install-smoke-arbitrageagent-20260428T151514657470Z`，15/15 阶段完成，Task Center 为 `passed`；该 smoke 为 deterministic echo 模式，用于验证安装态入口和 Task Center 写入，不触发真实 Hermes chat，不执行 deployment 或 git publish。

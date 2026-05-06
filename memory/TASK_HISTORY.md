@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-07 - reviewer 模型失败 fallback 与单有效输出放行
+
+类型：bugfix
+范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`、项目交付优先工作流文档、项目记忆、测试
+事实：修复 nofx review 阶段把 reviewer-b provider/model 失败误判成需求阻塞的问题。reviewer-a 已产出有效通过、reviewer-b 因 `kimi-coding/kimi-k2.6` HTTP 404 或缺 verdict 失败时，入口会继续尝试 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5`；若最终仍只有一个有效 reviewer，只要该 verdict 符合阶段期望且没有明确 blocker，pipeline 以 `degraded_single_valid` 放行。任何有效 reviewer 明确给出 `requires_revision` / `fail` 仍阻断并回流修复。
+证据：新增/更新测试覆盖单有效 reviewer 放行、具体 blocker 阻断、同模型不再硬阻塞、entry 默认注入 fallback 链、live bridge 在 Kimi 404 后切 GLM。文档同步 `memory/DECISIONS.md`、`memory/RUNBOOK.md`、`memory/PITFALLS.md`、`memory/INDEX.md`、项目交付 README/架构/当前口径/live bridge/state-machine。
+最后验证：2026-05-07 00:55 本地 `test_project_delivery_pipeline_runner` 57 项 OK；`test_smart_arb_live_bridge`、`test_smart_arb_pipeline_entry`、`test_backlog_runner`、`test_project_delivery_runtime_installer`、`test_nofx_profile_templates` 共 95 项 OK；`compileall` 覆盖 3 个改动脚本通过。
+复用建议：以后看到 `reviewer-b missing_verdict`，不要直接把合并结果打成 `requires_revision`。先检查是否已有至少一个有效通过输出和是否存在真实 blocker；只有真实 blocker 才进入需求/方案/代码修订。
+
 ## 2026-05-06 - nofx 高风险确认门禁部署验收
 
 类型：deploy | bugfix
@@ -7,7 +16,7 @@
 事实：已把 nofx 高风险确认、双 reviewer 默认异构模型和混合句风险清洗修复完整部署到 nofx。策略类真实交易、下单、划转、提现和资金项仍会识别为 high-risk，但在用户明确确认后可以通过 `--human-risk-confirmed` 继续执行；后续测试、双 reviewer、部署、写回和 git publish 门禁不变。混合句里的否定凭证/安全边界不会再把正向真实交易/下单请求误清洗掉。
 证据：本机提交 `68b536a6`、`d236192e` 已推送；nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302` 为 `HEAD=d236192`、`HEAD...origin/main=0 0`。本地 `test_project_delivery_pipeline_runner` 55 项 OK、入口/backlog/installer/profile 58 项 OK、`compileall` 与 `git diff --check` 通过；nofx 远端 `compileall` 通过、定向 unittest 62 项 OK。高风险确认 echo smoke `cli-spreadagent-20260506T153935576001Z` 完成，Task Center `passed`，`pre_execution_risk.json` 显示 `risk_level=high`、`human_confirmation_confirmed=true`、`execution_decision=confirmed_execute`。两个 Discord gateway 已重启，`arbitrageagent` 和 `spreadagent` 均为 `gateway_state=running`、Discord `connected`；内控 API `/health` 为 `status=ok`。
 最后验证：2026-05-06 23:40
-复用建议：排查“高风险确认后仍阻拦”时，先查 `pre_execution_risk.json` 是否同时具备 `risk_level=high`、`human_confirmation_confirmed=true` 和 `execution_decision=confirmed_execute`；再查 `command-runs/*review*.json` 是否两个 reviewer provider/model 不同。
+复用建议：排查“高风险确认后仍阻拦”时，先查 `pre_execution_risk.json` 是否同时具备 `risk_level=high`、`human_confirmation_confirmed=true` 和 `execution_decision=confirmed_execute`；再查 `command-runs/*review*.json` 是否已有有效通过 verdict、是否触发 reviewer fallback、是否存在明确 blocker。
 
 ## 2026-05-06 - nofx 高风险确认与双 reviewer 默认模型修复
 
@@ -283,7 +292,7 @@
 
 类型：task
 范围：`deadline_to_task_bridge.py`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`openclaw.json`、`openclaw/openclaw.json`、`cron/jobs.json`
-事实：历史实现中，到期 TODO 不再全部转人工确认，低风险到期项会创建 `dispatch_pipeline` 候选并由 backlog runner 推进；2026-04-28 已收口为默认人工路线选择，低风险项也先 `await_route_selection`。active agent 配置收敛为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`。需求、方案、代码审查都必须有两条不同命令、不同 `reviewer_role`（`reviewer-a`/`reviewer-b`）的 reviewer command report，且 verdict 全部匹配才放行。
+事实：历史实现中，到期 TODO 不再全部转人工确认，低风险到期项会创建 `dispatch_pipeline` 候选并由 backlog runner 推进；2026-04-28 已收口为默认人工路线选择，低风险项也先 `await_route_selection`。active agent 配置收敛为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`。当时的需求、方案、代码审查要求两条不同命令、不同 `reviewer_role`（`reviewer-a`/`reviewer-b`）的 reviewer command report 且 verdict 全部匹配；2026-05-07 已改为优先双模型、provider/model 失败时 fallback，至少一个有效通过且无明确 blocker 可降级放行。
 证据：相关测试覆盖低风险/高风险 TODO 分流、单 reviewer 阻塞、重复 reviewer role 阻塞、重复 command 阻塞、两 reviewer 放行、Hermes smoke 双 reviewer 同步、live bridge 三类 review verdict、entry 默认注入 reviewer-a/reviewer-b、active registry 与 cron owner 合规。
 最后验证：2026-04-27
 复用建议：后续回答“是不是 9 个 agent、是否双 AI 审核、低风险 TODO 是否自动推进”时，以 active registry 测试、pipeline command artifacts（含 `reviewer_role`）和 Task Center payload 为准，不再沿用旧 cron owner 口径。

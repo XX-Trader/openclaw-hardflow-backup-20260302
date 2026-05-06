@@ -78,11 +78,11 @@ live 默认注入以下命令证据：
 |------|------|------|
 | `external_research` | Hermes / web-agent 查外部资料和项目事实 | `command_external_research_*` |
 | `requirements_discussion` | project-agent 与 reviewer 双 AI 讨论需求 | `command_requirements_discussion_*` |
-| `requirements_review` | reviewer-a / reviewer-b 双审需求，均需 `ready_for_solution` | `command_requirements_review_1/2` |
-| `solution_review` | reviewer-a / reviewer-b 双审 `delivery_plan.json` 交付契约，均需 `ready_for_implement` | `command_solution_review_1/2` |
+| `requirements_review` | reviewer-a / reviewer-b 优先双模型审需求；provider/model 失败时 fallback，至少一个有效 `ready_for_solution` 且无 blocker 可降级放行 | `command_requirements_review_1/2` |
+| `solution_review` | reviewer-a / reviewer-b 优先双模型审 `delivery_plan.json`；provider/model 失败时 fallback，至少一个有效 `ready_for_implement` 且无 blocker 可降级放行 | `command_solution_review_1/2` |
 | `code_execution` | Hermes headless 执行代码改动 | `command_code_execution_*` |
 | `verification` | 固定命令验证，默认 `git diff --check` 与 `compileall -q scripts strategy_runtime`，单命令超时默认 300 秒 | `command_verification_*` |
-| `code_review` | reviewer-a / reviewer-b 双审代码，均需 `pass` | `command_code_review_1/2` |
+| `code_review` | reviewer-a / reviewer-b 优先双模型审代码；provider/model 失败时 fallback，至少一个有效 `pass` 且无 blocker 可降级放行 | `command_code_review_1/2` |
 | `deployment` | 普通服务/API 改动时重启内控 FastAPI 并做状态接口 smoke；memory/docs-only 或 no service control/no deployment/no restart 需求会跳过该命令 | `command_deployment_*` |
 | `memory_writeback` | 写项目记忆 changelog | `command_memory_writeback_*` |
 | `git_publish` | 在验证、代码审查、deployment、验收和 memory writeback 通过后，使用中文提交说明执行受控 commit/push；禁止 force push 和含密钥 diff | `command_git_publish_*` |

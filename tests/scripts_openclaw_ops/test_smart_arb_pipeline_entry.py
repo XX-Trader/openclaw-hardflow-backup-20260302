@@ -741,6 +741,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertTrue(any("--reviewer-role reviewer-b" in command for command in review_commands))
         self.assertTrue(any("--reviewer-role reviewer-a" in command and "--model gpt-5.5" in command for command in review_commands))
         self.assertTrue(any("--reviewer-role reviewer-b" in command and "--provider glm" in command and "--model glm-5.1" in command for command in review_commands))
+        self.assertTrue(all("--reviewer-fallback-models" in command for command in review_commands))
         self.assertNotIn("--agent-workspace-mode", runner_cmd)
         self.assertEqual(60, run_mock.call_args.kwargs["progress_interval_seconds"])
         self.assertEqual(8, run_mock.call_args.kwargs["progress_stage_limit"])
@@ -778,6 +779,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         ]
         self.assertTrue(any("--reviewer-role reviewer-a" in command and "--provider openai-codex" in command and "--model gpt-5.5" in command for command in review_commands))
         self.assertTrue(any("--reviewer-role reviewer-b" in command and "--provider kimi-coding" in command and "--model kimi-k2.6" in command for command in review_commands))
+        self.assertTrue(any("--reviewer-fallback-models" in command and "zai/glm-5.1" in command and "openai-codex/gpt-5.5" in command for command in review_commands))
 
     def test_main_passes_human_risk_confirmation_to_runner(self):
         module = load_module()
