@@ -2616,6 +2616,10 @@ Verification commands:
             (repo / "智能多平台套利" / "api" / "static" / "dashboard").mkdir(parents=True)
             (repo / "智能多平台套利" / "api" / "static" / "dashboard" / "dashboard.js").write_text("// dashboard\n", encoding="utf-8")
             (repo / "智能多平台套利" / "api" / "static" / "dashboard" / "index.html").write_text("<html></html>\n", encoding="utf-8")
+            (repo / "cron").mkdir(parents=True)
+            (repo / "cron" / "jobs.json").write_text("{}\n", encoding="utf-8")
+            (repo / "static" / "index").mkdir(parents=True)
+            (repo / "static" / "index" / "dashboard.js").write_text("// drift\n", encoding="utf-8")
             artifacts = {}
             run_dir = Path(tmp) / "run"
             run_dir.mkdir()
@@ -2635,6 +2639,7 @@ Verification commands:
                 "Apollo 历史 MEXC 代码 智能多平台套利/apollo/trade.py 不因名称命中被删除。\n"
                 "Hyperliquid 不在本轮新增真实 adapter，智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py 仅 inspect。\n"
                 "智能多平台套利/api/static/dashboard/index.html、智能多平台套利/api/static/dashboard/dashboard.js、智能多平台套利/arbitrage/market_adapters/__init__.py 当前未发现硬编码，仅 inspect。\n"
+                "cron/jobs.json 是调度/runtime 配置，不是本轮必改业务目标；static/index/dashboard.js 是不完整静态路径漂移，不是 repo target。\n"
                 "Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf / 交易所模块 tbl1jj9DTcfAd6tZ / 平台范围 是只读事实源。\n"
                 "api_contracts: GET /api/stock-tokens/status returns redacted non-sensitive config.\n",
                 encoding="utf-8",
@@ -2665,6 +2670,8 @@ Verification commands:
             self.assertNotIn("智能多平台套利/api/static/dashboard/index.html", target_paths)
             self.assertNotIn("智能多平台套利/api/static/dashboard/dashboard.js", target_paths)
             self.assertNotIn("智能多平台套利/arbitrage/market_adapters/__init__.py", target_paths)
+            self.assertNotIn("cron/jobs.json", target_paths)
+            self.assertNotIn("static/index/dashboard.js", target_paths)
             self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
             self.assertIn("MEMORY.md", [item["path"] for item in plan["read_only_sources"]])
             self.assertTrue(any("Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf" in item["path"] for item in plan["read_only_sources"]));
@@ -2679,6 +2686,8 @@ Verification commands:
             self.assertIn("智能多平台套利/api/static/dashboard/index.html", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("智能多平台套利/api/static/dashboard/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("cron/jobs.json", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("static/index/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("solution_review_readiness", plan)
             self.assertIn("must_change_targets", plan)
             self.assertEqual(["智能多平台套利/api/routes/strategy.py"], [item["path"] for item in plan["must_change_targets"]])

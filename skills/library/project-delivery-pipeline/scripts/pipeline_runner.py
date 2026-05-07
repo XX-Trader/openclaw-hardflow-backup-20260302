@@ -2658,6 +2658,10 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("inspect_only_sources", "external_graph_context_not_business_target")
     if lower.startswith("scripts/") and ("service" in lower or "hermes" in lower or "restart" in lower):
         return ("inspect_only_sources", "ops_script_reference_not_business_target")
+    if lower.startswith("cron/") or lower in {"cron/jobs.json", "jobs.json"}:
+        return ("inspect_only_sources", "cron_runtime_schedule_not_business_target")
+    if lower.startswith("static/index/") or lower in {"static/index/dashboard.js", "static/index/index.html"}:
+        return ("inspect_only_sources", "basename_or_static_drift_not_repo_business_target")
     if lower == "智能多平台套利/setup.py" and (
         re.search(r"(?:不让|不得|禁止|不能|不应|forbidden|exclude|out\s+of\s+scope).{0,80}(?:setup\.py|packag|dependency|依赖|安装包)|(?:setup\.py|packag|dependency|依赖|安装包).{0,80}(?:不让|不得|禁止|不能|不应|非目标|forbidden|exclude|out\s+of\s+scope)", context, re.IGNORECASE)
         or not (confidence == "explicit" and re.search(r"(?:packag|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE))
