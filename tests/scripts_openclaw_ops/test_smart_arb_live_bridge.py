@@ -214,6 +214,24 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         self.assertIn("complete revised plan", prompt)
         self.assertIn("Reviewer discussion note", prompt)
         self.assertIn("Do not stop at \"inspect first\"", prompt)
+        self.assertIn("soft planning gate", prompt)
+        self.assertIn("destructive production data changes", prompt)
+
+    def test_code_execution_prompt_absorbs_solution_review_soft_gate(self):
+        bridge = self._load_bridge_module()
+        args = SimpleNamespace(
+            project_dir=Path("/repo"),
+            profile="spreadagent",
+            code_agent="backend-dev",
+            reviewer_role="",
+            provider="openai-codex",
+            model="gpt-5.5",
+        )
+        with mock.patch.dict(os.environ, {"PIPELINE_RUN_DIR": "/tmp/run", "PIPELINE_AGENT_ID": "backend-dev"}, clear=True):
+            prompt = bridge.stage_prompt("code_execution", args, "实现需求")
+
+        self.assertIn("solution_review_soft_gate.md", prompt)
+        self.assertIn("absorbed reviewer blockers", prompt)
 
     def test_repair_context_can_be_supplied_inline_env(self):
         bridge = self._load_bridge_module()

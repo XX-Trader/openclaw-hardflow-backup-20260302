@@ -415,6 +415,43 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         detail = _mod.review_failure_detail("requirements_review", [report_a, report_b_blocker], "requirements review did not pass")
         self.assertIn("Merged reviewer non-pass reasons", detail)
 
+    def test_solution_review_plan_quality_blocker_is_soft_gate(self):
+        report_b_blocker = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-b --provider zai --model glm-5.1",
+            "stdout": (
+                "Final verdict: requires_revision\n"
+                "Reviewer role: reviewer-b\n"
+                "Reviewer provider: zai\n"
+                "Reviewer model: glm-5.1\n"
+                "Blocker: verification_commands missing docs memory content assertion and create_if_missing rationale.\n"
+            ),
+            "stderr": "",
+        }
+
+        self.assertTrue(_mod.solution_review_can_soft_continue([report_b_blocker], "requires_revision"))
+        rendered = _mod.render_solution_review_soft_gate([report_b_blocker], "requires_revision")
+        self.assertIn("Decision: soft_continue", rendered)
+        self.assertIn("verification_commands missing docs memory content assertion", rendered)
+
+    def test_solution_review_secret_blocker_remains_hard_gate(self):
+        report_b_blocker = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-b --provider zai --model glm-5.1",
+            "stdout": (
+                "Final verdict: requires_revision\n"
+                "Reviewer role: reviewer-b\n"
+                "Reviewer provider: zai\n"
+                "Reviewer model: glm-5.1\n"
+                "Blocker: implementation plan asks the agent to read API key credentials from auth state.\n"
+            ),
+            "stderr": "",
+        }
+
+        self.assertFalse(_mod.solution_review_can_soft_continue([report_b_blocker], "requires_revision"))
+        hard_lines = _mod.solution_review_hard_blocker_lines([report_b_blocker])
+        self.assertTrue(any("API key credentials" in line for line in hard_lines))
+
     def test_dual_review_rendering_merges_distinct_model_findings(self):
         report_a = {
             "ok": True,
@@ -1598,6 +1635,69 @@ Verification commands:
             changelog = root / "memory" / "demo" / "CHANGELOG.ndjson"
             self.assertTrue(changelog.exists())
             self.assertIn("project-delivery:live-adapter", changelog.read_text(encoding="utf-8"))
+
+    def test_live_solution_review_plan_blocker_soft_continues_to_code_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            code_script = scripts_dir / "code.py"
+            review_a, review_b = self._write_review_pair(scripts_dir)
+            solution_blocker = scripts_dir / "solution_blocker.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            code_script.write_text(
+                (
+                    "import os, pathlib\n"
+                    "soft_gate = pathlib.Path(os.environ['PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE'])\n"
+                    "assert soft_gate.exists(), soft_gate\n"
+                    "print('code execution absorbed solution review soft gate')\n"
+                ),
+                encoding="utf-8",
+            )
+            solution_blocker.write_text(
+                (
+                    "print('Final verdict: requires_revision')\n"
+                    "print('Reviewer role: reviewer-b')\n"
+                    "print('Reviewer provider: zai')\n"
+                    "print('Reviewer model: glm-5.1')\n"
+                    "print('Blocker: verification_commands missing docs memory content assertion and create_if_missing rationale.')\n"
+                ),
+                encoding="utf-8",
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Run live mode where solution review plan-quality blockers should be absorbed.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="solution-soft-gate",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(solution_blocker)),
+                    code_command=py_cmd(code_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    write_project_memory=True,
+                    command_cwd=ROOT,
+                )
+            )
+
+            self.assertEqual("completed", state["status"])
+            self.assertIn("solution_review_soft_gate", state["artifacts"])
+            self.assertIn("command_code_execution_1", state["artifacts"])
+            soft_gate = Path(state["artifacts"]["solution_review_soft_gate"]).read_text(encoding="utf-8")
+            self.assertIn("Decision: soft_continue", soft_gate)
+            self.assertIn("verification_commands missing docs memory content assertion", soft_gate)
+            solution_review = Path(state["artifacts"]["solution_review"]).read_text(encoding="utf-8")
+            self.assertIn("Final verdict: requires_revision", solution_review)
+            self.assertIn("solution review plan-quality blockers are converted into implementation constraints", soft_gate)
 
     def test_live_requirements_review_requires_two_independent_reports(self):
         with tempfile.TemporaryDirectory() as tmp:

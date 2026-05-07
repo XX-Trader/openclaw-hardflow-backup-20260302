@@ -98,6 +98,7 @@ ARTIFACT_PATH_ENV_NAMES = {
     "PIPELINE_DELIVERY_PLAN_FILE",
     "PIPELINE_SOLUTION_FILE",
     "PIPELINE_SOLUTION_REVIEW_FILE",
+    "PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE",
     "PIPELINE_PATCH_SUMMARY_FILE",
     "PIPELINE_VERIFICATION_REPORT_FILE",
     "PIPELINE_CODE_REVIEW_FILE",
@@ -309,6 +310,7 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
             "delivery_plan.json",
             "solution.md",
             "solution_review.md",
+            "solution_review_soft_gate.md",
             "graphify_scope_validation.md",
             "pre_execution_risk.json",
             "group_plan_publish.md",
@@ -321,6 +323,7 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
             "delivery_plan.json",
             "solution.md",
             "solution_review.md",
+            "solution_review_soft_gate.md",
             "graphify_scope_validation.md",
             "pre_execution_risk.json",
             "group_plan_publish.md",
@@ -521,6 +524,7 @@ Return the final refined requirement and a group-ready summary with context used
         specific = """
 Act as {role} executor for {focus}. Read project memory/docs/todo/done and the relevant code before editing.
 Treat Prior accepted stage context, `delivery_plan.json`, and Repair context as hard constraints. Do not implement later-phase strategy work if the current requirement or research context says to stay on P0 memory/environment work.
+If `solution_review_soft_gate.md` exists, treat its absorbed reviewer blockers as mandatory implementation constraints: fix them while coding or explicitly report why a blocker still needs manual acceptance. It is not permission to ignore reviewer findings.
 Implement the complete accepted requirement as constrained by the reviewed plan; do not create artificial deferred task slices.
 Run the most relevant local checks you can run in this environment.
 Return a patch summary with changed files, commands run, and remaining risk.
@@ -542,7 +546,8 @@ Return a patch summary with changed files, commands run, and remaining risk.
 Act as {role}. Review the pipeline artifacts for {focus}.
 You are one side of a multi-model review gate. Produce your own independent verdict and evidence, then explain how your findings should be merged with other reviewers until no blocker remains.
 For solution review, validate the structured `delivery_plan.json` contract first; `solution.md` is only the human-readable rendering. Use `graphify_context.md` and `graphify_scope_validation.md` to challenge missing related modules/tests and respect its policy: warning by default, block only for cross-repo paths, credential/auth material, or production trading/order/fund-transfer risk.
-Do not require artificial task-splitting granularity; review the whole accepted requirement and block only for concrete risk, missing context, invalid target files, missing tests, unsafe execution, or a graphify scope block.
+Solution review is a soft planning gate for ordinary plan-quality issues: invalid/missing target rationale, missing tests, command gaps, docs/memory assertions, or acceptance gaps should be written as Blocker lines and a revised plan, but the runner may absorb them into code_execution constraints. Only credential/secret/cookie/auth-state handling, destructive production data changes, force push, or explicit unsafe bypass requests should be treated as hard stop before implementation.
+Do not require artificial task-splitting granularity; review the whole accepted requirement and block only with concrete evidence. High-risk strategy actions should be routed for human confirmation and downstream review, not treated as a permanent stop solely because high-risk words appear.
 If you return requires_revision, write every non-pass reason as explicit Blocker lines and then give a complete revised plan that another reviewer/coordinator can merge directly into delivery_plan.json. Include file-level actions, create_if_missing rationale, verification commands, publish containment, docs/memory/todo/done content assertions, and final acceptance boundaries when relevant.
 For every review stage, include a Reviewer discussion note: what you agree with from the available prior artifacts, what you challenge, and how the joint final plan should change. Do not stop at "inspect first"; the review output must be sufficient for revise_solution to produce an implementable plan.
 Include exactly these reviewer identity lines:

@@ -500,6 +500,15 @@ REVIEW_BLOCKER_HINT_RE = re.compile(
     r"(?:Blocker|阻塞|修订要求|requires_revision|create_if_missing|target_files|verification_commands|compileall|content assertion|内容断言|manual acceptance|blocked_manual_acceptance_required|origin/main|git publish|2026-\d{2}-\d{2}\.md|not acceptable|未满足|缺少|不足|不合格|必须|应)",
     re.IGNORECASE,
 )
+SOLUTION_REVIEW_HARD_BLOCKER_RE = re.compile(
+    r"(?:"
+    r"credential|credentials|secret|private[-_ ]?key|api[-_ ]?key|auth[-_ ]?state|cookie|oauth|"
+    r"authorization\s*:|bearer\s+[A-Za-z0-9]|"
+    r"force[-_ ]?push|git\s+push\s+--force|rm\s+-rf|DROP\s+TABLE|TRUNCATE\s+TABLE|"
+    r"删除生产数据|清空生产数据|私钥|密钥|凭证|Cookie|强制推送|破坏性删除"
+    r")",
+    re.IGNORECASE,
+)
 
 
 def report_text(report: dict[str, Any]) -> str:
@@ -538,6 +547,14 @@ def render_reviewer_discussion(stage_name: str, reports: list[dict[str, Any]], v
             "- No revision required; keep the accepted plan and proceed to the next gate.",
             "- Preserve all verification, safety, deployment, and publish gates in downstream stages.",
         ]
+    elif stage_name == "solution_review":
+        revision_plan = [
+            "- Write the non-pass reasons into the review artifact, soft-gate artifact, and downstream implementation context.",
+            "- Merge reviewer-a and reviewer-b blockers into one revised delivery_plan.json where possible; remaining plan-quality blockers become code_execution constraints.",
+            "- Remove invalid target_files and add explicit create_if_missing rationale for every missing file that remains.",
+            "- Replace template steps with file-level business actions, mapped tests, verification commands, release gates, and acceptance boundaries.",
+            "- Continue to code_execution when no credential/secret/destructive-production hard boundary remains; code_review verifies the implementation followed these absorbed constraints.",
+        ]
     else:
         revision_plan = [
             "- Write the non-pass reasons into the review artifact and failure summary before stopping.",
@@ -567,6 +584,55 @@ def review_failure_detail(stage_name: str, reports: list[dict[str, Any]], defaul
     if not blockers:
         return default
     return "\n".join([default, "", "Merged reviewer non-pass reasons:", *blockers])
+
+
+def solution_review_hard_blocker_lines(reports: list[dict[str, Any]], limit: int = 10) -> list[str]:
+    lines: list[str] = []
+    seen: set[str] = set()
+    for report in blocking_review_reports("solution_review", reports) or reports:
+        role = reviewer_role_for_report(report) or "reviewer"
+        for raw_line in report_text(report).splitlines():
+            text = " ".join(raw_line.strip().strip("-* ").split())
+            if not text or len(text) < 8 or not SOLUTION_REVIEW_HARD_BLOCKER_RE.search(text):
+                continue
+            if text in seen:
+                continue
+            seen.add(text)
+            lines.append(f"- {role}: {clip_text(text, 260)}")
+            if len(lines) >= limit:
+                return lines
+    return lines
+
+
+def solution_review_can_soft_continue(reports: list[dict[str, Any]], parsed_verdict: str | None) -> bool:
+    if parsed_verdict == EXPECTED_VERDICTS["solution_review"]:
+        return False
+    if not reports:
+        return False
+    return not solution_review_hard_blocker_lines(reports)
+
+
+def render_solution_review_soft_gate(reports: list[dict[str, Any]], parsed_verdict: str | None) -> str:
+    blockers = extract_review_blocker_lines(blocking_review_reports("solution_review", reports) or reports, limit=14)
+    if not blockers:
+        blockers = ["- no concrete reviewer blocker lines were emitted; preserve the non-pass artifact as implementation context."]
+    hard_blockers = solution_review_hard_blocker_lines(reports)
+    return "\n".join(
+        [
+            "# Solution Review Soft Gate",
+            "",
+            f"- Parsed verdict: {parsed_verdict or 'missing'}",
+            "- Decision: soft_continue",
+            "- Reason: solution review plan-quality blockers are converted into implementation constraints; code_execution must absorb them and code_review remains the hard correctness gate.",
+            "- Hard boundary: credential/secret/private key/cookie/auth-state handling, destructive production data changes, and force-push style repository actions still block before implementation.",
+            "",
+            "## Absorbed Reviewer Blockers",
+            *blockers,
+            "",
+            "## Hard Blockers Detected",
+            *(hard_blockers or ["- none"]),
+        ]
+    )
 
 
 def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdict: str) -> str:
@@ -631,7 +697,7 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
         ## Merged Reviewer Consensus
         - Review mode: prefer independent multi-model review followed by blocker merge; degrade only for provider/model runtime failures.
         - No artificial task-splitting granularity gate is allowed; reviewers judge the whole accepted requirement.
-        - If any valid reviewer raises a concrete blocker, the pipeline returns `requires_revision` and the entrypoint auto-repair loop may rerun the same workflow with merged context until the configured attempt limit or human-risk gate is reached.
+        - If any valid reviewer raises a concrete blocker, requirements_review and code_review remain hard gates. solution_review treats plan-quality blockers as soft constraints when no credential/secret/destructive-production hard boundary is present, and passes them to code_execution and later code_review.
         - Remaining blockers:
         {blocker_text}
         - Non-blocking reviewer runtime/model failures:
@@ -2977,6 +3043,7 @@ def command_env(
             "PIPELINE_DELIVERY_PLAN_FILE": str(run_dir / "delivery_plan.json"),
             "PIPELINE_SOLUTION_FILE": str(run_dir / "solution.md"),
             "PIPELINE_SOLUTION_REVIEW_FILE": str(run_dir / "solution_review.md"),
+            "PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE": str(run_dir / "solution_review_soft_gate.md"),
             "PIPELINE_PATCH_SUMMARY_FILE": str(run_dir / "patch_summary.md"),
             "PIPELINE_VERIFICATION_REPORT_FILE": str(run_dir / "verification_report.md"),
             "PIPELINE_CODE_REVIEW_FILE": str(run_dir / "code_review.md"),
@@ -4210,23 +4277,31 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     )
     gate_ok, parsed_verdict = gate_result("solution_review", sol_review)
     if not gate_ok:
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
+        if solution_review_can_soft_continue(sol_review_reports, parsed_verdict):
+            record(
+                "solution_review_soft_gate",
+                "solution_review_soft_gate.md",
+                render_solution_review_soft_gate(sol_review_reports, parsed_verdict),
+                verdict="soft_continue",
+            )
+        else:
+            return finalize_pipeline_state(
                 config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "solution_review",
-                "revise_solution",
-                review_failure_detail("solution_review", sol_review_reports, "solution review did not allow implementation"),
-                "solution_review.md",
-                parsed_verdict,
-            ),
-            requirement,
-        )
+                block_pipeline(
+                    config,
+                    run_id,
+                    run_dir,
+                    runtime,
+                    stages,
+                    artifacts,
+                    "solution_review",
+                    "revise_solution",
+                    review_failure_detail("solution_review", sol_review_reports, "solution review did not allow implementation"),
+                    "solution_review.md",
+                    parsed_verdict,
+                ),
+                requirement,
+            )
 
     pre_execution_risk = apply_human_risk_confirmation(
         assess_pre_execution_risk(requirement, delivery_plan, artifacts),
