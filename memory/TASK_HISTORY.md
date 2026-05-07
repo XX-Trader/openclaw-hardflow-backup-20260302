@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-07 - 最新 nofx 方案评审 run 的文件级计划修复
+
+类型：bugfix | deploy
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`delivery_plan.json`、`graphify_scope_validation.json`、nofx runtime
+事实：针对最新回归 run `discord-spreadagent-20260507T040201861377Z`，进一步修复 `solution_review` 阻塞点：`requirements_discussion.md` 中的候选业务文件现在会进入 `delivery_plan.json.target_files`；裸 basename `stock_tokens.py` 会按当前 repo 解析为 `智能多平台套利/api/routes/stock_tokens.py`；`funding_rate_scanner.py` 和 `tests/test_funding_rate_scanner.py` 这类缺失目标会带 `create_if_missing_rationale`；显式安全扫描 / git containment 命令不再挤掉默认 `git diff --check` 和非文档任务的 `compileall` 基线；Graphify 的推荐验证命令不再被 pre-execution 风险扫描当成真实 `place_order` 意图。入口状态卡的“触发项: 资金动作”也会被当作历史风险摘要清洗，不再触发自动修复 high-risk 误判。
+证据：本机提交 `81270011` 已推送并安装到 nofx，远端 `HEAD=8127001`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`。真实 run artifact 重放结果：`targets_count=28`、`bad_targets=[]`、首批目标为 `智能多平台套利/api/main.py`、`api/routes/funding.py`、`api/routes/dashboard.py`、`api/routes/stock_tokens.py`、`arbitrage/spread_grid_runtime.py`、`api/stock_token_public_adapter.py`、`monitoring/opportunity_monitor.py`、`monitoring/funding_rate_scanner.py`；验收命令 14 条，包含 targeted pytest、compileall、`/api/realtime/funding` smoke、`git fetch origin main --prune` 和 `git merge-base --is-ancestor HEAD origin/main`；Graphify `scope_status=warning` 但无 block、无缺 rationale 的 missing target。
+最后验证：2026-05-07 12:53 本地 `test_project_delivery_pipeline_runner` 62 项 OK、`test_smart_arb_pipeline_entry` 49 项 OK、相关文件 `compileall` 与 `git diff --check` 通过；nofx 远端同两组 unittest 62+49 项 OK，入口 help、内控 API `/health` / `/api/strategy/status`、gateway state 和真实 run replay 均通过。
+复用建议：以后 reviewer 指出“方案仍不够文件级 / command-level / acceptance-level”时，不要放松 reviewer；先检查 `delivery_plan.json.target_files` 是否来自 requirements discussion、basename 是否解析到 repo-relative 路径、缺失文件是否有 rationale，以及 `verification_commands` 是否同时覆盖 pytest、compileall、API smoke、docs/memory 断言和 git containment。
+
 ## 2026-05-07 - 方案评审范围过滤与风险扫描误伤修复
 
 类型：bugfix | deploy

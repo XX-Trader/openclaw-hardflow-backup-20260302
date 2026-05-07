@@ -11,7 +11,8 @@
   - 已确认 `discord-spreadagent-20260507T015008674360Z` 的 `solution_review` 阻塞来自两个有效 reviewer 的真实方案问题，不是模型 fallback 缺失；本轮修复的是方案包生成/范围过滤/风险扫描误伤链路。
   - `delivery_plan.json` 现在会过滤 workflow 宿主 basename、低信任 `scripts/openclaw-ops/*`、`todo.md/done.md` 组合路径和否定上下文路径；合法 `memory/.../PROJECT_PROFILE.md` / `DECISIONS.md` 正向路径会保留。
   - Graphify 与 pre-execution 风险扫描只扫描可执行意图，不再把 stock token 业务路由、自动生成安全边界、状态摘要或新增行安全扫描命令误判为凭证/真实交易风险；正向真实交易、下单、资金和凭证动作仍会阻断或要求人工确认。
-  - 已部署到 nofx：远端仓库 `HEAD=5d04f55`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`，远端 12 项关键回归、`compileall`、入口 help、内控 API 和 gateway 状态均通过。
+  - 针对最新 `discord-spreadagent-20260507T040201861377Z` 补齐文件级计划：requirements discussion 的业务候选文件会进入 target_files，`stock_tokens.py` 会解析为实际 repo-relative 路径，缺失 scanner/test 带 create-if-missing rationale，验收命令覆盖 targeted pytest、compileall、API smoke、docs/todo/done 断言和 git containment。
+  - 已部署到 nofx：远端仓库 `HEAD=8127001`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`，远端 runner 62 项和 entry 49 项回归、`compileall`、入口 help、内控 API、gateway 状态和真实 run replay 均通过。
 
 - [x] [2026-05-07] **reviewer 模型失败 fallback 与单有效输出放行**
   - review 阶段不再把某一路 provider/model HTTP 404、命令失败或缺 verdict 直接合并成 `requires_revision`；入口会按 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5` fallback。

@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-05-07 - Graphify 推荐验证命令不能进入 pre-execution 风险扫描
+
+类型：pitfall
+范围：`pre_execution_risk.json`、`graphify_scope_validation.md`、`delivery_plan.json.verification_commands`
+事实：`graphify_scope_validation.md` 会展示 runner 推荐的安全扫描命令，该命令里可能含 `place_order`、`transfer`、`PRODUCTION_TRADING_ENABLED=true` 等敏感字符串。它们是验证规则，不是用户或方案的执行意图。旧逻辑把 graphify markdown 整体并入 pre-execution risk scan，导致 dry-run happy path 和真实 nofx run 被 `place_real_order` 误判为 high-risk。修复后 pre-execution 风险扫描只读取需求、目标文件、实施步骤、需求讨论/评审和方案评审；Graphify 仍单独通过 `scope_status=block` 触发 hard block，但不把推荐命令正文反向当作风险意图。
+证据：`assess_pre_execution_risk()` 不再把 `graphify_scope_validation` markdown 并入 `scan_text`，但仍读取它判断 `graphify_scope_block`；`configured_verification_commands()` 在存在显式安全/git 命令时补回 `git diff --check` 和非文档任务默认 `compileall`，避免验收命令只剩安全扫描和 git containment；回归测试覆盖 dry-run happy path risk 为 `auto_execute`、README/tooling 和 code+docs 任务仍带 compileall、真实 nofx run replay 输出 `bad_targets=[]` 且 `commands_count=14`。
+最后验证：2026-05-07 12:53
+复用建议：以后新增验证命令、Graphify 报告或安全扫描报告时，必须先判断它属于“验证证据/规则”还是“方案执行意图”。风险扫描应只吃意图字段；验证规则里的敏感词只能用于阻止新增危险 diff，不能阻止 pipeline 进入安全实现。
+
 ## 2026-05-07 - 安全边界和状态摘要不能反向触发风险门禁
 
 类型：pitfall

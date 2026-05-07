@@ -389,6 +389,15 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 最后验证：2026-04-28 18:52 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 73 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过；code-reviewer 复审通过。
 复用建议：方案评审卡在敏感路径时不要放松 reviewer，先看 `target_files` 的来源和 `plan_findings.filtered_target_candidates`；如果路径来自 `project_memory_context`、runtime host 或否定上下文，只能作为检索/证据路径，不应作为修改目标。
 
+### 2026-05-07 - DeliveryPlan 文件级计划与真实 run replay 验收
+
+类型：runbook
+范围：`pipeline_runner.py`、`delivery_plan.json`、nofx `/home/arbops/.hermes/pipeline-runs/<run_id>`
+事实：当 nofx 的 `solution_review` 阻塞在“目标文件遗漏、basename 漂移、缺 create_if_missing rationale、verification_commands 过少、git containment 不具体”时，应先用失败 run 的真实 artifacts 重放 `compile_delivery_plan()`，而不是继续原样重跑。重放时必须使用目标业务仓 `command_cwd`，这样 `stock_tokens.py` 这类 basename 可解析成实际 repo-relative 路径。缺失但被需求讨论明确要求的新模块或测试，必须在 `target_files` 中带 `create_if_missing` / `create_if_missing_rationale`，否则 Graphify scope validation 应保持 warning/block。
+证据：2026-05-07 用 nofx run `discord-spreadagent-20260507T040201861377Z` 重放后，`target_files` 为 28 项，`bad_targets=[]`；首批目标包含 `智能多平台套利/api/routes/stock_tokens.py`、`智能多平台套利/api/stock_token_public_adapter.py`、`智能多平台套利/monitoring/funding_rate_scanner.py` 和对应 targeted tests；`verification_commands` 为 14 条，包含 targeted pytest、compileall、`curl -fsS http://127.0.0.1:18080/api/realtime/funding`、`git fetch origin main --prune`、`git merge-base --is-ancestor HEAD origin/main`、`test -f todo.md` / `done.md` / `docs/INDEX.md`。
+最后验证：2026-05-07 12:53，本地与 nofx 远端 `test_project_delivery_pipeline_runner` 62 项 OK、`test_smart_arb_pipeline_entry` 49 项 OK，nofx 已安装 `HEAD=8127001`。
+复用建议：排查方案评审时按顺序看：1. `solution_review.md` 是否是有效 reviewer blocker；2. `delivery_plan.json.target_files` 是否有业务文件遗漏和 basename；3. 缺失文件是否有 rationale；4. `verification_commands` 是否覆盖 pytest/compileall/API/docs/git；5. `graphify_scope_validation.json` 是否只有 warning 无 block。只有 reviewer provider/model 失败时才走 fallback 逻辑。
+
 ### 2026-05-07 - DeliveryPlan 范围过滤与风险扫描收口
 
 类型：runbook

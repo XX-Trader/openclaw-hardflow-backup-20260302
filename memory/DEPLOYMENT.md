@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-07 12:53 - nofx 安装方案文件级计划与风险误判修复批次
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.local/bin/smart-arb-pipeline`、SmartMultiPlatformArbitrage pipeline 方案生成链路
+事实：本机提交 `81270011` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `579062e` fast-forward 到 `8127001`，`HEAD...origin/main=0 0` 且工作树无未提交改动。runtime installer 返回 `ok=true`、`changed=true`、`missing_sources=[]`。本轮未改 profile SOUL，因此没有重启 Discord gateway；两个 gateway 仍为 `gateway_state=running` 且 Discord `connected`。
+证据：nofx 远端 `compileall` 覆盖 `pipeline_runner.py`、`smart_arb_pipeline_entry.py` 和对应测试文件；`python3 -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner -q` 62 项 OK；`python3 -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry -q` 49 项 OK；`smart-arb-pipeline --help` 显示 `--route-choice`、`--reviewer-fallback-models`、`--human-risk-confirmed`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。用已安装代码重放 run `discord-spreadagent-20260507T040201861377Z`：`targets_count=28`、`bad_targets=[]`、`commands_count=14`、包含 `/api/realtime/funding` smoke、compileall 和 git containment，Graphify `scope_status=warning` 但 `graphify_blocks=[]`。
+最后验证：2026-05-07 12:53
+复用建议：以后 nofx workflow/runtime 修复默认按 `fetch -> pull --ff-only -> runtime_installer.py install -> compileall -> 定向 unittest -> help/API/gateway/replay` 验收。若 gateway state 解析为空，读取原始 `gateway_state.json`，当前字段是 `gateway_state` 与 `platforms.discord.state`。
+
 ## 2026-05-07 10:58 - nofx 安装方案包范围与风险扫描修复批次
 
 类型：deploy
