@@ -2553,5 +2553,61 @@ Verification commands:
         self.assertFalse(any("通过" in command or "必须" in command or "pytest:" == command for command in commands))
 
 
+    def test_requirements_discussion_includes_solution_review_readiness_contract(self):
+        discussion = _mod.render_requirements_discussion("Update dashboard safely")
+        self.assertIn("Solution Review Readiness Discussion", discussion)
+        self.assertIn("must_change_targets", discussion)
+        self.assertIn("read_only_sources", discussion)
+        self.assertIn("reference_patterns", discussion)
+        self.assertIn("target_files", discussion)
+
+    def test_compile_delivery_plan_separates_read_only_sources_and_reference_patterns(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / "智能多平台套利" / "api" / "routes").mkdir(parents=True)
+            (repo / "智能多平台套利" / "api" / "routes" / "strategy.py").write_text("# route\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "api" / "routes" / "stock_tokens.py").write_text("# reference\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "config_security.py").write_text("# safety\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "arbitrage_config.json5").write_text("{}\n", encoding="utf-8")
+            artifacts = {}
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir()
+            discussion = run_dir / "requirements_discussion.md"
+            discussion.write_text(
+                "# Discussion\n"
+                "## Solution Review Readiness Contract\n"
+                "must_change_targets: 智能多平台套利/api/routes/strategy.py\n"
+                "read_only_sources: 智能多平台套利/arbitrage_config.json5 是只读源，不建议修改。\n"
+                "reference_patterns: 智能多平台套利/api/routes/stock_tokens.py 只是参考模式，不应默认修改。\n"
+                "inspect_only: 智能多平台套利/config_security.py 应作为 safety contract reference，除非测试发现缺口。\n",
+                encoding="utf-8",
+            )
+            review = run_dir / "requirements_review.md"
+            review.write_text("Final verdict: ready_for_solution\n", encoding="utf-8")
+            artifacts["requirements_discussion"] = str(discussion)
+            artifacts["requirements_review"] = str(review)
+            plan = _mod.compile_delivery_plan(
+                PipelineConfig(project_key="demo", command_cwd=repo),
+                {"host": "hermes"},
+                "必须修改 智能多平台套利/api/routes/strategy.py，交付只读配置快照。",
+                artifacts,
+            )
+
+            target_paths = [item["path"] for item in plan["target_files"]]
+            self.assertIn("智能多平台套利/api/routes/strategy.py", target_paths)
+            self.assertNotIn("智能多平台套利/arbitrage_config.json5", target_paths)
+            self.assertNotIn("智能多平台套利/api/routes/stock_tokens.py", target_paths)
+            self.assertNotIn("智能多平台套利/config_security.py", target_paths)
+            self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
+            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", [item["path"] for item in plan["reference_patterns"]])
+            self.assertIn("智能多平台套利/config_security.py", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("solution_review_readiness", plan)
+            findings = plan.get("plan_findings", {}).get("filtered_target_candidates", [])
+            self.assertTrue(
+                any(item.get("reason") in {"read_only_source", "reference_pattern", "inspect_only_context", "read_only_or_reference_context"} for item in findings)
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main()

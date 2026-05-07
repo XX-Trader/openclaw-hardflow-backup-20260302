@@ -110,17 +110,17 @@ AGENT_SESSION_KEY_RE = re.compile(
 PATH_TOKEN_RE = re.compile(
     r"(?:`([^`\r\n]+)`)|"
     r"(?:(?<![A-Za-z0-9_./\\])((?:[A-Za-z]:[\\/]|/(?!/))[A-Za-z0-9_.\-/\\]*"
-    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))|"
+    r"(?:\.(?:py|md|json|json5|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))|"
     r"(?:(?<![A-Za-z0-9_./\\])([.]?[A-Za-z0-9_][A-Za-z0-9_.\-/\\]*"
-    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))",
+    r"(?:\.(?:py|md|json|json5|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![A-Za-z0-9_/\\-]))",
     re.IGNORECASE,
 )
 UNICODE_PATH_TOKEN_RE = re.compile(
     r"(?<![\w./\\-])([\w\u4e00-\u9fff][\w\u4e00-\u9fff_.\-/\\]*"
-    r"(?:\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![\w/\\-])",
+    r"(?:\.(?:py|md|json|json5|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)))(?![\w/\\-])",
     re.IGNORECASE,
 )
-PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)$)", re.IGNORECASE)
+PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|json5|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)$)", re.IGNORECASE)
 PATH_CONTEXT_SPLIT_RE = re.compile(
     r"[\r\n;；。]+|\b(?:but|however|yet|and|only)\b|(?:但|但是|不过|然而|并且|然后|同时|只有)",
     re.IGNORECASE,
@@ -135,6 +135,24 @@ STRONG_NEGATED_PATH_CONTEXT_RE = re.compile(
     r"(?:edit|modify|touch|include|add|target|put|use)\b|"
     r"\b(?:exclude|excluded|out\s+of\s+scope)\b|"
     r"(?:不要|不得|禁止|不允许|不应|不能|不修改|不编辑|不触碰|别改|别碰|排除|非目标|不能进入\s*target_files|不得包含|禁止包含)",
+    re.IGNORECASE,
+)
+INSPECT_ONLY_PATH_CONTEXT_RE = re.compile(
+    r"\b(?:read[-_ ]?only\s+(?:source|input|file)|inspect[-_ ]?only|source(?:s)?|reference(?:s)?|pattern(?:s)?|example(?:s)?|do\s+not\s+(?:edit|modify|touch)|should\s+not\s+(?:edit|modify|touch))\b|"
+    r"(?:只读源|配置源|读取源|参考|参考模式|参考文件|按需检查|检查用|不建议修改|不应强制|不应默认|不要修改|不得修改|不修改|不编辑|非必改|不是(?:必改|目标文件))",
+    re.IGNORECASE,
+)
+MUST_CHANGE_PATH_CONTEXT_RE = re.compile(
+    r"\b(?:must[-_ ]?change|required\s+target|target_files?|modify|edit|update|create|implement|writeback)\b|"
+    r"(?:必须修改|必改|目标文件|强制目标|新增|创建|实现|修改|更新|写回)",
+    re.IGNORECASE,
+)
+REFERENCE_PATTERN_CONTEXT_RE = re.compile(
+    r"\b(?:reference\s+pattern|pattern\s+only|example\s+only)\b|(?:参考模式|参考样例|参考只读|参考文件)",
+    re.IGNORECASE,
+)
+READ_ONLY_SOURCE_CONTEXT_RE = re.compile(
+    r"\b(?:read[-_ ]?only\s+source|inspect[-_ ]?only|source\s+file)\b|(?:只读源|配置源|读取源|按需检查|检查用|不建议修改|不应强制|不应默认|非必改)",
     re.IGNORECASE,
 )
 CONTROL_PLANE_TARGET_REQUEST_RE = re.compile(
@@ -1154,6 +1172,15 @@ def render_requirements_discussion(requirement: str) -> str:
         - List any remaining open questions that must block coding.
         - If no blocking questions remain, mark the requirement ready for formal review.
 
+        ## Solution Review Readiness Discussion
+        Because `solution_review` is a hard gate before code execution, the discussion must
+        pre-negotiate its contract instead of discovering basic blockers later:
+        - Name `must_change_targets` separately from `read_only_sources`, `reference_patterns`, `runtime_contracts`, `api_contracts`, and `forbidden_targets`.
+        - `target_files` in the later delivery plan may contain only concrete repo-relative files that the implementer is expected to create or modify.
+        - Files mentioned as read-only sources, inspect-only inputs, reference examples, or API/runtime/data contracts must not be promoted to `target_files`.
+        - Credential material, high-risk runtime operations, destructive repo/data actions, and dirty/behind containment must be discussed as prohibited or gated boundaries before solution generation.
+        - Verification expectations must be command-level, deterministic, and include tests, compileall, diff check, safety scan, smoke checks, docs/memory writeback, and publish containment when applicable.
+
         ## Final Requirement Document Contract
         The final `requirements.md` / requirement package must include:
         - Problem statement
@@ -1512,6 +1539,68 @@ def is_negated_path_context(text: str) -> bool:
     return bool(NEGATED_PATH_CONTEXT_RE.search(value))
 
 
+def is_inspect_only_path_context(text: str) -> bool:
+    """Return true when a path is mentioned as source/reference, not an edit target."""
+    value = str(text or "")
+    if not INSPECT_ONLY_PATH_CONTEXT_RE.search(value):
+        return False
+    return not MUST_CHANGE_PATH_CONTEXT_RE.search(value)
+
+
+def classify_non_target_path_context(text: str) -> str:
+    value = str(text or "")
+    # Explicit readiness labels such as read_only_sources/reference_patterns are
+    # stronger than nearby negated words like "do not modify".  A segment that
+    # says "must_change_targets" does not match these patterns, so true targets
+    # remain actionable.
+    lowered = value.lower()
+    if re.search(r"\b(?:inspect[-_ ]?only|conditional\s+(?:edit|source)|safety\s+contract\s+reference)\b|(?:按需检查|检查用|条件修改|除非测试发现缺口)", value, re.IGNORECASE):
+        return "inspect_only_context"
+    if REFERENCE_PATTERN_CONTEXT_RE.search(value):
+        return "reference_pattern"
+    if READ_ONLY_SOURCE_CONTEXT_RE.search(value):
+        return "read_only_source"
+    if is_inspect_only_path_context(value):
+        return "inspect_only_context"
+    return ""
+
+
+def collect_classified_plan_paths(
+    text: str,
+    *,
+    repo_root: Path | None = None,
+    resolution_context: str = "",
+) -> dict[str, list[str]]:
+    buckets: dict[str, list[str]] = {"read_only_sources": [], "reference_patterns": [], "inspect_only_sources": []}
+    seen: dict[str, set[str]] = {key: set() for key in buckets}
+    full_context = str(text or "") + "\n" + str(resolution_context or "")
+    for segment in path_context_segments(text):
+        classification = classify_non_target_path_context(segment)
+        if not classification:
+            continue
+        bucket = "reference_patterns" if classification == "reference_pattern" else "read_only_sources" if classification == "read_only_source" else "inspect_only_sources"
+        for _raw, path, rejection_reason in iter_plan_path_tokens(segment):
+            if rejection_reason:
+                continue
+            resolved = resolve_repo_basename_path(path, repo_root, full_context)
+            if resolved and resolved not in seen[bucket]:
+                seen[bucket].add(resolved)
+                buckets[bucket].append(resolved)
+    return buckets
+
+
+def merge_classified_plan_paths(*groups: dict[str, list[str]]) -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {"read_only_sources": [], "reference_patterns": [], "inspect_only_sources": []}
+    seen: dict[str, set[str]] = {key: set() for key in merged}
+    for group in groups:
+        for key in merged:
+            for path in group.get(key, []):
+                if path and path not in seen[key]:
+                    seen[key].add(path)
+                    merged[key].append(path)
+    return merged
+
+
 def control_plane_plan_path_reason(path: str) -> str:
     normalized = str(path or "").replace("\\", "/").strip()
     if not normalized:
@@ -1620,7 +1709,7 @@ def resolve_repo_basename_path(path: str, repo_root: Path | None, context_text: 
     if (repo / normalized).exists():
         return normalized
     suffix = Path(normalized).suffix.lower()
-    if suffix not in {".py", ".md", ".json", ".yaml", ".yml", ".toml", ".js", ".ts", ".html", ".css", ".sh"}:
+    if suffix not in {".py", ".md", ".json", ".json5", ".yaml", ".yml", ".toml", ".js", ".ts", ".html", ".css", ".sh"}:
         return normalized
     matches: list[str] = []
     try:
@@ -1685,6 +1774,17 @@ def contextual_plan_paths(
                     )
                     continue
                 segment_paths.append(path)
+            non_target_reason = classify_non_target_path_context(segment)
+            if non_target_reason:
+                for path in segment_paths:
+                    add_filtered_target_finding(
+                        filtered_findings,
+                        path,
+                        source_label,
+                        non_target_reason,
+                        segment,
+                    )
+                continue
             if is_negated_path_context(segment):
                 for path in segment_paths:
                     add_filtered_target_finding(
@@ -2530,10 +2630,34 @@ def compile_delivery_plan(
         repo_root=config.command_cwd,
         resolution_context=planning_context,
     )
+    classified_context_paths = merge_classified_plan_paths(
+        collect_classified_plan_paths(requirements_discussion, repo_root=config.command_cwd, resolution_context=planning_context),
+        collect_classified_plan_paths(requirements_review, repo_root=config.command_cwd, resolution_context=planning_context),
+        collect_classified_plan_paths(repair_context, repo_root=config.command_cwd, resolution_context=planning_context),
+    )
+    non_target_path_set = {
+        path
+        for key in ("read_only_sources", "reference_patterns", "inspect_only_sources")
+        for path in classified_context_paths.get(key, [])
+    }
     target_paths = post_filter_target_paths(
         merge_plan_paths(explicit_target_paths, repair_target_paths, discussion_target_paths, review_target_paths, limit=64),
         filtered_target_candidates,
     )
+    if non_target_path_set:
+        kept_target_paths = []
+        for path in target_paths:
+            if path in non_target_path_set and path not in explicit_target_paths:
+                add_filtered_target_finding(
+                    filtered_target_candidates,
+                    path,
+                    "solution_review_readiness",
+                    "read_only_or_reference_context",
+                    path,
+                )
+                continue
+            kept_target_paths.append(path)
+        target_paths = kept_target_paths
     target_paths = sort_delivery_target_paths(target_paths)
     if not target_paths:
         target_paths = low_trust_plan_paths(
@@ -2642,6 +2766,38 @@ def compile_delivery_plan(
             "rule": "Task-splitting granularity control is disabled for the OpenClaw backup multi-agent workflow; reviewers and implementers consider the whole accepted requirement together until all reviewer blockers are resolved.",
         },
         "target_files": target_files,
+        "read_only_sources": [
+            {"path": path, "reason": "Mentioned as read-only/inspect-only source during requirements or review readiness discussion."}
+            for path in classified_context_paths.get("read_only_sources", [])
+        ],
+        "reference_patterns": [
+            {"path": path, "reason": "Mentioned as a reference pattern/example, not a required implementation target."}
+            for path in classified_context_paths.get("reference_patterns", [])
+        ],
+        "inspect_only_sources": [
+            {"path": path, "reason": "Mentioned as inspect-only/conditional context and excluded from required target_files."}
+            for path in classified_context_paths.get("inspect_only_sources", [])
+        ],
+        "runtime_contracts": [
+            "Keep production trading disabled unless the route carries explicit human risk confirmation and later gates allow it.",
+            "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
+        ],
+        "forbidden_targets": [
+            ".env",
+            "auth.json",
+            "credential-imports",
+            "OAuth/cookie/token/API key/private key files",
+        ],
+        "solution_review_readiness": {
+            "target_files_contract": "Only concrete repo-relative files expected to be created or modified may appear in target_files.",
+            "non_target_contract": "read_only_sources, reference_patterns, inspect_only_sources, runtime_contracts, and api_contracts are not implementation targets.",
+            "pre_review_self_check": [
+                "No credential/auth/secret files in target_files or executable steps.",
+                "No runtime/API/data-contract pseudo paths in target_files.",
+                "Must-change, inspect-only, and reference-pattern files are separated before solution_review.",
+                "Verification commands are deterministic and command-level.",
+            ],
+        },
         "entry_points": [
             {"path": path["path"], "reason": path["reason"]}
             for path in target_files
@@ -2738,6 +2894,21 @@ def render_solution(delivery_plan: dict[str, Any]) -> str:
             "",
             "## Target Files",
             render_markdown_items([item.get("path", "") for item in target_files if isinstance(item, dict)] or ["Discovery required before editing; do not guess."]),
+            "",
+            "## Read-only Sources",
+            render_markdown_items([item.get("path", "") for item in delivery_plan.get("read_only_sources", []) if isinstance(item, dict)] or ["No read-only sources declared."]),
+            "",
+            "## Reference Patterns",
+            render_markdown_items([item.get("path", "") for item in delivery_plan.get("reference_patterns", []) if isinstance(item, dict)] or ["No reference patterns declared."]),
+            "",
+            "## Inspect-only Sources",
+            render_markdown_items([item.get("path", "") for item in delivery_plan.get("inspect_only_sources", []) if isinstance(item, dict)] or ["No inspect-only sources declared."]),
+            "",
+            "## Solution Review Readiness",
+            render_markdown_items([
+                str(delivery_plan.get("solution_review_readiness", {}).get("target_files_contract", "")) if isinstance(delivery_plan.get("solution_review_readiness"), dict) else "",
+                str(delivery_plan.get("solution_review_readiness", {}).get("non_target_contract", "")) if isinstance(delivery_plan.get("solution_review_readiness"), dict) else "",
+            ]),
             "",
             "## Filtered Target Candidates",
             render_markdown_items(
