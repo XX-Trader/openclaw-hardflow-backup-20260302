@@ -496,6 +496,79 @@ def dual_review_pass(stage_name: str, reports: list[dict[str, Any]]) -> bool:
     return bool(valid_review_reports(stage_name, reports))
 
 
+REVIEW_BLOCKER_HINT_RE = re.compile(
+    r"(?:Blocker|阻塞|修订要求|requires_revision|create_if_missing|target_files|verification_commands|compileall|content assertion|内容断言|manual acceptance|blocked_manual_acceptance_required|origin/main|git publish|2026-\d{2}-\d{2}\.md|not acceptable|未满足|缺少|不足|不合格|必须|应)",
+    re.IGNORECASE,
+)
+
+
+def report_text(report: dict[str, Any]) -> str:
+    return "\n".join(
+        str(report.get(key) or "")
+        for key in ("stdout", "stderr", "error")
+        if str(report.get(key) or "").strip()
+    )
+
+
+def extract_review_blocker_lines(reports: list[dict[str, Any]], limit: int = 18) -> list[str]:
+    lines: list[str] = []
+    seen: set[str] = set()
+    for report in reports:
+        role = reviewer_role_for_report(report) or "reviewer"
+        for raw_line in report_text(report).splitlines():
+            text = " ".join(raw_line.strip().strip("-* ").split())
+            if not text or len(text) < 8 or not REVIEW_BLOCKER_HINT_RE.search(text):
+                continue
+            if text in seen:
+                continue
+            seen.add(text)
+            lines.append(f"- {role}: {clip_text(text, 260)}")
+            if len(lines) >= limit:
+                return lines
+    return lines
+
+
+def render_reviewer_discussion(stage_name: str, reports: list[dict[str, Any]], verdict: str) -> str:
+    expected = EXPECTED_VERDICTS[stage_name]
+    blocker_lines = extract_review_blocker_lines(blocking_review_reports(stage_name, reports) or reports)
+    if not blocker_lines:
+        blocker_lines = ["- none; reviewers did not report concrete blockers"]
+    if verdict == expected:
+        revision_plan = [
+            "- No revision required; keep the accepted plan and proceed to the next gate.",
+            "- Preserve all verification, safety, deployment, and publish gates in downstream stages.",
+        ]
+    else:
+        revision_plan = [
+            "- Write the non-pass reasons into the review artifact and failure summary before stopping.",
+            "- Merge reviewer-a and reviewer-b blockers into one revised delivery_plan.json instead of asking code_execution to discover the plan.",
+            "- Remove invalid target_files and add explicit create_if_missing rationale for every missing file that remains.",
+            "- Replace template steps with file-level business actions, mapped tests, verification commands, release gates, and acceptance boundaries.",
+            "- Re-run solution_package and solution_review; do not enter code_execution until the merged blocker list is empty.",
+        ]
+    return "\n".join(
+        [
+            "## Reviewer Discussion And Joint Revision Plan",
+            "- Round 1: reviewer-a checks scope, file targets, business behavior, tests, release gates, and safety boundaries.",
+            "- Round 2: reviewer-b challenges reviewer-a with missing rationale, invalid paths, command-level gaps, docs/memory assertions, and acceptance closure.",
+            "- Round 3: coordinator merges both outputs into one blocker list and one revised plan contract; unresolved concrete blockers keep the final verdict at `requires_revision`.",
+            "",
+            "### Joint Non-Pass Reasons",
+            *blocker_lines,
+            "",
+            "### Complete Revision Plan",
+            *revision_plan,
+        ]
+    )
+
+
+def review_failure_detail(stage_name: str, reports: list[dict[str, Any]], default: str) -> str:
+    blockers = extract_review_blocker_lines(blocking_review_reports(stage_name, reports) or reports, limit=10)
+    if not blockers:
+        return default
+    return "\n".join([default, "", "Merged reviewer non-pass reasons:", *blockers])
+
+
 def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdict: str) -> str:
     expected = EXPECTED_VERDICTS[stage_name]
     roles = [reviewer_role_for_report(item) or "missing" for item in reports]
@@ -563,6 +636,8 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
         {blocker_text}
         - Non-blocking reviewer runtime/model failures:
         {runtime_failure_text}
+
+        {render_reviewer_discussion(stage_name, reports, verdict)}
 
         {command_markdown("Dual AI Review Commands", reports)}
         """
@@ -1292,6 +1367,8 @@ def plan_path_rejection_reason(path: str) -> str:
         return "command_not_file_path"
     if path.startswith(("/", "\\")) or re.match(r"^[A-Za-z]:/", path):
         return "external_or_runtime_absolute_path"
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}\.md", Path(path).name) and "/" not in path.replace("\\", "/"):
+        return "root_date_file_not_allowed"
     return ""
 
 
@@ -1818,6 +1895,10 @@ def verification_command_rejection_reason(command: str) -> str:
         return ""
     if value == "git merge-base --is-ancestor HEAD origin/main":
         return ""
+    if value == "git rev-parse --verify HEAD":
+        return ""
+    if value == "git rev-list --left-right --count HEAD...origin/main":
+        return ""
     if value == "git branch -r --contains HEAD":
         return ""
     if re.match(r"^test\s+-f\s+[^\s]+$", value):
@@ -1867,8 +1948,14 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
         add_verification_command(commands, match.group(0).strip())
     for match in re.finditer(r"(?m)^\s*pytest\s+-q\s+tests/[^\r\n；;。、`]*", value, re.IGNORECASE):
         add_verification_command(commands, match.group(0).strip())
-    if re.search(r"compileall.{0,80}(智能多平台套利|tests)", value, re.IGNORECASE):
-        add_verification_command(commands, "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests")
+    compileall_targets_scripts = bool(re.search(r"(?:compileall.{0,120}scripts|scripts/.+\.py)", value, re.IGNORECASE))
+    if re.search(r"compileall.{0,120}(智能多平台套利|tests|scripts)", value, re.IGNORECASE):
+        add_verification_command(
+            commands,
+            "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests"
+            if compileall_targets_scripts
+            else "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests",
+        )
     if "git diff --check" in value:
         add_verification_command(commands, "git diff --check")
     for memory_path in (
@@ -1887,6 +1974,10 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
             add_verification_command(commands, f"test -f {path}")
         if "docs/INDEX.md" in value:
             add_verification_command(commands, "test -f docs/INDEX.md")
+        add_verification_command(
+            commands,
+            "rg -n '价差监控|stock-token|read-only|signal-only|blocked_manual_acceptance_required|NO_EXTERNAL_LOOKUP_NEEDED' docs memory todo.md done.md MEMORY.md",
+        )
     if re.search(r"残留|residual|Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot", value, re.IGNORECASE):
         add_verification_command(
             commands,
@@ -1901,6 +1992,9 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
         add_verification_command(commands, "git status --short --branch")
         add_verification_command(commands, "git fetch origin main --prune")
         add_verification_command(commands, "git merge-base --is-ancestor HEAD origin/main")
+        add_verification_command(commands, "git rev-parse --verify HEAD")
+        add_verification_command(commands, "git diff --name-only --cached -- . ':!command-runs/**' ':!agent-workspaces/**' ':!pipeline_state.json' ':!run_meta.json'")
+        add_verification_command(commands, "git rev-list --left-right --count HEAD...origin/main")
     for endpoint in ("/health", "/api/strategy/status", "/api/realtime/funding", "/api/stock-tokens/status", "/api/stock-tokens/markets", "/api/stock-tokens/opportunities"):
         if endpoint in value:
             add_verification_command(commands, f"curl -fsS http://127.0.0.1:18080{endpoint}")
@@ -1925,7 +2019,7 @@ def configured_verification_commands(config: PipelineConfig, task_type: str, evi
         if "git diff --check" not in seen:
             seen.add("git diff --check")
             merged.append({"command": "git diff --check", "required": True, "source": "default_baseline"})
-        default_compileall = "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests"
+        default_compileall = "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests"
         if task_type != "docs" and not any(" -m compileall " in command or command.endswith(" -m compileall") for command in seen):
             seen.add(default_compileall)
             merged.append({"command": default_compileall, "required": True, "source": "default_baseline"})
@@ -1936,7 +2030,7 @@ def configured_verification_commands(config: PipelineConfig, task_type: str, evi
     if task_type != "docs":
         fallback.append(
             {
-                "command": "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests",
+                "command": "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests",
                 "required": True,
                 "source": "agent_selected",
             }
@@ -2217,6 +2311,21 @@ def create_if_missing_rationale(path: str, evidence_text: str = "") -> str:
         )
     if value.startswith("tests/"):
         return "Create only when no existing targeted test covers this accepted requirement; keep it deterministic and repository-local."
+    if value.startswith("docs/"):
+        return (
+            "Create only when no existing documentation page records this accepted requirement; "
+            "initial content must state the verified read-only/signal-only scope, evidence commands, "
+            "manual Discord acceptance boundary, and links back to docs/INDEX.md."
+        )
+    if value.startswith("memory/smart-multi-platform-arbitrage/"):
+        name = Path(value).name
+        if name == "PROJECT_PROFILE.md":
+            return "Create only if the project memory module is missing; record SmartMultiPlatformArbitrage module boundaries, owners, and read-only monitoring surfaces."
+        if name == "DECISIONS.md":
+            return "Create only if the project memory module is missing; record durable decisions about read-only signal mode, no credential access, and manual Discord acceptance."
+        if name == "DELIVERY_RULES.md":
+            return "Create only if the project memory module is missing; record delivery gates for targeted pytest, compileall including scripts, API smoke, docs/memory assertions, and git containment."
+        return "Create only if the project memory module is missing; seed it with verified facts from this run and deterministic content assertions."
     if "如不存在则需要 create_if_missing rationale" in text and Path(value).suffix:
         return "Create only after confirming no existing module implements the accepted requirement, and document the import/wiring path in implementation steps."
     return ""
@@ -2264,9 +2373,17 @@ def implementation_step_description(path: str, item: dict[str, Any]) -> str:
         return "Inspect the monitoring module, define the funding-rate scanner/snapshot contract, and preserve offline/degraded reason reporting."
     if value.startswith("tests/"):
         return "Add or update this targeted test to prove the exact behavior, safety boundary, and regression acceptance for the related business file."
+    if value.endswith("api/main.py"):
+        return "Confirm the FastAPI app already wires the accepted read-only routes; only adjust route registration if a concrete monitoring endpoint is missing, and preserve startup behavior."
+    if value.endswith("scripts/basic_auth_proxy.py"):
+        return "Verify the proxy remains authentication-boundary-only, has no hardcoded credentials, and supports the read-only dashboard smoke without exposing private auth material."
+    if value.endswith("scripts/nofx_hermes_services.sh") or value.endswith("scripts/restart_dashboard_services.sh"):
+        return "Treat this as deployment-support evidence only: document or smoke service control commands without restarting production services unless the runner explicitly enters deployment."
+    if value.startswith("scripts/"):
+        return "Update this operational script only if it is part of the accepted read-only monitoring workflow; prove deterministic output and no credential, trading, order, or fund movement side effects."
     if value.startswith("docs/") or value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
-        return "Update this writeback target only after code/test evidence exists; record the verified scope, commands, and remaining manual acceptance boundary."
-    return f"Inspect `{value}`, define the exact behavior gap from the accepted requirement, then apply the smallest scoped code/test/docs change needed for that file."
+        return "Update this writeback target with concrete verified content: changed behavior, commands run, read-only/signal-only safety boundary, git containment, and blocked_manual_acceptance_required when Discord cannot be proven internally."
+    return f"Map `{value}` to the accepted requirement, state the intended behavior change before editing, then apply the smallest code/test/docs change with a matching verification command."
 
 
 def is_delivery_entry_point(path: str) -> bool:
@@ -2464,6 +2581,7 @@ def compile_delivery_plan(
             "Dual review gates pass with the expected final verdicts.",
             "Deployment or git publish only runs when explicitly configured by the runner.",
             "If git publish is enabled, prove the pushed commit is contained by origin/main and no runtime/pipeline artifacts or unrelated dirty worktree paths were committed.",
+            "If real Discord channel acceptance cannot be safely proven by the runner, final acceptance must stop with blocked_manual_acceptance_required instead of claiming success.",
         ],
         "rollback_plan": [
             "If verification or code review fails after a workspace patch is applied, revert the applied patch and preserve rollback evidence.",
@@ -4103,7 +4221,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 artifacts,
                 "solution_review",
                 "revise_solution",
-                "solution review did not allow implementation",
+                review_failure_detail("solution_review", sol_review_reports, "solution review did not allow implementation"),
                 "solution_review.md",
                 parsed_verdict,
             ),
@@ -4344,7 +4462,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 artifacts,
                 "code_review",
                 "return_to_code_execution",
-                "code review failed and must be fixed by implementation agent",
+                review_failure_detail("code_review", code_review_command_reports, "code review failed and must be fixed by implementation agent"),
                 "code_review.md",
                 parsed_verdict,
             ),

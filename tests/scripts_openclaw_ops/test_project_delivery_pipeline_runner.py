@@ -396,13 +396,24 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         report_b_blocker = {
             "ok": True,
             "command": "review --reviewer-role reviewer-b --provider zai --model glm-5.1",
-            "stdout": "Final verdict: requires_revision\nReviewer role: reviewer-b\nReviewer provider: zai\nReviewer model: glm-5.1\n",
+            "stdout": (
+                "Final verdict: requires_revision\n"
+                "Reviewer role: reviewer-b\n"
+                "Reviewer provider: zai\n"
+                "Reviewer model: glm-5.1\n"
+                "Blocker: target_files missing create_if_missing rationale and content assertion commands.\n"
+            ),
             "stderr": "",
         }
 
         self.assertFalse(_mod.dual_review_pass("requirements_review", [report_a, report_b_blocker]))
         rendered = _mod.render_dual_ai_review("requirements_review", [report_a, report_b_blocker], "requires_revision")
         self.assertIn("Review gate mode: blocked_concrete_reviewers", rendered)
+        self.assertIn("Reviewer Discussion And Joint Revision Plan", rendered)
+        self.assertIn("target_files missing create_if_missing rationale", rendered)
+        self.assertIn("Complete Revision Plan", rendered)
+        detail = _mod.review_failure_detail("requirements_review", [report_a, report_b_blocker], "requirements review did not pass")
+        self.assertIn("Merged reviewer non-pass reasons", detail)
 
     def test_dual_review_rendering_merges_distinct_model_findings(self):
         report_a = {
@@ -777,7 +788,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("bugfix", delivery_plan["task_type"])
             self.assertEqual("backend-dev", delivery_plan["owner"])
             self.assertIn(
-                "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests",
+                "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests",
                 [item["command"] for item in delivery_plan["verification_commands"]],
             )
 
@@ -798,7 +809,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("feature", delivery_plan["task_type"])
             self.assertEqual("backend-dev", delivery_plan["owner"])
             self.assertIn(
-                "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests",
+                "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests",
                 [item["command"] for item in delivery_plan["verification_commands"]],
             )
 
@@ -1090,9 +1101,14 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
 - `tests/test_stock_token_public_adapter.py`
 - `tests/test_basic_auth_proxy.py`
 - `docs/INDEX.md`
+- `docs/观测与运维/币股平台只读监控方案.md`
+- `memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md`
+- `memory/smart-multi-platform-arbitrage/DECISIONS.md`
+- `memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md`
 - `MEMORY.md`
 - `todo.md`
 - `done.md`
+- `2026-04-27.md`
 
 不得进入 target_files：
 - `smart_arb_live_bridge.py`
@@ -1133,11 +1149,23 @@ Verification commands:
             self.assertIn("智能多平台套利/monitoring/funding_discovery_service.py", paths)
             self.assertIn("智能多平台套利/monitoring/funding_rate_scanner.py", paths)
             self.assertIn("tests/test_funding_rate_scanner.py", paths)
+            self.assertIn("docs/观测与运维/币股平台只读监控方案.md", paths)
+            self.assertIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", paths)
+            self.assertIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", paths)
+            self.assertIn("memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md", paths)
+            self.assertNotIn("2026-04-27.md", paths)
             self.assertNotIn("stock_tokens.py", paths)
             self.assertNotIn("origin/main", paths)
             scanner = next(item for item in plan["target_files"] if item["path"] == "智能多平台套利/monitoring/funding_rate_scanner.py")
             self.assertTrue(scanner["create_if_missing"])
             self.assertIn("expected_net_daily", scanner["create_if_missing_rationale"])
+            doc_item = next(item for item in plan["target_files"] if item["path"] == "docs/观测与运维/币股平台只读监控方案.md")
+            self.assertTrue(doc_item["create_if_missing"])
+            self.assertIn("manual Discord acceptance boundary", doc_item["create_if_missing_rationale"])
+            memory_item = next(item for item in plan["target_files"] if item["path"] == "memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md")
+            self.assertTrue(memory_item["create_if_missing"])
+            self.assertIn("compileall including scripts", memory_item["create_if_missing_rationale"])
+            self.assertFalse(any("Inspect `" in item["description"] for item in plan["implementation_steps"]))
             self.assertFalse(any(item["path"] in {"todo.md", "done.md", "MEMORY.md"} for item in plan["entry_points"]))
             self.assertFalse(any(item["path"].startswith("tests/") for item in plan["entry_points"]))
 
@@ -1150,7 +1178,12 @@ Verification commands:
             self.assertIn("curl -fsS http://127.0.0.1:18080/api/realtime/funding", commands)
             self.assertIn("git fetch origin main --prune", commands)
             self.assertIn("git merge-base --is-ancestor HEAD origin/main", commands)
+            self.assertIn("git rev-list --left-right --count HEAD...origin/main", commands)
             self.assertIn("test -f todo.md", commands)
+            self.assertIn(
+                "rg -n '价差监控|stock-token|read-only|signal-only|blocked_manual_acceptance_required|NO_EXTERNAL_LOOKUP_NEEDED' docs memory todo.md done.md MEMORY.md",
+                commands,
+            )
 
             validation = _mod.validate_graphify_scope(
                 PipelineConfig(project_key="demo", command_cwd=repo),
@@ -1165,6 +1198,7 @@ Verification commands:
                     for item in validation["findings"]
                 )
             )
+            self.assertFalse(any(item.get("path") == "2026-04-27.md" for item in validation["findings"]))
 
     def test_delivery_plan_keeps_heavy_multi_item_requirement_holistic(self):
         with tempfile.TemporaryDirectory() as tmp:

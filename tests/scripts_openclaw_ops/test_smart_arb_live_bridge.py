@@ -198,6 +198,23 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         self.assertIn("stale or returns not_found", prompt)
         self.assertIn("Do not run `lark-cli config show`", prompt)
 
+    def test_review_prompt_requires_blockers_and_complete_revision_plan(self):
+        bridge = self._load_bridge_module()
+        args = SimpleNamespace(
+            project_dir=Path("/repo"),
+            profile="spreadagent",
+            reviewer_role="reviewer-b",
+            provider="openai-codex",
+            model="gpt-5.5",
+        )
+        with mock.patch.dict(os.environ, {"PIPELINE_RUN_DIR": "/tmp/run"}, clear=True):
+            prompt = bridge.stage_prompt("solution_review", args, "检查 delivery_plan")
+
+        self.assertIn("explicit Blocker lines", prompt)
+        self.assertIn("complete revised plan", prompt)
+        self.assertIn("Reviewer discussion note", prompt)
+        self.assertIn("Do not stop at \"inspect first\"", prompt)
+
     def test_repair_context_can_be_supplied_inline_env(self):
         bridge = self._load_bridge_module()
         with mock.patch.dict(os.environ, {"PIPELINE_REPAIR_CONTEXT": "previous failure evidence"}, clear=False):

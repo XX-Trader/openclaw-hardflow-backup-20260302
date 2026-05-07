@@ -543,6 +543,8 @@ Act as {role}. Review the pipeline artifacts for {focus}.
 You are one side of a multi-model review gate. Produce your own independent verdict and evidence, then explain how your findings should be merged with other reviewers until no blocker remains.
 For solution review, validate the structured `delivery_plan.json` contract first; `solution.md` is only the human-readable rendering. Use `graphify_context.md` and `graphify_scope_validation.md` to challenge missing related modules/tests and respect its policy: warning by default, block only for cross-repo paths, credential/auth material, or production trading/order/fund-transfer risk.
 Do not require artificial task-splitting granularity; review the whole accepted requirement and block only for concrete risk, missing context, invalid target files, missing tests, unsafe execution, or a graphify scope block.
+If you return requires_revision, write every non-pass reason as explicit Blocker lines and then give a complete revised plan that another reviewer/coordinator can merge directly into delivery_plan.json. Include file-level actions, create_if_missing rationale, verification commands, publish containment, docs/memory/todo/done content assertions, and final acceptance boundaries when relevant.
+For every review stage, include a Reviewer discussion note: what you agree with from the available prior artifacts, what you challenge, and how the joint final plan should change. Do not stop at "inspect first"; the review output must be sufficient for revise_solution to produce an implementable plan.
 Include exactly these reviewer identity lines:
 Reviewer role: {role}
 Reviewer provider: {reviewer_provider}
