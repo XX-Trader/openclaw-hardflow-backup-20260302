@@ -2620,6 +2620,9 @@ Verification commands:
             (repo / "cron" / "jobs.json").write_text("{}\n", encoding="utf-8")
             (repo / "static" / "index").mkdir(parents=True)
             (repo / "static" / "index" / "dashboard.js").write_text("// drift\n", encoding="utf-8")
+            (repo / "tests").mkdir(parents=True)
+            (repo / "tests" / "test_dashboard_api.py").write_text("# dashboard tests\n", encoding="utf-8")
+            (repo / "tests" / "test_stock_token_public_adapter.py").write_text("# adapter tests\n", encoding="utf-8")
             artifacts = {}
             run_dir = Path(tmp) / "run"
             run_dir.mkdir()
@@ -2672,6 +2675,8 @@ Verification commands:
             self.assertNotIn("智能多平台套利/arbitrage/market_adapters/__init__.py", target_paths)
             self.assertNotIn("cron/jobs.json", target_paths)
             self.assertNotIn("static/index/dashboard.js", target_paths)
+            self.assertIn("tests/test_dashboard_api.py", target_paths)
+            self.assertIn("tests/test_stock_token_public_adapter.py", target_paths)
             self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
             self.assertIn("MEMORY.md", [item["path"] for item in plan["read_only_sources"]])
             self.assertTrue(any("Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf" in item["path"] for item in plan["read_only_sources"]));
@@ -2690,7 +2695,7 @@ Verification commands:
             self.assertIn("static/index/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("solution_review_readiness", plan)
             self.assertIn("must_change_targets", plan)
-            self.assertEqual(["智能多平台套利/api/routes/strategy.py"], [item["path"] for item in plan["must_change_targets"]])
+            self.assertEqual(["智能多平台套利/api/routes/strategy.py", "tests/test_dashboard_api.py", "tests/test_stock_token_public_adapter.py"], [item["path"] for item in plan["must_change_targets"]])
             self.assertIn("api_contracts", plan)
             self.assertTrue(any(item.get("endpoint") == "/api/stock-tokens/status" and "exclude kraken/mexc" in item.get("contract", "") for item in plan["api_contracts"]))
             self.assertIn("setup.py / packaging / dependency files", plan["forbidden_targets"])

@@ -2650,7 +2650,7 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     context = str(planning_context or "")
     if not value:
         return None
-    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower in {"graph.json", "graphify.json"} or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/")):
+    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower in {"graph.json", "graphify.json", "external_research.md", "research_report.md"} or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/")):
         return ("inspect_only_sources", "pipeline_artifact_not_repo_target")
     if value in FACT_SOURCE_PATHS:
         return ("read_only_sources", "project_fact_source_read_only")
@@ -2662,6 +2662,8 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("inspect_only_sources", "cron_runtime_schedule_not_business_target")
     if lower.startswith("static/index/") or lower in {"static/index/dashboard.js", "static/index/index.html"}:
         return ("inspect_only_sources", "basename_or_static_drift_not_repo_business_target")
+    if lower in {"智能多平台套利/arbitrage_config.json5", "智能多平台套利/api/routes/dashboard.py", "智能多平台套利/api/static/dashboard/dashboard.css"} and not re.search(r"(?:kraken|mexc|stock[-_ ]?token|mvp|必须修改|必改).{0,80}(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改)|(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改).{0,80}(?:kraken|mexc|stock[-_ ]?token|mvp)", context, re.IGNORECASE):
+        return ("inspect_only_sources", "conditional_config_dashboard_css_without_drift_evidence")
     if lower == "智能多平台套利/setup.py" and (
         re.search(r"(?:不让|不得|禁止|不能|不应|forbidden|exclude|out\s+of\s+scope).{0,80}(?:setup\.py|packag|dependency|依赖|安装包)|(?:setup\.py|packag|dependency|依赖|安装包).{0,80}(?:不让|不得|禁止|不能|不应|非目标|forbidden|exclude|out\s+of\s+scope)", context, re.IGNORECASE)
         or not (confidence == "explicit" and re.search(r"(?:packag|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE))
@@ -2691,6 +2693,12 @@ def append_classified_context_path(classified: dict[str, list[str]], bucket: str
     values = classified.setdefault(bucket, [])
     if path not in values:
         values.append(path)
+
+
+def remove_classified_context_path(classified: dict[str, list[str]], path: str) -> None:
+    for values in classified.values():
+        while path in values:
+            values.remove(path)
 
 
 API_ENDPOINT_RE = re.compile(r"(?i)\b(?:GET|POST|PUT|PATCH|DELETE)\s+(/[A-Za-z0-9_./{}?=&:-]+)|`(/[A-Za-z0-9_./{}?=&:-]+)`")
@@ -2860,6 +2868,12 @@ def compile_delivery_plan(
             continue
         filtered_actionable_paths.append(path)
     target_paths = filtered_actionable_paths
+    if re.search(r"(?:stock[-_ ]?token|/api/stock-tokens|Kraken|MEXC|Hyperliquid|平台范围)", planning_context, re.IGNORECASE):
+        for required_test in ("tests/test_dashboard_api.py", "tests/test_stock_token_public_adapter.py"):
+            if (repo / required_test).exists() and required_test not in target_paths:
+                target_paths.append(required_test)
+                source_by_path[required_test] = "required_regression_test"
+                remove_classified_context_path(classified_context_paths, required_test)
     if not target_paths:
         target_paths = low_trust_plan_paths(
             research,
