@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-07 16:20 - nofx 安装 solution_review 凭证目标文件自动修方案批次
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、`/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py`
+事实：本机提交 `2df03091` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `a78351f` fast-forward 到 `2df0309`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 返回 `changed=True`，安装 5 个 workflow skills、22 个 ops scripts、12 个 cron jobs。本轮只更新 hardflow/Hermes ops 脚本与项目记忆，没有重启 Discord gateway、内控 API 或策略服务。
+证据：nofx 远端 `py_compile` 覆盖仓库源码与 `/home/arbops/.hermes/ops` 安装态；`compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；定向 unittest 3 项 OK，覆盖 `auth.json` 不进入 `target_files`、`solution_review -> revise_solution` 的凭证目标 blocker 自动回流、真实 secret access 仍 high-risk。安装态命中 `credential_or_auth_target_file` 与 `可回流方案修订`。`smart-arb-pipeline --help` 正常；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
+最后验证：2026-05-07 16:20
+复用建议：以后 `solution_review` 因 `auth.json`、credential、auth-state 目标文件未通过时，应先让 `revise_solution` 修方案合同；只有真实读取、打印、使用或修改凭证时才保持硬阻断。远端 Git 仍用 root SSH 后 `runuser -u arbops` 执行，避免 root 触发 dubious ownership。
+
 ## 2026-05-07 15:44 - nofx 设置中文 pretty hostname
 
 类型：deploy

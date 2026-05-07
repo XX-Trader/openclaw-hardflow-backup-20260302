@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-07 - solution_review 凭证目标文件自动修方案部署到 nofx
+
+类型：deploy
+范围：nofx hardflow 仓库、Hermes ops runtime、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`
+事实：solution_review 凭证目标文件自动修方案批次已部署到 nofx。远端仓库从 `a78351f` fast-forward 到 `2df0309`，并通过 runtime installer 同步到 `/home/arbops/.hermes/ops`。本轮未重启 gateway，也未启动真实交易。
+证据：nofx 远端 `HEAD...origin/main=0 0`；runtime installer 输出 `changed=True`、5 个 skills、22 个 ops scripts、12 个 cron jobs；远端源码与安装态 `py_compile` 通过；定向 unittest 3 项 OK；安装态 grep 命中 `credential_or_auth_target_file` 和 `可回流方案修订`；`/health` 为 `status=ok`，`/api/strategy/status` 为 `running=false`。
+最后验证：2026-05-07 16:20
+复用建议：如果再遇到类似 run 卡在 `solution_review/revise_solution`，先看失败原因是否只是方案目标文件包含凭证/auth-state；这类应自动修方案，不应直接判定整体失败。真实凭证访问仍必须硬停。
+
 ## 2026-05-07 - solution_review 凭证目标文件自动修方案修复
 
 类型：bugfix

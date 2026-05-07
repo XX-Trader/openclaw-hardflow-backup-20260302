@@ -10,7 +10,8 @@
 - [x] [2026-05-07] **solution_review 凭证目标文件自动修方案本地修复**
   - 修正 `auth.json` / credential / auth-state 类文件混入 `delivery_plan.json.target_files` 的问题：敏感 basename 会进入 `plan_findings.filtered_target_candidates`，不再作为业务目标文件交给实现阶段。
   - `solution_review -> revise_solution` 中“移除凭证目标文件”的失败原因现在会被归类为 `可回流方案修订`，让入口继续自动修方案；真正读取、打印、使用或修改凭证仍保持 high-risk 硬停。
-  - 验证：新增定向 unittest 3 项 OK，风险分类旧用例 3 项 OK，`py_compile`、`compileall`、`git diff --check` 通过；整组 runner+entry unittest 超过 5 分钟超时，未作为通过证据。本轮尚未部署到 nofx。
+  - 已部署到 nofx：远端仓库从 `a78351f` fast-forward 到 `2df0309`，runtime installer 同步到 `/home/arbops/.hermes/ops`，安装态命中 `credential_or_auth_target_file` 与 `可回流方案修订`。
+  - 验证：新增定向 unittest 3 项 OK，风险分类旧用例 3 项 OK，`py_compile`、`compileall`、`git diff --check` 通过；整组 runner+entry unittest 超过 5 分钟超时，未作为通过证据。nofx 远端源码与安装态编译、定向 unittest 3 项、`smart-arb-pipeline --help`、内控 API `/health` 和 `/api/strategy/status` smoke 均通过。
 
 - [x] [2026-05-07] **nofx 服务器中文显示名设置**
   - 已将 nofx Linux `Pretty hostname` 设置为 `套利策略 服务器`。
