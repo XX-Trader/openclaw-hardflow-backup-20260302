@@ -2605,6 +2605,10 @@ Verification commands:
             (repo / "scripts" / "nofx_hermes_services.sh").write_text("#!/bin/sh\n", encoding="utf-8")
             (repo / "MEMORY.md").write_text("facts\n", encoding="utf-8")
             (repo / "智能多平台套利" / "arbitrage_config.json5").write_text("{}\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "apollo").mkdir(parents=True)
+            (repo / "智能多平台套利" / "apollo" / "trade.py").write_text("# apollo\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "arbitrage" / "market_adapters").mkdir(parents=True)
+            (repo / "智能多平台套利" / "arbitrage" / "market_adapters" / "hyperliquid_ws.py").write_text("# hl\n", encoding="utf-8")
             artifacts = {}
             run_dir = Path(tmp) / "run"
             run_dir.mkdir()
@@ -2618,6 +2622,9 @@ Verification commands:
                 "inspect_only: 智能多平台套利/config_security.py 应作为 safety contract reference，除非测试发现缺口。\n"
                 "优先遵守/读取 MEMORY.md，不等于必须写回。\n"
                 "scripts/nofx_hermes_services.sh 只是运维 smoke 参考，不是本轮业务修改目标。\n"
+                "solution_review_revision_ledger.json 是 pipeline artifact，不是 repo target。\n"
+                "Apollo 历史 MEXC 代码 智能多平台套利/apollo/trade.py 不因名称命中被删除。\n"
+                "Hyperliquid 不在本轮新增真实 adapter，智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py 仅 inspect。\n"
                 "api_contracts: GET /api/strategy/config returns redacted non-sensitive config.\n",
                 encoding="utf-8",
             )
@@ -2639,11 +2646,17 @@ Verification commands:
             self.assertNotIn("智能多平台套利/config_security.py", target_paths)
             self.assertNotIn("MEMORY.md", target_paths)
             self.assertNotIn("scripts/nofx_hermes_services.sh", target_paths)
+            self.assertNotIn("solution_review_revision_ledger.json", target_paths)
+            self.assertNotIn("智能多平台套利/apollo/trade.py", target_paths)
+            self.assertNotIn("智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py", target_paths)
             self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
             self.assertIn("MEMORY.md", [item["path"] for item in plan["read_only_sources"]])
             self.assertIn("智能多平台套利/api/routes/stock_tokens.py", [item["path"] for item in plan["reference_patterns"]])
             self.assertIn("智能多平台套利/config_security.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("scripts/nofx_hermes_services.sh", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("solution_review_revision_ledger.json", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("智能多平台套利/apollo/trade.py", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("solution_review_readiness", plan)
             self.assertIn("must_change_targets", plan)
             self.assertEqual(["智能多平台套利/api/routes/strategy.py"], [item["path"] for item in plan["must_change_targets"]])

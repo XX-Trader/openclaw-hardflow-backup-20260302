@@ -2624,6 +2624,42 @@ FACT_SOURCE_PATHS = {
     "done.md",
 }
 
+PIPELINE_ARTIFACT_TARGET_NAMES = {
+    "run_meta.json",
+    "pipeline_state.json",
+    "delivery_plan.json",
+    "solution.md",
+    "solution_review.md",
+    "solution_review_soft_gate.md",
+    "solution_review_revision_ledger.json",
+    "requirements_review.md",
+    "requirements_discussion.md",
+    "graphify_scope_validation.md",
+    "failure_summary.md",
+}
+
+
+def nearby_negative_scope(context: str, value: str, terms: str) -> bool:
+    normalized = str(context or "").replace("`", "")
+    basename = Path(value).name
+    candidates = [re.escape(value), re.escape(basename)]
+    path_pattern = "|".join(candidate for candidate in candidates if candidate)
+    if not path_pattern:
+        return False
+    return bool(re.search(
+        rf"(?:不|不要|不得|禁止|非目标|不在本轮|不新增|不删除|不因名称命中).{{0,120}}(?:{path_pattern}|{terms})|(?:{path_pattern}|{terms}).{{0,120}}(?:不|不要|不得|禁止|非目标|不在本轮|不新增|不删除|不因名称命中)",
+        normalized,
+        re.IGNORECASE,
+    ))
+
+
+def has_explicit_writeback_intent(context: str, value: str) -> bool:
+    return bool(re.search(
+        rf"(?:修改|更新|写回|创建|新增|落库|记录|create|update|writeback).{{0,80}}{re.escape(value)}|{re.escape(value)}.{{0,80}}(?:修改|更新|写回|创建|新增|落库|记录|create|update|writeback)",
+        str(context or ""),
+        re.IGNORECASE,
+    ))
+
 
 def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, confidence: str) -> tuple[str, str] | None:
     value = str(path or "").replace("\\", "/").strip()
@@ -2631,19 +2667,25 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     context = str(planning_context or "")
     if not value:
         return None
+    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/")):
+        return ("inspect_only_sources", "pipeline_artifact_not_repo_target")
     if value in FACT_SOURCE_PATHS:
         return ("read_only_sources", "project_fact_source_read_only")
     if value == "GRAPH_REPORT.md" or lower.endswith("/graph_report.md"):
         return ("inspect_only_sources", "external_graph_context_not_business_target")
     if lower.startswith("scripts/") and ("service" in lower or "hermes" in lower or "restart" in lower):
         return ("inspect_only_sources", "ops_script_reference_not_business_target")
+    if lower == "智能多平台套利/setup.py" and not re.search(r"(?:packag|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE):
+        return ("inspect_only_sources", "packaging_file_not_business_scope")
+    if "/apollo/" in lower and nearby_negative_scope(context, value, r"Apollo|MEXC|历史"):
+        return ("inspect_only_sources", "apollo_history_negative_scope")
+    if "hyperliquid" in lower and nearby_negative_scope(context, value, r"Hyperliquid|adapter|适配器"):
+        return ("inspect_only_sources", "hyperliquid_adapter_negative_scope")
     if lower.startswith("docs/research/"):
         return ("read_only_sources", "research_document_read_only")
-    if (lower.startswith("docs/") or lower.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}) and not re.search(
-        rf"(?:修改|更新|写回|创建|新增|create|update|writeback).{{0,80}}{re.escape(value)}|{re.escape(value)}.{{0,80}}(?:修改|更新|写回|创建|新增|create|update|writeback)",
-        context,
-        re.IGNORECASE,
-    ):
+    if lower.startswith("docs/") or lower.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
+        if confidence == "explicit" and has_explicit_writeback_intent(context, value) and re.search(r"(?:文档|memory|docs|writeback|写回|记录)", context, re.IGNORECASE):
+            return None
         return ("read_only_sources", "documentation_or_memory_read_only_unless_explicit_writeback")
     if lower.startswith("docs/") and not exists and not re.search(r"(?:创建|新增|create|create_if_missing)", context, re.IGNORECASE):
         return ("inspect_only_sources", "missing_doc_without_create_if_missing_rationale")
