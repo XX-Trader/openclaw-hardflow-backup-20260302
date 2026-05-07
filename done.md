@@ -7,6 +7,12 @@
 
 ## 2026-05-07 已完成
 
+- [x] [2026-05-07] **solution_review 软门禁上线**
+  - 按新口径将方案评审从普通硬停改成方案质量软门禁：普通计划 blocker 会写入 `solution_review_soft_gate.md` 并传给 `code_execution` 吸收，后续 `code_review` 继续硬性检查实现是否按需求和 reviewer 约束完成。
+  - 保留硬边界：凭证/secret/cookie/auth-state、force push、破坏性生产数据、无 reviewer 输出或明确绕过安全门禁仍在实现前阻断；高风险策略动作继续走人工确认，不因关键词永久停住。
+  - 已部署到 nofx：远端仓库 `HEAD=c746cf3`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`，安装态命中 `solution_review_can_soft_continue` 与 `soft_continue`。
+  - 验证：本地 runner 65 项、live bridge 41 项、entry 49 项 OK；nofx 远端同三组 65+41+49 项 OK，内控 API `/health` 与 `/api/strategy/status` 正常。
+
 - [x] [2026-05-07] **solution_review 未通过原因与联合修订方案上线**
   - 定位 `discord-spreadagent-20260507T061852834760Z` 仍卡在 `solution_review`：两个 reviewer fallback 后都给出有效 `requires_revision`，阻塞本身正确；真正缺口是未把每个 reviewer 的未通过原因汇总成下一轮可执行的完整方案修订契约。
   - `pipeline_runner.py` 现在会在 review 阻断时提取 reviewer-a/reviewer-b 的 blocker，输出 `Reviewer Discussion And Joint Revision Plan`、`Joint Non-Pass Reasons` 和 `Complete Revision Plan`；状态卡/failure summary 不再只写泛化的“方案评审未通过”。

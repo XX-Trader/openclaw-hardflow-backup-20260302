@@ -1,6 +1,6 @@
 # SmartMultiPlatformArbitrage nofx live evidence bridge
 
-> 最后验证：2026-05-07 15:02 Asia/Shanghai，reviewer blocker 合并与完整方案修订计划已安装到 nofx live runtime；用 `discord-spreadagent-20260507T061852834760Z` artifact 复盘，新 `delivery_plan` 已消除 root date path、缺 rationale、模板化步骤和验收缺口。
+> 最后验证：2026-05-07 15:32 Asia/Shanghai，`solution_review` 软门禁已安装到 nofx live runtime；普通方案质量 blocker 会写入 `solution_review_soft_gate.md` 并由 `code_execution` 吸收，`code_review` 继续硬审实现是否按需求和 reviewer 约束完成。
 > 适用范围：nofx 上 SmartMultiPlatformArbitrage 的 Discord 需求入口、Hermes runtime、项目交付优先工作流 live 证据桥。
 
 ## 归属边界
@@ -79,7 +79,7 @@ live 默认注入以下命令证据：
 | `external_research` | Hermes / web-agent 查外部资料和项目事实；纯本地 workflow/runtime 回归且无外部资料要求时，可用本地 artifact 合成 `NO_EXTERNAL_LOOKUP_NEEDED` 证据 | `command_external_research_*` |
 | `requirements_discussion` | project-agent 与 reviewer 双 AI 讨论需求 | `command_requirements_discussion_*` |
 | `requirements_review` | reviewer-a / reviewer-b 优先双模型审需求；provider/model 失败时 fallback，至少一个有效 `ready_for_solution` 且无 blocker 可降级放行 | `command_requirements_review_1/2` |
-| `solution_review` | reviewer-a / reviewer-b 优先双模型审 `delivery_plan.json`；provider/model 失败时 fallback，至少一个有效 `ready_for_implement` 且无 blocker 可降级放行；任一有效 reviewer 不通过时必须输出具体 blocker、双 reviewer 讨论和可合并到 `delivery_plan.json` 的完整 revised plan | `command_solution_review_1/2` |
+| `solution_review` | reviewer-a / reviewer-b 优先双模型审 `delivery_plan.json`；provider/model 失败时 fallback，至少一个有效 `ready_for_implement` 且无 blocker 可降级放行；普通方案质量 blocker 写入 `solution_review_soft_gate.md` 后软继续，凭证/secret/cookie/auth-state、force push、破坏性生产数据或无 reviewer 输出仍硬停 | `command_solution_review_1/2` |
 | `code_execution` | Hermes headless 执行代码改动 | `command_code_execution_*` |
 | `verification` | 固定命令验证，默认 `git diff --check` 与 `compileall -q scripts strategy_runtime`，单命令超时默认 300 秒 | `command_verification_*` |
 | `code_review` | reviewer-a / reviewer-b 优先双模型审代码；provider/model 失败时 fallback，至少一个有效 `pass` 且无 blocker 可降级放行 | `command_code_review_1/2` |
@@ -105,7 +105,7 @@ Discord 状态卡必须回答三个问题：
 - 每次回流使用 `<原 run_id>-repair<n>` 独立 run id，避免覆盖上一轮 `command-runs/*.json`。
 - 每次回流前，入口把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并通过 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT` 传给 live bridge；后续 Hermes stage prompt 会看到上一轮失败原因。
 - 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署、记忆写回或 Git 发布。
-- `solution_review` 不通过时，自动回流的输入不只是 `requires_revision`。`solution_review.md` / failure summary 必须包含 `Joint Non-Pass Reasons` 和 `Complete Revision Plan`，把 invalid target、缺失 `create_if_missing_rationale`、模板化实施步骤、验证命令缺口、git publish containment、docs/memory/todo/done 内容断言和 Discord manual acceptance gate 一起传给下一轮 `revise_solution`。
+- `solution_review` 不通过时，自动回流的输入不只是 `requires_revision`。`solution_review.md` / failure summary 必须包含 `Joint Non-Pass Reasons` 和 `Complete Revision Plan`，把 invalid target、缺失 `create_if_missing_rationale`、模板化实施步骤、验证命令缺口、git publish containment、docs/memory/todo/done 内容断言和 Discord manual acceptance gate 一起传给下一轮。普通方案质量问题不再硬停，而是生成 `solution_review_soft_gate.md` 注入 `code_execution`；后续 `code_review` 必须检查这些 blocker 是否被实现吸收。
 - 状态卡默认展开最多 24 条命令摘要，可用 `SMART_ARB_CHAT_COMMAND_LIMIT` 或 `--chat-command-limit` 调整；Discord profile 必须把中文状态卡回传到聊天频道，长消息分段发送，不能只给 run id、失败阶段和证据目录。
 - 非代码 Hermes 阶段不允许直接编辑 `research_report.md`、`requirements_discussion.md`、`verification_report.md` 等 pipeline artifacts；stage evidence 必须通过 stdout/final answer 返回，由 runner 持久化。bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，避免 agent 通过环境变量直接定位并覆盖 artifact。
 - `external_research` 对本地记忆蒸馏、环境基线、权限修复、workflow/runtime 回归这类不依赖互联网的问题，可以输出 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据，作为有效 research evidence。如果 Hermes 阶段空输出或缺 pass 状态，bridge 只会在 `run_meta.json.source_urls` 没有 http/https、需求没有官方/联网资料要求、且本地上下文 artifact 足够时合成本地证据；否则输出 bridge diagnostic 并保持失败。

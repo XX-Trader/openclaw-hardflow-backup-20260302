@@ -1,5 +1,14 @@
 # DECISIONS
 
+## 2026-05-07 - solution_review 是方案质量软门禁
+
+类型：decision
+范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`solution_review`、`code_execution`、`code_review`
+事实：方案评审不再把普通方案质量 blocker 当成实现前硬停。只要 `solution_review` 有 reviewer 输出，且未命中凭证/secret/cookie/auth-state、破坏性生产数据、force push、明确绕过安全门禁等硬边界，`requires_revision` 会被写入 `solution_review_soft_gate.md` 并以 `soft_continue` 进入 `code_execution`。code agent 必须把这些 blocker 当作强约束吸收，后续 `code_review` 再硬性判断是否按需求、方案和 reviewer 约束完成。无 reviewer 输出仍不软放行；requirements_review 和 code_review 仍是硬门禁。
+证据：`solution_review_can_soft_continue()`、`solution_review_hard_blocker_lines()`、`render_solution_review_soft_gate()`、`PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE`；live bridge 的 code_execution prompt 要求读取 `solution_review_soft_gate.md` 并吸收 reviewer blocker。测试覆盖普通计划 blocker 软继续、凭证 blocker 硬停、live pipeline 软继续到 code_execution 并完成 code_review。
+最后验证：2026-05-07 15:32
+复用建议：以后不要因为 `solution_review` 发现 `create_if_missing`、verification、docs/memory、acceptance 等计划缺口而反复停住；这些属于可吸收约束。真正要停的是安全/凭证/破坏性生产边界，或完全没有有效 reviewer 输出。
+
 ## 2026-05-07 - reviewer 未通过时必须产出联合修订方案
 
 类型：decision

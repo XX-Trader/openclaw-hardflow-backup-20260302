@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-07 15:32 - nofx 安装 solution_review 软门禁批次
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、`/home/arbops/.hermes/ops/smart_arb_live_bridge.py`、SmartMultiPlatformArbitrage `solution_review` / `code_execution` / `code_review` 链路
+事实：本机提交 `c746cf3a` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `4a0c999` fast-forward 到 `c746cf3`，runtime installer 返回 `ok=true`、`changed=true`、`missing_sources=[]`，`HEAD...origin/main=0 0`。`solution_review` 现在是方案质量软门禁：有 reviewer 输出且未命中凭证/secret/cookie/auth-state、破坏性生产数据、force push 等硬边界时，普通计划 blocker 会写入 `solution_review_soft_gate.md`，以 `soft_continue` 继续进入 `code_execution`；code agent 必须吸收这些 reviewer blocker，后续 `code_review` 仍按硬门禁检查是否按需求和 reviewer 约束修改。无 reviewer 输出仍不软放行。
+证据：远端安装态 `/home/arbops/.hermes/ops/pipeline_runner.py` 命中 `solution_review_can_soft_continue`、`solution_review_soft_gate.md` 与 `soft_continue`；`smart_arb_live_bridge.py` 命中 `solution_review_soft_gate.md`、`absorbed reviewer blockers` 和 `soft planning gate`。nofx 远端 `compileall` 通过；远端 `test_project_delivery_pipeline_runner` 65 项 OK、`test_smart_arb_live_bridge` 41 项 OK、`test_smart_arb_pipeline_entry` 49 项 OK；`git rev-list --left-right --count HEAD...origin/main` 为 `0 0`。测试后复核 `smart-arb-api` tmux 当前目录仍为 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`，`/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
+最后验证：2026-05-07 15:32
+复用建议：以后 `solution_review` 因文件级方案、rationale、验证命令、docs/memory 断言或 acceptance gap 不通过时，不要停在 `revise_solution` 循环；应检查是否生成 `solution_review_soft_gate.md`，让 code_execution 吸收并在 code_review 阶段验证。只有凭证/密钥/cookie/auth-state、破坏性生产数据、force push、无 reviewer 输出或明确绕过安全门禁时才在实现前硬停。
+
 ## 2026-05-07 15:02 - nofx 安装 reviewer blocker 合并与方案修订计划批次
 
 类型：deploy

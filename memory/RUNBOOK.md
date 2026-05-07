@@ -1,5 +1,14 @@
 # RUNBOOK
 
+## 2026-05-07 - solution_review 软门禁排障
+
+类型：runbook
+范围：nofx live bridge、`solution_review_soft_gate.md`、`code_execution`、`code_review`
+事实：`solution_review` 普通不通过不再默认停在 `revise_solution`。当 reviewer 输出的是计划质量 blocker，例如 target rationale、测试/验收命令、docs/memory 断言、acceptance closure，runner 会生成 `solution_review_soft_gate.md`，记录 `Decision: soft_continue` 和 `Absorbed Reviewer Blockers`，然后继续进入 `code_execution`。code agent 会通过 `PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE` 和上下文文件读取这些 blocker；code_review 继续硬性验证实现是否按需求和 reviewer 约束完成。
+证据：`pipeline_runner.py` 在 `solution_review` gate failed 时调用 `solution_review_can_soft_continue()`；`smart_arb_live_bridge.py` 的 code_execution prompt 明确 `solution_review_soft_gate.md` 是 mandatory implementation constraints；远端测试覆盖软继续链路。
+最后验证：2026-05-07 15:32，本地 runner 65 项、live bridge 41 项、entry 49 项 OK；nofx 远端同三组 65+41+49 项 OK，安装态 grep 命中 soft gate 逻辑。
+复用建议：排查时按顺序看：1. `solution_review.md` 是否有 reviewer 输出；2. 是否生成 `solution_review_soft_gate.md`；3. 若没有生成，打开 `solution_review.md` 查是否含凭证、secret、cookie、auth-state、force push、破坏性生产数据或无 reviewer 输出；4. 若已生成，后续失败应看 `code_execution` / `code_review`，不要再把普通方案 blocker 回退成方案阶段硬停。
+
 ## 2026-05-07 - solution_review 未通过原因与联合修订计划排障
 
 类型：runbook

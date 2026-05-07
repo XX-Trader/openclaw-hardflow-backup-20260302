@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-05-07 - 不要把方案质量 blocker 当成实现前硬停
+
+类型：pitfall
+范围：`solution_review.md`、`solution_review_soft_gate.md`、`code_execution`、`code_review`
+事实：用户确认方案侧 review 应该长期吸收和改进，而不是普通计划问题一出现就停住。旧链路会把 `solution_review` 的 `requires_revision` 一律阻断，导致方案质量问题、路径缺口、验收命令缺口和 docs/memory 断言不足被反复卡在方案阶段。现在这些属于软门禁：先记录、吸收、继续实现，再由 code_review 检查是否按要求改对。高风险策略动作也不应因为出现关键词永久停住；它们应进入人工确认和后续 reviewer/测试门禁。凭证/密钥/cookie/auth-state、force push 和破坏性生产数据仍是实现前硬边界。
+证据：新增 `solution_review_soft_gate.md` artifact 与 `PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE`；普通 blocker 测试通过并继续到 code_execution，凭证 blocker 测试仍硬停。
+最后验证：2026-05-07 15:32
+复用建议：以后看到“方案评审未通过”先看 blocker 类型。计划质量问题要进入 soft gate；安全/凭证/破坏性生产问题才硬停。用户纠正“这个不是高风险”时，应沉淀到风险分类和项目记忆，不要简单删除整套风险门禁。
+
 ## 2026-05-07 - solution_review 不能只返回泛化失败结论
 
 类型：pitfall

@@ -84,6 +84,7 @@
 - [x] [🟡 P1] 收敛 active agent 配置为 9 个 workflow owner，cron 只挂 `coordinator/project-agent`
 - [x] [🟡 P1] 将需求/方案/代码审查升级为两条独立 reviewer command report 门禁
 - [x] [🟡 P1] 将 reviewer 未通过原因合并为联合修订方案：`solution_review` 阻断时必须输出两路 reviewer blocker、讨论/挑战和可合并到 `delivery_plan.json` 的完整 revised plan；已安装到 nofx `HEAD=8602eed`
+- [x] [🟡 P1] 将 `solution_review` 调整为方案质量软门禁：普通计划 blocker 写入 `solution_review_soft_gate.md` 并注入实现，凭证/破坏性生产边界仍硬停；已安装到 nofx `HEAD=c746cf3`
 - [x] [🟡 P1] 修复 nofx Discord 工作流自修循环：工作流自身修复不再套进同一条 pipeline，review 失败补丁自动回滚并隔离旧业务漂移
 - [x] [🟡 P1] 将 nofx Discord profile 高权限工作流维护模板同步到 live profile，并在无活跃 pipeline 时重启 gateway 验证
 - [x] [🟡 P1] 将 specified_agent/session-run-id 批次推送并安装到 nofx live runtime：代码批次 `22cecab` 已安装，后续文档/记忆提交已拉到 nofx 且 `HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`，远端指定 agent smoke 返回 Task Center、executor run id、agent session id、agent run id、session key 和 `回答状态: 已回答完毕`

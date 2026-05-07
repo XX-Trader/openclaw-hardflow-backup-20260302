@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-07 - solution_review 软门禁实现并部署到 nofx
+
+类型：bugfix | deploy
+范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`test_project_delivery_pipeline_runner.py`、`test_smart_arb_live_bridge.py`、nofx runtime
+事实：按用户新口径，将方案评审调整为软门禁：普通方案质量 blocker 不再阻止进入实现，而是写入 `solution_review_soft_gate.md` 并注入 code_execution；code_execution 必须吸收这些 reviewer blocker，code_review 继续硬性检查是否按需求和 reviewer 约束完成。硬停范围保留为凭证/secret/cookie/auth-state、force push、破坏性生产数据、无 reviewer 输出或明确绕过安全门禁。高风险策略动作继续走人工确认，不因关键词永久停住。
+证据：提交 `c746cf3a` 已推送并安装到 nofx，远端 hardflow `HEAD=c746cf3`、runtime installer `ok=true/changed=true`、`HEAD...origin/main=0 0`。安装态 `/home/arbops/.hermes/ops/pipeline_runner.py` 命中 `solution_review_can_soft_continue` 和 `soft_continue`，`smart_arb_live_bridge.py` 命中 `solution_review_soft_gate.md`。本地与远端均通过 runner 65 项、live bridge 41 项、entry 49 项。
+最后验证：2026-05-07 15:32
+复用建议：后续 `solution_review` 普通不通过时，下一步应是吸收约束后进入实现，而不是继续修改 prompt 让 reviewer 改口。若 code_review 后仍失败，再按实现偏差回流修代码。
+
 ## 2026-05-07 - nofx solution_review blocker 合并与完整方案修订链路上线
 
 类型：bugfix | deploy
