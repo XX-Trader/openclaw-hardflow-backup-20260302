@@ -2613,6 +2613,49 @@ def is_delivery_entry_point(path: str) -> bool:
 
 
 
+
+FACT_SOURCE_PATHS = {
+    "MEMORY.md",
+    "memory/INDEX.md",
+    "memory/DEPLOYMENT.md",
+    "memory/RUNBOOK.md",
+    "docs/INDEX.md",
+    "todo.md",
+    "done.md",
+}
+
+
+def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, confidence: str) -> tuple[str, str] | None:
+    value = str(path or "").replace("\\", "/").strip()
+    lower = value.lower()
+    context = str(planning_context or "")
+    if not value:
+        return None
+    if value in FACT_SOURCE_PATHS:
+        return ("read_only_sources", "project_fact_source_read_only")
+    if value == "GRAPH_REPORT.md" or lower.endswith("/graph_report.md"):
+        return ("inspect_only_sources", "external_graph_context_not_business_target")
+    if lower.startswith("scripts/") and ("service" in lower or "hermes" in lower or "restart" in lower):
+        return ("inspect_only_sources", "ops_script_reference_not_business_target")
+    if lower.startswith("docs/research/"):
+        return ("read_only_sources", "research_document_read_only")
+    if (lower.startswith("docs/") or lower.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}) and not re.search(
+        rf"(?:修改|更新|写回|创建|新增|create|update|writeback).{{0,80}}{re.escape(value)}|{re.escape(value)}.{{0,80}}(?:修改|更新|写回|创建|新增|create|update|writeback)",
+        context,
+        re.IGNORECASE,
+    ):
+        return ("read_only_sources", "documentation_or_memory_read_only_unless_explicit_writeback")
+    if lower.startswith("docs/") and not exists and not re.search(r"(?:创建|新增|create|create_if_missing)", context, re.IGNORECASE):
+        return ("inspect_only_sources", "missing_doc_without_create_if_missing_rationale")
+    return None
+
+
+def append_classified_context_path(classified: dict[str, list[str]], bucket: str, path: str) -> None:
+    values = classified.setdefault(bucket, [])
+    if path not in values:
+        values.append(path)
+
+
 API_ENDPOINT_RE = re.compile(r"(?i)\b(?:GET|POST|PUT|PATCH|DELETE)\s+(/[A-Za-z0-9_./{}?=&:-]+)|`(/[A-Za-z0-9_./{}?=&:-]+)`")
 
 
@@ -2720,6 +2763,15 @@ def compile_delivery_plan(
         for key in ("read_only_sources", "reference_patterns", "inspect_only_sources")
         for path in classified_context_paths.get(key, [])
     }
+    source_by_path: dict[str, str] = {}
+    for path in explicit_target_paths:
+        source_by_path.setdefault(path, "explicit")
+    for path in repair_target_paths:
+        source_by_path.setdefault(path, "repair_context")
+    for path in discussion_target_paths:
+        source_by_path.setdefault(path, "requirements_discussion")
+    for path in review_target_paths:
+        source_by_path.setdefault(path, "review_candidate")
     target_paths = post_filter_target_paths(
         merge_plan_paths(explicit_target_paths, repair_target_paths, discussion_target_paths, review_target_paths, limit=64),
         filtered_target_candidates,
@@ -2738,7 +2790,22 @@ def compile_delivery_plan(
                 continue
             kept_target_paths.append(path)
         target_paths = kept_target_paths
-    target_paths = sort_delivery_target_paths(target_paths)
+    try:
+        repo = config.command_cwd.expanduser().resolve()
+    except OSError:
+        repo = Path(".")
+    filtered_actionable_paths: list[str] = []
+    for path in sort_delivery_target_paths(target_paths):
+        confidence = source_by_path.get(path, "project_evidence")
+        exists = (repo / path).exists()
+        bucket = delivery_non_target_bucket(path, exists, planning_context, confidence)
+        if bucket:
+            bucket_name, reason = bucket
+            append_classified_context_path(classified_context_paths, bucket_name, path)
+            add_filtered_target_finding(filtered_target_candidates, path, "delivery_plan_target_convergence", reason, path)
+            continue
+        filtered_actionable_paths.append(path)
+    target_paths = filtered_actionable_paths
     if not target_paths:
         target_paths = low_trust_plan_paths(
             research,
@@ -2751,20 +2818,7 @@ def compile_delivery_plan(
         )
         target_paths = sort_delivery_target_paths(target_paths)
     drop_accepted_target_findings(filtered_target_candidates, target_paths)
-    source_by_path: dict[str, str] = {}
-    for path in explicit_target_paths:
-        source_by_path.setdefault(path, "explicit")
-    for path in repair_target_paths:
-        source_by_path.setdefault(path, "repair_context")
-    for path in discussion_target_paths:
-        source_by_path.setdefault(path, "requirements_discussion")
-    for path in review_target_paths:
-        source_by_path.setdefault(path, "review_candidate")
     target_files = []
-    try:
-        repo = config.command_cwd.expanduser().resolve()
-    except OSError:
-        repo = Path(".")
     for path in target_paths:
         confidence = source_by_path.get(path, "project_evidence")
         exists = (repo / path).exists()
@@ -4526,89 +4580,118 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         render_graphify_scope_validation(graphify_scope_validation),
         verdict=str(graphify_scope_validation.get("scope_status") or "warning"),
     )
-    sol_review_reports = run_stage_commands(
-        config,
-        run_dir,
-        runtime,
-        artifacts,
-        requirement,
-        "solution_review",
-        config.solution_review_commands,
-        progress_callback=write_progress_state,
-    ) if config.solution_review_commands else []
-    sol_verdict = "requires_revision" if config.simulate_failure_stage == "solution" else "ready_for_implement"
-    if sol_review_reports:
-        sol_verdict = "ready_for_implement" if dual_review_pass("solution_review", sol_review_reports) else "requires_revision"
-    elif not config.dry_run:
-        sol_verdict = "requires_revision"
-    sol_review = record(
-        "solution_review",
-        "solution_review.md",
-        render_dual_ai_review("solution_review", sol_review_reports, sol_verdict)
-        if sol_review_reports or not config.dry_run
-        else consensus_review("solution_review", sol_verdict, requirement),
-        verdict=sol_verdict,
-    )
-    gate_ok, parsed_verdict = gate_result("solution_review", sol_review)
-    if not gate_ok:
-        if solution_review_can_soft_continue(sol_review_reports, parsed_verdict):
-            soft_gate_text = render_solution_review_soft_gate(sol_review_reports, parsed_verdict)
-            record(
-                "solution_review_soft_gate",
-                "solution_review_soft_gate.md",
-                soft_gate_text,
-                verdict="soft_continue",
-            )
-            previous_repair_context = os.environ.get("PIPELINE_REPAIR_CONTEXT")
-            absorbed_repair_context = build_solution_review_repair_context(soft_gate_text, sol_review)
-            os.environ["PIPELINE_REPAIR_CONTEXT"] = "\n".join(
-                part for part in (previous_repair_context, absorbed_repair_context) if str(part or "").strip()
-            )
-            try:
-                delivery_plan = compile_delivery_plan(
-                    config,
-                    runtime,
-                    resolved_requirement.read_text(encoding="utf-8"),
-                    artifacts,
-                )
-                delivery_plan["solution_review_absorbed_revision"] = {
-                    "applied": True,
-                    "source_artifact": "solution_review_soft_gate.md",
-                    "policy": "non-hard solution_review blockers are merged back into delivery_plan before code_execution",
-                }
-                record_payload("delivery_plan", "delivery_plan.json", delivery_plan)
-                record("solution_package", "solution.md", render_solution(delivery_plan), verdict="revised_after_solution_review")
-                graphify_scope_validation = validate_graphify_scope(config, runtime, delivery_plan, artifacts)
-                record_payload("graphify_scope_validation_payload", "graphify_scope_validation.json", graphify_scope_validation)
-                record(
-                    "graphify_scope_validation",
-                    "graphify_scope_validation.md",
-                    render_graphify_scope_validation(graphify_scope_validation),
-                    verdict=str(graphify_scope_validation.get("scope_status") or "warning"),
-                )
-            finally:
-                if previous_repair_context is None:
-                    os.environ.pop("PIPELINE_REPAIR_CONTEXT", None)
-                else:
-                    os.environ["PIPELINE_REPAIR_CONTEXT"] = previous_repair_context
-        else:
-            return finalize_pipeline_state(
+    solution_review_ledger_entries: list[dict[str, Any]] = []
+    solution_review_passed = False
+    parsed_verdict = None
+    solution_review_budget = max(1, int(config.max_repair_loops or 1))
+    for solution_review_attempt in range(1, solution_review_budget + 1):
+        sol_review_reports = run_stage_commands(
+            config,
+            run_dir,
+            runtime,
+            artifacts,
+            requirement,
+            "solution_review",
+            config.solution_review_commands,
+            progress_callback=write_progress_state,
+        ) if config.solution_review_commands else []
+        sol_verdict = "requires_revision" if config.simulate_failure_stage == "solution" else "ready_for_implement"
+        if sol_review_reports:
+            sol_verdict = "ready_for_implement" if dual_review_pass("solution_review", sol_review_reports) else "requires_revision"
+        elif not config.dry_run:
+            sol_verdict = "requires_revision"
+        sol_review = record(
+            "solution_review",
+            "solution_review.md",
+            render_dual_ai_review("solution_review", sol_review_reports, sol_verdict)
+            if sol_review_reports or not config.dry_run
+            else consensus_review("solution_review", sol_verdict, requirement),
+            verdict=sol_verdict,
+        )
+        gate_ok, parsed_verdict = gate_result("solution_review", sol_review)
+        solution_review_ledger_entries.append(
+            {
+                "attempt": solution_review_attempt,
+                "verdict": parsed_verdict or sol_verdict,
+                "hard_blockers": solution_review_hard_blocker_lines(sol_review_reports),
+                "absorbed": False,
+            }
+        )
+        if gate_ok:
+            solution_review_passed = True
+            break
+        if not solution_review_can_soft_continue(sol_review_reports, parsed_verdict):
+            break
+        soft_gate_text = render_solution_review_soft_gate(sol_review_reports, parsed_verdict)
+        record(
+            "solution_review_soft_gate",
+            "solution_review_soft_gate.md",
+            soft_gate_text,
+            verdict="soft_continue",
+        )
+        previous_repair_context = os.environ.get("PIPELINE_REPAIR_CONTEXT")
+        absorbed_repair_context = build_solution_review_repair_context(soft_gate_text, sol_review)
+        solution_review_ledger_entries[-1]["absorbed"] = True
+        solution_review_ledger_entries[-1]["repair_artifact"] = "solution_review_soft_gate.md"
+        record_payload(
+            "solution_review_revision_ledger",
+            "solution_review_revision_ledger.json",
+            {
+                "policy": "Each non-hard solution_review requires_revision is appended to the ledger, merged into PIPELINE_REPAIR_CONTEXT, and followed by a regenerated delivery_plan/solution before the next review attempt.",
+                "budget": solution_review_budget,
+                "entries": solution_review_ledger_entries,
+            },
+        )
+        os.environ["PIPELINE_REPAIR_CONTEXT"] = "\n".join(
+            part for part in (previous_repair_context, absorbed_repair_context) if str(part or "").strip()
+        )
+        try:
+            delivery_plan = compile_delivery_plan(
                 config,
-                block_pipeline(
-                    config,
-                    run_id,
-                    run_dir,
-                    runtime,
-                    stages,
-                    artifacts,
-                    "solution_review",
-                    "revise_solution",
-                    review_failure_detail("solution_review", sol_review_reports, "solution review did not allow implementation"),
-                    "solution_review.md",
-                    parsed_verdict,
-                ),
-                requirement,
+                runtime,
+                resolved_requirement.read_text(encoding="utf-8"),
+                artifacts,
             )
+            delivery_plan["solution_review_absorbed_revision"] = {
+                "applied": True,
+                "attempt": solution_review_attempt,
+                "source_artifact": "solution_review_soft_gate.md",
+                "ledger_artifact": "solution_review_revision_ledger.json",
+                "policy": "non-hard solution_review blockers are merged back into delivery_plan before the next solution_review/code_execution",
+            }
+            record_payload("delivery_plan", "delivery_plan.json", delivery_plan)
+            record("solution_package", "solution.md", render_solution(delivery_plan), verdict="revised_after_solution_review")
+            graphify_scope_validation = validate_graphify_scope(config, runtime, delivery_plan, artifacts)
+            record_payload("graphify_scope_validation_payload", "graphify_scope_validation.json", graphify_scope_validation)
+            record(
+                "graphify_scope_validation",
+                "graphify_scope_validation.md",
+                render_graphify_scope_validation(graphify_scope_validation),
+                verdict=str(graphify_scope_validation.get("scope_status") or "warning"),
+            )
+        finally:
+            if previous_repair_context is None:
+                os.environ.pop("PIPELINE_REPAIR_CONTEXT", None)
+            else:
+                os.environ["PIPELINE_REPAIR_CONTEXT"] = previous_repair_context
+    if not solution_review_passed and parsed_verdict != EXPECTED_VERDICTS["solution_review"]:
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "solution_review",
+                "revise_solution",
+                review_failure_detail("solution_review", sol_review_reports, "solution review did not allow implementation after iterative reviewer repair loop"),
+                "solution_review.md",
+                parsed_verdict,
+            ),
+            requirement,
+        )
 
     pre_execution_risk = apply_human_risk_confirmation(
         assess_pre_execution_risk(requirement, delivery_plan, artifacts),

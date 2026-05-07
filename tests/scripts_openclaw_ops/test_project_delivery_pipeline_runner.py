@@ -1215,22 +1215,21 @@ Verification commands:
             self.assertIn("智能多平台套利/monitoring/funding_discovery_service.py", paths)
             self.assertIn("智能多平台套利/monitoring/funding_rate_scanner.py", paths)
             self.assertIn("tests/test_funding_rate_scanner.py", paths)
-            self.assertIn("docs/观测与运维/币股平台只读监控方案.md", paths)
-            self.assertIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", paths)
-            self.assertIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", paths)
-            self.assertIn("memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md", paths)
+            self.assertNotIn("docs/观测与运维/币股平台只读监控方案.md", paths)
+            self.assertNotIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", paths)
+            self.assertNotIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", paths)
+            self.assertNotIn("memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md", paths)
+            read_only_paths = [item["path"] for item in plan["read_only_sources"]]
+            self.assertIn("docs/观测与运维/币股平台只读监控方案.md", read_only_paths)
+            self.assertIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", read_only_paths)
+            self.assertIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", read_only_paths)
+            self.assertIn("memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md", read_only_paths)
             self.assertNotIn("2026-04-27.md", paths)
             self.assertNotIn("stock_tokens.py", paths)
             self.assertNotIn("origin/main", paths)
             scanner = next(item for item in plan["target_files"] if item["path"] == "智能多平台套利/monitoring/funding_rate_scanner.py")
             self.assertTrue(scanner["create_if_missing"])
             self.assertIn("expected_net_daily", scanner["create_if_missing_rationale"])
-            doc_item = next(item for item in plan["target_files"] if item["path"] == "docs/观测与运维/币股平台只读监控方案.md")
-            self.assertTrue(doc_item["create_if_missing"])
-            self.assertIn("manual Discord acceptance boundary", doc_item["create_if_missing_rationale"])
-            memory_item = next(item for item in plan["target_files"] if item["path"] == "memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md")
-            self.assertTrue(memory_item["create_if_missing"])
-            self.assertIn("compileall including scripts", memory_item["create_if_missing_rationale"])
             self.assertFalse(any("Inspect `" in item["description"] for item in plan["implementation_steps"]))
             self.assertFalse(any(item["path"] in {"todo.md", "done.md", "MEMORY.md"} for item in plan["entry_points"]))
             self.assertFalse(any(item["path"].startswith("tests/") for item in plan["entry_points"]))
@@ -1686,11 +1685,18 @@ Verification commands:
             )
             solution_blocker.write_text(
                 (
-                    "print('Final verdict: requires_revision')\n"
+                    "import pathlib\n"
+                    "state = pathlib.Path(__file__).with_suffix('.count')\n"
+                    "count = int(state.read_text() or '0') if state.exists() else 0\n"
+                    "state.write_text(str(count + 1))\n"
                     "print('Reviewer role: reviewer-b')\n"
                     "print('Reviewer provider: zai')\n"
                     "print('Reviewer model: glm-5.1')\n"
-                    "print('Blocker: verification_commands missing docs memory content assertion and create_if_missing rationale.')\n"
+                    "if count == 0:\n"
+                    "    print('Final verdict: requires_revision')\n"
+                    "    print('Blocker: verification_commands missing docs memory content assertion and create_if_missing rationale.')\n"
+                    "else:\n"
+                    "    print('Final verdict: ready_for_implement')\n"
                 ),
                 encoding="utf-8",
             )
@@ -1725,7 +1731,10 @@ Verification commands:
             self.assertIn("Decision: soft_continue", soft_gate)
             self.assertIn("verification_commands missing docs memory content assertion", soft_gate)
             solution_review = Path(state["artifacts"]["solution_review"]).read_text(encoding="utf-8")
-            self.assertIn("Final verdict: requires_revision", solution_review)
+            self.assertIn("Final verdict: ready_for_implement", solution_review)
+            self.assertIn("solution_review_revision_ledger", state["artifacts"])
+            ledger = json.loads(Path(state["artifacts"]["solution_review_revision_ledger"]).read_text(encoding="utf-8"))
+            self.assertTrue(ledger["entries"][0]["absorbed"])
             self.assertIn("solution review plan-quality blockers are converted into implementation constraints", soft_gate)
             revised_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
             self.assertTrue(revised_plan.get("solution_review_absorbed_revision", {}).get("applied"))
@@ -2553,8 +2562,9 @@ Verification commands:
         self.assertNotIn("PROJECT_PROFILE.md/DECISIONS.md", paths)
         self.assertNotIn("memory/smart-multi-platform-arbitrage/", paths)
         self.assertFalse(any(path.startswith("curl ") for path in paths))
-        self.assertIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", paths)
-        self.assertIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", paths)
+        read_only_paths = [item["path"] for item in plan["read_only_sources"]]
+        self.assertIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", read_only_paths)
+        self.assertIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", read_only_paths)
         self.assertIn("tests/test_stock_token_public_adapter.py", paths)
         self.assertNotIn("/api/stock_token_public_adapter.py", paths)
         negated = [item for item in plan.get("plan_findings", {}).get("filtered_target_candidates", []) if item.get("reason") == "negated_context"]
@@ -2591,6 +2601,9 @@ Verification commands:
             (repo / "智能多平台套利" / "api" / "routes" / "strategy.py").write_text("# route\n", encoding="utf-8")
             (repo / "智能多平台套利" / "api" / "routes" / "stock_tokens.py").write_text("# reference\n", encoding="utf-8")
             (repo / "智能多平台套利" / "config_security.py").write_text("# safety\n", encoding="utf-8")
+            (repo / "scripts").mkdir(parents=True)
+            (repo / "scripts" / "nofx_hermes_services.sh").write_text("#!/bin/sh\n", encoding="utf-8")
+            (repo / "MEMORY.md").write_text("facts\n", encoding="utf-8")
             (repo / "智能多平台套利" / "arbitrage_config.json5").write_text("{}\n", encoding="utf-8")
             artifacts = {}
             run_dir = Path(tmp) / "run"
@@ -2603,6 +2616,8 @@ Verification commands:
                 "read_only_sources: 智能多平台套利/arbitrage_config.json5 是只读源，不建议修改。\n"
                 "reference_patterns: 智能多平台套利/api/routes/stock_tokens.py 只是参考模式，不应默认修改。\n"
                 "inspect_only: 智能多平台套利/config_security.py 应作为 safety contract reference，除非测试发现缺口。\n"
+                "优先遵守/读取 MEMORY.md，不等于必须写回。\n"
+                "scripts/nofx_hermes_services.sh 只是运维 smoke 参考，不是本轮业务修改目标。\n"
                 "api_contracts: GET /api/strategy/config returns redacted non-sensitive config.\n",
                 encoding="utf-8",
             )
@@ -2622,9 +2637,13 @@ Verification commands:
             self.assertNotIn("智能多平台套利/arbitrage_config.json5", target_paths)
             self.assertNotIn("智能多平台套利/api/routes/stock_tokens.py", target_paths)
             self.assertNotIn("智能多平台套利/config_security.py", target_paths)
+            self.assertNotIn("MEMORY.md", target_paths)
+            self.assertNotIn("scripts/nofx_hermes_services.sh", target_paths)
             self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
+            self.assertIn("MEMORY.md", [item["path"] for item in plan["read_only_sources"]])
             self.assertIn("智能多平台套利/api/routes/stock_tokens.py", [item["path"] for item in plan["reference_patterns"]])
             self.assertIn("智能多平台套利/config_security.py", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("scripts/nofx_hermes_services.sh", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("solution_review_readiness", plan)
             self.assertIn("must_change_targets", plan)
             self.assertEqual(["智能多平台套利/api/routes/strategy.py"], [item["path"] for item in plan["must_change_targets"]])
