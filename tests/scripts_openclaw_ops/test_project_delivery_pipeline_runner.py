@@ -1727,6 +1727,28 @@ Verification commands:
             solution_review = Path(state["artifacts"]["solution_review"]).read_text(encoding="utf-8")
             self.assertIn("Final verdict: requires_revision", solution_review)
             self.assertIn("solution review plan-quality blockers are converted into implementation constraints", soft_gate)
+            revised_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+            self.assertTrue(revised_plan.get("solution_review_absorbed_revision", {}).get("applied"))
+            self.assertTrue(revised_plan.get("plan_findings", {}).get("repair_context_present"))
+
+    def test_solution_review_negated_credential_contract_is_not_hard_gate(self):
+        report = {
+            "ok": True,
+            "command": "review --reviewer-role reviewer-b --provider zai --model glm-5.1",
+            "stdout": (
+                "Final verdict: requires_revision\n"
+                "Reviewer role: reviewer-b\n"
+                "Reviewer provider: zai\n"
+                "Reviewer model: glm-5.1\n"
+                "Blocker: plan-quality issue only; do not read credentials, tokens, cookies, auth JSON, or private keys.\n"
+                "Blocker: remove pipeline_runner.py from target_files and move no_trading/simulation_only into runtime_contracts.\n"
+            ),
+            "stderr": "",
+        }
+
+        self.assertTrue(_mod.solution_review_can_soft_continue([report], "requires_revision"))
+        self.assertEqual([], _mod.solution_review_hard_blocker_lines([report]))
+        self.assertEqual("runtime_contract_not_file_path", _mod.plan_path_rejection_reason("simulation_only/no_trading"))
 
     def test_live_requirements_review_requires_two_independent_reports(self):
         with tempfile.TemporaryDirectory() as tmp:

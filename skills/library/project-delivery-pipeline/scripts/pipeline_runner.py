@@ -121,6 +121,10 @@ UNICODE_PATH_TOKEN_RE = re.compile(
     re.IGNORECASE,
 )
 PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|json5|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)$)", re.IGNORECASE)
+PSEUDO_TARGET_PATH_RE = re.compile(
+    r"^(?:simulation_only|no_trading|read_only|signal_only|mock|replay|PRODUCTION_TRADING_ENABLED(?:=false)?)(?:/(?:simulation_only|no_trading|read_only|signal_only|mock|replay|PRODUCTION_TRADING_ENABLED(?:=false)?))*$",
+    re.IGNORECASE,
+)
 PATH_CONTEXT_SPLIT_RE = re.compile(
     r"[\r\n;；。]+|\b(?:but|however|yet|and|only)\b|(?:但|但是|不过|然而|并且|然后|同时|只有)",
     re.IGNORECASE,
@@ -620,7 +624,11 @@ def solution_review_hard_blocker_lines(reports: list[dict[str, Any]], limit: int
     seen: set[str] = set()
     for report in blocking_review_reports("solution_review", reports) or reports:
         role = reviewer_role_for_report(report) or "reviewer"
-        for raw_line in report_text(report).splitlines():
+        # Reviewer artifacts often contain negative safety contracts such as
+        # "do not read credentials".  Those must not be mistaken for a positive
+        # hard boundary; reuse the pre-execution negated-risk scrubber before
+        # applying the hard-blocker pattern.
+        for raw_line in scrub_negated_risk_lines(report_text(report)).splitlines():
             text = " ".join(raw_line.strip().strip("-* ").split())
             if not text or len(text) < 8 or not SOLUTION_REVIEW_HARD_BLOCKER_RE.search(text):
                 continue
@@ -661,6 +669,24 @@ def render_solution_review_soft_gate(reports: list[dict[str, Any]], parsed_verdi
             "## Hard Blockers Detected",
             *(hard_blockers or ["- none"]),
         ]
+    )
+
+
+def build_solution_review_repair_context(soft_gate_text: str, solution_review_text: str) -> str:
+    """Context used to regenerate delivery_plan after solution_review discussion.
+
+    The reviewer discussion is not just a message to humans: non-hard solution
+    blockers must be absorbed into a revised plan before code_execution.
+    """
+    return "\n".join(
+        part
+        for part in (
+            "# Solution Review Absorbed Revision Context",
+            soft_gate_text,
+            "## Original Solution Review",
+            read_optional_file(Path(solution_review_text), str(solution_review_text)) if isinstance(solution_review_text, (str, Path)) else str(solution_review_text or ""),
+        )
+        if str(part or "").strip()
     )
 
 
@@ -1453,6 +1479,8 @@ def plan_path_rejection_reason(path: str) -> str:
     if re.match(r"^(?:origin|upstream|refs/remotes)/[A-Za-z0-9_.-]+$", path):
         return "git_ref_not_file_path"
     name = Path(path).name
+    if PSEUDO_TARGET_PATH_RE.fullmatch(path.replace("\\", "/")):
+        return "runtime_contract_not_file_path"
     if name in PIPELINE_ARTIFACT_FILES:
         return "pipeline_artifact_file"
     if not PLAN_PATH_RE.search(path):
@@ -1631,7 +1659,17 @@ def is_control_plane_plan_path(path: str) -> bool:
 
 
 def allows_control_plane_targets(text: str) -> bool:
-    return bool(CONTROL_PLANE_TARGET_REQUEST_RE.search(str(text or "")))
+    value = str(text or "")
+    # A business rerun may mention that workflow/runtime was already fixed as
+    # history or as a forbidden target.  Do not let that prose reopen workflow
+    # host files as SmartMultiPlatformArbitrage delivery targets.
+    if re.search(
+        r"(?:已修复|已验证|stale\s+runner\s+(?:已)?(?:fixed|修复)|重新(?:执行|跑).{0,40}业务|本轮.{0,40}业务|不应作为.{0,40}(?:业务|target_files|target)|不得.{0,40}(?:workflow|runtime).{0,20}(?:target|目标))",
+        value,
+        re.IGNORECASE,
+    ):
+        return False
+    return bool(CONTROL_PLANE_TARGET_REQUEST_RE.search(value))
 
 
 def add_filtered_target_finding(
@@ -4462,12 +4500,45 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     gate_ok, parsed_verdict = gate_result("solution_review", sol_review)
     if not gate_ok:
         if solution_review_can_soft_continue(sol_review_reports, parsed_verdict):
+            soft_gate_text = render_solution_review_soft_gate(sol_review_reports, parsed_verdict)
             record(
                 "solution_review_soft_gate",
                 "solution_review_soft_gate.md",
-                render_solution_review_soft_gate(sol_review_reports, parsed_verdict),
+                soft_gate_text,
                 verdict="soft_continue",
             )
+            previous_repair_context = os.environ.get("PIPELINE_REPAIR_CONTEXT")
+            absorbed_repair_context = build_solution_review_repair_context(soft_gate_text, sol_review)
+            os.environ["PIPELINE_REPAIR_CONTEXT"] = "\n".join(
+                part for part in (previous_repair_context, absorbed_repair_context) if str(part or "").strip()
+            )
+            try:
+                delivery_plan = compile_delivery_plan(
+                    config,
+                    runtime,
+                    resolved_requirement.read_text(encoding="utf-8"),
+                    artifacts,
+                )
+                delivery_plan["solution_review_absorbed_revision"] = {
+                    "applied": True,
+                    "source_artifact": "solution_review_soft_gate.md",
+                    "policy": "non-hard solution_review blockers are merged back into delivery_plan before code_execution",
+                }
+                record_payload("delivery_plan", "delivery_plan.json", delivery_plan)
+                record("solution_package", "solution.md", render_solution(delivery_plan), verdict="revised_after_solution_review")
+                graphify_scope_validation = validate_graphify_scope(config, runtime, delivery_plan, artifacts)
+                record_payload("graphify_scope_validation_payload", "graphify_scope_validation.json", graphify_scope_validation)
+                record(
+                    "graphify_scope_validation",
+                    "graphify_scope_validation.md",
+                    render_graphify_scope_validation(graphify_scope_validation),
+                    verdict=str(graphify_scope_validation.get("scope_status") or "warning"),
+                )
+            finally:
+                if previous_repair_context is None:
+                    os.environ.pop("PIPELINE_REPAIR_CONTEXT", None)
+                else:
+                    os.environ["PIPELINE_REPAIR_CONTEXT"] = previous_repair_context
         else:
             return finalize_pipeline_state(
                 config,
