@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-05-07 - solution_review 不能只返回泛化失败结论
+
+类型：pitfall
+范围：`solution_review.md`、`failure_summary.md`、`delivery_plan.json`、`revise_solution` 自动回流
+事实：`discord-spreadagent-20260507T061852834760Z` 已经进入 `solution_review`，两个 reviewer fallback 后都产出有效 `requires_revision`，所以阻塞是正确的；问题在于旧输出没有把未通过原因变成下一轮可执行修订契约，导致状态卡反复只说“方案评审未通过 / revise_solution”，而 `delivery_plan.json` 仍可能保留 root 日期文件、缺失 `create_if_missing` 理由、模板化 `Inspect ... define gap` 步骤、docs/memory 内容断言不足、compileall 缺 `scripts`、git publish containment 和 Discord manual acceptance gate 不完整等问题。
+证据：修复后 runner 会提取 reviewer blocker 并输出 `Joint Non-Pass Reasons` 与 `Complete Revision Plan`；`plan_path_rejection_reason()` 拒绝根目录日期文件；`create_if_missing_rationale()` 覆盖 docs 与 SmartMulti 项目 memory 目标；`implementation_step_description()` 为已知 API、scripts、docs/memory/todo/done 生成具体动作；`configured_verification_commands()` / `explicit_verification_commands()` 补齐 `scripts` compileall、内容断言和 git containment。回归 replay 证明上述缺口已收敛。
+最后验证：2026-05-07 15:02
+复用建议：后续方案评审卡住时，先判断是“reviewer provider/model 失败”还是“有效 reviewer 真实 blocker”。前者修 fallback；后者必须让 reviewer 输出完整修订方案，并让 `delivery_plan.json` 自动吸收，不能通过降低 review 标准、删除 reviewer 或重跑同一份方案绕过。
+
 ## 2026-05-07 - external_research 空失败不能等同于缺少联网资料
 
 类型：pitfall

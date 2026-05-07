@@ -1,5 +1,14 @@
 # RUNBOOK
 
+## 2026-05-07 - solution_review 未通过原因与联合修订计划排障
+
+类型：runbook
+范围：nofx live bridge、`solution_review`、`solution_review.md`、`delivery_plan.json`、`auto_repair_context_*.md`
+事实：`solution_review` 的职责不只是给出 pass/fail。正常阻断时必须同时产出三类信息：1. 每个有效 reviewer 的具体未通过原因；2. reviewer-a 与 reviewer-b 的讨论/挑战/合并结论；3. 可直接用于下一轮 `revise_solution` 的完整修订计划。runner 现在会把两路 reviewer 的 blocker 合并进 failure summary，并在 `solution_review.md` 输出 `Reviewer Discussion And Joint Revision Plan`、`Joint Non-Pass Reasons` 和 `Complete Revision Plan`。provider/model 失败仍走 fallback；但任一有效 reviewer 的真实 blocker 仍应阻断。
+证据：`render_dual_ai_review()` 合成 reviewer 讨论与联合修订计划；`review_failure_detail()` / `extract_review_blocker_lines()` 会把 `requires_revision` 报告中的 Blocker、missing rationale、invalid path、verification gap、git containment、manual acceptance 等原因写入阻塞详情；live bridge 的 review prompt 明确要求 reviewer 在不通过时输出全部非通过原因和可合并到 `delivery_plan.json` 的修订方案。
+最后验证：2026-05-07 15:02，本地/远端 runner、live bridge、entry 定向回归均通过；用 `discord-spreadagent-20260507T061852834760Z` artifact 复盘，新计划已过滤 `2026-04-27.md`、补齐缺失 docs rationale、去掉模板化步骤，并包含 scripts compileall、docs/memory 内容断言、git containment 和 Discord manual acceptance gate。
+复用建议：以后看到状态卡只写“方案评审未通过”但没有具体原因，要按 workflow bug 处理；合格状态卡必须能让 operator 不打开全部日志也知道下一轮要改哪些字段。若已出现 `Joint Non-Pass Reasons`，就按清单修 `delivery_plan.json`，不要把 reviewer blocker 当成模型失败。
+
 ## 2026-05-07 - external_research 空失败的本地证据降级
 
 类型：runbook

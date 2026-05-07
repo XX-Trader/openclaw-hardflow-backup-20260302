@@ -1,5 +1,14 @@
 # DECISIONS
 
+## 2026-05-07 - reviewer 未通过时必须产出联合修订方案
+
+类型：decision
+范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、需求/方案/代码 review 门禁、`revise_solution`
+事实：双 reviewer 不是只做二元审核票决。若任一有效 reviewer 给出 `requires_revision`、`fail` 或阶段非期望 verdict，review 阶段仍必须阻断，但输出必须包含完整非通过原因、两路 reviewer 的讨论/挑战和合并后的可执行修订计划。该计划要能落回 `delivery_plan.json`，包括目标文件处理、`create_if_missing` 理由、实施步骤、验收命令、发布 containment、文档/记忆断言、人工验收边界和剩余阻塞项。provider/model 不可用仍按 fallback / degraded single valid 规则处理；真实 blocker 不因 fallback 成功而被放行。
+证据：`render_reviewer_discussion()`、`render_dual_ai_review()`、`review_failure_detail()` 与 `extract_review_blocker_lines()`；live bridge 的 review prompt 已要求 reviewer 不通过时写出全部 Blocker 和完整 revised plan。测试覆盖具体 reviewer blocker 即使另一 reviewer 通过仍阻断、双 reviewer 输出联合修订计划，以及最新 nofx run artifact 复盘后 `delivery_plan` 消除 root date path、缺 rationale、模板化步骤和验收缺口。
+最后验证：2026-05-07 15:02
+复用建议：后续不要把 reviewer 不通过输出压缩成“requires_revision”。状态卡、failure summary 和 auto repair context 都要保留可执行 blocker 清单；下一轮 `revise_solution` 应优先消费该清单，而不是重新生成泛化方案。
+
 ## 2026-05-07 - reviewer 模型不可用时按有效输出降级放行
 
 类型：decision

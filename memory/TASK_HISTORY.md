@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-07 - nofx solution_review blocker 合并与完整方案修订链路上线
+
+类型：bugfix | deploy
+范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`test_project_delivery_pipeline_runner.py`、`test_smart_arb_live_bridge.py`、nofx runtime、run `discord-spreadagent-20260507T061852834760Z`
+事实：修复 `solution_review` 正确阻断后缺少可执行未通过原因和完整修订方案的问题。该 run 的 external_research、requirements review 和 graphify warning 已通过/可继续，但两个 reviewer 都对方案给出有效 `requires_revision`；主要 blocker 是缺失/新增文件 rationale 不完整、`2026-04-27.md` 根目录日期文件不合格、部分实施步骤模板化、docs/memory/todo/done 只有存在性检查、compileall 缺 `scripts`、git publish/origin containment 和 Discord manual acceptance 闭环不足。现在 review 失败会输出具体 `Joint Non-Pass Reasons` 和 `Complete Revision Plan`，下一轮修订不再只能看到泛化失败结论。
+证据：提交 `8602eedc` 已推送并安装到 nofx，远端 hardflow `HEAD=8602eed`、runtime installer `ok=true/changed=true`、`HEAD...origin/main=0 0`。安装后用同一失败 run 的 artifact 复盘 `delivery_plan`：`contains_root_date_file=false`、`missing_without_create_if_missing_rationale=[]`、`template_inspect_steps=[]`，并存在 scripts compileall、docs/memory/todo/done 内容断言、`git rev-list --left-right --count HEAD...origin/main` 和 `blocked_manual_acceptance_required` release gate。
+最后验证：2026-05-07 15:02 本地 runner 62 项、live bridge 40 项、entry 49 项 OK，相关文件 `compileall` 与 `git diff --check` 通过；nofx 远端 compileall、runner 62 项、live bridge 40 项、entry 49 项、repo containment 和内控 API smoke 均通过。
+复用建议：后续再看到 `solution_review: requires_revision / blocked`，先读 `solution_review.md` 的联合 blocker 与 revised plan；如果没有这些内容，修 review 输出契约。如果有，就让 `revise_solution` 按字段改 `delivery_plan.json`，不要通过放松 reviewer 或重复重跑同一方案绕过。
+
 ## 2026-05-07 - nofx external_research 空失败修复并部署
 
 类型：bugfix | deploy

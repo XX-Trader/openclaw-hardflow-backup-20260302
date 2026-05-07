@@ -7,6 +7,13 @@
 
 ## 2026-05-07 已完成
 
+- [x] [2026-05-07] **solution_review 未通过原因与联合修订方案上线**
+  - 定位 `discord-spreadagent-20260507T061852834760Z` 仍卡在 `solution_review`：两个 reviewer fallback 后都给出有效 `requires_revision`，阻塞本身正确；真正缺口是未把每个 reviewer 的未通过原因汇总成下一轮可执行的完整方案修订契约。
+  - `pipeline_runner.py` 现在会在 review 阻断时提取 reviewer-a/reviewer-b 的 blocker，输出 `Reviewer Discussion And Joint Revision Plan`、`Joint Non-Pass Reasons` 和 `Complete Revision Plan`；状态卡/failure summary 不再只写泛化的“方案评审未通过”。
+  - `delivery_plan` 生成同步收口：过滤根目录日期文件 `2026-04-27.md`，缺失 docs/memory 目标补 `create_if_missing_rationale`，去掉模板化 `Inspect ... define gap` 步骤，补齐 `scripts` compileall、docs/memory/todo/done 内容断言、git containment 和 Discord manual acceptance gate。
+  - 已部署到 nofx：远端仓库 `HEAD=8602eed`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`；用原失败 run artifact 复盘，新计划已消除 root date path、缺 rationale、模板化步骤和验收缺口。
+  - 验证：本地 runner 62 项、live bridge 40 项、entry 49 项 OK；nofx 远端 compileall、runner 62 项、live bridge 40 项、entry 49 项、repo containment 和内控 API smoke 均通过。
+
 - [x] [2026-05-07] **external_research 空失败本地证据降级上线**
   - 定位 `discord-spreadagent-20260507T051921542201Z` 没进入方案评审，而是在 `external_research` 阶段因 bridge 返回码 2 阻塞；artifact 里只有 `LIVE_BRIDGE_STAGE: external_research` 与 `LIVE_BRIDGE_STATUS: fail`，没有 stderr 和有效 research evidence。
   - `smart_arb_live_bridge.py` 现在会在纯本地 workflow/runtime 回归任务中识别已有上下文证据，并在 Hermes 空失败时合成 `NO_EXTERNAL_LOOKUP_NEEDED` 本地证据；若存在 http/https 来源或明确要求官方/联网资料，仍保持失败并输出诊断。

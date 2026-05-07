@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-07 15:02 - nofx 安装 reviewer blocker 合并与方案修订计划批次
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、`/home/arbops/.hermes/ops/smart_arb_live_bridge.py`、SmartMultiPlatformArbitrage `solution_review` / `revise_solution` 链路
+事实：本机提交 `8602eedc` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `59ca3e3` fast-forward 到 `8602eed`，runtime installer 返回 `ok=true`、`changed=true`、`missing_sources=[]`，`HEAD...origin/main=0 0`。本轮未改 profile SOUL，因此没有重启 Discord gateway。修复后，review 阶段如果返回 `requires_revision`，状态卡和 failure summary 会写出 reviewer-a / reviewer-b 的具体未通过原因，并追加 `Reviewer Discussion And Joint Revision Plan`，把两路 reviewer 的 blocker 合并成下一轮 `delivery_plan.json` 可吸收的完整修订契约。方案生成同时过滤根目录日期文件如 `2026-04-27.md`，为缺失 docs/memory 目标补 `create_if_missing_rationale`，去掉 `Inspect ... define gap` 模板化步骤，补齐 `scripts` compileall、docs/memory/todo/done 内容断言、`origin/main` containment 和 Discord 最终人工验收 gate。
+证据：用失败 run `discord-spreadagent-20260507T061852834760Z` 的 artifact 在 nofx 已安装代码上复盘 `delivery_plan`，结果为 `contains_root_date_file=false`、`bad_root_date_paths=[]`、`missing_without_create_if_missing_rationale=[]`、`template_inspect_steps=[]`，`compileall_commands` 包含 `智能多平台套利 scripts tests`，且 `has_docs_memory_content_assertion=true`、`has_git_containment_count=true`、`has_manual_discord_acceptance_gate=true`。nofx 远端 `compileall` 通过；远端 `test_project_delivery_pipeline_runner` 62 项 OK、`test_smart_arb_live_bridge` 40 项 OK、`test_smart_arb_pipeline_entry` 49 项 OK；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`，`smart-arb-api` tmux 当前目录为 SmartMultiPlatformArbitrage 真实业务目录。
+最后验证：2026-05-07 15:02
+复用建议：以后 `solution_review` 被 reviewer 正确阻断时，不要放松 reviewer 或只让模型“再审一次”。先读 `solution_review.md` 的 `Joint Non-Pass Reasons` 与 `Complete Revision Plan`，再确认下一轮 `delivery_plan.json` 是否消除了 root date 文件、缺失 rationale、模板化实施步骤、验收命令缺口、git publish containment 和 Discord manual acceptance gate 缺口。
+
 ## 2026-05-07 14:01 - nofx 安装 external_research 本地证据降级批次
 
 类型：deploy
