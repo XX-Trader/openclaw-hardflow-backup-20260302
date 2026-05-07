@@ -827,6 +827,79 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         self.assertIn("NO_EXTERNAL_LOOKUP_NEEDED", text)
         self.assertIn("LIVE_BRIDGE_STATUS: pass", text)
 
+    def test_external_research_synthesizes_local_only_evidence_when_hermes_empty_fails(self):
+        bridge = self._load_bridge_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            run_dir = tmp / "run"
+            run_dir.mkdir()
+            (run_dir / "run_meta.json").write_text(json.dumps({"source_urls": ["discord:spreadagent"]}), encoding="utf-8")
+            for name in ("context_snapshot.md", "project_memory_context.md", "git_repository_context.md", "graphify_context.md"):
+                (run_dir / name).write_text(f"# {name}\nlocal evidence\n", encoding="utf-8")
+            profile_dir = tmp / "profiles" / "spreadagent"
+            profile_dir.mkdir(parents=True)
+            args = SimpleNamespace(
+                runtime_home=tmp,
+                profile="spreadagent",
+                hermes_bin=Path("/tmp/hermes"),
+                provider="openai-codex",
+                model="gpt-5.5",
+                max_turns=24,
+                allow_yolo=False,
+                project_dir=tmp,
+                home=tmp,
+            )
+            out = StringIO()
+
+            with mock.patch.dict(os.environ, {"PIPELINE_RUN_DIR": str(run_dir)}, clear=True), mock.patch.object(
+                bridge,
+                "run_command",
+                return_value=subprocess.CompletedProcess(["hermes"], 2, "", ""),
+            ), redirect_stdout(out):
+                rc = bridge.run_hermes_stage("external_research", args)
+
+        text = out.getvalue()
+        self.assertEqual(0, rc)
+        self.assertIn("# synthesized_local_only_research", text)
+        self.assertIn("NO_EXTERNAL_LOOKUP_NEEDED", text)
+        self.assertIn("LIVE_BRIDGE_STATUS: pass", text)
+        self.assertIn("context_snapshot.md", text)
+
+    def test_external_research_empty_failure_stays_failed_when_http_source_requires_research(self):
+        bridge = self._load_bridge_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            run_dir = tmp / "run"
+            run_dir.mkdir()
+            (run_dir / "run_meta.json").write_text(json.dumps({"source_urls": ["https://example.invalid/docs"]}), encoding="utf-8")
+            for name in ("context_snapshot.md", "project_memory_context.md", "git_repository_context.md", "graphify_context.md"):
+                (run_dir / name).write_text(f"# {name}\nlocal evidence\n", encoding="utf-8")
+            args = SimpleNamespace(
+                runtime_home=tmp,
+                profile="spreadagent",
+                hermes_bin=Path("/tmp/hermes"),
+                provider="openai-codex",
+                model="gpt-5.5",
+                max_turns=24,
+                allow_yolo=False,
+                project_dir=tmp,
+                home=tmp,
+            )
+            out = StringIO()
+
+            with mock.patch.dict(os.environ, {"PIPELINE_RUN_DIR": str(run_dir)}, clear=True), mock.patch.object(
+                bridge,
+                "run_command",
+                return_value=subprocess.CompletedProcess(["hermes"], 2, "", ""),
+            ), redirect_stdout(out):
+                rc = bridge.run_hermes_stage("external_research", args)
+
+        text = out.getvalue()
+        self.assertEqual(2, rc)
+        self.assertIn("# bridge failure diagnostic", text)
+        self.assertIn("http_source_url_requires_real_research", text)
+        self.assertIn("LIVE_BRIDGE_STATUS: fail", text)
+
     def test_non_code_hermes_env_hides_pipeline_artifact_paths(self):
         bridge = self._load_bridge_module()
         args = SimpleNamespace(
