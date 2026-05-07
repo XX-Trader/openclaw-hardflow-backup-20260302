@@ -2646,7 +2646,10 @@ Verification commands:
                 "智能多平台套利/api/static/dashboard/index.html、智能多平台套利/api/static/dashboard/dashboard.js、智能多平台套利/arbitrage/market_adapters/__init__.py 当前未发现硬编码，仅 inspect。\n"
                 "cron/jobs.json 是调度/runtime 配置，不是本轮必改业务目标；static/index/dashboard.js 是不完整静态路径漂移，不是 repo target。\n"
                 "Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf / 交易所模块 tbl1jj9DTcfAd6tZ / 平台范围 是只读事实源。\n"
-                "api_contracts: GET /api/stock-tokens/status returns redacted non-sensitive config.\n",
+                "api_contracts: GET /api/stock-tokens/status returns redacted non-sensitive config.\n"
+                "*auth*.json 是 forbidden credential/auth material，只能进 forbidden/safety boundary，不得进 target_files、must_change_targets、entry_points、implementation_steps。\n"
+                "GET /api/stock-tokens/markets、Gate / MEXC、kraken/mexc、交易所模块 / 平台范围 都是 API/业务范围合同，不是 repo target。\n"
+                "skills/library/project-delivery-pipeline/** 是 hardflow workflow 路径，不是 SmartMultiPlatformArbitrage 业务目标；智能多平台套利/api/static/index/dashboard.js 是 static drift。\n",
                 encoding="utf-8",
             )
             review = run_dir / "requirements_review.md"
@@ -2678,6 +2681,13 @@ Verification commands:
             self.assertNotIn("智能多平台套利/arbitrage/market_adapters/__init__.py", target_paths)
             self.assertNotIn("cron/jobs.json", target_paths)
             self.assertNotIn("static/index/dashboard.js", target_paths)
+            self.assertNotIn("*auth*.json", target_paths)
+            self.assertNotIn("GET /api/stock-tokens/markets", target_paths)
+            self.assertNotIn("Gate / MEXC", target_paths)
+            self.assertNotIn("kraken/mexc", target_paths)
+            self.assertNotIn("交易所模块 / 平台范围", target_paths)
+            self.assertNotIn("skills/library/project-delivery-pipeline/**", target_paths)
+            self.assertNotIn("智能多平台套利/api/static/index/dashboard.js", target_paths)
             self.assertIn("tests/test_dashboard_api.py", target_paths)
             self.assertIn("tests/test_stock_token_public_adapter.py", target_paths)
             self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
@@ -2696,10 +2706,25 @@ Verification commands:
             self.assertIn("智能多平台套利/api/static/dashboard/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("cron/jobs.json", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("static/index/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertEqual(
+                ("inspect_only_sources", "credential_auth_material_forbidden_not_target"),
+                _mod.delivery_non_target_bucket("*auth*.json", False, discussion.read_text(encoding="utf-8"), "requirements_discussion"),
+            )
+            self.assertEqual(
+                ("inspect_only_sources", "workflow_or_runtime_path_not_business_target"),
+                _mod.delivery_non_target_bucket("skills/library/project-delivery-pipeline/**", False, discussion.read_text(encoding="utf-8"), "requirements_discussion"),
+            )
+            self.assertIn("智能多平台套利/api/static/index/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
+            for pseudo_path in ("GET /api/stock-tokens/markets", "Gate / MEXC", "kraken/mexc", "交易所模块 / 平台范围"):
+                bucket_name, _reason = _mod.delivery_non_target_bucket(pseudo_path, False, discussion.read_text(encoding="utf-8"), "requirements_discussion")
+                self.assertEqual("reference_patterns", bucket_name)
             self.assertIn("solution_review_readiness", plan)
             self.assertIn("must_change_targets", plan)
             self.assertEqual(["智能多平台套利/api/routes/strategy.py", "tests/test_dashboard_api.py", "tests/test_stock_token_public_adapter.py"], [item["path"] for item in plan["must_change_targets"]])
+            step_paths = [item.get("path") for item in plan["implementation_steps"] if item.get("path")]
+            self.assertNotIn("*auth*.json", step_paths)
+            self.assertFalse(any(str(path).startswith("GET /api/") for path in step_paths))
+            self.assertNotIn("skills/library/project-delivery-pipeline/**", step_paths)
             self.assertIn("api_contracts", plan)
             self.assertTrue(any(item.get("endpoint") == "/api/stock-tokens/status" and "exclude kraken/mexc" in item.get("contract", "") for item in plan["api_contracts"]))
             commands = [item["command"] for item in plan["verification_commands"]]

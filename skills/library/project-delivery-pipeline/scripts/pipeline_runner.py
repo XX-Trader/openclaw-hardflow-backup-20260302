@@ -2639,7 +2639,15 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     context = str(planning_context or "")
     if not value:
         return None
-    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower in {"graph.json", "graphify.json", "external_research.md", "research_report.md"} or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/")):
+    if re.search(r"(?:auth|credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key)", lower) and ("*" in value or lower.endswith((".json", ".yaml", ".yml", ".toml", ".env"))):
+        return ("inspect_only_sources", "credential_auth_material_forbidden_not_target")
+    if re.match(r"(?i)^(?:GET|POST|PUT|PATCH|DELETE)\s+/", value) or lower.startswith("/api/") or lower in {"/health", "/api/strategy/status"}:
+        return ("reference_patterns", "api_contract_endpoint_not_repo_target")
+    if lower.startswith(("skills/library/", "scripts/openclaw-ops/", "config/nofx-hermes-profiles/", "cron/")) and confidence != "explicit":
+        return ("inspect_only_sources", "workflow_or_runtime_path_not_business_target")
+    if lower.startswith("/home/arbops/projects/openclaw-hardflow-backup-20260302/") and confidence != "explicit":
+        return ("inspect_only_sources", "workflow_or_runtime_path_not_business_target")
+    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower in {"graph.json", "graphify.json", "external_research.md", "research_report.md", "graphify_scope_validation.md"} or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/")):
         return ("inspect_only_sources", "pipeline_artifact_not_repo_target")
     if value in FACT_SOURCE_PATHS:
         return ("read_only_sources", "project_fact_source_read_only")
@@ -2649,8 +2657,14 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("inspect_only_sources", "ops_script_reference_not_business_target")
     if lower.startswith("cron/") or lower in {"cron/jobs.json", "jobs.json"}:
         return ("inspect_only_sources", "cron_runtime_schedule_not_business_target")
-    if lower.startswith("static/index/") or lower in {"static/index/dashboard.js", "static/index/index.html"}:
+    if lower.startswith("static/index/") or lower in {"static/index/dashboard.js", "static/index/index.html"} or "/api/static/index/" in lower:
         return ("inspect_only_sources", "basename_or_static_drift_not_repo_business_target")
+    if lower in {"智能多平台套利/market_adapters/__init__.py", "market_adapters/__init__.py"}:
+        return ("inspect_only_sources", "adapter_registry_path_drift_not_business_target")
+    if re.search(r"\s/\s", value) or value in {"Gate / MEXC", "交易所模块 / 平台范围"}:
+        return ("reference_patterns", "natural_language_scope_not_repo_target")
+    if lower in {"kraken/mexc", "gate/mexc", "gate / mexc"}:
+        return ("reference_patterns", "venue_pair_scope_not_repo_target")
     if lower.startswith("apollo/") or lower.startswith("智能多平台套利/apollo/"):
         return ("inspect_only_sources", "apollo_historical_or_absent_not_current_mvp_target")
     if lower in {"智能多平台套利/arbitrage_config.json5", "智能多平台套利/api/routes/dashboard.py", "智能多平台套利/api/static/dashboard/dashboard.css"} and (
