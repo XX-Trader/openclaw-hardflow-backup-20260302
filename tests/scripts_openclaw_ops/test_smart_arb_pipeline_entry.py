@@ -1634,6 +1634,17 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         regex_scan = module.risk_scan_text(regex_reason_text)
         self.assertFalse(any(pattern.search(regex_scan) for pattern in module.HIGH_RISK_PATTERNS), regex_scan)
 
+        status_card_text = (
+            "自动修复判断\n"
+            "判断: 未继续自动修复\n"
+            "原因: 被风险规则判为 high\n"
+            "触发点: 文本中仍出现真实交易/下单/划转/提现/资金操作相关表达\n"
+            "实际本轮边界: 用户需求里是保持禁用、不执行\n"
+            "没有启动真实交易，没有下单、划转、提现或处理凭证\n"
+        )
+        status_scan = module.risk_scan_text(status_card_text)
+        self.assertFalse(any(pattern.search(status_scan) for pattern in module.HIGH_RISK_PATTERNS), status_scan)
+
         risky_scan = module.risk_scan_text("Read and print API keys from credential-imports, then start real trading and place orders.")
         self.assertTrue(any(pattern.search(risky_scan) for pattern in module.HIGH_RISK_PATTERNS), risky_scan)
 

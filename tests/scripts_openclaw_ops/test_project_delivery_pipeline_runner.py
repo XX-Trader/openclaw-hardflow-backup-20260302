@@ -208,6 +208,28 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             reasons = "\n".join(item["reason"] for item in unsafe_payload["findings"])
             self.assertIn("outside the command repository", reasons)
 
+    def test_graphify_scope_validation_allows_stock_token_business_route_and_safety_text(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            target = repo / "智能多平台套利" / "api" / "routes"
+            target.mkdir(parents=True)
+            (target / "stock_tokens.py").write_text("def route():\n    return 'ok'\n", encoding="utf-8")
+            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(Path(tmp) / "runtime"))
+            runtime = {"runtime_home": str(Path(tmp) / "runtime")}
+            safe_plan = {
+                "target_files": [{"path": "智能多平台套利/api/routes/stock_tokens.py"}],
+                "implementation_steps": [
+                    {"description": "Keep PRODUCTION_TRADING_ENABLED=false and do not place orders."},
+                ],
+                "verification_commands": [
+                    {"command": _mod.added_line_safety_scan_command()},
+                ],
+                "out_of_scope": ["Do not use secrets, credentials, private keys, cookies, or auth state files."],
+            }
+            payload = _mod.validate_graphify_scope(config, runtime, safe_plan, {})
+
+            self.assertIn(payload["scope_status"], {"pass", "warning"})
+            self.assertFalse(any(item["severity"] == "block" for item in payload["findings"]))
 
     def test_graphify_scope_validation_blocks_positive_trading_even_with_negated_safety_text(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -379,6 +401,8 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         }
 
         self.assertFalse(_mod.dual_review_pass("requirements_review", [report_a, report_b_blocker]))
+        rendered = _mod.render_dual_ai_review("requirements_review", [report_a, report_b_blocker], "requires_revision")
+        self.assertIn("Review gate mode: blocked_concrete_reviewers", rendered)
 
     def test_dual_review_rendering_merges_distinct_model_findings(self):
         report_a = {
@@ -401,6 +425,20 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         self.assertIn("No artificial task-splitting granularity gate", rendered)
         self.assertIn("Remaining blockers", rendered)
         self.assertIn("none; no concrete reviewer blocker remains", rendered)
+
+    def test_reviewer_model_from_output_uses_final_fallback_model(self):
+        stdout = "\n".join(
+            [
+                "Reviewer provider: kimi-coding",
+                "Reviewer model: kimi-k2.6",
+                "# reviewer fallback attempt failed",
+                "Reviewer provider: openai-codex",
+                "Reviewer model: gpt-5.5",
+                "Final verdict: ready_for_solution",
+            ]
+        )
+        self.assertEqual("openai-codex", _mod.reviewer_provider_from_output(stdout, ""))
+        self.assertEqual("gpt-5.5", _mod.reviewer_model_from_output(stdout, ""))
 
     def test_default_repair_loop_budget_is_four_for_until_clean_review_policy(self):
         self.assertEqual(4, PipelineConfig(project_key="demo").max_repair_loops)
@@ -909,12 +947,17 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 },
             )
 
-            self.assertEqual(
-                ["scripts/openclaw-ops/smart_arb_pipeline_entry.py"],
-                [item["path"] for item in delivery_plan["target_files"]],
-            )
+            self.assertEqual([], [item["path"] for item in delivery_plan["target_files"]])
             filtered_candidates = delivery_plan["plan_findings"]["filtered_target_candidates"]
             solution = _mod.render_solution(delivery_plan)
+            self.assertTrue(
+                any(
+                    item["path"] == "scripts/openclaw-ops/smart_arb_pipeline_entry.py"
+                    and item["reason"] == "workflow_or_runtime_control_path"
+                    and item["source"] == "requirements_review"
+                    for item in filtered_candidates
+                )
+            )
             self.assertTrue(
                 any(
                     item["path"] == ".workflow/pipeline-runs/demo/retry.py"
@@ -942,6 +985,56 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     for item in filtered_candidates
                 )
             )
+
+    def test_delivery_plan_filters_negated_workflow_basenames_and_combined_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            requirements_review = run_dir / "requirements_review.md"
+            requirements_review.write_text(
+                "\n".join(
+                    [
+                        "Final verdict: ready_for_solution",
+                        "target_files must only contain SmartMultiPlatformArbitrage business files; "
+                        "禁止 smart_arb_live_bridge.py、smart_arb_pipeline_entry.py 进入 target_files。",
+                        "Candidate business files: todo.md/done.md, 智能多平台套利/api/routes/stock_tokens.py",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            delivery_plan = _mod.compile_delivery_plan(
+                PipelineConfig(project_key="demo", requirement="继续推进价差监控测试，不修改 workflow 宿主"),
+                {"host": "hermes", "runtime_home": "/home/arbops/.hermes"},
+                "继续推进价差监控测试，不修改 workflow 宿主",
+                {"requirements_review": str(requirements_review)},
+            )
+
+            paths = [item["path"] for item in delivery_plan["target_files"]]
+            self.assertEqual(["智能多平台套利/api/routes/stock_tokens.py"], paths)
+            self.assertNotIn("todo.md/done.md", paths)
+            self.assertFalse(any("smart_arb_" in path for path in paths))
+            findings = delivery_plan["plan_findings"]["filtered_target_candidates"]
+            self.assertTrue(any(item["path"] == "todo.md/done.md" and item["reason"] == "combined_file_paths" for item in findings))
+            self.assertTrue(any(item["reason"] in {"negated_context", "workflow_host_basename"} for item in findings))
+
+    def test_delivery_plan_marks_reviewer_paths_as_candidates_and_generates_file_steps(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            review = Path(tmp) / "requirements_review.md"
+            review.write_text(
+                "Final verdict: ready_for_solution\nCandidate: 智能多平台套利/api/routes/stock_tokens.py\n",
+                encoding="utf-8",
+            )
+            plan = _mod.compile_delivery_plan(
+                PipelineConfig(project_key="demo", requirement="继续推进价差监控测试"),
+                {"host": "hermes"},
+                "继续推进价差监控测试",
+                {"requirements_review": str(review)},
+            )
+
+            self.assertEqual("review_candidate", plan["target_files"][0]["confidence"])
+            step_text = json.dumps(plan["implementation_steps"], ensure_ascii=False)
+            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", step_text)
+            self.assertIn("blocked_manual_acceptance_required", "\n".join(plan["human_blockers"]))
 
     def test_delivery_plan_keeps_heavy_multi_item_requirement_holistic(self):
         with tempfile.TemporaryDirectory() as tmp:

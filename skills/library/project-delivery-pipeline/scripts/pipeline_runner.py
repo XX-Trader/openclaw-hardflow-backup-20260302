@@ -122,7 +122,7 @@ UNICODE_PATH_TOKEN_RE = re.compile(
 )
 PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)$)", re.IGNORECASE)
 PATH_CONTEXT_SPLIT_RE = re.compile(
-    r"[\r\n;；。]+|\b(?:but|however|yet|and)\b|(?:但|但是|不过|然而|并且|然后|同时)",
+    r"[\r\n;；。]+|\b(?:but|however|yet|and|only)\b|(?:但|但是|不过|然而|并且|然后|同时|只有)",
     re.IGNORECASE,
 )
 NEGATED_PATH_CONTEXT_RE = re.compile(
@@ -130,9 +130,17 @@ NEGATED_PATH_CONTEXT_RE = re.compile(
     r"(?:不要|不得|禁止|不允许|不应|不能|不修改|不编辑|不触碰|别改|别碰|排除|非目标)",
     re.IGNORECASE,
 )
+STRONG_NEGATED_PATH_CONTEXT_RE = re.compile(
+    r"\b(?:do\s+not|don't|never|must\s+not|should\s+not)\s+"
+    r"(?:edit|modify|touch|include|add|target|put|use)\b|"
+    r"\b(?:exclude|excluded|out\s+of\s+scope)\b|"
+    r"(?:不要|不得|禁止|不允许|不应|不能|不修改|不编辑|不触碰|别改|别碰|排除|非目标|不能进入\s*target_files|不得包含|禁止包含)",
+    re.IGNORECASE,
+)
 CONTROL_PLANE_TARGET_REQUEST_RE = re.compile(
     r"\b(?:fix|repair|restore|update|edit|modify|migrate|clean)\b.{0,80}"
     r"\b(?:workflow|pipeline|runtime|control[- ]?plane|state|artifact|\.workflow|\.hermes|\.openclaw)\b|"
+    r"\bscripts/openclaw-ops/\b|"
     r"(?:修复|恢复|修改|更新|迁移|清理).{0,40}(?:工作流|pipeline|runtime|运行态|控制面|状态|产物|\.workflow|\.hermes|\.openclaw)",
     re.IGNORECASE,
 )
@@ -163,10 +171,19 @@ PIPELINE_ARTIFACT_FILES = {
 CONTROL_PLANE_PATH_PREFIXES = (
     ".workflow/",
     "workflow/",
+    "scripts/openclaw-ops/",
     "agent-workspaces/",
     "command-runs/",
     "task-center/",
 )
+WORKFLOW_HOST_BASENAMES = {
+    "pipeline_runner.py",
+    "smart_arb_live_bridge.py",
+    "smart_arb_pipeline_entry.py",
+    "backlog_runner.py",
+    "runtime_installer.py",
+    "hermes_profile_smoke.py",
+}
 CONTROL_PLANE_PATH_PARTS = (
     "/.workflow/",
     "/agent-workspaces/",
@@ -444,11 +461,13 @@ def reviewer_provider_from_command(command: str) -> str:
 
 
 def reviewer_model_from_output(stdout: str, stderr: str) -> str:
-    return first_regex_group(REVIEWER_MODEL_OUTPUT_RE, "\n".join([str(stdout or ""), str(stderr or "")]))
+    matches = REVIEWER_MODEL_OUTPUT_RE.findall("\n".join([str(stdout or ""), str(stderr or "")]))
+    return str(matches[-1]).strip() if matches else ""
 
 
 def reviewer_provider_from_output(stdout: str, stderr: str) -> str:
-    return first_regex_group(REVIEWER_PROVIDER_OUTPUT_RE, "\n".join([str(stdout or ""), str(stderr or "")]))
+    matches = REVIEWER_PROVIDER_OUTPUT_RE.findall("\n".join([str(stdout or ""), str(stderr or "")]))
+    return str(matches[-1]).strip() if matches else ""
 
 
 def reviewer_model_key_for_report(report: dict[str, Any]) -> str:
@@ -502,7 +521,14 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
         for item in runtime_failures
     ) or "- none"
     blocker_text = "\n".join(blocker_reports) if blocker_reports else "- none; no concrete reviewer blocker remains"
-    review_mode = "independent_multi_model" if valid_distinct_models else "degraded_single_valid"
+    if concrete_blockers:
+        review_mode = "blocked_concrete_reviewers"
+    elif valid_distinct_models:
+        review_mode = "independent_multi_model"
+    elif valid_reports:
+        review_mode = "degraded_single_valid"
+    else:
+        review_mode = "blocked_missing_valid_reviewer"
     pass_policy = (
         "Prefer two independent reviewer outputs with distinct provider/model identity. If one reviewer command fails "
         "because its provider/model is unavailable or does not emit a verdict, continue when at least one reviewer "
@@ -1086,6 +1112,21 @@ def scrub_negated_risk_lines(text: str) -> str:
     return "\n".join(kept)
 
 
+def pre_execution_plan_scan_text(delivery_plan: dict[str, Any]) -> str:
+    """Return only plan fields that describe intended work, not generated gates."""
+    implementation_steps = delivery_plan.get("implementation_steps")
+    if not isinstance(implementation_steps, list):
+        implementation_steps = []
+    target_files = delivery_plan.get("target_files")
+    if not isinstance(target_files, list):
+        target_files = []
+    scan_payload = {
+        "target_files": target_files,
+        "implementation_steps": implementation_steps,
+    }
+    return json.dumps(scan_payload, ensure_ascii=False, indent=2)
+
+
 def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], artifacts: dict[str, str]) -> dict[str, Any]:
     """Classify the refined plan before code execution."""
     artifact_texts = [
@@ -1094,7 +1135,7 @@ def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], a
         read_optional_file(Path(artifacts.get("solution_review", "")), ""),
         read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), ""),
     ]
-    plan_text = json.dumps(delivery_plan, ensure_ascii=False)
+    plan_text = pre_execution_plan_scan_text(delivery_plan)
     scan_text = scrub_negated_risk_lines("\n".join([requirement, plan_text, *artifact_texts]))
     high_reasons = [label for label, pattern in HIGH_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
     medium_reasons = [label for label, pattern in MEDIUM_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
@@ -1233,6 +1274,9 @@ def plan_path_rejection_reason(path: str) -> str:
         return "pipeline_artifact_file"
     if not PLAN_PATH_RE.search(path):
         return "not_repository_plan_path"
+    parts = [part for part in path.replace("\\", "/").split("/") if part]
+    if any(PLAN_PATH_RE.search(part) for part in parts[:-1]):
+        return "combined_file_paths"
     # Delivery plans are repository-relative contracts.  Absolute-looking paths
     # such as /api/foo.py are often copied from API routes or reviewer examples;
     # keeping them as target_files sends implementers outside the repo layout.
@@ -1305,7 +1349,7 @@ def is_explicit_target_path_context(text: str) -> bool:
 
 def is_negated_path_context(text: str) -> bool:
     value = str(text or "")
-    if is_explicit_target_path_context(value):
+    if is_explicit_target_path_context(value) and not STRONG_NEGATED_PATH_CONTEXT_RE.search(value):
         return False
     return bool(NEGATED_PATH_CONTEXT_RE.search(value))
 
@@ -1321,6 +1365,8 @@ def control_plane_plan_path_reason(path: str) -> str:
     name = Path(trimmed).name
     if name in PIPELINE_ARTIFACT_FILES:
         return "pipeline_artifact_file"
+    if "/" not in trimmed and name in WORKFLOW_HOST_BASENAMES:
+        return "workflow_host_basename"
     if name in PROJECT_MEMORY_FILES and not trimmed.startswith("memory/"):
         return "project_memory_control_file"
     if any(trimmed.startswith(prefix) for prefix in CONTROL_PLANE_PATH_PREFIXES):
@@ -1366,6 +1412,17 @@ def add_filtered_target_finding(
             "context": clip_text(" ".join(str(segment or "").split()), 220),
         }
     )
+
+
+def drop_accepted_target_findings(findings: list[dict[str, str]], accepted_paths: list[str]) -> None:
+    accepted = {normalize_plan_path_token(path) for path in accepted_paths if path}
+    if not accepted:
+        return
+    findings[:] = [
+        item
+        for item in findings
+        if normalize_plan_path_token(str(item.get("path") or "")) not in accepted
+    ]
 
 
 def contextual_plan_paths(
@@ -1652,6 +1709,8 @@ def verification_command_rejection_reason(command: str) -> str:
         return ""
     if re.match(r"^git\s+diff\s+--name-only\b", value):
         return ""
+    if re.match(r"^/bin/sh\s+-c\s+\"git\s+diff\s+--unified=0\b", value):
+        return ""
     if re.match(r"^curl\s+-fsS\s+http://127\.0\.0\.1:18080/", value):
         return ""
     if re.match(r"^(?:grep|rg)\b", value):
@@ -1667,6 +1726,14 @@ def add_verification_command(commands: list[dict[str, Any]], command: str, sourc
         return
     if normalized and normalized not in [item["command"] for item in commands]:
         commands.append({"command": normalized, "required": True, "source": source})
+
+
+def added_line_safety_scan_command() -> str:
+    return (
+        "/bin/sh -c \"git diff --unified=0 -- 智能多平台套利 tests scripts todo.md done.md memory docs "
+        "| rg -n '^\\+.*(PRODUCTION_TRADING_ENABLED\\s*=\\s*true|credential\\s*[:=]|credentials\\s*[:=]|api[_ -]?key\\s*[:=]|secret\\s*[:=]|private endpoint|place_order|transfer|signing)' "
+        "&& exit 1 || test $? -eq 1\""
+    )
 
 
 def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
@@ -1708,7 +1775,7 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
     if re.search(r"安全扫描|credential|credentials|PRODUCTION_TRADING_ENABLED=true|签名调用|下单|划转", value, re.IGNORECASE):
         add_verification_command(
             commands,
-            "rg -n 'PRODUCTION_TRADING_ENABLED\\s*=\\s*true|credential|credentials|private endpoint|place_order|transfer|signing' 智能多平台套利 tests todo.md done.md MEMORY.md memory docs",
+            added_line_safety_scan_command(),
         )
     for endpoint in ("/health", "/api/strategy/status", "/api/stock-tokens/status", "/api/stock-tokens/markets", "/api/stock-tokens/opportunities"):
         if endpoint in value:
@@ -1762,7 +1829,7 @@ def artifact_text(artifacts: dict[str, str], key: str) -> str:
 
 GRAPHIFY_INDEX_ROOT_ENV = "PIPELINE_GRAPHIFY_INDEX_ROOT"
 GRAPHIFY_BLOCK_PATTERNS = {
-    "credential_path": re.compile(r"(?i)(credential|credentials|secret|token|cookie|oauth|api[-_ ]?key|private[-_ ]?key|auth[-_ ]?state|credential-imports|private/)"),
+    "credential_path": re.compile(r"(?i)(credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|auth[-_ ]?state|credential-imports|private/|(?:^|[/_.-])token(?:s)?(?:[/_.-]|$))"),
     "production_trading": re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘|真实下单|实盘下单|资金划转|划转资金"),
 }
 
@@ -1898,10 +1965,15 @@ def scope_scan_text_from_plan(delivery_plan: dict[str, Any]) -> str:
     # negated constraints do not erase unrelated positive risks.
     actionable = {
         key: delivery_plan.get(key)
-        for key in ("target_files", "entry_points", "implementation_steps", "verification_commands")
+        for key in ("implementation_steps",)
         if delivery_plan.get(key)
     }
     return scrub_negated_risk_lines(json.dumps(actionable, ensure_ascii=False, indent=2))
+
+
+def is_business_token_path(path: str) -> bool:
+    value = str(path or "").replace("\\", "/").lower()
+    return any(token in value for token in ("stock_token", "stock-tokens", "tokenized_stock", "tokenized-stock"))
 
 
 def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], delivery_plan: dict[str, Any], artifacts: dict[str, str]) -> dict[str, Any]:
@@ -1939,7 +2011,7 @@ def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], del
         elif raw_path.startswith("../") or "/../" in raw_path:
             severity = "block"
             reason = "target path escapes the command repository boundary"
-        elif GRAPHIFY_BLOCK_PATTERNS["credential_path"].search(raw_path):
+        elif GRAPHIFY_BLOCK_PATTERNS["credential_path"].search(raw_path) and not is_business_token_path(raw_path):
             severity = "block"
             reason = "target path appears to reference credential/auth/secret material"
         else:
@@ -2033,7 +2105,7 @@ def compile_delivery_plan(
         source_label="requirements_review",
     )
     target_paths = post_filter_target_paths(
-        merge_plan_paths(explicit_target_paths, review_target_paths, repair_target_paths),
+        merge_plan_paths(explicit_target_paths, repair_target_paths, review_target_paths),
         filtered_target_candidates,
     )
     if not target_paths:
@@ -2043,41 +2115,65 @@ def compile_delivery_plan(
             filtered_findings=filtered_target_candidates,
             source_label="research_or_project_memory",
         )
-    target_files = [
-        {
-            "path": path,
-            "reason": "Referenced by accepted requirement, review, repair context, or project evidence.",
-            "confidence": "explicit",
-        }
-        for path in target_paths
-    ]
+    drop_accepted_target_findings(filtered_target_candidates, target_paths)
+    source_by_path: dict[str, str] = {}
+    for path in explicit_target_paths:
+        source_by_path.setdefault(path, "explicit")
+    for path in repair_target_paths:
+        source_by_path.setdefault(path, "repair_context")
+    for path in review_target_paths:
+        source_by_path.setdefault(path, "review_candidate")
+    target_files = []
+    for path in target_paths:
+        confidence = source_by_path.get(path, "project_evidence")
+        reason = {
+            "explicit": "Referenced by the original user requirement.",
+            "repair_context": "Referenced by repair context and retained as a candidate target.",
+            "review_candidate": "Referenced by reviewer or requirements discussion as a candidate target.",
+            "project_evidence": "Referenced by project evidence as a candidate target.",
+        }.get(confidence, "Referenced by project evidence as a candidate target.")
+        target_files.append({"path": path, "reason": reason, "confidence": confidence})
     discovery_required = not target_files
-    implementation_steps = [
+    implementation_steps: list[dict[str, Any]] = [
         {
-            "id": "locate",
+            "id": "confirm-scope",
             "description": (
-                "Use repository search and project memory to confirm the exact files and entry points before editing."
+                "Use repository search, project memory, git context, and graphify context to locate exact business files before editing."
                 if discovery_required
-                else "Open the listed target files and confirm the current behavior before editing."
+                else "Confirm every listed repo-relative business target exists or has an explicit create-if-missing rationale before editing."
             ),
             "required": True,
-        },
-        {
-            "id": "change",
-            "description": "Apply the smallest scoped change that satisfies the accepted requirement and repair findings.",
-            "required": True,
-        },
-        {
-            "id": "verify",
-            "description": "Run every required verification command and record concrete outcomes.",
-            "required": True,
-        },
-        {
-            "id": "review",
-            "description": "Do not proceed to acceptance or publish until code review gates pass.",
-            "required": True,
-        },
+        }
     ]
+    for index, item in enumerate(target_files[:12], start=1):
+        path = item["path"]
+        implementation_steps.append(
+            {
+                "id": f"file-{index}",
+                "path": path,
+                "description": f"Inspect `{path}`, define the exact behavior gap from the accepted requirement, then apply the smallest scoped code/test/docs change needed for that file.",
+                "required": True,
+            }
+        )
+    implementation_steps.extend(
+        [
+            {
+                "id": "verify-targeted",
+                "description": "Run targeted pytest/compileall/API smoke/git checks listed in verification_commands and record concrete command outcomes.",
+                "required": True,
+            },
+            {
+                "id": "publish-containment",
+                "description": "Before git publish, prove the accepted diff contains only approved repo changes, excludes runtime artifacts and unrelated dirty worktree paths, and verify origin/main contains the pushed commit when publish is enabled.",
+                "required": True,
+            },
+            {
+                "id": "manual-discord-acceptance-boundary",
+                "description": "If real Discord channel send/read proof cannot be safely completed inside the pipeline, stop final acceptance with blocked_manual_acceptance_required instead of claiming Discord acceptance passed.",
+                "required": True,
+            },
+        ]
+    )
     scope_slices = plan_scope_slices(requirement, requirements_review, repair_context)
     deferred_slices: list[dict[str, Any]] = []
     return {
@@ -2125,6 +2221,7 @@ def compile_delivery_plan(
             "All required verification commands pass.",
             "Dual review gates pass with the expected final verdicts.",
             "Deployment or git publish only runs when explicitly configured by the runner.",
+            "If git publish is enabled, prove the pushed commit is contained by origin/main and no runtime/pipeline artifacts or unrelated dirty worktree paths were committed.",
         ],
         "rollback_plan": [
             "If verification or code review fails after a workspace patch is applied, revert the applied patch and preserve rollback evidence.",
@@ -2134,6 +2231,7 @@ def compile_delivery_plan(
             "Stop before any credential, secret value, private key, cookie, or auth state handling.",
             "Stop before production market/account actions or destructive repository/data changes.",
             "Target files cannot be located from repository evidence and implementation would require guessing.",
+            "blocked_manual_acceptance_required: real Discord channel acceptance cannot be safely proven inside the pipeline.",
         ],
         "risk_boundaries": [
             {"name": "credentials", "allowed": False, "description": "No credential or secret access."},
