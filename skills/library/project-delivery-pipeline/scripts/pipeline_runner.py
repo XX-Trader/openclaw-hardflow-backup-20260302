@@ -138,7 +138,7 @@ STRONG_NEGATED_PATH_CONTEXT_RE = re.compile(
     r"\b(?:do\s+not|don't|never|must\s+not|should\s+not)\s+"
     r"(?:edit|modify|touch|include|add|target|put|use)\b|"
     r"\b(?:exclude|excluded|out\s+of\s+scope)\b|"
-    r"(?:不要|不得|禁止|不允许|不应|不能|不修改|不编辑|不触碰|别改|别碰|排除|非目标|不能进入\s*target_files|不得包含|禁止包含)",
+    r"(?:不要|不得|禁止|不允许|不应|不能|不让|不修改|不编辑|不触碰|别改|别碰|排除|非目标|不能进入\s*target_files|不得包含|禁止包含|不让(?:它们|其)?进入\s*(?:target_files|must_change_targets))",
     re.IGNORECASE,
 )
 INSPECT_ONLY_PATH_CONTEXT_RE = re.compile(
@@ -1271,7 +1271,7 @@ RISK_TERM_RE = re.compile(
 )
 NEGATED_RISK_RE = re.compile(
     r"(?i)\b(do not|does not|is not|are not|will not|don't|never|must not|without|no )\b|"
-    r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|没有发现|未发现|未检出|无.{0,20}(?:硬风险|风险|凭证|密钥|真实交易|force\s+push)|保持.*false|未启动|不启动|不下单|不划转|不读取|不泄露"
+    r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|没有发现|未发现|未检出|未编辑|未修改|未触碰|无.{0,20}(?:硬风险|风险|凭证|密钥|真实交易|force\s+push)|保持.*false|未启动|不启动|不下单|不划转|不读取|不泄露"
 )
 RISK_APPROVAL_RE = re.compile(
     r"(?i)\b(?:approved|confirmed)\b|已人工确认|人工确认|用户确认|明确确认|确认[:：]|(?<!不)允许"
@@ -2184,11 +2184,6 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
             commands,
             "git diff --name-only | grep -E 'memory/smart-multi-platform-arbitrage/(PROJECT_PROFILE|DECISIONS)\\.md'",
         )
-    if re.search(r"残留|residual|Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot", value, re.IGNORECASE):
-        add_verification_command(
-            commands,
-            "rg -n 'Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot' todo.md done.md MEMORY.md memory docs 智能多平台套利 tests",
-        )
     if re.search(r"安全扫描|credential|credentials|PRODUCTION_TRADING_ENABLED=true|签名调用|下单|划转", value, re.IGNORECASE):
         add_verification_command(
             commands,
@@ -2663,8 +2658,16 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("inspect_only_sources", "external_graph_context_not_business_target")
     if lower.startswith("scripts/") and ("service" in lower or "hermes" in lower or "restart" in lower):
         return ("inspect_only_sources", "ops_script_reference_not_business_target")
-    if lower == "智能多平台套利/setup.py" and not (confidence == "explicit" and re.search(r"(?:packag|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE)):
+    if lower == "智能多平台套利/setup.py" and (
+        re.search(r"(?:不让|不得|禁止|不能|不应|forbidden|exclude|out\s+of\s+scope).{0,80}(?:setup\.py|packag|dependency|依赖|安装包)|(?:setup\.py|packag|dependency|依赖|安装包).{0,80}(?:不让|不得|禁止|不能|不应|非目标|forbidden|exclude|out\s+of\s+scope)", context, re.IGNORECASE)
+        or not (confidence == "explicit" and re.search(r"(?:packag|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE))
+    ):
         return ("inspect_only_sources", "packaging_file_not_business_scope")
+    if lower in {"智能多平台套利/api/static/dashboard/index.html", "智能多平台套利/api/static/dashboard/dashboard.js", "智能多平台套利/arbitrage/market_adapters/__init__.py"} and (
+        re.search(r"(?:未发现|没有发现|无).{0,20}(?:硬编码|hard[-_ ]?coded|hardcoded)", context, re.IGNORECASE)
+        or not re.search(r"(?:硬编码|hard[-_ ]?coded|hardcoded|必须修改|必改)", context, re.IGNORECASE)
+    ):
+        return ("inspect_only_sources", "conditional_ui_or_adapter_registry_reference")
     if "/apollo/" in lower and nearby_negative_scope(context, value, r"Apollo|MEXC|历史"):
         return ("inspect_only_sources", "apollo_history_negative_scope")
     if "hyperliquid" in lower and nearby_negative_scope(context, value, r"Hyperliquid|adapter|适配器"):
@@ -2701,7 +2704,22 @@ def extract_api_contracts(*texts: str, limit: int = 12) -> list[dict[str, str]]:
         if endpoint.startswith(("/home/", "/tmp/", "/var/", "/root/", "/Users/")) or "/pipeline-runs/" in endpoint or "/agent-workspaces/" in endpoint:
             continue
         seen.add(endpoint)
-        contracts.append({"endpoint": endpoint, "contract": "Read-only/safe API behavior must satisfy the accepted requirement without exposing secrets."})
+        lower_endpoint = endpoint.lower()
+        if lower_endpoint == "/api/stock-tokens/status":
+            contract = "Status must remain read-only/simulation-only/no-trading; default enabled_platforms exclude kraken/mexc and keep binance/okx/bitget/bybit/gate with Hyperliquid as non-real-adapter watch scope."
+        elif lower_endpoint == "/api/stock-tokens/markets":
+            contract = "Markets must not present Kraken/MEXC or tokenized-stock spot as MVP/default markets; Hyperliquid may only be readonly/watch scope unless already supported outside this task."
+        elif lower_endpoint == "/api/stock-tokens/opportunities":
+            contract = "Opportunities must be simulation-only/no-trading and must not emit Kraken/MEXC spot or tokenized-stock spot as default MVP opportunities."
+        elif lower_endpoint == "/dashboard/spread-funding":
+            contract = "Dashboard page must load and must not display Kraken/MEXC MVP wording when driven by the read-only API data."
+        elif lower_endpoint == "/health":
+            contract = "Health smoke remains read-only and must not start strategy/trading services."
+        elif lower_endpoint == "/api/strategy/status":
+            contract = "Strategy status smoke remains read-only; running must stay false unless separately authorized."
+        else:
+            contract = "Read-only/safe API behavior must satisfy the accepted requirement without exposing secrets."
+        contracts.append({"endpoint": endpoint, "contract": contract})
         if len(contracts) >= limit:
             break
     if not contracts and re.search(r"(?:页面|API|接口|dashboard|配置|显示|验收)", joined, re.IGNORECASE):
@@ -2811,7 +2829,7 @@ def compile_delivery_plan(
     if non_target_path_set:
         kept_target_paths = []
         for path in target_paths:
-            if path in non_target_path_set and path not in explicit_target_paths:
+            if path in non_target_path_set:
                 add_filtered_target_finding(
                     filtered_target_candidates,
                     path,
@@ -2905,6 +2923,36 @@ def compile_delivery_plan(
     deferred_slices: list[dict[str, Any]] = []
     must_change_targets = build_must_change_targets(target_files)
     api_contracts = extract_api_contracts(original_requirement_full, requirements_discussion, requirements_review, repair_context, research)
+    if re.search(r"Izh8bWlF5aFKmYsvUBMcYKbonQf|Feishu|飞书|平台范围|tbl1jj9DTcfAd6tZ", planning_context, re.IGNORECASE):
+        append_classified_context_path(classified_context_paths, "read_only_sources", "Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf / 交易所模块 tbl1jj9DTcfAd6tZ / 平台范围")
+        append_classified_context_path(classified_context_paths, "read_only_sources", "Feishu fact: 保留 Binance/OKX/Bitget/Bybit/Gate/Hyperliquid；Kraken/MEXC 非 MVP；币股现货不进 MVP")
+    if re.search(r"stock[-_ ]?token|/api/stock-tokens|Kraken|MEXC|Hyperliquid|平台范围", planning_context, re.IGNORECASE):
+        for pattern in (
+            "READ_ONLY / SIMULATION_ONLY / NO_TRADING contract",
+            "/api/stock-tokens/status / markets / opportunities response shape",
+            "StockTokenPublicAdapterConfig.from_env environment override pattern",
+            "tests/test_dashboard_api.py TestClient pattern",
+            "tests/test_stock_token_public_adapter.py fake adapter pattern",
+        ):
+            append_classified_context_path(classified_context_paths, "reference_patterns", pattern)
+    forbidden_targets = [
+        ".env",
+        "auth.json",
+        "credential-imports",
+        "OAuth/cookie/token/API key/private key files",
+        "/home/arbops/.hermes/**",
+        "/home/arbops/projects/openclaw-hardflow-backup-20260302/**",
+        "pipeline-runs/**",
+        "command-runs/**",
+        "agent-workspaces/**",
+        "graphify-out/**",
+        "setup.py / packaging / dependency files",
+        "docs/research/** as target_files/must_change_targets",
+        "MEMORY.md / memory/** / docs/INDEX.md / todo.md / done.md as target_files/must_change_targets",
+        "Apollo historical MEXC files unless proven directly referenced by current MVP runtime",
+        "new Hyperliquid real stock-token adapter files",
+        "real trading/order/transfer/withdrawal/control write paths",
+    ]
     return {
         "schema_version": "delivery-plan/v1",
         "task_type": task_type,
@@ -2952,12 +3000,7 @@ def compile_delivery_plan(
             "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
         ],
         "api_contracts": api_contracts,
-        "forbidden_targets": [
-            ".env",
-            "auth.json",
-            "credential-imports",
-            "OAuth/cookie/token/API key/private key files",
-        ],
+        "forbidden_targets": forbidden_targets,
         "solution_review_readiness": {
             "target_files_contract": "Only concrete repo-relative files expected to be created or modified may appear in target_files.",
             "non_target_contract": "read_only_sources, reference_patterns, inspect_only_sources, runtime_contracts, and api_contracts are not implementation targets; must_change_targets mirrors the required edit/create subset.",

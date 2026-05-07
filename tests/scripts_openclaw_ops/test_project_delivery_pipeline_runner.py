@@ -2550,7 +2550,9 @@ Verification commands:
         paths = [item["path"] for item in plan["target_files"]]
         self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", paths)
         self.assertIn("智能多平台套利/api/routes/stock_tokens.py", paths)
-        self.assertIn("智能多平台套利/api/static/dashboard/index.html", paths)
+        self.assertNotIn("智能多平台套利/api/static/dashboard/index.html", paths)
+        inspect_only_paths = [item["path"] for item in plan["inspect_only_sources"]]
+        self.assertIn("智能多平台套利/api/static/dashboard/index.html", inspect_only_paths)
         self.assertNotIn("run_meta.json", paths)
         self.assertNotIn("pipeline_state.json", paths)
         self.assertNotIn("PROJECT_PROFILE.md", paths)
@@ -2576,7 +2578,7 @@ Verification commands:
         self.assertIn("test -f memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", commands)
         self.assertIn("test -f memory/smart-multi-platform-arbitrage/DECISIONS.md", commands)
         self.assertTrue(any("git diff --name-only" in command for command in commands))
-        self.assertTrue(any("Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot" in command for command in commands))
+        self.assertFalse(any("Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot" in command for command in commands))
         self.assertTrue(any("PRODUCTION_TRADING_ENABLED" in command for command in commands))
         self.assertIn("curl -fsS http://127.0.0.1:18080/health", commands)
         self.assertIn("curl -fsS http://127.0.0.1:18080/api/strategy/status", commands)
@@ -2610,6 +2612,10 @@ Verification commands:
             (repo / "智能多平台套利" / "apollo" / "trade.py").write_text("# apollo\n", encoding="utf-8")
             (repo / "智能多平台套利" / "arbitrage" / "market_adapters").mkdir(parents=True)
             (repo / "智能多平台套利" / "arbitrage" / "market_adapters" / "hyperliquid_ws.py").write_text("# hl\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "arbitrage" / "market_adapters" / "__init__.py").write_text("# registry\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "api" / "static" / "dashboard").mkdir(parents=True)
+            (repo / "智能多平台套利" / "api" / "static" / "dashboard" / "dashboard.js").write_text("// dashboard\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "api" / "static" / "dashboard" / "index.html").write_text("<html></html>\n", encoding="utf-8")
             artifacts = {}
             run_dir = Path(tmp) / "run"
             run_dir.mkdir()
@@ -2628,7 +2634,9 @@ Verification commands:
                 "智能多平台套利/setup.py 是 packaging 文件，不是本轮业务修改目标。\n"
                 "Apollo 历史 MEXC 代码 智能多平台套利/apollo/trade.py 不因名称命中被删除。\n"
                 "Hyperliquid 不在本轮新增真实 adapter，智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py 仅 inspect。\n"
-                "api_contracts: GET /api/strategy/config returns redacted non-sensitive config.\n",
+                "智能多平台套利/api/static/dashboard/index.html、智能多平台套利/api/static/dashboard/dashboard.js、智能多平台套利/arbitrage/market_adapters/__init__.py 当前未发现硬编码，仅 inspect。\n"
+                "Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf / 交易所模块 tbl1jj9DTcfAd6tZ / 平台范围 是只读事实源。\n"
+                "api_contracts: GET /api/stock-tokens/status returns redacted non-sensitive config.\n",
                 encoding="utf-8",
             )
             review = run_dir / "requirements_review.md"
@@ -2638,7 +2646,7 @@ Verification commands:
             plan = _mod.compile_delivery_plan(
                 PipelineConfig(project_key="demo", command_cwd=repo),
                 {"host": "hermes"},
-                "必须修改 智能多平台套利/api/routes/strategy.py，交付只读配置快照。",
+                "必须修改 智能多平台套利/api/routes/strategy.py，交付只读配置快照。Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf 平台范围只读核对。",
                 artifacts,
             )
 
@@ -2654,8 +2662,12 @@ Verification commands:
             self.assertNotIn("智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py", target_paths)
             self.assertNotIn("graph.json", target_paths)
             self.assertNotIn("智能多平台套利/setup.py", target_paths)
+            self.assertNotIn("智能多平台套利/api/static/dashboard/index.html", target_paths)
+            self.assertNotIn("智能多平台套利/api/static/dashboard/dashboard.js", target_paths)
+            self.assertNotIn("智能多平台套利/arbitrage/market_adapters/__init__.py", target_paths)
             self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
             self.assertIn("MEMORY.md", [item["path"] for item in plan["read_only_sources"]])
+            self.assertTrue(any("Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf" in item["path"] for item in plan["read_only_sources"]));
             self.assertIn("智能多平台套利/api/routes/stock_tokens.py", [item["path"] for item in plan["reference_patterns"]])
             self.assertIn("智能多平台套利/config_security.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("scripts/nofx_hermes_services.sh", [item["path"] for item in plan["inspect_only_sources"]])
@@ -2664,11 +2676,15 @@ Verification commands:
             self.assertIn("智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("graph.json", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("智能多平台套利/setup.py", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("智能多平台套利/api/static/dashboard/index.html", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("智能多平台套利/api/static/dashboard/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("solution_review_readiness", plan)
             self.assertIn("must_change_targets", plan)
             self.assertEqual(["智能多平台套利/api/routes/strategy.py"], [item["path"] for item in plan["must_change_targets"]])
             self.assertIn("api_contracts", plan)
-            self.assertTrue(any(item.get("endpoint") == "/api/strategy/config" for item in plan["api_contracts"]))
+            self.assertTrue(any(item.get("endpoint") == "/api/stock-tokens/status" and "exclude kraken/mexc" in item.get("contract", "") for item in plan["api_contracts"]))
+            self.assertIn("setup.py / packaging / dependency files", plan["forbidden_targets"])
             rendered = _mod.render_solution(plan)
             self.assertIn("## Must-change Targets", rendered)
             self.assertIn("## API Contracts", rendered)
