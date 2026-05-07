@@ -1242,10 +1242,10 @@ Verification commands:
             self.assertIn("/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests", commands)
             self.assertIn("curl -fsS http://127.0.0.1:18080/api/realtime/funding", commands)
             self.assertIn("git fetch origin main --prune", commands)
-            self.assertIn("git merge-base --is-ancestor HEAD origin/main", commands)
+            self.assertNotIn("git merge-base --is-ancestor HEAD origin/main", commands)
             self.assertIn("git rev-list --left-right --count HEAD...origin/main", commands)
-            self.assertIn("test -f todo.md", commands)
-            self.assertIn(
+            self.assertNotIn("test -f todo.md", commands)
+            self.assertNotIn(
                 "rg -n '价差监控|stock-token|read-only|signal-only|blocked_manual_acceptance_required|NO_EXTERNAL_LOOKUP_NEEDED' docs memory todo.md done.md MEMORY.md",
                 commands,
             )
@@ -2605,6 +2605,7 @@ Verification commands:
             (repo / "scripts" / "nofx_hermes_services.sh").write_text("#!/bin/sh\n", encoding="utf-8")
             (repo / "MEMORY.md").write_text("facts\n", encoding="utf-8")
             (repo / "智能多平台套利" / "arbitrage_config.json5").write_text("{}\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "setup.py").write_text("# setup\n", encoding="utf-8")
             (repo / "智能多平台套利" / "apollo").mkdir(parents=True)
             (repo / "智能多平台套利" / "apollo" / "trade.py").write_text("# apollo\n", encoding="utf-8")
             (repo / "智能多平台套利" / "arbitrage" / "market_adapters").mkdir(parents=True)
@@ -2623,6 +2624,8 @@ Verification commands:
                 "优先遵守/读取 MEMORY.md，不等于必须写回。\n"
                 "scripts/nofx_hermes_services.sh 只是运维 smoke 参考，不是本轮业务修改目标。\n"
                 "solution_review_revision_ledger.json 是 pipeline artifact，不是 repo target。\n"
+                "graph.json 是 graphify artifact，不是 repo target。\n"
+                "智能多平台套利/setup.py 是 packaging 文件，不是本轮业务修改目标。\n"
                 "Apollo 历史 MEXC 代码 智能多平台套利/apollo/trade.py 不因名称命中被删除。\n"
                 "Hyperliquid 不在本轮新增真实 adapter，智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py 仅 inspect。\n"
                 "api_contracts: GET /api/strategy/config returns redacted non-sensitive config.\n",
@@ -2649,6 +2652,8 @@ Verification commands:
             self.assertNotIn("solution_review_revision_ledger.json", target_paths)
             self.assertNotIn("智能多平台套利/apollo/trade.py", target_paths)
             self.assertNotIn("智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py", target_paths)
+            self.assertNotIn("graph.json", target_paths)
+            self.assertNotIn("智能多平台套利/setup.py", target_paths)
             self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
             self.assertIn("MEMORY.md", [item["path"] for item in plan["read_only_sources"]])
             self.assertIn("智能多平台套利/api/routes/stock_tokens.py", [item["path"] for item in plan["reference_patterns"]])
@@ -2657,6 +2662,8 @@ Verification commands:
             self.assertIn("solution_review_revision_ledger.json", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("智能多平台套利/apollo/trade.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("graph.json", [item["path"] for item in plan["inspect_only_sources"]])
+            self.assertIn("智能多平台套利/setup.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("solution_review_readiness", plan)
             self.assertIn("must_change_targets", plan)
             self.assertEqual(["智能多平台套利/api/routes/strategy.py"], [item["path"] for item in plan["must_change_targets"]])

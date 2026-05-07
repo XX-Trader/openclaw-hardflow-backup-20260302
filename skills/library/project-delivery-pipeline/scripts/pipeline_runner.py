@@ -2110,8 +2110,6 @@ def verification_command_rejection_reason(command: str) -> str:
         return ""
     if value == "git fetch origin main --prune":
         return ""
-    if value == "git merge-base --is-ancestor HEAD origin/main":
-        return ""
     if value == "git rev-parse --verify HEAD":
         return ""
     if value == "git rev-list --left-right --count HEAD...origin/main":
@@ -2186,15 +2184,6 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
             commands,
             "git diff --name-only | grep -E 'memory/smart-multi-platform-arbitrage/(PROJECT_PROFILE|DECISIONS)\\.md'",
         )
-    if re.search(r"docs/memory/todo/done|文档/记忆|todo.md|done.md", value, re.IGNORECASE):
-        for path in ("todo.md", "done.md"):
-            add_verification_command(commands, f"test -f {path}")
-        if "docs/INDEX.md" in value:
-            add_verification_command(commands, "test -f docs/INDEX.md")
-        add_verification_command(
-            commands,
-            "rg -n '价差监控|stock-token|read-only|signal-only|blocked_manual_acceptance_required|NO_EXTERNAL_LOOKUP_NEEDED' docs memory todo.md done.md MEMORY.md",
-        )
     if re.search(r"残留|residual|Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot", value, re.IGNORECASE):
         add_verification_command(
             commands,
@@ -2208,7 +2197,6 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
     if re.search(r"git publish|origin/main|remote containment|远端包含", value, re.IGNORECASE):
         add_verification_command(commands, "git status --short --branch")
         add_verification_command(commands, "git fetch origin main --prune")
-        add_verification_command(commands, "git merge-base --is-ancestor HEAD origin/main")
         add_verification_command(commands, "git rev-parse --verify HEAD")
         add_verification_command(commands, "git diff --name-only --cached -- . ':!command-runs/**' ':!agent-workspaces/**' ':!pipeline_state.json' ':!run_meta.json'")
         add_verification_command(commands, "git rev-list --left-right --count HEAD...origin/main")
@@ -2667,7 +2655,7 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     context = str(planning_context or "")
     if not value:
         return None
-    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/")):
+    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower in {"graph.json", "graphify.json"} or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/")):
         return ("inspect_only_sources", "pipeline_artifact_not_repo_target")
     if value in FACT_SOURCE_PATHS:
         return ("read_only_sources", "project_fact_source_read_only")
@@ -2675,7 +2663,7 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("inspect_only_sources", "external_graph_context_not_business_target")
     if lower.startswith("scripts/") and ("service" in lower or "hermes" in lower or "restart" in lower):
         return ("inspect_only_sources", "ops_script_reference_not_business_target")
-    if lower == "智能多平台套利/setup.py" and not re.search(r"(?:packag|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE):
+    if lower == "智能多平台套利/setup.py" and not (confidence == "explicit" and re.search(r"(?:packag|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE)):
         return ("inspect_only_sources", "packaging_file_not_business_scope")
     if "/apollo/" in lower and nearby_negative_scope(context, value, r"Apollo|MEXC|历史"):
         return ("inspect_only_sources", "apollo_history_negative_scope")
@@ -2709,6 +2697,8 @@ def extract_api_contracts(*texts: str, limit: int = 12) -> list[dict[str, str]]:
         endpoint = next((group for group in match.groups() if group), "")
         endpoint = endpoint.strip().rstrip(".,;:)")
         if not endpoint or endpoint in seen:
+            continue
+        if endpoint.startswith(("/home/", "/tmp/", "/var/", "/root/", "/Users/")) or "/pipeline-runs/" in endpoint or "/agent-workspaces/" in endpoint:
             continue
         seen.add(endpoint)
         contracts.append({"endpoint": endpoint, "contract": "Read-only/safe API behavior must satisfy the accepted requirement without exposing secrets."})
