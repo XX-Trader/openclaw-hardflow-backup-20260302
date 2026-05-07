@@ -1036,6 +1036,136 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertIn("智能多平台套利/api/routes/stock_tokens.py", step_text)
             self.assertIn("blocked_manual_acceptance_required", "\n".join(plan["human_blockers"]))
 
+    def test_delivery_plan_uses_discussion_targets_and_command_level_acceptance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            for path in (
+                "智能多平台套利/api/routes",
+                "智能多平台套利/api",
+                "智能多平台套利/monitoring",
+                "scripts",
+                "tests",
+                "docs",
+                "memory",
+            ):
+                (repo / path).mkdir(parents=True, exist_ok=True)
+            for path in (
+                "智能多平台套利/api/routes/stock_tokens.py",
+                "智能多平台套利/api/stock_token_public_adapter.py",
+                "智能多平台套利/monitoring/funding_discovery_service.py",
+                "智能多平台套利/monitoring/opportunity_monitor.py",
+                "智能多平台套利/api/routes/funding.py",
+                "智能多平台套利/api/routes/dashboard.py",
+                "智能多平台套利/api/main.py",
+                "scripts/query_spread_funding_profit.py",
+                "tests/test_query_spread_funding_profit.py",
+                "tests/test_dashboard_api.py",
+                "tests/test_opportunity_monitor_service.py",
+                "tests/test_stock_token_public_adapter.py",
+                "tests/test_basic_auth_proxy.py",
+                "todo.md",
+                "done.md",
+                "MEMORY.md",
+                "docs/INDEX.md",
+            ):
+                (repo / path).write_text("# ok\n", encoding="utf-8")
+
+            discussion = root / "requirements_discussion.md"
+            discussion.write_text(
+                """
+最可能改动/验证位置：
+- `智能多平台套利/monitoring/funding_discovery_service.py`
+- `智能多平台套利/monitoring/funding_rate_scanner.py`，如不存在则需要 create_if_missing rationale
+- `智能多平台套利/api/routes/funding.py`
+- `智能多平台套利/api/routes/dashboard.py`
+- `智能多平台套利/api/routes/stock_tokens.py`
+- `智能多平台套利/api/stock_token_public_adapter.py`
+- `智能多平台套利/api/main.py`
+- `scripts/query_spread_funding_profit.py`
+- `tests/test_funding_rate_scanner.py`，如不存在则需要 create_if_missing rationale
+- `tests/test_query_spread_funding_profit.py`
+- `tests/test_dashboard_api.py`
+- `tests/test_opportunity_monitor_service.py`
+- `tests/test_stock_token_public_adapter.py`
+- `tests/test_basic_auth_proxy.py`
+- `docs/INDEX.md`
+- `MEMORY.md`
+- `todo.md`
+- `done.md`
+
+不得进入 target_files：
+- `smart_arb_live_bridge.py`
+- `smart_arb_pipeline_entry.py`
+- `/home/arbops/.hermes/**`
+
+Verification commands:
+- `/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_funding_rate_scanner.py tests/test_query_spread_funding_profit.py tests/test_dashboard_api.py tests/test_opportunity_monitor_service.py`
+- `/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_stock_token_public_adapter.py tests/test_basic_auth_proxy.py`
+- `/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests`
+- `git diff --check`
+- `curl -fsS http://127.0.0.1:18080/health`
+- `curl -fsS http://127.0.0.1:18080/api/strategy/status`
+- `curl -fsS http://127.0.0.1:18080/api/realtime/funding`
+需要 docs/memory/todo/done content assertion、git publish / origin/main remote containment、Discord blocked_manual_acceptance_required。
+""",
+                encoding="utf-8",
+            )
+            review = root / "requirements_review.md"
+            review.write_text("Final verdict: ready_for_solution\nAlso inspect stock_tokens.py\n", encoding="utf-8")
+            git_context = root / "git_repository_context.md"
+            git_context.write_text("Status: ## main...origin/main [behind 2]\nM MEMORY.md\ndirty worktree\n", encoding="utf-8")
+
+            plan = _mod.compile_delivery_plan(
+                PipelineConfig(project_key="demo", requirement="价差监控测试", command_cwd=repo),
+                {"host": "hermes"},
+                "价差监控测试",
+                {
+                    "requirements_discussion": str(discussion),
+                    "requirements_review": str(review),
+                    "git_repository_context": str(git_context),
+                },
+            )
+
+            paths = [item["path"] for item in plan["target_files"]]
+            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", paths)
+            self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", paths)
+            self.assertIn("智能多平台套利/monitoring/funding_discovery_service.py", paths)
+            self.assertIn("智能多平台套利/monitoring/funding_rate_scanner.py", paths)
+            self.assertIn("tests/test_funding_rate_scanner.py", paths)
+            self.assertNotIn("stock_tokens.py", paths)
+            self.assertNotIn("origin/main", paths)
+            scanner = next(item for item in plan["target_files"] if item["path"] == "智能多平台套利/monitoring/funding_rate_scanner.py")
+            self.assertTrue(scanner["create_if_missing"])
+            self.assertIn("expected_net_daily", scanner["create_if_missing_rationale"])
+            self.assertFalse(any(item["path"] in {"todo.md", "done.md", "MEMORY.md"} for item in plan["entry_points"]))
+            self.assertFalse(any(item["path"].startswith("tests/") for item in plan["entry_points"]))
+
+            commands = [item["command"] for item in plan["verification_commands"]]
+            self.assertIn(
+                "/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_funding_rate_scanner.py tests/test_query_spread_funding_profit.py tests/test_dashboard_api.py tests/test_opportunity_monitor_service.py",
+                commands,
+            )
+            self.assertIn("/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests", commands)
+            self.assertIn("curl -fsS http://127.0.0.1:18080/api/realtime/funding", commands)
+            self.assertIn("git fetch origin main --prune", commands)
+            self.assertIn("git merge-base --is-ancestor HEAD origin/main", commands)
+            self.assertIn("test -f todo.md", commands)
+
+            validation = _mod.validate_graphify_scope(
+                PipelineConfig(project_key="demo", command_cwd=repo),
+                {},
+                plan,
+                {},
+            )
+            self.assertFalse(
+                any(
+                    item.get("path") == "智能多平台套利/monitoring/funding_rate_scanner.py"
+                    and "create_if_missing" in item.get("reason", "")
+                    for item in validation["findings"]
+                )
+            )
+
     def test_delivery_plan_keeps_heavy_multi_item_requirement_holistic(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = run_pipeline(

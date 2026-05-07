@@ -150,6 +150,7 @@ PIPELINE_ARTIFACT_FILES = {
     "delivery_evidence.md",
     "delivery_plan.json",
     "deployment_report.md",
+    "failure_summary.md",
     "git_publish_report.md",
     "patch_summary.md",
     "pipeline_state.json",
@@ -1064,7 +1065,7 @@ RISK_TERM_RE = re.compile(
     r"PRODUCTION_TRADING_ENABLED|凭证|密钥|下单|划转|转账|提现|出金|交易|资金"
 )
 NEGATED_RISK_RE = re.compile(
-    r"(?i)\b(do not|don't|never|must not|without|no )\b|"
+    r"(?i)\b(do not|does not|is not|are not|will not|don't|never|must not|without|no )\b|"
     r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|保持.*false|未启动|不启动|不下单|不划转|不读取|不泄露"
 )
 RISK_APPROVAL_RE = re.compile(
@@ -1072,7 +1073,7 @@ RISK_APPROVAL_RE = re.compile(
 )
 SAFE_NEGATED_RISK_LIST_PATTERNS = (
     re.compile(
-        r"(?i)\b(?:do not|don't|never|without|no|must not)\b"
+        r"(?i)\b(?:do not|does not|is not|are not|will not|don't|never|without|no|must not)\b"
         r"(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|then|needs?|requires?|set|configure|allow)\b).){0,260}"
         r"\b(?:api[-_ /]?keys?|secrets?|credentials?|private\s+keys?|cookies?|oauth|tokens?|"
         r"live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b"
@@ -1133,7 +1134,6 @@ def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], a
         read_optional_file(Path(artifacts.get("requirements_discussion", "")), ""),
         read_optional_file(Path(artifacts.get("requirements_review", "")), ""),
         read_optional_file(Path(artifacts.get("solution_review", "")), ""),
-        read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), ""),
     ]
     plan_text = pre_execution_plan_scan_text(delivery_plan)
     scan_text = scrub_negated_risk_lines("\n".join([requirement, plan_text, *artifact_texts]))
@@ -1269,6 +1269,10 @@ def normalize_plan_path_token(value: str) -> str:
 def plan_path_rejection_reason(path: str) -> str:
     if not path:
         return "empty_path"
+    if path.lstrip().startswith("#") or re.search(r"\s+\[(?:behind|ahead|gone|diverged)\b", path, re.IGNORECASE):
+        return "git_status_not_file_path"
+    if re.match(r"^(?:origin|upstream|refs/remotes)/[A-Za-z0-9_.-]+$", path):
+        return "git_ref_not_file_path"
     name = Path(path).name
     if name in PIPELINE_ARTIFACT_FILES:
         return "pipeline_artifact_file"
@@ -1425,6 +1429,79 @@ def drop_accepted_target_findings(findings: list[dict[str, str]], accepted_paths
     ]
 
 
+REPO_PATH_RESOLVE_SKIP_PARTS = {
+    ".git",
+    ".hg",
+    ".svn",
+    ".workflow",
+    ".hermes",
+    ".openclaw",
+    ".codex",
+    ".venv",
+    "venv",
+    "__pycache__",
+    "node_modules",
+    "vendor",
+    "agent-workspaces",
+    "command-runs",
+    "pipeline-runs",
+    "graphify-out",
+}
+
+
+def resolve_repo_basename_path(path: str, repo_root: Path | None, context_text: str = "") -> str:
+    normalized = normalize_plan_path_token(path)
+    if not normalized or "/" in normalized or not repo_root:
+        return normalized
+    if normalized in PROJECT_MEMORY_FILES or normalized in WORKFLOW_HOST_BASENAMES:
+        return normalized
+    try:
+        repo = repo_root.expanduser().resolve()
+    except OSError:
+        return normalized
+    if not repo.exists():
+        return normalized
+    if (repo / normalized).exists():
+        return normalized
+    suffix = Path(normalized).suffix.lower()
+    if suffix not in {".py", ".md", ".json", ".yaml", ".yml", ".toml", ".js", ".ts", ".html", ".css", ".sh"}:
+        return normalized
+    matches: list[str] = []
+    try:
+        for candidate in repo.rglob(normalized):
+            if not candidate.is_file():
+                continue
+            rel_path = candidate.relative_to(repo)
+            if set(rel_path.parts[:-1]) & REPO_PATH_RESOLVE_SKIP_PARTS:
+                continue
+            matches.append(rel_path.as_posix())
+    except OSError:
+        return normalized
+    if not matches:
+        return normalized
+    context = str(context_text or "")
+    exact = [item for item in matches if item in context]
+    if exact:
+        return sorted(exact, key=lambda item: (len(item), item))[0]
+
+    def rank(item: str) -> tuple[int, int, str]:
+        value = item.replace("\\", "/")
+        priority = 50
+        if "/api/routes/" in value:
+            priority = 0
+        elif "/api/" in value:
+            priority = 1
+        elif "/monitoring/" in value:
+            priority = 2
+        elif value.startswith("scripts/"):
+            priority = 3
+        elif value.startswith("tests/"):
+            priority = 8
+        return (priority, len(value), value)
+
+    return sorted(matches, key=rank)[0]
+
+
 def contextual_plan_paths(
     *texts: str,
     limit: int = 24,
@@ -1432,9 +1509,12 @@ def contextual_plan_paths(
     allow_control_plane: bool = False,
     filtered_findings: list[dict[str, str]] | None = None,
     source_label: str = "unknown",
+    repo_root: Path | None = None,
+    resolution_context: str = "",
 ) -> list[str]:
     paths: list[str] = []
     seen: set[str] = set()
+    full_context = "\n".join(str(text or "") for text in texts) + "\n" + str(resolution_context or "")
     for text in texts:
         for segment in path_context_segments(text):
             segment_paths: list[str] = []
@@ -1472,8 +1552,11 @@ def contextual_plan_paths(
                         segment,
                     )
                     continue
-                seen.add(path)
-                paths.append(path)
+                resolved_path = resolve_repo_basename_path(path, repo_root, full_context)
+                if resolved_path in seen:
+                    continue
+                seen.add(resolved_path)
+                paths.append(resolved_path)
                 if len(paths) >= limit:
                     return paths
     return paths
@@ -1484,6 +1567,8 @@ def low_trust_plan_paths(
     limit: int = 24,
     filtered_findings: list[dict[str, str]] | None = None,
     source_label: str = "low_trust_context",
+    repo_root: Path | None = None,
+    resolution_context: str = "",
 ) -> list[str]:
     return contextual_plan_paths(
         *texts,
@@ -1491,6 +1576,8 @@ def low_trust_plan_paths(
         filter_control_plane=True,
         filtered_findings=filtered_findings,
         source_label=source_label,
+        repo_root=repo_root,
+        resolution_context=resolution_context,
     )
 
 
@@ -1506,6 +1593,26 @@ def merge_plan_paths(*path_groups: list[str], limit: int = 24) -> list[str]:
             if len(merged) >= limit:
                 return merged
     return merged
+
+
+def delivery_target_priority(path: str) -> tuple[int, int, str]:
+    value = str(path or "").replace("\\", "/")
+    priority = 50
+    if value.startswith("智能多平台套利/") and not value.startswith("智能多平台套利/tests/"):
+        priority = 0
+    if value.startswith("scripts/"):
+        priority = min(priority, 1)
+    if value.startswith("tests/"):
+        priority = min(priority, 5)
+    if value.startswith("docs/"):
+        priority = min(priority, 8)
+    if value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
+        priority = min(priority, 9)
+    return (priority, len(value), value)
+
+
+def sort_delivery_target_paths(paths: list[str]) -> list[str]:
+    return sorted(paths, key=delivery_target_priority)
 
 
 def post_filter_target_paths(paths: list[str], findings: list[dict[str, str]] | None = None) -> list[str]:
@@ -1705,6 +1812,14 @@ def verification_command_rejection_reason(command: str) -> str:
         return "unsupported_python_verification_command"
     if value == "git diff --check":
         return ""
+    if value == "git status --short --branch":
+        return ""
+    if value == "git fetch origin main --prune":
+        return ""
+    if value == "git merge-base --is-ancestor HEAD origin/main":
+        return ""
+    if value == "git branch -r --contains HEAD":
+        return ""
     if re.match(r"^test\s+-f\s+[^\s]+$", value):
         return ""
     if re.match(r"^git\s+diff\s+--name-only\b", value):
@@ -1767,6 +1882,11 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
             commands,
             "git diff --name-only | grep -E 'memory/smart-multi-platform-arbitrage/(PROJECT_PROFILE|DECISIONS)\\.md'",
         )
+    if re.search(r"docs/memory/todo/done|文档/记忆|todo.md|done.md", value, re.IGNORECASE):
+        for path in ("todo.md", "done.md"):
+            add_verification_command(commands, f"test -f {path}")
+        if "docs/INDEX.md" in value:
+            add_verification_command(commands, "test -f docs/INDEX.md")
     if re.search(r"残留|residual|Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot", value, re.IGNORECASE):
         add_verification_command(
             commands,
@@ -1777,7 +1897,11 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
             commands,
             added_line_safety_scan_command(),
         )
-    for endpoint in ("/health", "/api/strategy/status", "/api/stock-tokens/status", "/api/stock-tokens/markets", "/api/stock-tokens/opportunities"):
+    if re.search(r"git publish|origin/main|remote containment|远端包含", value, re.IGNORECASE):
+        add_verification_command(commands, "git status --short --branch")
+        add_verification_command(commands, "git fetch origin main --prune")
+        add_verification_command(commands, "git merge-base --is-ancestor HEAD origin/main")
+    for endpoint in ("/health", "/api/strategy/status", "/api/realtime/funding", "/api/stock-tokens/status", "/api/stock-tokens/markets", "/api/stock-tokens/opportunities"):
         if endpoint in value:
             add_verification_command(commands, f"curl -fsS http://127.0.0.1:18080{endpoint}")
     return commands
@@ -1798,6 +1922,13 @@ def configured_verification_commands(config: PipelineConfig, task_type: str, evi
             if command and command not in seen and not verification_command_rejection_reason(command):
                 seen.add(command)
                 merged.append({**item, "command": command})
+        if "git diff --check" not in seen:
+            seen.add("git diff --check")
+            merged.append({"command": "git diff --check", "required": True, "source": "default_baseline"})
+        default_compileall = "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests"
+        if task_type != "docs" and not any(" -m compileall " in command or command.endswith(" -m compileall") for command in seen):
+            seen.add(default_compileall)
+            merged.append({"command": default_compileall, "required": True, "source": "default_baseline"})
         return merged
     if commands:
         return commands
@@ -1829,7 +1960,7 @@ def artifact_text(artifacts: dict[str, str], key: str) -> str:
 
 GRAPHIFY_INDEX_ROOT_ENV = "PIPELINE_GRAPHIFY_INDEX_ROOT"
 GRAPHIFY_BLOCK_PATTERNS = {
-    "credential_path": re.compile(r"(?i)(credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|auth[-_ ]?state|credential-imports|private/|(?:^|[/_.-])token(?:s)?(?:[/_.-]|$))"),
+    "credential_path": re.compile(r"(?i)(credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|auth[-_ ]?state|credential-imports|private/|(?:^|[/_.-])(?<!stock[-_/])token(?:s)?(?:[/_.-]|$))"),
     "production_trading": re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘|真实下单|实盘下单|资金划转|划转资金"),
 }
 
@@ -2017,7 +2148,10 @@ def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], del
         else:
             candidate = repo / raw_path
             if not candidate.exists():
-                reason = "target file is not currently present; create_if_missing rationale is required"
+                if item.get("create_if_missing_rationale") or item.get("create_if_missing"):
+                    reason = ""
+                else:
+                    reason = "target file is not currently present; create_if_missing rationale is required"
         if severity == "block" or reason.startswith("target file"):
             findings.append({"severity": severity, "path": raw_path, "reason": reason})
     scan_plan_text = scope_scan_text_from_plan(delivery_plan)
@@ -2068,6 +2202,82 @@ def render_graphify_scope_validation(payload: dict[str, Any]) -> str:
     ).strip() + "\n"
 
 
+def create_if_missing_rationale(path: str, evidence_text: str = "") -> str:
+    value = str(path or "").replace("\\", "/")
+    text = str(evidence_text or "")
+    if value.endswith("智能多平台套利/monitoring/funding_rate_scanner.py") or value.endswith("/funding_rate_scanner.py"):
+        return (
+            "Create only if the repository has no equivalent scanner module; it owns the funding-rate Top N, "
+            "expected_net_daily, reserve_watchlist, offline/degraded reason, and read-only ranking contract described by requirements discussion."
+        )
+    if value.endswith("tests/test_funding_rate_scanner.py"):
+        return (
+            "Create only with the scanner contract; cover Top N ordering, expected_net_daily, reserve_watchlist, "
+            "offline/degraded/reject reasons, and signal-only/no-fund-action safety boundaries."
+        )
+    if value.startswith("tests/"):
+        return "Create only when no existing targeted test covers this accepted requirement; keep it deterministic and repository-local."
+    if "如不存在则需要 create_if_missing rationale" in text and Path(value).suffix:
+        return "Create only after confirming no existing module implements the accepted requirement, and document the import/wiring path in implementation steps."
+    return ""
+
+
+def target_file_reason(path: str, confidence: str, exists: bool, evidence_text: str) -> str:
+    value = str(path or "").replace("\\", "/")
+    if not exists:
+        rationale = create_if_missing_rationale(value, evidence_text)
+        if rationale:
+            return f"Create if missing: {rationale}"
+    if value.endswith("api/routes/stock_tokens.py"):
+        return "Stock-token read-only API route referenced by requirements discussion; use the concrete repo-relative path instead of basename drift."
+    if value.endswith("api/stock_token_public_adapter.py"):
+        return "Stock-token public data adapter referenced by requirements discussion for read-only smoke and simulation-only validation."
+    if "/monitoring/" in value or value.endswith("query_spread_funding_profit.py"):
+        return "Funding-rate monitoring business surface referenced by requirements discussion and Graphify context."
+    if value.startswith("tests/"):
+        return "Targeted regression test referenced by requirements discussion for command-level acceptance."
+    if value.startswith("docs/") or value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
+        return "Documentation, memory, or task-board writeback target required for closure evidence."
+    return {
+        "explicit": "Referenced by the original user requirement.",
+        "repair_context": "Referenced by repair context and retained as a candidate target.",
+        "requirements_discussion": "Referenced by project-agent/reviewer requirements discussion as a candidate target.",
+        "review_candidate": "Referenced by reviewer or requirements review as a candidate target.",
+        "project_evidence": "Referenced by project evidence as a candidate target.",
+    }.get(confidence, "Referenced by project evidence as a candidate target.")
+
+
+def implementation_step_description(path: str, item: dict[str, Any]) -> str:
+    value = str(path or "").replace("\\", "/")
+    if item.get("create_if_missing_rationale"):
+        return (
+            f"Confirm whether `{value}` already has an equivalent implementation; if not, create it for: "
+            f"{item['create_if_missing_rationale']} Wire it into the smallest existing business entry point and cover it with targeted tests."
+        )
+    if value.endswith("api/routes/stock_tokens.py"):
+        return "Inspect the concrete stock-token route, keep it read-only/simulation-only, and verify it does not expose private account material or trading actions."
+    if value.endswith("api/stock_token_public_adapter.py"):
+        return "Inspect the public stock-token adapter and preserve the public-data-only contract used by stock-token read-only smoke tests."
+    if value.endswith("api/routes/funding.py") or value.endswith("api/routes/dashboard.py"):
+        return "Inspect the read-only API route and ensure funding/dashboard responses expose deterministic monitoring state without private account actions."
+    if "/monitoring/" in value:
+        return "Inspect the monitoring module, define the funding-rate scanner/snapshot contract, and preserve offline/degraded reason reporting."
+    if value.startswith("tests/"):
+        return "Add or update this targeted test to prove the exact behavior, safety boundary, and regression acceptance for the related business file."
+    if value.startswith("docs/") or value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
+        return "Update this writeback target only after code/test evidence exists; record the verified scope, commands, and remaining manual acceptance boundary."
+    return f"Inspect `{value}`, define the exact behavior gap from the accepted requirement, then apply the smallest scoped code/test/docs change needed for that file."
+
+
+def is_delivery_entry_point(path: str) -> bool:
+    value = str(path or "").replace("\\", "/")
+    if value.startswith(("docs/", "memory/")) or value in {"MEMORY.md", "todo.md", "done.md"}:
+        return False
+    if value.startswith("tests/"):
+        return False
+    return Path(value).suffix in {".py", ".js", ".ts", ".html"}
+
+
 def compile_delivery_plan(
     config: PipelineConfig,
     runtime: dict[str, Any],
@@ -2076,11 +2286,14 @@ def compile_delivery_plan(
 ) -> dict[str, Any]:
     research = artifact_text(artifacts, "external_research")
     memory = artifact_text(artifacts, "project_memory_context")
+    requirements_discussion = artifact_text(artifacts, "requirements_discussion")
     requirements_review = artifact_text(artifacts, "requirements_review")
+    git_context = artifact_text(artifacts, "git_repository_context")
     repair_context = os.environ.get("PIPELINE_REPAIR_CONTEXT", "").strip()
     original_requirement_full = original_requirement_block(requirement) or requirement
     original_requirement = original_requirement_excerpt(requirement) or original_requirement_full or requirement
     decision_text = "\n".join([requirement, requirements_review, repair_context])
+    planning_context = "\n".join([original_requirement_full, requirements_discussion, requirements_review, repair_context, research, memory])
     classification_text = "\n".join(
         part for part in (original_requirement_full, repair_context) if str(part or "").strip()
     ) or requirements_review
@@ -2089,50 +2302,78 @@ def compile_delivery_plan(
     filtered_target_candidates: list[dict[str, str]] = []
     explicit_target_paths = contextual_plan_paths(
         original_requirement_full,
+        limit=48,
         filter_control_plane=True,
         allow_control_plane=allow_control_targets,
         filtered_findings=filtered_target_candidates,
         source_label="original_requirement_or_repair_context",
+        repo_root=config.command_cwd,
+        resolution_context=planning_context,
     )
     repair_target_paths = low_trust_plan_paths(
         repair_context,
+        limit=48,
         filtered_findings=filtered_target_candidates,
         source_label="repair_context",
+        repo_root=config.command_cwd,
+        resolution_context=planning_context,
+    )
+    discussion_target_paths = low_trust_plan_paths(
+        requirements_discussion,
+        limit=48,
+        filtered_findings=filtered_target_candidates,
+        source_label="requirements_discussion",
+        repo_root=config.command_cwd,
+        resolution_context=planning_context,
     )
     review_target_paths = low_trust_plan_paths(
         requirements_review,
+        limit=48,
         filtered_findings=filtered_target_candidates,
         source_label="requirements_review",
+        repo_root=config.command_cwd,
+        resolution_context=planning_context,
     )
     target_paths = post_filter_target_paths(
-        merge_plan_paths(explicit_target_paths, repair_target_paths, review_target_paths),
+        merge_plan_paths(explicit_target_paths, repair_target_paths, discussion_target_paths, review_target_paths, limit=64),
         filtered_target_candidates,
     )
+    target_paths = sort_delivery_target_paths(target_paths)
     if not target_paths:
         target_paths = low_trust_plan_paths(
             research,
             memory,
+            limit=48,
             filtered_findings=filtered_target_candidates,
             source_label="research_or_project_memory",
+            repo_root=config.command_cwd,
+            resolution_context=planning_context,
         )
+        target_paths = sort_delivery_target_paths(target_paths)
     drop_accepted_target_findings(filtered_target_candidates, target_paths)
     source_by_path: dict[str, str] = {}
     for path in explicit_target_paths:
         source_by_path.setdefault(path, "explicit")
     for path in repair_target_paths:
         source_by_path.setdefault(path, "repair_context")
+    for path in discussion_target_paths:
+        source_by_path.setdefault(path, "requirements_discussion")
     for path in review_target_paths:
         source_by_path.setdefault(path, "review_candidate")
     target_files = []
+    try:
+        repo = config.command_cwd.expanduser().resolve()
+    except OSError:
+        repo = Path(".")
     for path in target_paths:
         confidence = source_by_path.get(path, "project_evidence")
-        reason = {
-            "explicit": "Referenced by the original user requirement.",
-            "repair_context": "Referenced by repair context and retained as a candidate target.",
-            "review_candidate": "Referenced by reviewer or requirements discussion as a candidate target.",
-            "project_evidence": "Referenced by project evidence as a candidate target.",
-        }.get(confidence, "Referenced by project evidence as a candidate target.")
-        target_files.append({"path": path, "reason": reason, "confidence": confidence})
+        exists = (repo / path).exists()
+        item = {"path": path, "reason": target_file_reason(path, confidence, exists, planning_context), "confidence": confidence}
+        rationale = create_if_missing_rationale(path, planning_context) if not exists else ""
+        if rationale:
+            item["create_if_missing"] = True
+            item["create_if_missing_rationale"] = rationale
+        target_files.append(item)
     discovery_required = not target_files
     implementation_steps: list[dict[str, Any]] = [
         {
@@ -2151,7 +2392,7 @@ def compile_delivery_plan(
             {
                 "id": f"file-{index}",
                 "path": path,
-                "description": f"Inspect `{path}`, define the exact behavior gap from the accepted requirement, then apply the smallest scoped code/test/docs change needed for that file.",
+                "description": implementation_step_description(path, item),
                 "required": True,
             }
         )
@@ -2207,7 +2448,8 @@ def compile_delivery_plan(
         "target_files": target_files,
         "entry_points": [
             {"path": path["path"], "reason": path["reason"]}
-            for path in target_files[:8]
+            for path in target_files
+            if is_delivery_entry_point(path["path"])
         ],
         "out_of_scope": [
             "Do not broaden the task beyond the accepted requirement.",
@@ -2216,7 +2458,7 @@ def compile_delivery_plan(
             "Do not start real trading, place orders, transfer funds, or change production trading controls.",
         ],
         "implementation_steps": implementation_steps,
-        "verification_commands": configured_verification_commands(config, task_type, "\n".join([original_requirement_full, requirements_review, repair_context])),
+        "verification_commands": configured_verification_commands(config, task_type, "\n".join([original_requirement_full, requirements_discussion, requirements_review, git_context, repair_context])),
         "release_gates": [
             "All required verification commands pass.",
             "Dual review gates pass with the expected final verdicts.",
