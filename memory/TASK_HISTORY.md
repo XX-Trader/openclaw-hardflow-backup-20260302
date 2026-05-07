@@ -1,5 +1,23 @@
 # TASK_HISTORY
 
+## 2026-05-07 - solution_review 凭证目标文件自动修方案修复
+
+类型：bugfix
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`test_project_delivery_pipeline_runner.py`、`test_smart_arb_pipeline_entry.py`
+事实：按用户纠正，reviewer 审出方案问题时不应直接停给用户，应先自动修 `delivery_plan.json` 并重跑，直到成功、达到自动修复上限或遇到真正不可自动处理的高风险。针对 nofx run 中 `auth.json` 被列入 `target_files` 的问题，本轮在方案生成阶段过滤凭证/auth-state basename，并把 `solution_review -> revise_solution` 中“移除凭证目标文件”的失败原因识别为可自动回流方案修订；真实读取/打印/使用凭证仍保持 high-risk。
+证据：新增测试覆盖 `auth.json` 不进入 `target_files` 且进入 `filtered_target_candidates`、`revise_solution` 的 auth target blocker 自动修方案、真实 `read API key credentials from auth state` 不自动修复。验证命令：定向 unittest 3 项 OK，风险分类旧用例 3 项 OK，`py_compile`、`compileall`、`git diff --check` 通过。
+最后验证：2026-05-07
+复用建议：下一步要部署到 nofx 时，先保护远端脏工作树，pull 本批代码，运行 runtime installer，再用同类 run 或 echo smoke 验证状态卡出现自动修复历史和具体失败原因。
+
+## 2026-05-07 - nofx 服务器中文显示名设置
+
+类型：deploy
+范围：nofx OS 主机显示名
+事实：按用户要求，将 nofx 服务器的 Linux `Pretty hostname` 设置为 `套利策略 服务器`。本轮只改显示名，不改 static hostname、SSH alias、Hermes profile 名、Discord bot 名或任何 runtime/service 配置。
+证据：远端 `hostnamectl status --pretty` 返回 `套利策略 服务器`；`hostnamectl status --static` 仍为 `VM-0-15-centos`；`/etc/machine-info` 中 `PRETTY_HOSTNAME="套利策略 服务器"`。操作过程中没有重启 Hermes gateway、内控 API 或策略服务。
+最后验证：2026-05-07 15:44
+复用建议：这类中文“服务器名称”需求默认落到 `hostnamectl --pretty`，除非用户明确要改 static hostname 或云厂商实例名。
+
 ## 2026-05-07 - solution_review 软门禁实现并部署到 nofx
 
 类型：bugfix | deploy

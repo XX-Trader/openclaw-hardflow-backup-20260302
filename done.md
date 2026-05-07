@@ -7,6 +7,16 @@
 
 ## 2026-05-07 已完成
 
+- [x] [2026-05-07] **solution_review 凭证目标文件自动修方案本地修复**
+  - 修正 `auth.json` / credential / auth-state 类文件混入 `delivery_plan.json.target_files` 的问题：敏感 basename 会进入 `plan_findings.filtered_target_candidates`，不再作为业务目标文件交给实现阶段。
+  - `solution_review -> revise_solution` 中“移除凭证目标文件”的失败原因现在会被归类为 `可回流方案修订`，让入口继续自动修方案；真正读取、打印、使用或修改凭证仍保持 high-risk 硬停。
+  - 验证：新增定向 unittest 3 项 OK，风险分类旧用例 3 项 OK，`py_compile`、`compileall`、`git diff --check` 通过；整组 runner+entry unittest 超过 5 分钟超时，未作为通过证据。本轮尚未部署到 nofx。
+
+- [x] [2026-05-07] **nofx 服务器中文显示名设置**
+  - 已将 nofx Linux `Pretty hostname` 设置为 `套利策略 服务器`。
+  - 未修改 static hostname，仍为 `VM-0-15-centos`；未改 SSH alias、Hermes profile、Discord bot 名或 runtime/service 配置。
+  - 验证：`hostnamectl status --pretty` 返回 `套利策略 服务器`，`hostnamectl status --static` 返回 `VM-0-15-centos`，`/etc/machine-info` 已写入 `PRETTY_HOSTNAME`。
+
 - [x] [2026-05-07] **solution_review 软门禁上线**
   - 按新口径将方案评审从普通硬停改成方案质量软门禁：普通计划 blocker 会写入 `solution_review_soft_gate.md` 并传给 `code_execution` 吸收，后续 `code_review` 继续硬性检查实现是否按需求和 reviewer 约束完成。
   - 保留硬边界：凭证/secret/cookie/auth-state、force push、破坏性生产数据、无 reviewer 输出或明确绕过安全门禁仍在实现前阻断；高风险策略动作继续走人工确认，不因关键词永久停住。

@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-07 15:44 - nofx 设置中文 pretty hostname
+
+类型：deploy
+范围：nofx 服务器 OS 主机显示名；不涉及 `/home/arbops/.hermes` runtime、Discord profile、SSH alias 或 static hostname
+事实：已在 nofx 上把 Linux `Pretty hostname` 设置为 `套利策略 服务器`。为避免影响 SSH、systemd、脚本路径和服务识别，本轮没有修改 static hostname，仍保持 `VM-0-15-centos`；也没有重启 Hermes gateway、内控 API 或策略服务。
+证据：远端执行 `hostnamectl set-hostname --pretty '套利策略 服务器'` 后，`hostnamectl status --pretty` 返回 `套利策略 服务器`，`hostnamectl status --static` 返回 `VM-0-15-centos`，`/etc/machine-info` 包含 `PRETTY_HOSTNAME="套利策略 服务器"`。
+最后验证：2026-05-07 15:44
+复用建议：以后如果用户只要求改“服务器名称/显示名”，优先设置 `hostnamectl --pretty`，不要直接改 static hostname；只有明确要求修改系统主机名、DNS、监控标签或云厂商实例名时，再单独评估重启和服务影响。
+
 ## 2026-05-07 15:32 - nofx 安装 solution_review 软门禁批次
 
 类型：deploy

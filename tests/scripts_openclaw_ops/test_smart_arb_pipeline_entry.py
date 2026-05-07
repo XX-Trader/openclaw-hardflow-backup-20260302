@@ -1102,6 +1102,66 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual("medium", repair_risk)
         self.assertIn("可回流动作: revise_solution", repair_reasons)
 
+    def test_revise_solution_auth_target_blocker_auto_repairs_plan_contract(self):
+        module = load_module()
+        detail = (
+            "solution_review requires_revision: delivery_plan target_files needs "
+            "credential/auth-state cleanup; remove auth.json from target_files before retry."
+        )
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "revise_solution",
+            "failed_stage": "solution_review",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "solution_review",
+                    "status": "blocked",
+                    "detail": detail,
+                    "next_action": "revise_solution",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流方案修订: revise_solution", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+        self.assertIn("可回流方案修订: revise_solution", repair_reasons)
+
+    def test_revise_solution_real_secret_access_still_blocks_auto_repair(self):
+        module = load_module()
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "revise_solution",
+            "failed_stage": "solution_review",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "solution_review",
+                    "status": "blocked",
+                    "detail": "solution_review requires_revision: implementation plan asks agent to read API key credentials from auth state.",
+                    "next_action": "revise_solution",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+
+        self.assertEqual("high", risk)
+        self.assertTrue(reasons)
+        self.assertFalse(should_repair)
+        self.assertEqual("high", repair_risk)
+        self.assertEqual(reasons, repair_reasons)
+
     def test_positive_credential_or_trading_request_still_high_risk(self):
         module = load_module()
         fake_openai_key = "sk-" + "1234567890abcdefghijklmnop"

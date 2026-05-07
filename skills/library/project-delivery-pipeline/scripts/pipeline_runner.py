@@ -185,6 +185,17 @@ WORKFLOW_HOST_BASENAMES = {
     "runtime_installer.py",
     "hermes_profile_smoke.py",
 }
+SENSITIVE_TARGET_BASENAME_RE = re.compile(
+    r"(?i)^(?:"
+    r"auth(?:[-_ ]?state)?|"
+    r"credential(?:s)?|"
+    r"secret(?:s)?|"
+    r"cookie(?:s)?|"
+    r"oauth(?:[-_ ]?state)?|"
+    r"(?:api[-_ ]?)?key(?:s)?|"
+    r"token(?:s)?"
+    r")\.(?:json|ya?ml|toml|env)$"
+)
 CONTROL_PLANE_PATH_PARTS = (
     "/.workflow/",
     "/agent-workspaces/",
@@ -1512,6 +1523,8 @@ def control_plane_plan_path_reason(path: str) -> str:
     name = Path(trimmed).name
     if name in PIPELINE_ARTIFACT_FILES:
         return "pipeline_artifact_file"
+    if SENSITIVE_TARGET_BASENAME_RE.fullmatch(name):
+        return "credential_or_auth_target_file"
     if "/" not in trimmed and name in WORKFLOW_HOST_BASENAMES:
         return "workflow_host_basename"
     if name in PROJECT_MEMORY_FILES and not trimmed.startswith("memory/"):

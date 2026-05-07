@@ -951,7 +951,7 @@ def failure_evidence(state: dict | None, *, redact: bool = True) -> str:
         )
     artifact = artifact_path(stage.get("artifact"), str(state.get("run_dir") or ""))
     if artifact:
-        parts.append(read_text_excerpt(artifact, 640))
+        parts.append(read_text_excerpt(artifact, 1800))
     text = "\n".join(part for part in parts if part)
     return redact_text(text) if redact else text
 
@@ -959,6 +959,18 @@ def failure_evidence(state: dict | None, *, redact: bool = True) -> str:
 REPAIRABLE_REVIEW_CONTRACT_RE = re.compile(
     r"(?:requires_revision|Required revision|Blocking issue|contract drift|delivery_plan|target_files|"
     r"missing from the reviewed workspace|not part of the diff|ignored by git|MISSING|缺失|未进入\s*diff|未交付|未创建)",
+    re.IGNORECASE,
+)
+REPAIRABLE_SOLUTION_PLAN_RE = re.compile(
+    r"(?:solution_review|revise_solution|delivery_plan|target_files|方案包|方案合同|目标文件|目标路径|"
+    r"移除|剔除|过滤|不得包含|不能进入|remove|exclude|filter).{0,240}"
+    r"(?:auth\.json|credential|credentials|auth[-_ ]?state|secret|cookie|oauth|api[-_ ]?key|token|凭证|密钥)",
+    re.IGNORECASE,
+)
+POSITIVE_SECRET_ACCESS_RE = re.compile(
+    r"\b(?:read|print|show|dump|export|upload|commit|use|modify)\b.{0,80}"
+    r"\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?|cookies?|sessions?|tokens?|auth[-_ ]?state)\b|"
+    r"(?:读取|查看|输出|打印|提交|上传|使用|修改).{0,40}(?:密钥|凭证|token|cookie|私钥|会话|auth)",
     re.IGNORECASE,
 )
 
@@ -973,6 +985,35 @@ def is_repairable_review_contract_issue(state: dict | None, raw_evidence: str) -
     return bool(REPAIRABLE_REVIEW_CONTRACT_RE.search(raw_evidence or ""))
 
 
+def is_repairable_solution_plan_revision(state: dict | None, raw_evidence: str, evidence: str) -> bool:
+    if not isinstance(state, dict):
+        return False
+    if str(state.get("next_action") or "").strip() != "revise_solution":
+        return False
+    if str(state.get("failed_stage") or "").strip() != "solution_review":
+        return False
+    if not REPAIRABLE_SOLUTION_PLAN_RE.search(raw_evidence or ""):
+        return False
+    if POSITIVE_SECRET_ACCESS_RE.search(evidence or ""):
+        return False
+    hard_patterns = (
+        HIGH_RISK_PATTERNS[0],  # explicit credential/header assignment
+        HIGH_RISK_PATTERNS[2],  # sensitive header assignment
+        HIGH_RISK_PATTERNS[4],  # secret scanner rules
+        HIGH_RISK_PATTERNS[5],  # PRODUCTION_TRADING_ENABLED=true
+        HIGH_RISK_PATTERNS[6],  # live trading/order/fund verbs
+        HIGH_RISK_PATTERNS[7],  # required trading/fund action
+        HIGH_RISK_PATTERNS[8],  # rm -rf
+        HIGH_RISK_PATTERNS[9],  # DROP TABLE
+        HIGH_RISK_PATTERNS[10],  # TRUNCATE TABLE
+        HIGH_RISK_PATTERNS[11],  # force push
+        HIGH_RISK_PATTERNS[13],  # fund/trading Chinese terms
+        HIGH_RISK_PATTERNS[14],  # required fund/trading Chinese terms
+        HIGH_RISK_PATTERNS[15],  # real trading authorization
+    )
+    return not any(pattern.search(evidence) for pattern in hard_patterns)
+
+
 def classify_repair_risk(state: dict | None) -> tuple[str, list[str]]:
     if not isinstance(state, dict):
         return "unknown", ["没有可解析的 pipeline 状态"]
@@ -983,6 +1024,8 @@ def classify_repair_risk(state: dict | None) -> tuple[str, list[str]]:
     evidence = risk_scan_text(raw_evidence)
     reasons = [pattern.pattern for pattern in HIGH_RISK_PATTERNS if pattern.search(evidence)]
     if reasons:
+        if is_repairable_solution_plan_revision(state, raw_evidence, evidence):
+            return "medium", [f"可回流方案修订: {next_action}"]
         if is_repairable_review_contract_issue(state, raw_evidence) and not any(
             pattern.search(evidence)
             for pattern in (
@@ -1014,7 +1057,7 @@ def should_auto_repair(state: dict | None, attempt_count: int, max_attempts: int
 def repair_context_markdown(state: dict, attempt: int, risk: str, reasons: list[str]) -> str:
     failed_stage = str(state.get("failed_stage") or "unknown")
     next_action = str(state.get("next_action") or "unknown")
-    evidence = compact_text(failure_evidence(state), 1400)
+    evidence = compact_text(failure_evidence(state), 2200)
     return "\n".join(
         [
             "# Smart Arb Auto Repair Context",

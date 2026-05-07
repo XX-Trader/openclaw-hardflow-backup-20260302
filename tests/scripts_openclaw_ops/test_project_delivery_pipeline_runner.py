@@ -911,6 +911,35 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             )
             self.assertIn(".workflow/pipeline-runs/demo/retry.py: negated_context", solution)
 
+    def test_delivery_plan_filters_auth_state_targets_before_solution_review(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="target_files: auth.json；只做策略配置参数页面/API 的非敏感只读快照。",
+                    workspace_root=Path(tmp),
+                    run_id="auth-target-filter",
+                    dry_run=True,
+                )
+            )
+
+            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
+            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
+            target_paths = [item["path"] for item in delivery_plan["target_files"]]
+            filtered_candidates = delivery_plan["plan_findings"]["filtered_target_candidates"]
+
+            self.assertNotIn("auth.json", target_paths)
+            self.assertTrue(delivery_plan["plan_findings"]["discovery_required"])
+            self.assertTrue(
+                any(
+                    item["path"] == "auth.json"
+                    and item["reason"] == "credential_or_auth_target_file"
+                    and item["source"] == "original_requirement_or_repair_context"
+                    for item in filtered_candidates
+                )
+            )
+            self.assertIn("auth.json: credential_or_auth_target_file", solution)
+
     def test_delivery_plan_reads_explicit_target_from_multiline_original_requirement(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = run_pipeline(

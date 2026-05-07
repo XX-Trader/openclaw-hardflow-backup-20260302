@@ -1,5 +1,14 @@
 # RUNBOOK
 
+## 2026-05-07 - solution_review 凭证目标文件的 revise_solution 自动回流
+
+类型：runbook
+范围：`delivery_plan.json.target_files`、`solution_review`、`revise_solution`、`smart_arb_pipeline_entry.py`
+事实：`solution_review` 审出方案问题时，默认应先走 `revise_solution` 自动回流修方案，而不是把失败直接交给用户。凭证/auth-state 文件如果只是错误混入 `target_files`，属于方案合同缺陷，应在方案层剔除并继续回流；只有真正要求读取、打印、使用、修改凭证/密钥/cookie/auth-state，或触发真实交易、资金操作、破坏性数据操作、force push，才保持人工/硬阻塞。
+证据：`pipeline_runner.py` 已把 `auth.json`、`credentials.json`、`secret.json`、`cookie.json`、`oauth_state.json`、`token.json` 等敏感 basename 识别为 `credential_or_auth_target_file` 并放入 `plan_findings.filtered_target_candidates`，不再进入 `target_files`；`smart_arb_pipeline_entry.py` 已把 `solution_review -> revise_solution` 中“移除凭证目标文件”的失败原因分类为 `medium / 可回流方案修订`，同时保留真实凭证读取为 high-risk。
+最后验证：2026-05-07，本地定向 unittest 覆盖 auth target 过滤、方案修订自动回流、真实凭证读取仍硬停；`py_compile`、`compileall`、`git diff --check` 通过。整组 runner+entry unittest 曾超过 5 分钟超时，未作为本轮完成证据。
+复用建议：以后看到 `delivery_plan.json 把 auth.json 列入 target_files`，先确认安装态是否包含 `credential_or_auth_target_file` 和 `可回流方案修订`；若仍停在“等待修正方案”，说明 nofx runtime 未安装本批修复或自动修复次数耗尽。
+
 ## 2026-05-07 - solution_review 软门禁排障
 
 类型：runbook
