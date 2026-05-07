@@ -210,7 +210,7 @@ SAFE_NEGATED_RISK_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
         r"\b(?:do\s+not|don't|never|without|no)\b.{0,80}\b(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdraw|transfer)\b",
-        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不读取|不泄露).{0,60}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不读取|不泄露|不发现|未发现|不是.{0,20}(?:硬风险|安全硬停)).{0,80}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金|credential|secret|cookie|auth[-_ ]?state|force\s+push)",
         r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金).{0,30}(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|关闭|false)",
     )
 ]
@@ -249,7 +249,7 @@ SAFE_NEGATED_LIST_FRAGMENT_PATTERNS = [
         r"\b(?:no\s+need(?:ed)?\s+for|do\s+not\s+need|don't\s+need|not\s+(?:required|needed))\b.{0,120}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|authorization|auth\s+state\s+files?)\b\s*(?::|=)?\s*(?:\[[^\]]*REDACTED[^\]]*\])?",
         r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:use|read|print|show|dump|export|upload|commit|modify|delete|move|place|start|enable|execute|transfer|withdraw|set|configure|turn\s+on|switch\s+on|read/print|read/print/move|read/print/move/modify)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,260}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|auth\s+state\s+files?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b",
         r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:set|configure)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|and|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,160}\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b",
-        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未在|未启动|未下单|未划转|未转账|未提现|未出金|未读取|未泄露|未打印|未移动|未修改|未保留|不保留|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露|不打印|不移动|不修改)(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许|下单后|划转后|转账后|提现后|出金后|资金操作)).){0,160}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|credential(?:-imports)?|credentials?|secrets?|tokens?|cookies?|oauth|api[_ /-]?keys?)",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未在|未启动|未下单|未划转|未转账|未提现|未出金|未读取|未泄露|未打印|未移动|未修改|未保留|不保留|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露|不打印|不移动|不修改|不发现|未发现|不是.{0,20}(?:硬风险|安全硬停))(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许|下单后|划转后|转账后|提现后|出金后|资金操作)).){0,200}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|credential(?:-imports)?|credentials?|secrets?|tokens?|cookies?|oauth|auth[-_ ]?state|force\s+push|api[_ /-]?keys?)",
         r"(?:不得|不要|不能|禁止|不允许|不应|不会)(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许)).){0,160}PRODUCTION_TRADING_ENABLED\s*=\s*true",
     )
 ]

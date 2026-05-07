@@ -1072,35 +1072,35 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
     def test_revise_solution_auto_repair_allows_negated_production_flag(self):
         module = load_module()
-        state = {
-            "run_id": "discord-spreadagent-test",
-            "status": "blocked",
-            "next_action": "revise_solution",
-            "failed_stage": "solution_review",
-            "run_dir": "",
-            "artifacts": {},
-            "stages": [
-                {
-                    "name": "solution_review",
-                    "status": "blocked",
-                    "detail": (
-                        "requires_revision: revise the delivery plan; "
-                        "do not set PRODUCTION_TRADING_ENABLED=true; "
-                        "do not place orders or transfer funds."
-                    ),
-                    "next_action": "revise_solution",
-                },
-            ],
-        }
+        for detail in (
+            "requires_revision: revise the delivery plan; do not set PRODUCTION_TRADING_ENABLED=true; do not place orders or transfer funds.",
+            "solution_review requires_revision: 不是安全硬停，未发现 credential/secret/cookie/auth-state、force push、真实交易/下单/划转/提现等硬风险；delivery_plan target_files 需要回流修订。",
+        ):
+            state = {
+                "run_id": "discord-spreadagent-test",
+                "status": "blocked",
+                "next_action": "revise_solution",
+                "failed_stage": "solution_review",
+                "run_dir": "",
+                "artifacts": {},
+                "stages": [
+                    {
+                        "name": "solution_review",
+                        "status": "blocked",
+                        "detail": detail,
+                        "next_action": "revise_solution",
+                    },
+                ],
+            }
 
-        risk, reasons = module.classify_repair_risk(state)
-        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+            risk, reasons = module.classify_repair_risk(state)
+            should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
 
-        self.assertEqual("medium", risk)
-        self.assertIn("可回流动作: revise_solution", reasons)
-        self.assertTrue(should_repair)
-        self.assertEqual("medium", repair_risk)
-        self.assertIn("可回流动作: revise_solution", repair_reasons)
+            self.assertEqual("medium", risk)
+            self.assertIn("可回流动作: revise_solution", reasons)
+            self.assertTrue(should_repair)
+            self.assertEqual("medium", repair_risk)
+            self.assertIn("可回流动作: revise_solution", repair_reasons)
 
     def test_revise_solution_auth_target_blocker_auto_repairs_plan_contract(self):
         module = load_module()

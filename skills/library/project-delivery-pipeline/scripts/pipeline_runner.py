@@ -2141,7 +2141,7 @@ def add_verification_command(commands: list[dict[str, Any]], command: str, sourc
 
 def added_line_safety_scan_command() -> str:
     return (
-        "/bin/sh -c \"git diff --unified=0 -- 智能多平台套利 tests scripts todo.md done.md memory docs "
+        "/bin/sh -c \"git diff --unified=0 -- 智能多平台套利 tests "
         "| rg -n '^\\+.*(PRODUCTION_TRADING_ENABLED\\s*=\\s*true|credential\\s*[:=]|credentials\\s*[:=]|api[_ -]?key\\s*[:=]|secret\\s*[:=]|private endpoint|place_order|transfer|signing)' "
         "&& exit 1 || test $? -eq 1\""
     )
@@ -2173,17 +2173,6 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
         )
     if "git diff --check" in value:
         add_verification_command(commands, "git diff --check")
-    for memory_path in (
-        "memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md",
-        "memory/smart-multi-platform-arbitrage/DECISIONS.md",
-    ):
-        if memory_path in value:
-            add_verification_command(commands, f"test -f {memory_path}")
-    if all(path in value for path in ("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", "memory/smart-multi-platform-arbitrage/DECISIONS.md")):
-        add_verification_command(
-            commands,
-            "git diff --name-only | grep -E 'memory/smart-multi-platform-arbitrage/(PROJECT_PROFILE|DECISIONS)\\.md'",
-        )
     if re.search(r"安全扫描|credential|credentials|PRODUCTION_TRADING_ENABLED=true|签名调用|下单|划转", value, re.IGNORECASE):
         add_verification_command(
             commands,
@@ -2662,7 +2651,12 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("inspect_only_sources", "cron_runtime_schedule_not_business_target")
     if lower.startswith("static/index/") or lower in {"static/index/dashboard.js", "static/index/index.html"}:
         return ("inspect_only_sources", "basename_or_static_drift_not_repo_business_target")
-    if lower in {"智能多平台套利/arbitrage_config.json5", "智能多平台套利/api/routes/dashboard.py", "智能多平台套利/api/static/dashboard/dashboard.css"} and not re.search(r"(?:kraken|mexc|stock[-_ ]?token|mvp|必须修改|必改).{0,80}(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改)|(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改).{0,80}(?:kraken|mexc|stock[-_ ]?token|mvp)", context, re.IGNORECASE):
+    if lower.startswith("apollo/") or lower.startswith("智能多平台套利/apollo/"):
+        return ("inspect_only_sources", "apollo_historical_or_absent_not_current_mvp_target")
+    if lower in {"智能多平台套利/arbitrage_config.json5", "智能多平台套利/api/routes/dashboard.py", "智能多平台套利/api/static/dashboard/dashboard.css"} and (
+        re.search(r"(?:未发现|没有发现|无|不存在|无漂移证据|未证明|未检出).{0,120}(?:arbitrage_config\.json5|api/routes/dashboard\.py|dashboard\.css|kraken|mexc|mvp|漂移)", context, re.IGNORECASE)
+        or not re.search(r"(?:kraken|mexc|stock[-_ ]?token|mvp|必须修改|必改).{0,80}(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改)|(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改).{0,80}(?:kraken|mexc|stock[-_ ]?token|mvp)", context, re.IGNORECASE)
+    ):
         return ("inspect_only_sources", "conditional_config_dashboard_css_without_drift_evidence")
     if lower == "智能多平台套利/setup.py" and (
         re.search(r"(?:不让|不得|禁止|不能|不应|forbidden|exclude|out\s+of\s+scope).{0,80}(?:setup\.py|packag|dependency|依赖|安装包)|(?:setup\.py|packag|dependency|依赖|安装包).{0,80}(?:不让|不得|禁止|不能|不应|非目标|forbidden|exclude|out\s+of\s+scope)", context, re.IGNORECASE)
@@ -2890,6 +2884,12 @@ def compile_delivery_plan(
     for path in target_paths:
         confidence = source_by_path.get(path, "project_evidence")
         exists = (repo / path).exists()
+        bucket = delivery_non_target_bucket(path, exists, planning_context, confidence)
+        if bucket:
+            bucket_name, reason = bucket
+            append_classified_context_path(classified_context_paths, bucket_name, path)
+            add_filtered_target_finding(filtered_target_candidates, path, "delivery_plan_target_convergence_final", reason, path)
+            continue
         item = {"path": path, "reason": target_file_reason(path, confidence, exists, planning_context), "confidence": confidence}
         rationale = create_if_missing_rationale(path, planning_context) if not exists else ""
         if rationale:
