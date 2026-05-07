@@ -7,6 +7,12 @@
 
 ## 2026-05-07 已完成
 
+- [x] [2026-05-07] **external_research 空失败本地证据降级上线**
+  - 定位 `discord-spreadagent-20260507T051921542201Z` 没进入方案评审，而是在 `external_research` 阶段因 bridge 返回码 2 阻塞；artifact 里只有 `LIVE_BRIDGE_STAGE: external_research` 与 `LIVE_BRIDGE_STATUS: fail`，没有 stderr 和有效 research evidence。
+  - `smart_arb_live_bridge.py` 现在会在纯本地 workflow/runtime 回归任务中识别已有上下文证据，并在 Hermes 空失败时合成 `NO_EXTERNAL_LOOKUP_NEEDED` 本地证据；若存在 http/https 来源或明确要求官方/联网资料，仍保持失败并输出诊断。
+  - 已部署到 nofx：远端仓库 `HEAD=17b3484`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`，用原失败 run 环境重跑 installed bridge 已返回 `LIVE_BRIDGE_STATUS: pass`。
+  - 验证：本地 live bridge 39 项、entry 49 项、runner 62 项 OK；nofx 远端 compileall、live bridge 39 项、自动修复定向测试、repo containment 和内控 API smoke 均通过。
+
 - [x] [2026-05-07] **方案评审范围过滤与风险扫描误伤修复上线**
   - 已确认 `discord-spreadagent-20260507T015008674360Z` 的 `solution_review` 阻塞来自两个有效 reviewer 的真实方案问题，不是模型 fallback 缺失；本轮修复的是方案包生成/范围过滤/风险扫描误伤链路。
   - `delivery_plan.json` 现在会过滤 workflow 宿主 basename、低信任 `scripts/openclaw-ops/*`、`todo.md/done.md` 组合路径和否定上下文路径；合法 `memory/.../PROJECT_PROFILE.md` / `DECISIONS.md` 正向路径会保留。

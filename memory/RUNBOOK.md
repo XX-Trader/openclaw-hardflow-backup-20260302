@@ -1,5 +1,14 @@
 # RUNBOOK
 
+## 2026-05-07 - external_research 空失败的本地证据降级
+
+类型：runbook
+范围：nofx live bridge、`external_research`、`research_report.md`、`command-runs/external_research-*.json`
+事实：`external_research` live mode 仍要求在进入需求评审前有 research evidence；但如果任务本身是 workflow/runtime 回归、`run_meta.json.source_urls` 只有 `discord:*` 等本地来源、需求没有显式要求官方/联网资料，并且 run 目录已经有 `context_snapshot.md`、`project_memory_context.md`、`git_repository_context.md`、`graphify_context.md` 等本地证据，Hermes 阶段空输出、缺 pass 状态或返回码失败时，bridge 可以合成 `NO_EXTERNAL_LOOKUP_NEEDED` 本地证据并返回 pass。该降级只解决运行时空失败，不替代外部资料核对；出现 http/https source URL，或需求包含“官方文档、联网、外部资料、SDK/API、平台规则”等要求时，必须继续失败并给出 bridge diagnostic。
+证据：`smart_arb_live_bridge.py` 新增 `can_synthesize_local_only_research()`、`local_context_evidence_files()`、`current_source_urls()` 与 `synthesized_local_only_research()`；`run_hermes_stage()` 在 `external_research` 失败后按上述条件合成 evidence，否则输出 `# bridge failure diagnostic`。回归测试覆盖 Hermes 空失败时合成本地 evidence，以及存在 `https://...` source URL 时仍失败。
+最后验证：2026-05-07 14:01，本地 `test_smart_arb_live_bridge` 39 项 OK，远端 nofx 同组测试 39 项 OK；用 `discord-spreadagent-20260507T051921542201Z` 环境重跑 installed bridge 返回 `LIVE_BRIDGE_STATUS: pass`。
+复用建议：遇到 `LIVE_BRIDGE_STATUS: fail` 且 stderr 为空，不要直接重跑整条 pipeline。先读 `command-runs/external_research-*.json`、`run_meta.json`、`requirement.txt` 和上下文 artifact；如果是纯本地回归，确认 bridge 已安装 `17b3484d` 或之后版本，再让自动回流重新跑 `run_external_research`。
+
 ## 2026-05-07 - reviewer provider/model 失败的降级排障
 
 类型：runbook

@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-07 14:01 - nofx 安装 external_research 本地证据降级批次
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/smart_arb_live_bridge.py`、`/home/arbops/.local/bin/smart-arb-pipeline`
+事实：本机提交 `17b3484d` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `410db39` fast-forward 到 `17b3484`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 返回 `ok=true`、`changed=true`、`missing_sources=[]`。本轮未改 profile SOUL，因此没有重启 Discord gateway。修复后 `external_research` 阶段在 Hermes 空输出/无 pass 状态失败时，会先判断 run 是否只有本地来源、需求是否没有显式官方/联网资料要求、上下文证据是否足够；满足条件时由 bridge 合成 `NO_EXTERNAL_LOOKUP_NEEDED` 本地证据并返回 `LIVE_BRIDGE_STATUS: pass`。出现 http/https source URL 或需求明确要求官方/外部/联网资料时仍保持 fail，不做本地降级。
+证据：针对失败 run `discord-spreadagent-20260507T051921542201Z` 的原始 artifact，`command-runs/external_research-1.json` 只有 `LIVE_BRIDGE_STAGE: external_research` 与 `LIVE_BRIDGE_STATUS: fail`，stderr 为空，未生成有效 research evidence。安装后用同一 run 环境重跑 installed bridge，输出 `# synthesized_local_only_research`、`NO_EXTERNAL_LOOKUP_NEEDED`、本地 evidence files 和 `LIVE_BRIDGE_STATUS: pass`，返回码 0。远端 `python3 -B -m compileall -q scripts/openclaw-ops/smart_arb_live_bridge.py tests/scripts_openclaw_ops/test_smart_arb_live_bridge.py` 通过；远端 `python3 -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge -q` 39 项 OK；`test_smart_arb_pipeline_entry.SmartArbPipelineEntryTests.test_negated_safety_terms_do_not_block_external_research_repair` OK；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
+最后验证：2026-05-07 14:01
+复用建议：以后 nofx 卡在 `external_research` 且 bridge stdout 只有 stage/status、stderr 为空时，先看 `run_meta.json.source_urls` 和 `requirement.txt`。只有纯本地 workflow/runtime 回归类任务才允许合成本地证据；有外部 URL、官方文档、SDK/API/平台规则或用户明确要求联网时，必须让 `external_research` 真正产出外部资料证据。
+
 ## 2026-05-07 12:53 - nofx 安装方案文件级计划与风险误判修复批次
 
 类型：deploy

@@ -1,5 +1,14 @@
 # PITFALLS
 
+## 2026-05-07 - external_research 空失败不能等同于缺少联网资料
+
+类型：pitfall
+范围：`smart_arb_live_bridge.py`、nofx `/home/arbops/.hermes/pipeline-runs/<run_id>`、`research_report.md`
+事实：run `discord-spreadagent-20260507T051921542201Z` 卡在 `external_research`，状态卡显示 live mode 需要 external research evidence，但 artifact 里实际只有 bridge 的最小失败输出：stdout 为 `LIVE_BRIDGE_STAGE: external_research` 与 `LIVE_BRIDGE_STATUS: fail`，stderr 为空，没有任何模型回答、诊断或外部资料错误。该类问题的根因是 Hermes stage 未产生可解析输出或 bridge 没有降级/诊断，不等同于“必须去联网查资料”。本轮需求是 nofx 工作流回归重试，source 只有 `discord:spreadagent`，本地上下文、项目记忆、Git 和 Graphify artifact 已足够判断“不需要外部资料核对”。
+证据：修复后 bridge 只在纯本地来源且需求没有外部资料要求时合成 `NO_EXTERNAL_LOOKUP_NEEDED`；若存在 http/https source URL 或需求明确要求官方/外部/联网资料，则不会合成 pass。新增测试覆盖两条分支。
+最后验证：2026-05-07 14:01
+复用建议：以后 `external_research` 阶段失败要先分类：1. 有外部 URL/官方资料要求但 web-agent 没完成，继续修 research；2. 纯本地 workflow/runtime 回归且 Hermes 空失败，修 bridge/runtime 输出或使用本地证据降级；3. Hermes 返回内容但不含 pass/verdict，优先看 session 文件恢复与脱敏后的 assistant 输出。
+
 ## 2026-05-07 - Graphify 推荐验证命令不能进入 pre-execution 风险扫描
 
 类型：pitfall

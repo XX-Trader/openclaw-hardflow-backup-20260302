@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-07 - nofx external_research 空失败修复并部署
+
+类型：bugfix | deploy
+范围：`smart_arb_live_bridge.py`、`test_smart_arb_live_bridge.py`、nofx runtime、run `discord-spreadagent-20260507T051921542201Z`
+事实：修复最新 nofx 回归 run 更早卡在 `external_research` 的问题。该 run 没有进入 `solution_review`，原因是 bridge 子命令返回码 2，stdout 只包含 `LIVE_BRIDGE_STAGE: external_research` 与 `LIVE_BRIDGE_STATUS: fail`，stderr 为空，`research_report.md` 没有有效 evidence。修复后，`external_research` 在纯本地 workflow/runtime 回归任务中如果 Hermes 空失败，会检查本地 evidence artifacts 并合成 `NO_EXTERNAL_LOOKUP_NEEDED`；有外部 URL 或明确要求官方/联网资料时仍失败并输出诊断。
+证据：提交 `17b3484d` 已推送并安装到 nofx，远端 hardflow `HEAD=17b3484`、`HEAD...origin/main=0 0`、runtime installer `ok=true/changed=true`。安装后使用 `discord-spreadagent-20260507T051921542201Z` 的 run 环境重跑 installed bridge，输出 `# synthesized_local_only_research`、本地 evidence files 和 `LIVE_BRIDGE_STATUS: pass`，返回码 0。
+最后验证：2026-05-07 14:01 本地 `test_smart_arb_live_bridge` 39 项 OK、`test_smart_arb_pipeline_entry` 49 项 OK、`test_project_delivery_pipeline_runner` 62 项 OK、相关文件 `compileall` 与 `git diff --check` 通过；nofx 远端 `compileall`、`test_smart_arb_live_bridge` 39 项、外部资料自动修复定向测试、repo containment 和内控 API smoke 均通过。
+复用建议：后续再看到 `external_research: fail / blocked`，不要默认退回方案阶段，也不要原样重跑。先看是否已有外部资料要求；如果没有，核对 installed bridge 是否支持本地 evidence synthesis，再从 `run_external_research` 回流。
+
 ## 2026-05-07 - 最新 nofx 方案评审 run 的文件级计划修复
 
 类型：bugfix | deploy
