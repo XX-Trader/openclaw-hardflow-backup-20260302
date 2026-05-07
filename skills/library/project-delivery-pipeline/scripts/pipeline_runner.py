@@ -1271,7 +1271,7 @@ RISK_TERM_RE = re.compile(
 )
 NEGATED_RISK_RE = re.compile(
     r"(?i)\b(do not|does not|is not|are not|will not|don't|never|must not|without|no )\b|"
-    r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|保持.*false|未启动|不启动|不下单|不划转|不读取|不泄露"
+    r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|没有发现|未发现|未检出|无.{0,20}(?:硬风险|风险|凭证|密钥|真实交易|force\s+push)|保持.*false|未启动|不启动|不下单|不划转|不读取|不泄露"
 )
 RISK_APPROVAL_RE = re.compile(
     r"(?i)\b(?:approved|confirmed)\b|已人工确认|人工确认|用户确认|明确确认|确认[:：]|(?<!不)允许"
@@ -2612,6 +2612,48 @@ def is_delivery_entry_point(path: str) -> bool:
     return Path(value).suffix in {".py", ".js", ".ts", ".html"}
 
 
+
+API_ENDPOINT_RE = re.compile(r"(?i)\b(?:GET|POST|PUT|PATCH|DELETE)\s+(/[A-Za-z0-9_./{}?=&:-]+)|`(/[A-Za-z0-9_./{}?=&:-]+)`")
+
+
+def extract_api_contracts(*texts: str, limit: int = 12) -> list[dict[str, str]]:
+    contracts: list[dict[str, str]] = []
+    seen: set[str] = set()
+    joined = "\n".join(str(text or "") for text in texts)
+    for match in API_ENDPOINT_RE.finditer(joined):
+        endpoint = next((group for group in match.groups() if group), "")
+        endpoint = endpoint.strip().rstrip(".,;:)")
+        if not endpoint or endpoint in seen:
+            continue
+        seen.add(endpoint)
+        contracts.append({"endpoint": endpoint, "contract": "Read-only/safe API behavior must satisfy the accepted requirement without exposing secrets."})
+        if len(contracts) >= limit:
+            break
+    if not contracts and re.search(r"(?:页面|API|接口|dashboard|配置|显示|验收)", joined, re.IGNORECASE):
+        contracts.append({"endpoint": "accepted requirement API/UI surface", "contract": "Pages and read-only APIs must expose only non-sensitive accepted-scope data and pass deterministic assertions."})
+    return contracts
+
+
+def build_must_change_targets(target_files: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    must_change: list[dict[str, Any]] = []
+    for item in target_files:
+        if not isinstance(item, dict):
+            continue
+        path = str(item.get("path") or "").strip()
+        if not path:
+            continue
+        must_item = {
+            "path": path,
+            "reason": item.get("reason", "Required implementation target from delivery_plan.target_files."),
+            "required": True,
+        }
+        if item.get("create_if_missing"):
+            must_item["create_if_missing"] = True
+            must_item["create_if_missing_rationale"] = item.get("create_if_missing_rationale", "")
+        must_change.append(must_item)
+    return must_change
+
+
 def compile_delivery_plan(
     config: PipelineConfig,
     runtime: dict[str, Any],
@@ -2775,6 +2817,8 @@ def compile_delivery_plan(
     )
     scope_slices = plan_scope_slices(requirement, requirements_review, repair_context)
     deferred_slices: list[dict[str, Any]] = []
+    must_change_targets = build_must_change_targets(target_files)
+    api_contracts = extract_api_contracts(original_requirement_full, requirements_discussion, requirements_review, repair_context, research)
     return {
         "schema_version": "delivery-plan/v1",
         "task_type": task_type,
@@ -2804,6 +2848,7 @@ def compile_delivery_plan(
             "rule": "Task-splitting granularity control is disabled for the OpenClaw backup multi-agent workflow; reviewers and implementers consider the whole accepted requirement together until all reviewer blockers are resolved.",
         },
         "target_files": target_files,
+        "must_change_targets": must_change_targets,
         "read_only_sources": [
             {"path": path, "reason": "Mentioned as read-only/inspect-only source during requirements or review readiness discussion."}
             for path in classified_context_paths.get("read_only_sources", [])
@@ -2820,6 +2865,7 @@ def compile_delivery_plan(
             "Keep production trading disabled unless the route carries explicit human risk confirmation and later gates allow it.",
             "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
         ],
+        "api_contracts": api_contracts,
         "forbidden_targets": [
             ".env",
             "auth.json",
@@ -2828,7 +2874,7 @@ def compile_delivery_plan(
         ],
         "solution_review_readiness": {
             "target_files_contract": "Only concrete repo-relative files expected to be created or modified may appear in target_files.",
-            "non_target_contract": "read_only_sources, reference_patterns, inspect_only_sources, runtime_contracts, and api_contracts are not implementation targets.",
+            "non_target_contract": "read_only_sources, reference_patterns, inspect_only_sources, runtime_contracts, and api_contracts are not implementation targets; must_change_targets mirrors the required edit/create subset.",
             "pre_review_self_check": [
                 "No credential/auth/secret files in target_files or executable steps.",
                 "No runtime/API/data-contract pseudo paths in target_files.",
@@ -2933,6 +2979,9 @@ def render_solution(delivery_plan: dict[str, Any]) -> str:
             "## Target Files",
             render_markdown_items([item.get("path", "") for item in target_files if isinstance(item, dict)] or ["Discovery required before editing; do not guess."]),
             "",
+            "## Must-change Targets",
+            render_markdown_items([item.get("path", "") for item in delivery_plan.get("must_change_targets", []) if isinstance(item, dict)] or ["No must-change targets declared; revise before implementation."]),
+            "",
             "## Read-only Sources",
             render_markdown_items([item.get("path", "") for item in delivery_plan.get("read_only_sources", []) if isinstance(item, dict)] or ["No read-only sources declared."]),
             "",
@@ -2941,6 +2990,9 @@ def render_solution(delivery_plan: dict[str, Any]) -> str:
             "",
             "## Inspect-only Sources",
             render_markdown_items([item.get("path", "") for item in delivery_plan.get("inspect_only_sources", []) if isinstance(item, dict)] or ["No inspect-only sources declared."]),
+            "",
+            "## API Contracts",
+            render_markdown_items([f"{item.get('endpoint', '')}: {item.get('contract', '')}" for item in delivery_plan.get("api_contracts", []) if isinstance(item, dict)] or ["No API contracts declared."]),
             "",
             "## Solution Review Readiness",
             render_markdown_items([

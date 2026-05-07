@@ -1741,6 +1741,7 @@ Verification commands:
                 "Reviewer provider: zai\n"
                 "Reviewer model: glm-5.1\n"
                 "Blocker: plan-quality issue only; do not read credentials, tokens, cookies, auth JSON, or private keys.\n"
+                "没有发现凭证、secret、cookie/auth-state、真实交易、破坏性生产操作、force push 等硬风险；但 delivery_plan 缺少 must_change_targets。\n"
                 "Blocker: remove pipeline_runner.py from target_files and move no_trading/simulation_only into runtime_contracts.\n"
             ),
             "stderr": "",
@@ -2601,7 +2602,8 @@ Verification commands:
                 "must_change_targets: 智能多平台套利/api/routes/strategy.py\n"
                 "read_only_sources: 智能多平台套利/arbitrage_config.json5 是只读源，不建议修改。\n"
                 "reference_patterns: 智能多平台套利/api/routes/stock_tokens.py 只是参考模式，不应默认修改。\n"
-                "inspect_only: 智能多平台套利/config_security.py 应作为 safety contract reference，除非测试发现缺口。\n",
+                "inspect_only: 智能多平台套利/config_security.py 应作为 safety contract reference，除非测试发现缺口。\n"
+                "api_contracts: GET /api/strategy/config returns redacted non-sensitive config.\n",
                 encoding="utf-8",
             )
             review = run_dir / "requirements_review.md"
@@ -2624,6 +2626,13 @@ Verification commands:
             self.assertIn("智能多平台套利/api/routes/stock_tokens.py", [item["path"] for item in plan["reference_patterns"]])
             self.assertIn("智能多平台套利/config_security.py", [item["path"] for item in plan["inspect_only_sources"]])
             self.assertIn("solution_review_readiness", plan)
+            self.assertIn("must_change_targets", plan)
+            self.assertEqual(["智能多平台套利/api/routes/strategy.py"], [item["path"] for item in plan["must_change_targets"]])
+            self.assertIn("api_contracts", plan)
+            self.assertTrue(any(item.get("endpoint") == "/api/strategy/config" for item in plan["api_contracts"]))
+            rendered = _mod.render_solution(plan)
+            self.assertIn("## Must-change Targets", rendered)
+            self.assertIn("## API Contracts", rendered)
             findings = plan.get("plan_findings", {}).get("filtered_target_candidates", [])
             self.assertTrue(
                 any(item.get("reason") in {"read_only_source", "reference_pattern", "inspect_only_context", "read_only_or_reference_context"} for item in findings)
