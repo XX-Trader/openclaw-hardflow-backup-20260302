@@ -1,5 +1,23 @@
 # PITFALLS
 
+## 2026-05-07 - 安全边界和状态摘要不能反向触发风险门禁
+
+类型：pitfall
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`delivery_plan.json`、`graphify_scope_validation.json`、`pre_execution_risk.json`
+事实：自动生成的安全边界、状态摘要和安全扫描命令里经常会出现“真实交易/下单/划转/提现/资金/credential/transfer”等词。它们不是执行意图，不能被当成 high-risk 阻塞条件。旧逻辑把整个 `delivery_plan.json` 与状态卡文本一起扫，导致“没有启动真实交易”“文本中仍出现真实交易关键词”“新增行扫描 transfer”这类元信息反向触发 `risk_gate` 或 Graphify block。修复后 pre-execution 风险扫描只看用户需求、目标文件和实施步骤；Graphify 只扫可执行步骤；entry 会剥离“触发点/原因/自动修复判断”这类历史状态摘要。正向 `PRODUCTION_TRADING_ENABLED=true`、启用真实交易、真实下单、资金划转或读取凭证仍会触发 high-risk。
+证据：`pre_execution_plan_scan_text()` 只返回 `target_files` 与 `implementation_steps`；`scope_scan_text_from_plan()` 不再扫描 `verification_commands` / `risk_boundaries` / `release_gates`；`SAFE_DOCUMENTATION_HISTORY_PATTERNS` 新增状态摘要清洗。回归测试覆盖纯否定安全状态不触发 high-risk、正向真实交易仍阻断、Graphify stock token 业务路径不被 token 字样误判。
+最后验证：2026-05-07 10:58
+复用建议：以后修门禁误伤时，不要直接扩大白名单或删掉风险关键词；应先把“执行意图字段”和“安全说明/状态摘要/验证命令”分开扫描，再保留正向高风险动作的 hard gate。
+
+## 2026-05-07 - delivery_plan 低信任路径不能覆盖用户显式业务范围
+
+类型：pitfall
+范围：`delivery_plan.json.target_files`、`requirements_review.md`、`solution_review.md`
+事实：reviewer 和历史 artifact 里常会混入 workflow 宿主文件名、pipeline artifact、项目记忆控制文件和组合路径。旧解析会把 `smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`、`todo.md/done.md` 或裸 `PROJECT_PROFILE.md/DECISIONS.md` 当作业务 target，导致 solution reviewer 正确阻塞。修复后用户原始需求/修复上下文是高可信来源；requirements review/research/memory 只是低信任候选，必须过滤 workflow host basename、`scripts/openclaw-ops/*` 这类宿主路径、组合文件路径和否定上下文。若同一路径已经被用户显式接受，不再把低信任重复发现写成异常反馈。
+证据：新增 `WORKFLOW_HOST_BASENAMES`、`combined_file_paths` 拒绝原因、`drop_accepted_target_findings()`；`PATH_CONTEXT_SPLIT_RE` 会在“只有/only”处分段，保留“只有 memory/... 才合法”中的正向 repo-relative memory 目标。回归测试覆盖 workflow 宿主 basename 与组合路径过滤、合法 memory 路径保留和显式 target 不重复异常反馈。
+最后验证：2026-05-07 10:58
+复用建议：solution review 提到 target drift 时，先看 `plan_findings.filtered_target_candidates` 的 source/reason/context。不要把 reviewer 举例、历史状态卡、pipeline artifact 或否定句中的路径直接写进 `target_files`。
+
 ## 2026-05-07 - reviewer 模型不可用不能误判为需求阻塞
 
 类型：pitfall

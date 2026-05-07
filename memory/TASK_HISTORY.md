@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-07 - 方案评审范围过滤与风险扫描误伤修复
+
+类型：bugfix | deploy
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`delivery_plan.json`、`graphify_scope_validation.json`、`pre_execution_risk.json`、nofx runtime
+事实：修复 `discord-spreadagent-20260507T015008674360Z` 这类任务在 `solution_review` 反复阻塞的结构性问题。本轮确认该 run 的 reviewer-a/reviewer-b 都产出了有效 `requires_revision`，所以阻塞不是模型 fallback 问题，而是方案包确实存在目标文件漂移、Graphify 范围误判、workflow 宿主路径混入、`todo.md/done.md` 组合路径、验收命令不足和远端发布包含门禁缺失。修复后 `delivery_plan.json` 会过滤裸 workflow 宿主 basename 和低信任 `scripts/openclaw-ops/*` 路径，拒绝 `todo.md/done.md` 这类组合路径，保留“只有 memory/... 才合法”中的正向路径，给每个候选目标生成文件级实施步骤，并补齐 targeted verify、git publish containment 和 `blocked_manual_acceptance_required` 人工验收边界。Graphify 范围校验只扫描可执行步骤，不再把 stock token 业务路由误判为凭证路径；pre-execution 风险扫描只扫描用户需求、目标文件和实施步骤，不再把自动生成的安全边界或新增行安全扫描命令当成真实高风险意图。
+证据：新增/更新测试覆盖 Graphify stock token 业务路径放行、正向真实交易仍阻断、具体 reviewer blocker 阻断、fallback 后记录最终模型、workflow 宿主 basename 和组合路径过滤、reviewer 候选目标生成文件级步骤、显式目标路径不重复异常反馈、合法 memory 路径保留、入口状态卡风险文本清洗。提交 `5d04f55c` 已推送并安装到 nofx，远端 `HEAD=5d04f55`、`HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`。
+最后验证：2026-05-07 10:58 本地 `test_project_delivery_pipeline_runner` 61 项 OK、`test_smart_arb_pipeline_entry` 49 项 OK、相关文件 `compileall` 与 `git diff --check` 通过；nofx 远端 `compileall` 与 12 项关键回归 OK，`smart-arb-pipeline --help` 正常，内控 API `/health` 与 `/api/strategy/status` smoke 通过，两个 gateway 均为 `running/connected`。
+复用建议：以后方案评审 blocked 时，先区分“有效 reviewer 的真实 blocker”和“provider/model runtime failure”。真实 blocker 应修 `delivery_plan.json` 与范围/验证契约；runtime failure 才走 reviewer fallback。不要为了策略项目放开所有交易关键词，正确做法是区分否定安全边界、状态摘要和正向高风险动作。
+
 ## 2026-05-07 - reviewer 模型失败 fallback 与单有效输出放行
 
 类型：bugfix

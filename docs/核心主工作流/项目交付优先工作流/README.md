@@ -14,6 +14,7 @@
 > 2026-05-06 nofx/OpenClaw backup 当前口径：AI 能力提升后，任务拆分粒度不再作为 hard gate；需求分析必须基于 graphify 项目知识图谱来写，先用 God Nodes / Surprising Connections / Suggested Questions 定位核心模块、隐藏耦合和澄清问题；project-agent 必须综合项目记忆、RAG/graphify、当前 Git 分支、HEAD、dirty state、本地/远端分支和 fetch 结果；web-agent 负责外部资料或明确 `NO_EXTERNAL_LOOKUP_NEEDED`；多 reviewer 优先使用不同模型、合并所有有效意见并循环修复直到无 blocker、达到自动修复上限或触发高风险人工门禁。详见 [OpenClaw Backup 多 Agent 工作流当前口径](openclaw-backup-multiagent-current.md)。
 > 2026-05-06 高风险确认贯通：真实交易、下单、划转、提现和资金类策略需求不再作为 SmartMulti 策略项目的永久阻断；它们仍会被标记为 high risk，但用户在路线选择或 human inbox 中明确确认后，入口/runner 会携带 `--human-risk-confirmed` 通过 `risk_gate`，后续测试、双 reviewer、deployment、memory writeback 和 git_publish 门禁保持不变。
 > 2026-05-07 reviewer 降级：reviewer provider/model 不可用属于运行时问题，不再自动转成人工需求阻塞。review 阶段优先双模型输出；某一路失败时按 `zai/glm-5.1 -> zhipu/glm-5.1 -> openai-codex/gpt-5.5` fallback，最终至少一个有效 reviewer 给出阶段期望 verdict 且无明确 blocker 时可放行。
+> 2026-05-07 方案门禁收口：`delivery_plan.json` 会过滤 workflow 宿主 basename、低信任 `scripts/openclaw-ops/*`、组合文件路径和否定上下文路径；每个保留目标生成文件级实施步骤。Graphify / pre-execution 风险扫描只看可执行意图，不把安全边界、状态摘要或验证命令中的关键词当成真实高风险动作；正向凭证、真实交易、下单、资金动作仍保持门禁。
 
 ## 功能概述
 

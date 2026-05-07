@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-07 10:58 - nofx 安装方案包范围与风险扫描修复批次
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.local/bin/smart-arb-pipeline`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、SmartMultiPlatformArbitrage pipeline 运行链路
+事实：本机提交 `5d04f55c` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `dc0aaf4` fast-forward 到 `5d04f55`，`HEAD...origin/main=0 0` 且工作树无未提交改动。runtime installer 已把方案包范围过滤、reviewer fallback 元数据修正、Graphify 范围校验收口和 pre-execution 风险扫描收口安装到 `/home/arbops/.hermes/ops`；本轮未改 profile SOUL，因此没有重启 Discord gateway。
+证据：runtime installer 返回 `ok=true`、`changed=true`、5 个 workflow skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`。远端 `compileall` 覆盖 `pipeline_runner.py`、`smart_arb_pipeline_entry.py` 和相关测试通过；远端 12 项关键回归 unittest OK，覆盖否定式风险状态文本、显式目标路径、workflow 宿主路径过滤、合法 memory 路径保留、Graphify stock token 业务路径放行、正向真实交易仍阻断、具体 reviewer blocker 仍阻断和 fallback 后最终模型记录。`/home/arbops/.local/bin/smart-arb-pipeline --help` 显示 `--reviewer-fallback-models` 与 `--human-risk-confirmed`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。远端 gateway 状态复核：`arbitrageagent gateway_state=running discord_state=connected`、`spreadagent gateway_state=running discord_state=connected`。
+最后验证：2026-05-07 10:58
+复用建议：以后 `solution_review` 卡在“目标文件漂移 / workflow 宿主文件 / todo.md/done.md / Graphify token 路径 / 安全边界关键词”时，先检查 `delivery_plan.json.plan_findings.filtered_target_candidates`、`graphify_scope_validation.json` 和 `pre_execution_risk.json`，不要通过删除 reviewer 或关闭风险扫描绕过。真实 reviewer blocker 仍必须修，运行时模型失败才走 fallback 降级。
+
 ## 2026-05-07 01:05 - nofx 安装 reviewer fallback 降级批次
 
 类型：deploy

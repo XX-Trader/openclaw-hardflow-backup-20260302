@@ -389,6 +389,15 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 最后验证：2026-04-28 18:52 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 73 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check` 通过；code-reviewer 复审通过。
 复用建议：方案评审卡在敏感路径时不要放松 reviewer，先看 `target_files` 的来源和 `plan_findings.filtered_target_candidates`；如果路径来自 `project_memory_context`、runtime host 或否定上下文，只能作为检索/证据路径，不应作为修改目标。
 
+### 2026-05-07 - DeliveryPlan 范围过滤与风险扫描收口
+
+类型：runbook
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`delivery_plan.json`、`graphify_scope_validation.json`、`pre_execution_risk.json`
+事实：方案包生成现在进一步过滤 workflow 宿主 basename（如 `smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`）、低信任 `scripts/openclaw-ops/*`、`todo.md/done.md` 组合路径和否定上下文路径；“只有 memory/... 才合法”这类句子会保留 `memory/.../PROJECT_PROFILE.md` 与 `memory/.../DECISIONS.md` 的正向路径。每个保留目标会生成文件级实施步骤，发布前必须有 git publish containment，Discord 真实频道验收无法内部证明时标记 `blocked_manual_acceptance_required`。Graphify 范围校验与 pre-execution 风险扫描只看可执行意图，不扫描自动生成的安全边界、状态摘要或验证命令；正向凭证、真实交易、下单、资金动作仍按高风险处理。
+证据：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner -q` 61 项 OK；`python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry -q` 49 项 OK；nofx 远端 12 项关键回归、`compileall`、help、API smoke 和 gateway 状态通过。
+最后验证：2026-05-07 10:58
+复用建议：遇到 `solution_review` 阻塞时，先看 reviewer 是否有真实 blocker。若 blocker 指向目标文件漂移、Graphify 误判或风险关键词误伤，修 `delivery_plan.json` 的结构化字段和扫描输入，不要关闭双 reviewer 或全局风险门禁。
+
 ### 2026-04-28 - DeliveryPlan 结构化方案契约
 
 类型：runbook
