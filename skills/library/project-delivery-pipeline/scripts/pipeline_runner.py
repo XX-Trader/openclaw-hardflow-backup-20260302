@@ -1516,6 +1516,10 @@ def plan_path_rejection_reason(path: str) -> str:
         return "pipeline_artifact_file"
     if re.search(r"\.(?:py|md|json|json5|ya?ml|toml|js|ts|html|css|sh):\d+(?:-\d+)?\b", path, re.IGNORECASE):
         return "file_line_reference_not_target"
+    if SENSITIVE_TARGET_BASENAME_RE.fullmatch(name):
+        return "credential_or_auth_target_file"
+    if re.search(r"(?:credential|credentials|auth|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|凭证|密钥|私钥|下单|划转|转账|提现|出金|资金操作)", path, re.IGNORECASE):
+        return "credential_or_trading_natural_language_not_target"
     if not PLAN_PATH_RE.search(path):
         return "not_repository_plan_path"
     parts = [part for part in path.replace("\\", "/").split("/") if part]
@@ -2755,7 +2759,9 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     context = str(planning_context or "")
     if not value:
         return None
-    if re.search(r"(?:auth|credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key)", lower) and ("*" in value or lower.endswith((".json", ".yaml", ".yml", ".toml", ".env"))):
+    if re.search(r"(?:auth|credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|凭证|密钥|私钥|下单|划转|转账|提现|出金|资金操作)", lower) and ("*" in value or "/" in value or lower.endswith((".json", ".yaml", ".yml", ".toml", ".env"))):
+        if re.search(r"(?:下单|划转|转账|提现|出金|资金操作)", lower):
+            return ("inspect_only_sources", "credential_or_trading_natural_language_forbidden_not_target")
         return ("inspect_only_sources", "credential_auth_material_forbidden_not_target")
     if re.match(r"(?i)^(?:GET|POST|PUT|PATCH|DELETE)\s+/", value) or lower.startswith("/api/") or lower in {"/health", "/api/strategy/status"}:
         return ("reference_patterns", "api_contract_endpoint_not_repo_target")
@@ -2786,7 +2792,7 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("reference_patterns", "natural_language_scope_not_repo_target")
     if lower in {"kraken/mexc", "gate/mexc", "gate / mexc"}:
         return ("reference_patterns", "venue_pair_scope_not_repo_target")
-    if lower.startswith("apollo/") or lower.startswith("智能多平台套利/apollo/"):
+    if lower.startswith("apollo/") or lower.startswith("智能多平台套利/apollo") or "/apollo" in lower:
         return ("inspect_only_sources", "apollo_historical_or_absent_not_current_mvp_target")
     if lower in {"智能多平台套利/arbitrage_config.json5", "智能多平台套利/api/routes/dashboard.py", "智能多平台套利/api/static/dashboard/dashboard.css"} and (
         re.search(r"(?:未发现|没有发现|无|不存在|无漂移证据|未证明|未检出).{0,160}(?:arbitrage_config\.json5|api/routes/dashboard\.py|dashboard\.css|kraken|mexc|mvp|漂移)|(?:api/routes/dashboard\.py|dashboard\.css|arbitrage_config\.json5).{0,160}(?:路径错误|不存在|没有\s*create_if_missing|无漂移证据|未证明)", context, re.IGNORECASE)
@@ -2810,13 +2816,18 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         or not re.search(r"(?:tests/test_basic_auth_proxy\.py).{0,160}(?:必须修改|必改|pytest\s+.*tests/test_basic_auth_proxy\.py|验证命令.*tests/test_basic_auth_proxy\.py|verification.*tests/test_basic_auth_proxy\.py)|(?:必须修改|必改|pytest\s+.*tests/test_basic_auth_proxy\.py|验证命令.*tests/test_basic_auth_proxy\.py|verification.*tests/test_basic_auth_proxy\.py).{0,160}(?:tests/test_basic_auth_proxy\.py)", context, re.IGNORECASE)
     ):
         return ("reference_patterns", "auth_proxy_test_reference_without_verification_contract")
+    if lower in {"tests/test_apollo_quant.py", "tests/test_dashboard_api.py"} and (
+        re.search(rf"{re.escape(value)}.{{0,180}}(?:条件|conditional|reference|参考|inspect|证据不足|不应无证据|被提升为必改|应为)|(?:条件|conditional|reference|参考|inspect|证据不足|不应无证据|被提升为必改|应为).{{0,180}}{re.escape(value)}", context, re.IGNORECASE)
+        or ("apollo" in lower and nearby_negative_scope(context, value, r"Apollo|MEXC|历史"))
+    ):
+        return ("reference_patterns", "conditional_test_reference_without_must_change_evidence")
     if "/apollo/" in lower and nearby_negative_scope(context, value, r"Apollo|MEXC|历史"):
         return ("inspect_only_sources", "apollo_history_negative_scope")
     if "hyperliquid" in lower and nearby_negative_scope(context, value, r"Hyperliquid|adapter|适配器"):
         return ("inspect_only_sources", "hyperliquid_adapter_negative_scope")
     if lower.startswith("docs/research/"):
         return ("read_only_sources", "research_document_read_only")
-    if lower.startswith("docs/") or lower.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
+    if lower.startswith("docs/") or lower.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"} or (value.endswith(".md") and "/" not in value and value not in {"README.md"}):
         if confidence == "explicit" and has_explicit_writeback_intent(context, value) and re.search(r"(?:文档|memory|docs|writeback|写回|记录)", context, re.IGNORECASE):
             return None
         return ("read_only_sources", "documentation_or_memory_read_only_unless_explicit_writeback")

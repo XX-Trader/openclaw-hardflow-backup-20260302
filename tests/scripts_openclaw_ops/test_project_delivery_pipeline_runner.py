@@ -2854,7 +2854,9 @@ Verification commands:
                 "智能多平台套利/api/static/dashboard/index.html",
                 "智能多平台套利/api/static/dashboard/dashboard.js",
                 "智能多平台套利/arbitrage/market_adapters/__init__.py",
+                "智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md",
                 "tests/test_dashboard_api.py",
+                "tests/test_apollo_quant.py",
                 "tests/test_basic_auth_proxy.py",
                 "tests/test_stock_token_public_adapter.py",
             ):
@@ -2895,6 +2897,11 @@ Verification commands:
                 "requirements_discussion 将它作为 route wiring reference，当前已 import/include_router，应从 target_files 移除。\n"
                 "Blocker: static/index.html 仍在 target_files / must_change_targets / entry_points，但该文件不存在，"
                 "没有 create_if_missing=true / rationale，应降级 inspect_only。\n"
+                "Blocker: target_files 包含 `下单/划转/提现/credentials`，这是 credential/auth 风险路径，不是业务 repo 文件；"
+                "必须移除并只保留在 forbidden_targets。\n"
+                "Blocker: Apollo 历史文件 智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md、"
+                "Apollo 测试 tests/test_apollo_quant.py、根目录 `套利策略介绍文档.md`、dashboard 测试 tests/test_dashboard_api.py 被提升为必改目标，"
+                "但 requirements_discussion 已说明它们应为 inspect/reference/conditional，不应无证据进入 must_change_targets。\n"
                 "Blocker: 核心必改仍是 智能多平台套利/api/routes/stock_tokens.py 与 智能多平台套利/api/stock_token_public_adapter.py。\n"
             )
             try:
@@ -2923,6 +2930,11 @@ Verification commands:
                 "智能多平台套利/api/static/dashboard/index.html",
                 "智能多平台套利/api/static/dashboard/dashboard.js",
                 "智能多平台套利/arbitrage/market_adapters/__init__.py",
+                "智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md",
+                "tests/test_apollo_quant.py",
+                "tests/test_dashboard_api.py",
+                "套利策略介绍文档.md",
+                "下单/划转/提现/credentials",
                 "tests/test_basic_auth_proxy.py",
             ):
                 self.assertNotIn(rejected, target_paths)
@@ -2933,11 +2945,13 @@ Verification commands:
             self.assertIn("智能多平台套利/api/static/dashboard/dashboard.js", inspect_paths)
             self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", inspect_paths)
             reference_paths = [item["path"] for item in plan["reference_patterns"]]
-            self.assertIn("tests/test_basic_auth_proxy.py", reference_paths)
+            self.assertIn("tests/test_apollo_quant.py", reference_paths)
+            self.assertIn("tests/test_dashboard_api.py", reference_paths)
             non_target_paths = inspect_paths + reference_paths
             self.assertIn("智能多平台套利/api/main.py", non_target_paths)
             findings = plan.get("plan_findings", {}).get("filtered_target_candidates", [])
             self.assertTrue(any(item.get("reason") == "file_line_reference_not_target" for item in findings))
+            self.assertTrue(any(item.get("reason") == "credential_or_trading_natural_language_not_target" for item in findings))
 
 
 if __name__ == "__main__":
