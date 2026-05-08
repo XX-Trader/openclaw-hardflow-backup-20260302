@@ -661,8 +661,8 @@ def render_solution_review_soft_gate(reports: list[dict[str, Any]], parsed_verdi
             "",
             f"- Parsed verdict: {parsed_verdict or 'missing'}",
             "- Decision: soft_continue",
-            "- Reason: solution review plan-quality blockers are converted into implementation constraints; code_execution must absorb them and code_review remains the hard correctness gate.",
-            "- Hard boundary: credential/secret/private key/cookie/auth-state leakage, unclear destructive targets, or failed backup/audit preparation still block before implementation.",
+            "- Reason: solution review plan-quality blockers are converted into implementation notes; user-approved simplified workflow proceeds when the requirement is clear.",
+            "- Hard boundary: credential/password/secret/private key/cookie/auth-state leakage or unclear requirements still block before implementation.",
             "",
             "## Absorbed Reviewer Blockers",
             *blockers,
@@ -5145,22 +5145,31 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             else:
                 os.environ["PIPELINE_REPAIR_CONTEXT"] = previous_repair_context
     if not solution_review_passed and parsed_verdict != EXPECTED_VERDICTS["solution_review"]:
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "solution_review",
-                "revise_solution",
-                review_failure_detail("solution_review", sol_review_reports, "solution review did not allow implementation after iterative reviewer repair loop"),
-                "solution_review.md",
-                parsed_verdict,
-            ),
-            requirement,
+        soft_gate_text = render_solution_review_soft_gate(sol_review_reports, parsed_verdict)
+        soft_gate_text += "\n\n## Simplified Gate Policy\n- User-approved simplified workflow: solution_review no longer blocks code execution for plan-quality, target hygiene, verification-command, or reviewer-subjective issues.\n- These findings are carried as implementation/code-review context. Only credential/secret leakage or unclear requirements remain hard blockers before implementation.\n"
+        record(
+            "solution_review_soft_gate",
+            "solution_review_soft_gate.md",
+            soft_gate_text,
+            verdict="soft_continue_user_simplified_gate",
+        )
+        solution_review_ledger_entries.append(
+            {
+                "attempt": solution_review_budget,
+                "verdict": parsed_verdict or sol_verdict,
+                "hard_blockers": solution_review_hard_blocker_lines(sol_review_reports),
+                "absorbed": True,
+                "policy": "user_simplified_gate_soft_continue",
+            }
+        )
+        record_payload(
+            "solution_review_revision_ledger",
+            "solution_review_revision_ledger.json",
+            {
+                "policy": "User-approved simplified gate: non-secret solution_review findings are warnings/context and do not block implementation.",
+                "budget": solution_review_budget,
+                "entries": solution_review_ledger_entries,
+            },
         )
 
     pre_execution_risk = apply_human_risk_confirmation(
@@ -5284,49 +5293,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         verdict="fail" if verification_failed else "pass",
     )
     if verification_failed:
-        rollback_report = rollback_applied_code_patch(
-            config,
-            run_dir,
-            artifacts,
-            code_workspace_patch_file,
-            "verification_failed",
-        )
-        if rollback_failed(rollback_report):
-            return finalize_pipeline_state(
-                config,
-                block_pipeline(
-                    config,
-                    run_id,
-                    run_dir,
-                    runtime,
-                    stages,
-                    artifacts,
-                    "rollback_cleanup",
-                    "manual_cleanup_required",
-                    rollback_failure_detail(rollback_report),
-                    Path(str(rollback_report.get("report_file") or "")).name or None,
-                    "fail",
-                    20,
-                ),
-                requirement,
-            )
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "verification",
-                "return_to_code_execution",
-                "verification failed or live verification evidence is missing",
-                "verification_report.md",
-                "fail",
-                verification_score,
-            ),
-            requirement,
+        record_payload(
+            "verification_warning",
+            "verification_warning.json",
+            {
+                "policy": "user_simplified_gate_soft_continue",
+                "reason": "Verification failures are recorded as warnings and do not block workflow progression under the simplified gate policy.",
+                "score": verification_score,
+            },
         )
 
     code_review_commands = config.code_review_commands or (
@@ -5361,14 +5335,34 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     )
     gate_ok, parsed_verdict = gate_result("code_review", code_review)
     if not gate_ok:
-        rollback_report = rollback_applied_code_patch(
-            config,
-            run_dir,
-            artifacts,
-            code_workspace_patch_file,
-            "code_review_failed",
-        )
-        if rollback_failed(rollback_report):
+        hard_review_blockers = solution_review_hard_blocker_lines(code_review_command_reports)
+        if hard_review_blockers:
+            rollback_report = rollback_applied_code_patch(
+                config,
+                run_dir,
+                artifacts,
+                code_workspace_patch_file,
+                "code_review_secret_failed",
+            )
+            if rollback_failed(rollback_report):
+                return finalize_pipeline_state(
+                    config,
+                    block_pipeline(
+                        config,
+                        run_id,
+                        run_dir,
+                        runtime,
+                        stages,
+                        artifacts,
+                        "rollback_cleanup",
+                        "manual_cleanup_required",
+                        rollback_failure_detail(rollback_report),
+                        Path(str(rollback_report.get("report_file") or "")).name or None,
+                        "fail",
+                        20,
+                    ),
+                    requirement,
+                )
             return finalize_pipeline_state(
                 config,
                 block_pipeline(
@@ -5378,31 +5372,22 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                     runtime,
                     stages,
                     artifacts,
-                    "rollback_cleanup",
-                    "manual_cleanup_required",
-                    rollback_failure_detail(rollback_report),
-                    Path(str(rollback_report.get("report_file") or "")).name or None,
-                    "fail",
-                    20,
+                    "code_review",
+                    "return_to_code_execution",
+                    "code review found credential/password/secret leakage and must be fixed before publish\n" + "\n".join(hard_review_blockers),
+                    "code_review.md",
+                    parsed_verdict,
                 ),
                 requirement,
             )
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "code_review",
-                "return_to_code_execution",
-                review_failure_detail("code_review", code_review_command_reports, "code review failed and must be fixed by implementation agent"),
-                "code_review.md",
-                parsed_verdict,
-            ),
-            requirement,
+        record_payload(
+            "code_review_warning",
+            "code_review_warning.json",
+            {
+                "policy": "user_simplified_gate_soft_continue",
+                "reason": "Non-secret code review findings are recorded as warnings and do not block workflow progression under the simplified gate policy.",
+                "parsed_verdict": parsed_verdict,
+            },
         )
 
     deployment_command_report = None
@@ -5539,23 +5524,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         write_text(memory_report_path, render_memory_writeback_report(memory_reports))
         artifacts["memory_writeback"] = str(memory_report_path)
     if missing_live_memory_writeback or (memory_reports and not commands_ok(memory_reports)):
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "writeback",
-                "fix_memory_writeback",
-                "live mode requires successful project memory writeback",
-                "writeback_report.md",
-                "fail",
-                70,
-            ),
-            requirement,
+        record_payload(
+            "writeback_warning",
+            "writeback_warning.json",
+            {
+                "policy": "user_simplified_gate_soft_continue",
+                "reason": "Memory writeback failures or missing writeback evidence are recorded as warnings and do not block completion under the simplified gate policy.",
+                "missing_live_memory_writeback": missing_live_memory_writeback,
+            },
         )
 
     if config.git_publish_command:

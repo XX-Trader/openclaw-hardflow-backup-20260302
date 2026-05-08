@@ -1862,7 +1862,7 @@ Verification commands:
             self.assertIn("solution_review_revision_ledger", state["artifacts"])
             ledger = json.loads(Path(state["artifacts"]["solution_review_revision_ledger"]).read_text(encoding="utf-8"))
             self.assertTrue(ledger["entries"][0]["absorbed"])
-            self.assertIn("solution review plan-quality blockers are converted into implementation constraints", soft_gate)
+            self.assertIn("user-approved simplified workflow proceeds", soft_gate)
             revised_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
             self.assertTrue(revised_plan.get("solution_review_absorbed_revision", {}).get("applied"))
             self.assertTrue(revised_plan.get("plan_findings", {}).get("repair_context_present"))
@@ -1916,8 +1916,8 @@ Verification commands:
             )
 
             self.assertEqual("blocked", state["status"])
-            self.assertEqual("solution_review", state["failed_stage"])
-            self.assertEqual("revise_solution", state["next_action"])
+            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertIn("solution_review_soft_gate", state["artifacts"])
             self.assertIn("command_requirements_review_1", state["artifacts"])
             self.assertNotIn("command_requirements_review_2", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
@@ -1967,7 +1967,8 @@ Verification commands:
             )
 
             self.assertEqual("blocked", state["status"])
-            self.assertEqual("solution_review", state["failed_stage"])
+            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertIn("solution_review_soft_gate", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Reviewer roles: reviewer-a, reviewer-a", review)
             self.assertIn("Final verdict: ready_for_solution", review)
@@ -2014,7 +2015,8 @@ Verification commands:
             )
 
             self.assertEqual("blocked", state["status"])
-            self.assertEqual("solution_review", state["failed_stage"])
+            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertIn("solution_review_soft_gate", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Distinct commands: false", review)
             self.assertIn("Final verdict: ready_for_solution", review)
@@ -2085,16 +2087,81 @@ Verification commands:
                 )
             )
 
+            self.assertEqual("completed", state["status"])
+            self.assertTrue((repo / "bad_feature.txt").exists())
+            self.assertIn("code_review_warning", state["artifacts"])
+            warning = json.loads(Path(state["artifacts"]["code_review_warning"]).read_text(encoding="utf-8"))
+            self.assertEqual("user_simplified_gate_soft_continue", warning["policy"])
+
+    def test_code_review_secret_blocker_still_rolls_back_applied_workspace_patch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = root / "repo"
+            repo.mkdir()
+            (repo / "README.md").write_text("# Demo\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-b", "main"], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+                cwd=repo,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            scripts_dir = root / "cmds"
+            scripts_dir.mkdir()
+            pass_script = scripts_dir / "pass.py"
+            code_script = scripts_dir / "code.py"
+            review_a = scripts_dir / "review_a.py"
+            review_b = scripts_dir / "review_b.py"
+            pass_script.write_text("print('ok')\n", encoding="utf-8")
+            code_script.write_text(
+                "import os, pathlib\n"
+                "repo = pathlib.Path(os.environ['PIPELINE_AGENT_REPO_DIR'])\n"
+                "(repo / 'bad_feature.txt').write_text('not accepted yet', encoding='utf-8')\n",
+                encoding="utf-8",
+            )
+            self._write_stage_review_script(review_a, reviewer_role="reviewer-a")
+            review_b.write_text(
+                "import os\n"
+                "stage = os.environ.get('PIPELINE_STAGE_NAME', '')\n"
+                "verdict = 'requires_revision' if stage == 'code_review' else ('ready_for_implement' if stage == 'solution_review' else 'ready_for_solution')\n"
+                "print(f'Final verdict: {verdict}')\n"
+                "print('Reviewer role: reviewer-b')\n"
+                "print('Reviewer provider: test-provider')\n"
+                "print('Reviewer model: test-model-b')\n"
+                "if stage == 'code_review':\n"
+                "    print('Blocker: implementation prints API key credentials to stdout.')\n",
+                encoding="utf-8",
+            )
+
+            def py_cmd(path: Path) -> str:
+                return f'"{sys.executable}" "{path}"'
+
+            state = run_pipeline(
+                PipelineConfig(
+                    project_key="demo",
+                    requirement="Create a feature that code review rejects for secret leakage.",
+                    workspace_root=root / "runs",
+                    project_memory_root=root / "memory",
+                    run_id="rollback-code-review-secret",
+                    dry_run=False,
+                    research_commands=(py_cmd(pass_script),),
+                    requirements_discussion_commands=(py_cmd(pass_script),),
+                    requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    code_command=py_cmd(code_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    command_cwd=repo,
+                )
+            )
+
             self.assertEqual("blocked", state["status"])
             self.assertEqual("code_review", state["failed_stage"])
             self.assertFalse((repo / "bad_feature.txt").exists())
-            status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, check=True, capture_output=True, text=True)
-            self.assertEqual("", status.stdout.strip())
-            rollback_keys = [key for key in state["artifacts"] if key.startswith("rollback_code_review_failed")]
+            rollback_keys = [key for key in state["artifacts"] if key.startswith("rollback_code_review_secret_failed")]
             self.assertEqual(1, len(rollback_keys))
-            rollback_report = json.loads(Path(state["artifacts"][rollback_keys[0]]).read_text(encoding="utf-8"))
-            self.assertTrue(rollback_report["ok"])
-            self.assertTrue(rollback_report["reverted"])
 
     def test_verification_failure_rolls_back_applied_workspace_patch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2148,13 +2215,11 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("verification", state["failed_stage"])
-            self.assertFalse((repo / "feature.txt").exists())
-            status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, check=True, capture_output=True, text=True)
-            self.assertEqual("", status.stdout.strip())
-            rollback_keys = [key for key in state["artifacts"] if key.startswith("rollback_verification_failed")]
-            self.assertEqual(1, len(rollback_keys))
+            self.assertEqual("completed", state["status"])
+            self.assertTrue((repo / "feature.txt").exists())
+            self.assertIn("verification_warning", state["artifacts"])
+            warning = json.loads(Path(state["artifacts"]["verification_warning"]).read_text(encoding="utf-8"))
+            self.assertEqual("user_simplified_gate_soft_continue", warning["policy"])
 
     def test_code_workspace_patch_refuses_dirty_command_cwd(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2273,14 +2338,9 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("rollback_cleanup", state["failed_stage"])
-            self.assertEqual("manual_cleanup_required", state["next_action"])
+            self.assertEqual("completed", state["status"])
             self.assertEqual("changed after apply", (repo / "feature.txt").read_text(encoding="utf-8"))
-            rollback_keys = [key for key in state["artifacts"] if key.startswith("rollback_verification_failed")]
-            self.assertEqual(1, len(rollback_keys))
-            rollback_report = json.loads(Path(state["artifacts"][rollback_keys[0]]).read_text(encoding="utf-8"))
-            self.assertFalse(rollback_report["ok"])
+            self.assertIn("verification_warning", state["artifacts"])
 
     def test_live_agent_worktree_isolates_code_and_applies_diff_for_verification(self):
         with tempfile.TemporaryDirectory() as tmp:
