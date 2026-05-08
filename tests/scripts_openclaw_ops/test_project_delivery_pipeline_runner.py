@@ -2847,6 +2847,7 @@ Verification commands:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
             for rel in (
+                "智能多平台套利/api/main.py",
                 "智能多平台套利/api/routes/stock_tokens.py",
                 "智能多平台套利/api/routes/dashboard.py",
                 "智能多平台套利/api/stock_token_public_adapter.py",
@@ -2867,6 +2868,7 @@ Verification commands:
             discussion.write_text(
                 "智能多平台套利/api/routes/stock_tokens.py 和 智能多平台套利/api/stock_token_public_adapter.py 是平台范围必改入口。\n"
                 "dashboard static index.html/dashboard.js 需检查是否有静态文案需要同步，不是已证明必改。\n"
+                "智能多平台套利/api/main.py 只是 route wiring reference，当前已 include_router(stock_tokens.router)，除非发现路由缺失才升级。\n"
                 "Hyperliquid adapter / Apollo 历史 MEXC 范围是 inspect-only/negative scope，不新增真实 adapter。\n",
                 encoding="utf-8",
             )
@@ -2879,8 +2881,8 @@ Verification commands:
                 "# Smart Arb Auto Repair Context\n"
                 "- Failed stage: solution_review\n"
                 "- Next action: revise_solution\n"
-                "Blocker: delivery_plan.json 的 target_files/must_change_targets 包含 `api/routes/dashboard.py`，"
-                "但该路径在当前 repo 中不存在；存在的相近真实路径是 `智能多平台套利/api/routes/dashboard.py`，"
+                "Blocker: delivery_plan.json 的 target_files/must_change_targets 包含 `api/routes/dashboard.py:12`，"
+                "但这是文件:行号引用，不是可修改目标；存在的相近真实路径是 `智能多平台套利/api/routes/dashboard.py`，"
                 "当前 plan 没有 create_if_missing rationale，且缺少漂移证据。\n"
                 "Blocker: `智能多平台套利/arbitrage/market_adapters/__init__.py` 被列入 target_files/must_change_targets，"
                 "但本轮明确禁止新增 Hyperliquid 真实 adapter，应作为 inspect-only/negative scope。\n"
@@ -2889,6 +2891,10 @@ Verification commands:
                 "不是已证明必改，必须降为条件项/inspect-first。\n"
                 "Blocker: `tests/test_basic_auth_proxy.py` 被列为 must_change_targets，但 verification_commands 没有包含它；"
                 "若只是 proxy 白名单参考，应移到 reference_patterns。\n"
+                "Blocker: 智能多平台套利/api/main.py 被列为 target_files/must_change_targets 证据不足；"
+                "requirements_discussion 将它作为 route wiring reference，当前已 import/include_router，应从 target_files 移除。\n"
+                "Blocker: static/index.html 仍在 target_files / must_change_targets / entry_points，但该文件不存在，"
+                "没有 create_if_missing=true / rationale，应降级 inspect_only。\n"
                 "Blocker: 核心必改仍是 智能多平台套利/api/routes/stock_tokens.py 与 智能多平台套利/api/stock_token_public_adapter.py。\n"
             )
             try:
@@ -2910,7 +2916,10 @@ Verification commands:
             self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", target_paths)
             for rejected in (
                 "api/routes/dashboard.py",
+                "api/routes/dashboard.py:12",
                 "智能多平台套利/api/routes/dashboard.py",
+                "智能多平台套利/api/main.py",
+                "static/index.html",
                 "智能多平台套利/api/static/dashboard/index.html",
                 "智能多平台套利/api/static/dashboard/dashboard.js",
                 "智能多平台套利/arbitrage/market_adapters/__init__.py",
@@ -2925,6 +2934,10 @@ Verification commands:
             self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", inspect_paths)
             reference_paths = [item["path"] for item in plan["reference_patterns"]]
             self.assertIn("tests/test_basic_auth_proxy.py", reference_paths)
+            non_target_paths = inspect_paths + reference_paths
+            self.assertIn("智能多平台套利/api/main.py", non_target_paths)
+            findings = plan.get("plan_findings", {}).get("filtered_target_candidates", [])
+            self.assertTrue(any(item.get("reason") == "file_line_reference_not_target" for item in findings))
 
 
 if __name__ == "__main__":

@@ -1514,6 +1514,8 @@ def plan_path_rejection_reason(path: str) -> str:
         return "runtime_contract_not_file_path"
     if name in PIPELINE_ARTIFACT_FILES:
         return "pipeline_artifact_file"
+    if re.search(r"\.(?:py|md|json|json5|ya?ml|toml|js|ts|html|css|sh):\d+(?:-\d+)?\b", path, re.IGNORECASE):
+        return "file_line_reference_not_target"
     if not PLAN_PATH_RE.search(path):
         return "not_repository_plan_path"
     parts = [part for part in path.replace("\\", "/").split("/") if part]
@@ -1692,6 +1694,24 @@ def reviewer_required_target_paths(
     full_context = str(text or "") + "\n" + str(resolution_context or "")
     for segment in path_context_segments(text):
         if not REVIEWER_REQUIRED_TARGET_CONTEXT_RE.search(segment):
+            continue
+        # A reviewer Blocker can either promote missing concrete files or demote
+        # files that were incorrectly placed in target_files/must_change_targets.
+        # Do not treat demotion/removal blockers as required implementation
+        # targets; record them as filtered findings so revise_solution preserves
+        # the negative contract instead of re-promoting them.
+        if (
+            re.search(r"(?:证据不足|必须从.{0,80}移除|应从.{0,80}移除|从.{0,80}移除|降级(?:到|为)|reference_patterns?|route\s+wiring\s+reference|作为\s*reference|inspect_only|read_only)", segment, re.IGNORECASE)
+            and not re.search(r"(?:不应被降级|不得降级|不能降级|不应降级|not\s+downgraded)", segment, re.IGNORECASE)
+        ):
+            for _raw, path, rejection_reason in iter_plan_path_tokens(segment):
+                add_filtered_target_finding(
+                    filtered_findings,
+                    path,
+                    "solution_review_blocker_demoted_target",
+                    rejection_reason or "reviewer_requested_reference_or_inspect_only",
+                    segment,
+                )
             continue
         for _raw, path, rejection_reason in iter_plan_path_tokens(segment):
             if rejection_reason:
@@ -2753,8 +2773,13 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("inspect_only_sources", "ops_script_reference_not_business_target")
     if lower.startswith("cron/") or lower in {"cron/jobs.json", "jobs.json"}:
         return ("inspect_only_sources", "cron_runtime_schedule_not_business_target")
-    if lower.startswith("static/index/") or lower in {"static/index/dashboard.js", "static/index/index.html"} or "/api/static/index/" in lower:
+    if lower.startswith("static/index/") or lower in {"static/index.html", "static/index/dashboard.js", "static/index/index.html"} or "/api/static/index/" in lower:
         return ("inspect_only_sources", "basename_or_static_drift_not_repo_business_target")
+    if lower == "智能多平台套利/api/main.py" and (
+        re.search(r"(?:route\s+wiring\s+reference|路由\s*wiring\s*参考|作为\s*reference|reference_patterns?|参考).{0,160}(?:api/main\.py|main\.py)|(?:api/main\.py|main\.py).{0,160}(?:route\s+wiring\s+reference|路由\s*wiring\s*参考|作为\s*reference|reference_patterns?|参考|证据不足|必须从.{0,80}移除|应从.{0,80}移除)", context, re.IGNORECASE)
+        or (re.search(r"(?:api/main\.py|main\.py).{0,120}(?:已\s*import|include_router|已包含|已接入|路由已存在)", context, re.IGNORECASE) and not re.search(r"(?:api/main\.py|main\.py).{0,120}(?:必须修改|必改|缺失|未\s*include_router|没有\s*include_router)", context, re.IGNORECASE))
+    ):
+        return ("reference_patterns", "api_main_route_wiring_reference_not_target")
     if lower in {"智能多平台套利/market_adapters/__init__.py", "market_adapters/__init__.py"}:
         return ("inspect_only_sources", "adapter_registry_path_drift_not_business_target")
     if re.search(r"\s/\s", value) or value in {"Gate / MEXC", "交易所模块 / 平台范围"}:
