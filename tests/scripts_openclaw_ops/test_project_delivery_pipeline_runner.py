@@ -2992,7 +2992,7 @@ Verification commands:
                 "Blocker: `tests/test_basic_auth_proxy.py` 被列为 must_change_targets，但 verification_commands 没有包含它；"
                 "若只是 proxy 白名单参考，应移到 reference_patterns。\n"
                 "Blocker: 智能多平台套利/api/main.py 被列为 target_files/must_change_targets 证据不足；"
-                "requirements_discussion 将它作为 route wiring reference，当前已 import/include_router，应从 target_files 移除。\n"
+                "repo 证据显示 stock_tokens route 已注册，当前看起来是确认/检查对象，应从 target_files 移除。\n"
                 "Blocker: static/index.html 仍在 target_files / must_change_targets / entry_points，但该文件不存在，"
                 "没有 create_if_missing=true / rationale，应降级 inspect_only。\n"
                 "Blocker: target_files 包含 `下单/划转/提现/credentials`，这是 credential/auth 风险路径，不是业务 repo 文件；"
@@ -3063,6 +3063,7 @@ Verification commands:
                 "natural_language_not_file_path",
                 _mod.plan_path_rejection_reason("Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot"),
             )
+            self.assertEqual("backend-dev", plan["owner"])
             risk_by_name = {item["name"]: item for item in plan["risk_boundaries"]}
             self.assertFalse(risk_by_name["funds_and_orders"]["allowed"])
             self.assertFalse(risk_by_name["destructive_changes"]["allowed"])

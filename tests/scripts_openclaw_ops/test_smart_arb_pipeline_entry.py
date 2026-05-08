@@ -1863,11 +1863,19 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertFalse(any(pattern.search(safe_scan) for pattern in module.HIGH_RISK_PATTERNS), safe_scan)
 
         regex_reason_text = (
-            r"未继续自动修复: high; \b(?:api[_ -]?keys?|secrets?|passwords?|credentials?)\b\s*[:=], "
-            r"PRODUCTION_TRADING_ENABLED\s*=\s*true, \b(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?)\b"
+            r"未继续自动修复: high; \\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?)\\b\\s*[:=], "
+            r"PRODUCTION_TRADING_ENABLED\\s*=\\s*true, \\b(?:withdraw(?:als?)?|transfer\\s+funds|place\\s+orders?)\\b"
         )
         regex_scan = module.risk_scan_text(regex_reason_text)
         self.assertFalse(any(pattern.search(regex_scan) for pattern in module.HIGH_RISK_PATTERNS), regex_scan)
+
+        chinese_regex_reason_text = (
+            r"自动修复判断 - 判断: 未继续自动修复: high; "
+            r"(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}"
+            r"(?:密钥|凭证|(?<!stock_)tokens?(?!ized)(?![A-Za-z0-9_])|cookie|私钥|会话)"
+        )
+        chinese_regex_scan = module.risk_scan_text(chinese_regex_reason_text)
+        self.assertFalse(any(pattern.search(chinese_regex_scan) for pattern in module.HIGH_RISK_PATTERNS), chinese_regex_scan)
 
         status_card_text = (
             "自动修复判断\n"

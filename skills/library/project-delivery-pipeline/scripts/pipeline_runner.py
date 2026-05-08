@@ -2244,8 +2244,10 @@ def infer_task_type(text: str) -> str:
 
 def infer_code_agent(text: str, config: PipelineConfig) -> str:
     lowered = str(text or "").lower()
-    if config.code_agent == "frontend-dev":
+    if config.code_agent == "frontend-dev" and not re.search(r"(?:stock[-_ ]?tokens?|/api/stock-tokens|api/routes/stock_tokens|stock_token_public_adapter|平台范围|币股)", lowered, re.IGNORECASE):
         return "frontend-dev"
+    if re.search(r"(?:stock[-_ ]?tokens?|/api/stock-tokens|api/routes/stock_tokens|stock_token_public_adapter|平台范围|币股)", lowered, re.IGNORECASE):
+        return "backend-dev"
     if any(token in lowered for token in ("frontend", "dashboard", "页面", "前端", "交互")) or re.search(r"\bui\b", lowered):
         return "frontend-dev"
     if infer_task_type(text) == "docs":
@@ -2942,8 +2944,8 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     if lower.startswith("static/index/") or lower in {"static/index.html", "static/index/dashboard.js", "static/index/index.html"} or "/api/static/index/" in lower:
         return ("inspect_only_sources", "basename_or_static_drift_not_repo_business_target")
     if lower == "智能多平台套利/api/main.py" and (
-        re.search(r"(?:route\s+wiring\s+reference|路由\s*wiring\s*参考|作为\s*reference|reference_patterns?|参考).{0,160}(?:api/main\.py|main\.py)|(?:api/main\.py|main\.py).{0,160}(?:route\s+wiring\s+reference|路由\s*wiring\s*参考|作为\s*reference|reference_patterns?|参考|证据不足|必须从.{0,80}移除|应从.{0,80}移除)", context, re.IGNORECASE)
-        or (re.search(r"(?:api/main\.py|main\.py).{0,120}(?:已\s*import|include_router|已包含|已接入|路由已存在)", context, re.IGNORECASE) and not re.search(r"(?:api/main\.py|main\.py).{0,120}(?:必须修改|必改|缺失|未\s*include_router|没有\s*include_router)", context, re.IGNORECASE))
+        re.search(r"(?:route\s+wiring\s+reference|路由\s*wiring\s*参考|作为\s*reference|reference_patterns?|参考|确认/检查对象|确认对象|检查对象|检查入口|只支持.{0,40}检查|只支持.{0,40}确认).{0,180}(?:api/main\.py|main\.py)|(?:api/main\.py|main\.py).{0,180}(?:route\s+wiring\s+reference|路由\s*wiring\s*参考|作为\s*reference|reference_patterns?|参考|证据不足|必须从.{0,80}移除|应从.{0,80}移除|确认/检查对象|确认对象|检查对象|检查入口|已注册|route 已注册|route.*已注册|已\s*include_router|stock_tokens route 已注册)", context, re.IGNORECASE)
+        or (re.search(r"(?:api/main\.py|main\.py).{0,160}(?:已\s*import|include_router|已包含|已接入|路由已存在|已注册|route 已注册|stock_tokens route 已注册|只支持.{0,40}检查|检查入口)", context, re.IGNORECASE) and not re.search(r"(?:api/main\.py|main\.py).{0,160}(?:必须修改|必改|缺失|未\s*include_router|没有\s*include_router|concrete monitoring endpoint is missing)", context, re.IGNORECASE))
     ):
         return ("reference_patterns", "api_main_route_wiring_reference_not_target")
     if lower in {"智能多平台套利/market_adapters/__init__.py", "market_adapters/__init__.py"}:
