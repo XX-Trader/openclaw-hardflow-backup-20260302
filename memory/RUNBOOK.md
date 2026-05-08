@@ -4,7 +4,7 @@
 
 类型：runbook
 范围：`delivery_plan.json.target_files`、`solution_review`、`revise_solution`、`smart_arb_pipeline_entry.py`
-事实：`solution_review` 审出方案问题时，默认应先走 `revise_solution` 自动回流修方案，而不是把失败直接交给用户。凭证/auth-state 文件如果只是错误混入 `target_files`，属于方案合同缺陷，应在方案层剔除并继续回流；只有真正要求读取、打印、使用、修改凭证/密钥/cookie/auth-state，或触发真实交易、资金操作、破坏性数据操作、force push，才保持人工/硬阻塞。
+事实：`solution_review` 审出方案问题时，默认应先走 `revise_solution` 自动回流修方案，而不是把失败直接交给用户。凭证/auth-state 文件如果只是错误混入 `target_files`，属于方案合同缺陷，应在方案层剔除并继续回流；只有真正要求读取、打印、使用、修改凭证/密钥/cookie/auth-state，或破坏性目标不清、备份/审计失败，才保持人工/硬阻塞。真实交易、资金操作、破坏性数据操作和 force push 本身进入 `execution_guard.json`。
 证据：`pipeline_runner.py` 已把 `auth.json`、`credentials.json`、`secret.json`、`cookie.json`、`oauth_state.json`、`token.json` 等敏感 basename 识别为 `credential_or_auth_target_file` 并放入 `plan_findings.filtered_target_candidates`，不再进入 `target_files`；`smart_arb_pipeline_entry.py` 已把 `solution_review -> revise_solution` 中“移除凭证目标文件”的失败原因分类为 `medium / 可回流方案修订`，同时保留真实凭证读取为 high-risk。
 最后验证：2026-05-07，本地定向 unittest 覆盖 auth target 过滤、方案修订自动回流、真实凭证读取仍硬停；`py_compile`、`compileall`、`git diff --check` 通过。整组 runner+entry unittest 曾超过 5 分钟超时，未作为本轮完成证据。
 复用建议：以后看到 `delivery_plan.json 把 auth.json 列入 target_files`，先确认安装态是否包含 `credential_or_auth_target_file` 和 `可回流方案修订`；若仍停在“等待修正方案”，说明 nofx runtime 未安装本批修复或自动修复次数耗尽。
@@ -16,7 +16,7 @@
 事实：`solution_review` 普通不通过不再默认停在 `revise_solution`。当 reviewer 输出的是计划质量 blocker，例如 target rationale、测试/验收命令、docs/memory 断言、acceptance closure，runner 会生成 `solution_review_soft_gate.md`，记录 `Decision: soft_continue` 和 `Absorbed Reviewer Blockers`，然后继续进入 `code_execution`。code agent 会通过 `PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE` 和上下文文件读取这些 blocker；code_review 继续硬性验证实现是否按需求和 reviewer 约束完成。
 证据：`pipeline_runner.py` 在 `solution_review` gate failed 时调用 `solution_review_can_soft_continue()`；`smart_arb_live_bridge.py` 的 code_execution prompt 明确 `solution_review_soft_gate.md` 是 mandatory implementation constraints；远端测试覆盖软继续链路。
 最后验证：2026-05-07 15:32，本地 runner 65 项、live bridge 41 项、entry 49 项 OK；nofx 远端同三组 65+41+49 项 OK，安装态 grep 命中 soft gate 逻辑。
-复用建议：排查时按顺序看：1. `solution_review.md` 是否有 reviewer 输出；2. 是否生成 `solution_review_soft_gate.md`；3. 若没有生成，打开 `solution_review.md` 查是否含凭证、secret、cookie、auth-state、force push、破坏性生产数据或无 reviewer 输出；4. 若已生成，后续失败应看 `code_execution` / `code_review`，不要再把普通方案 blocker 回退成方案阶段硬停。
+复用建议：排查时按顺序看：1. `solution_review.md` 是否有 reviewer 输出；2. 是否生成 `solution_review_soft_gate.md`；3. 若没有生成，打开 `solution_review.md` 查是否含凭证、secret、cookie、auth-state、目标不明确、备份/审计失败或无 reviewer 输出；4. 若已生成，后续失败应看 `code_execution` / `code_review` / `execution_guard.json`，不要再把普通方案 blocker 回退成方案阶段硬停。
 
 ## 2026-05-07 - solution_review 未通过原因与联合修订计划排障
 
@@ -45,14 +45,23 @@
 最后验证：2026-05-07 00:55
 复用建议：遇到 `reviewer-b missing_verdict` 时，按顺序查：1. `command-runs/*review*.json` 的 `reviewer_provider/reviewer_model` 是否记录了实际 fallback 模型；2. stdout 是否有 `# reviewer fallback attempt failed`；3. `requirements_review.md` / `solution_review.md` / `code_review.md` 是否显示 `Review gate mode: degraded_single_valid`；4. 是否存在明确 blocker。不要因为单个 provider/model 404 就要求人工确认。
 
+## 2026-05-08 - 高权限执行保护契约排障
+
+类型：runbook
+范围：`pre_execution_risk.json`、`execution_guard.json`、`risk_gate`、entry 自动修复
+事实：交易、下单、提现、划转、force push、删除、覆盖、数据库 drop/truncate/delete 等不再按关键词硬停；它们会进入 `execution_guard.json.controls`。检查顺序：1. `pre_execution_risk.json.execution_decision` 是否为 `guarded_execute` / `confirmed_guarded_execute` / `hard_block`；2. `execution_guard.json.guard_status` 是否为 `ready`；3. 资金动作是否有小额/最小单位、白名单、幂等键、审计日志和状态回读；4. 破坏性动作是否有明确 target、备份路径/大小/checksum 或等价可读性证明、恢复命令、审计记录和保留 TTL。
+证据：runner 生成 `execution_guard.json` artifact；live bridge code_execution prompt 会读取该 artifact；entry 对 guarded 动作返回 medium 自动回流，凭证仍 high。
+最后验证：2026-05-08 14:53
+复用建议：如果仍停在 `risk_gate`，先看 `hard_stop_reasons`。`credential_access` / `credential_assignment` 要改方案避免读取/打印/提交凭证；`unclear_destructive_target` 要补明确表名/路径/分支/地址；`backup_failed` 要先建立可验证备份和审计。不要再用 `--human-risk-confirmed` 解决交易/资金/删除关键词阻塞，它现在只是确认留痕。
+
 ## 2026-05-06 - 已确认高风险策略任务的推进链路
 
 类型：runbook
 范围：nofx Discord `smart-arb-pipeline`、Task Center backlog runner、`risk_gate`
-事实：SmartMulti 策略类真实交易、下单、划转、提现和资金事项仍是 high risk，但不是永久阻断。用户明确确认后，必须让确认凭证贯穿整条链路：Discord 入口命令加 `--human-risk-confirmed`；Task Center backlog runner 必须用 `--allow-confirmed-high-risk` 选中已 `human_confirmed=true` 的任务，并向 pipeline 入口追加 `--human-risk-confirmed`；`pre_execution_risk.json` 应显示 `human_confirmation_required=true`、`human_confirmation_confirmed=true`、`execution_decision=confirmed_execute`。
+事实：该记录是 2026-05-06 的历史口径：当时 SmartMulti 策略类真实交易、下单、划转、提现和资金事项需要用户确认后携带 `--human-risk-confirmed` 继续。2026-05-08 起，该类动作默认通过 `execution_guard.json` 保护后继续；`--human-risk-confirmed` 只作为确认来源留痕，不再是继续执行的前置条件。
 证据：`scripts/openclaw-ops/backlog_runner.py`、`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`cron/jobs.json`；本地测试覆盖高风险未确认阻断、确认后继续、backlog runner 透传确认和入口透传确认。
 最后验证：2026-05-06 22:58
-复用建议：如果用户说“我已经确认高风险但还是阻拦”，按顺序查：1. Task Center 任务 `human_confirmed` 和 `selected_route`；2. `backlog_runner_attempt.payload.command` 是否含 `--human-risk-confirmed`；3. run 目录 `pre_execution_risk.json` 是否有 `human_confirmation_confirmed=true`；4. 若仍阻断，失败应来自后续测试/reviewer/deployment/git_publish，而不是 `risk_gate`。
+复用建议：排查历史 run 时仍可按旧字段理解；排查新 run 时优先看 2026-05-08 的 `execution_guard.json`。如果用户说“我已经确认高风险但还是阻拦”，现在应先看 `hard_stop_reasons` 是否真是凭证、目标不清或备份/审计失败。
 
 ## 2026-05-06 - nofx 双 reviewer model 默认与排障
 
@@ -342,7 +351,7 @@ runuser -u arbops -- tmux new-session -d -s hermes-discord-spread /home/arbops/.
 事实：默认 live 入口会注入 `git_publish` 命令。runner 只在 verification、code review、deployment（如有）、acceptance 和 memory writeback 全部通过后执行该阶段；`git_publish` 优先接收 `memory_writeback` 隔离工作区 patch，缺失时只回退到已验收的 `code_execution` patch，确保不发布 `command_cwd` 的未验收脏改动；失败时阻塞为 `failed_stage=git_publish`、`next_action=fix_git_publish`。
 证据：`pipeline_runner.py` 会写入 `git_publish_input_patch_report`；`smart_arb_live_bridge.py --stage git_publish` 会先执行 `git diff --check`，再 `git add -A`，随后执行 `git diff --cached --check`，打印 staged diff 统计，不打印完整 diff；随后扫描 staged diff 中的密钥形态，并在 `## Secret Scan Findings` 中输出脱敏的文件、行号、规则、风险等级和片段。真实 token/header/cookie/高熵值、hardcoded fallback secret、PEM private key marker/material 仍 hard block；环境变量名、测试假值、文档占位和 Basic Auth 说明只作为非阻塞 finding。确认安全后生成脱敏中文提交说明并执行 `git push <remote> HEAD:<branch>`。该阶段不使用 force push。
 最后验证：2026-04-27 本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 59 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过
-复用建议：如远端冲突、认证失败、疑似密钥或 push 失败，先处理 `command-runs/git_publish-*.json` 与 `git_publish_report.md`。只有非密钥类发布失败可走 `fix_git_publish` 自动回流；secret scan 中 `risk=high` / `blocking=true` / high-risk rule evidence 仍停人工确认。不要绕过 reviewer、不要关闭 secret scan、不要 force push。需要临时关闭发布时使用 `--skip-git-publish-command` 或 `SMART_ARB_SKIP_GIT_PUBLISH_COMMAND=1`。
+复用建议：如远端冲突、认证失败、疑似密钥或 push 失败，先处理 `command-runs/git_publish-*.json` 与 `git_publish_report.md`。只有非密钥类发布失败可走 `fix_git_publish` 自动回流；secret scan 中 `risk=high` / `blocking=true` / high-risk rule evidence 仍 hard block。不要绕过 reviewer、不要关闭 secret scan；明确要求 force push 时必须走 `execution_guard.json`。需要临时关闭发布时使用 `--skip-git-publish-command` 或 `SMART_ARB_SKIP_GIT_PUBLISH_COMMAND=1`。
 
 ## 定时仓库治理
 
@@ -412,7 +421,7 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 - 如果 Hermes CLI stdout/stderr 只有 `session_id: ...`，但对应 profile session 文件已有 assistant 输出，live bridge 会从 `/home/arbops/.hermes/profiles/<profile>/sessions/session_<id>.json` 恢复最新 assistant 内容，先做脱敏，再用于 `external_research` local-only pass 判定和状态卡输出。
 - 非代码 Hermes 阶段只返回 stdout/final answer 证据，不直接编辑 `research_report.md`、`requirements_discussion.md`、`patch_summary.md` 等 pipeline artifacts；bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，这些文件由 runner 负责持久化。
 - `external_research` 如果不需要互联网检索，必须在输出里写明 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据；这属于有效 research evidence，不应因缺少 browser lookup 被判失败。
-- 高风险内容不自动继续：正向要求读取/输出/使用凭证、API key、token、private key、session_id，或要求启用真实交易、下单、资金转移、提现、破坏性数据操作、force push 等。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全边界不应被当成高风险阻断；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]` 仍是 high，`No need for ...` / `Do not need ...` 这类否定式预脱敏噪音可回流；如果同一段同时出现“但需要资金操作 / but needs credentials”等正向子句，仍按高风险停人工确认。
+- 高权限内容处理：正向要求读取/输出/使用凭证、API key、token、private key、session_id 仍 hard block；正向要求启用真实交易、下单、资金转移、提现、破坏性数据操作、force push 等进入 `execution_guard.json`，只有目标不明确或备份/审计准备失败才 hard block。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全边界不应被当成高风险阻断；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]` 仍是 hard block，`No need for ...` / `Do not need ...` 这类否定式预脱敏噪音可回流。
 - bridge 会在前序 artifact 注入后续 prompt 前脱敏常见 header、assignment、长 token 和 GitHub PAT / OpenAI `sk-` / Slack / HF / Google / AWS access key 等短格式 secret；排障时不要把原始 token 放进 artifact。
 - 排障时优先看最终状态卡，再看原 run 与 `-repair<n>` run 各自的 `command-runs/*.json`，以及原 run 下的 `auto_repair_context_<n>.md`。
 
@@ -438,7 +447,7 @@ Discord 入口默认输出中文状态卡，不只是 `failed_stage` / `next_act
 
 类型：runbook
 范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`delivery_plan.json`、`graphify_scope_validation.json`、`pre_execution_risk.json`
-事实：方案包生成现在进一步过滤 workflow 宿主 basename（如 `smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`）、低信任 `scripts/openclaw-ops/*`、`todo.md/done.md` 组合路径和否定上下文路径；“只有 memory/... 才合法”这类句子会保留 `memory/.../PROJECT_PROFILE.md` 与 `memory/.../DECISIONS.md` 的正向路径。每个保留目标会生成文件级实施步骤，发布前必须有 git publish containment，Discord 真实频道验收无法内部证明时标记 `blocked_manual_acceptance_required`。Graphify 范围校验与 pre-execution 风险扫描只看可执行意图，不扫描自动生成的安全边界、状态摘要或验证命令；正向凭证、真实交易、下单、资金动作仍按高风险处理。
+事实：方案包生成现在进一步过滤 workflow 宿主 basename（如 `smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py`）、低信任 `scripts/openclaw-ops/*`、`todo.md/done.md` 组合路径和否定上下文路径；“只有 memory/... 才合法”这类句子会保留 `memory/.../PROJECT_PROFILE.md` 与 `memory/.../DECISIONS.md` 的正向路径。每个保留目标会生成文件级实施步骤，发布前必须有 git publish containment，Discord 真实频道验收无法内部证明时标记 `blocked_manual_acceptance_required`。Graphify 范围校验与 pre-execution 风险扫描只看可执行意图，不扫描自动生成的安全边界、状态摘要或验证命令；正向凭证 hard block，真实交易、下单、资金动作进入 `execution_guard.json`。
 证据：本地 `python -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner -q` 61 项 OK；`python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry -q` 49 项 OK；nofx 远端 12 项关键回归、`compileall`、help、API smoke 和 gateway 状态通过。
 最后验证：2026-05-07 10:58
 复用建议：遇到 `solution_review` 阻塞时，先看 reviewer 是否有真实 blocker。若 blocker 指向目标文件漂移、Graphify 误判或风险关键词误伤，修 `delivery_plan.json` 的结构化字段和扫描输入，不要关闭双 reviewer 或全局风险门禁。

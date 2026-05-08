@@ -5,6 +5,14 @@
 
 ---
 
+## 2026-05-08 已完成
+
+- [x] [2026-05-08] **执行保护契约替代高权限关键词硬停**
+  - 将 `risk_gate` 从“真实交易/下单/提现/划转/force push/删除等关键词即硬停”改为 `execution_guard.json` 保护契约：资金动作要求最小金额或用户指定小额、白名单、幂等键、审计日志和状态回读；破坏性动作要求目标明确、备份可验证、恢复命令、审计记录和备份保留 TTL。
+  - 保留硬停红线：凭证/secret/cookie/auth-state 泄露或打印/提交/写入、破坏性目标不明确、备份或审计准备失败。
+  - 清理入口和 live bridge 的旧高风险文案，entry 自动修复把交易/资金/破坏性动作降级为 medium 可回流，凭证仍 high；发布阶段不默认 force push，明确要求时走执行保护契约。
+  - 验证：`py_compile` 通过；`git diff --check` 通过；`test_smart_arb_pipeline_entry` 54 项 OK；`test_project_delivery_pipeline_runner` 75 项 OK；新增/更新定向风险门禁测试均 OK；code-reviewer 复审通过。
+
 ## 2026-05-07 已完成
 
 - [x] [2026-05-07] **solution_review 凭证目标文件自动修方案本地修复**

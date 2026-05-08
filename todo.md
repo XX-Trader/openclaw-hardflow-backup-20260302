@@ -1,7 +1,7 @@
 # TODO
 
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
-> 更新时间：2026-05-07
+> 更新时间：2026-05-08
 
 ## P0 — 项目交付优先工作流（核心战略落地）
 
@@ -78,6 +78,7 @@
 - [x] [🟡 P1] 增加 `git_publish` 受控发布阶段，中文提交说明，疑似密钥/远端冲突/push 失败回流 `fix_git_publish`
 - [x] [🟡 P1] 增加 `repo_hygiene_reviewer.py` 两天一次仓库精简巡检，`source_registry_watcher` 同步调整为两天一次
 - [x] [🟡 P1] 增加 `backlog_runner.py` 与 `backlog_runner_30m`，从 Task Center 持续推进已人工确认且选择 pipeline 的待办
+- [x] [🟡 P1] 增加 `execution_guard.json` 执行保护契约：真实交易/下单/提现/划转/force push/破坏性操作不再关键词硬停，改为小额、备份、审计、幂等、回读和恢复约束
 - [x] [🟡 P1] 增加手动执行链路选择：系统推荐直接运行、需求探讨、指定 agent、编码工作流或 TODO 自动候选，用户确认后才执行
 - [x] [🟡 P1] 将 nofx Discord 入口收紧为所有新任务先执行链路选择，并把连接 Discord 的 profile 定义为最高权限调度入口
 - [x] [🟡 P1] 将 Discord route-choice 入口硬门禁安装到 nofx live runtime：提交 `8d952c0d` 已推送并在 nofx `git pull --ff-only`，runtime installer `ok=true/changed=true`，live profile 已同步并重启 gateway，缺失 `--route-choice` 的 smoke 只返回选择卡、不启动 pipeline

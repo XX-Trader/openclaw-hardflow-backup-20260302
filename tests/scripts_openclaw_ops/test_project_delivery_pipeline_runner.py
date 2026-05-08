@@ -231,7 +231,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertIn(payload["scope_status"], {"pass", "warning"})
             self.assertFalse(any(item["severity"] == "block" for item in payload["findings"]))
 
-    def test_graphify_scope_validation_blocks_positive_trading_even_with_negated_safety_text(self):
+    def test_graphify_scope_validation_warns_positive_trading_even_with_negated_safety_text(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
             repo.mkdir()
@@ -249,9 +249,9 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 ],
             }
             payload = _mod.validate_graphify_scope(config, runtime, risky_plan, {})
-            self.assertEqual("block", payload["scope_status"])
+            self.assertEqual("warning", payload["scope_status"])
             reasons = "\n".join(item["reason"] for item in payload["findings"])
-            self.assertIn("production trading", reasons)
+            self.assertIn("execution_guard", reasons)
 
     def test_pre_execution_risk_keeps_positive_trading_when_same_line_has_negated_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -275,9 +275,100 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 artifacts,
             )
 
+        self.assertEqual("guarded", risk["risk_level"])
+        self.assertEqual("guarded_execute", risk["execution_decision"])
+        self.assertFalse(risk["human_confirmation_required"])
+        self.assertIn("enable_live_trading", risk["guarded_action_reasons"])
+        self.assertIn("place_order", risk["guarded_action_reasons"])
+        self.assertEqual("ready", risk["execution_guard"]["guard_status"])
+
+    def test_pre_execution_risk_keeps_credential_printing_as_hard_stop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_paths = [
+                Path(tmp) / "requirements.md",
+                Path(tmp) / "requirements-review.md",
+                Path(tmp) / "solution-review.md",
+                Path(tmp) / "graphify.md",
+            ]
+            for path in artifact_paths:
+                path.write_text("", encoding="utf-8")
+            artifacts = {
+                "requirements_discussion": str(artifact_paths[0]),
+                "requirements_review": str(artifact_paths[1]),
+                "solution_review": str(artifact_paths[2]),
+                "graphify_scope_validation": str(artifact_paths[3]),
+            }
+            risk = _mod.assess_pre_execution_risk(
+                "读取并打印 API key 后继续执行。",
+                {"implementation_steps": [{"description": "Read and print API key credentials for debugging."}]},
+                artifacts,
+            )
+
         self.assertEqual("high", risk["risk_level"])
-        self.assertIn("enable_live_trading", risk["high_risk_reasons"])
-        self.assertIn("place_real_order", risk["high_risk_reasons"])
+        self.assertEqual("hard_block", risk["execution_decision"])
+        self.assertTrue(risk["hard_stop_required"])
+        self.assertIn("credential_access", risk["hard_stop_reasons"])
+        self.assertEqual("blocked", risk["execution_guard"]["guard_status"])
+
+    def test_pre_execution_risk_requires_clear_target_for_destructive_work(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_paths = [
+                Path(tmp) / "requirements.md",
+                Path(tmp) / "requirements-review.md",
+                Path(tmp) / "solution-review.md",
+                Path(tmp) / "graphify.md",
+            ]
+            for path in artifact_paths:
+                path.write_text("", encoding="utf-8")
+            artifacts = {
+                "requirements_discussion": str(artifact_paths[0]),
+                "requirements_review": str(artifact_paths[1]),
+                "solution_review": str(artifact_paths[2]),
+                "graphify_scope_validation": str(artifact_paths[3]),
+            }
+            unclear = _mod.assess_pre_execution_risk(
+                "删除数据并清理旧内容。",
+                {"implementation_steps": [{"description": "Delete old data."}]},
+                artifacts,
+            )
+            unclear_with_code_target = _mod.assess_pre_execution_risk(
+                "删除数据并清理旧内容。",
+                {
+                    "target_files": [{"path": "scripts/foo.py"}],
+                    "implementation_steps": [{"description": "Delete old data."}],
+                },
+                artifacts,
+            )
+            clear = _mod.assess_pre_execution_risk(
+                "删除数据库 audit_logs 表前先备份。",
+                {
+                    "target_files": [{"path": "db/audit_logs"}],
+                    "implementation_steps": [{"description": "Back up db/audit_logs, then delete from audit_logs where created_at < cutoff."}],
+                },
+                artifacts,
+            )
+            clear_named_table = _mod.assess_pre_execution_risk(
+                "删除 audit_logs 表前先备份，并记录恢复命令。",
+                {"implementation_steps": [{"description": "删除 audit_logs 表前先备份，并记录恢复命令。"}]},
+                artifacts,
+            )
+
+        self.assertEqual("high", unclear["risk_level"])
+        self.assertEqual("hard_block", unclear["execution_decision"])
+        self.assertIn("unclear_destructive_target", unclear["hard_stop_reasons"])
+        self.assertEqual("high", unclear_with_code_target["risk_level"])
+        self.assertEqual("hard_block", unclear_with_code_target["execution_decision"])
+        self.assertIn("unclear_destructive_target", unclear_with_code_target["hard_stop_reasons"])
+        self.assertEqual("guarded", clear["risk_level"])
+        self.assertEqual("guarded_execute", clear["execution_decision"])
+        self.assertIn("destructive_database", clear["guarded_action_reasons"])
+        self.assertEqual("ready", clear["execution_guard"]["guard_status"])
+        destructive_controls = [item for item in clear["execution_guard"]["controls"] if item["action_group"] == "destructive_changes"]
+        self.assertTrue(destructive_controls)
+        self.assertTrue(destructive_controls[0]["backup_required"])
+        self.assertTrue(destructive_controls[0]["targets"])
+        self.assertEqual("guarded", clear_named_table["risk_level"])
+        self.assertEqual("ready", clear_named_table["execution_guard"]["guard_status"])
 
     def test_pre_execution_risk_ignores_pure_negated_trading_and_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -316,10 +407,10 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 path.write_text(
                     "- 安全扫描确认未新增生产交易、下单、撤单、划转、提现、凭证读取路径\n"
                     "- Python 断言 diff 新增行不含 PRODUCTION_TRADING_ENABLED=true、create_order、cancel_order、withdraw、transfer、credential/auth JSON 读取等危险行为\n"
-                    "- 验收命令包含 PRODUCTION_TRADING_ENABLED=true 与 credential/auth 路径安全扫描。\n"
+                    "- 验收命令包含 credential/auth 路径安全扫描。\n"
                     "- forbidden_targets: Any implementation that places real orders, cancels orders, transfers funds, withdraws, enables live trading, reads credentials or prints secrets.\n"
                     "- graphify_scope_validation 的 warning 不是跨仓、凭证、生产交易、真实下单或资金动作风险。\n"
-                    "- 只有凭证/secret/auth-state、破坏性 reset/stash/checkout、force push、生产真实交易/下单/划转/提现或显式绕过安全门禁才应作为硬停止。\n",
+                    "- 只有凭证/secret/auth-state 泄露、破坏性目标不明确、备份/审计失败或显式绕过安全门禁才应作为硬停止。\n",
                     encoding="utf-8",
                 )
             artifacts = {
@@ -552,7 +643,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertIn("fetch_all_prune", rendered)
             self.assertIn("Project-agent must consider", rendered)
 
-    def test_high_risk_plan_blocks_before_code_execution_and_records_group_summary(self):
+    def test_guarded_trading_plan_generates_execution_guard_and_continues(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             scripts_dir = tmp_path / "scripts"
@@ -587,23 +678,26 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                     requirements_discussion_commands=(py_cmd(pass_script),),
                     requirements_review_commands=(py_cmd(review_a), py_cmd(review_b)),
                     solution_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    code_command=py_cmd(pass_script),
+                    verification_commands=(py_cmd(pass_script),),
+                    code_review_commands=(py_cmd(review_a), py_cmd(review_b)),
+                    memory_write_command=py_cmd(pass_script),
                     command_cwd=command_repo,
                     agent_workspace_root=tmp_path / "agent-workspaces",
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("risk_gate", state["failed_stage"])
-            self.assertEqual("await_human_confirmation", state["next_action"])
-            self.assertNotIn("code_execution", [stage["name"] for stage in state["stages"]])
+            self.assertEqual("completed", state["status"])
+            self.assertEqual("none", state["next_action"])
             risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
-            self.assertEqual("high", risk["risk_level"])
-            self.assertTrue(risk["human_confirmation_required"])
+            self.assertEqual("guarded", risk["risk_level"])
+            self.assertEqual("guarded_execute", risk["execution_decision"])
+            self.assertFalse(risk["human_confirmation_required"])
+            guard = json.loads(Path(state["artifacts"]["execution_guard"]).read_text(encoding="utf-8"))
+            self.assertEqual("ready", guard["guard_status"])
+            self.assertIn("enable_live_trading", guard["guarded_actions"])
             group_plan = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
-            self.assertIn("等待用户确认", group_plan)
-            failure_summary = Path(state["artifacts"]["failure_summary"]).read_text(encoding="utf-8")
-            self.assertIn("失败步骤群回传摘要", failure_summary)
-            self.assertIn("risk_gate", failure_summary)
+            self.assertIn("执行保护契约", group_plan)
 
     def test_high_risk_plan_runs_after_human_risk_confirmation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -654,10 +748,10 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertEqual("none", state["next_action"])
             self.assertIn("code_execution", [stage["name"] for stage in state["stages"]])
             risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
-            self.assertEqual("high", risk["risk_level"])
-            self.assertTrue(risk["human_confirmation_required"])
+            self.assertEqual("guarded", risk["risk_level"])
+            self.assertFalse(risk["human_confirmation_required"])
             self.assertTrue(risk["human_confirmation_confirmed"])
-            self.assertEqual("confirmed_execute", risk["execution_decision"])
+            self.assertEqual("confirmed_guarded_execute", risk["execution_decision"])
             group_plan = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
             self.assertIn("human_confirmation_confirmed", group_plan)
 
@@ -2612,7 +2706,8 @@ Verification commands:
         self.assertFalse(any(command == "test -f memory/smart-multi-platform-arbitrage/DECISIONS.md" for command in commands))
         self.assertFalse(any("git diff --name-only" in command and "memory/smart-multi-platform-arbitrage" in command for command in commands))
         self.assertFalse(any("Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot" in command for command in commands))
-        self.assertTrue(any("PRODUCTION_TRADING_ENABLED" in command for command in commands))
+        self.assertFalse(any("PRODUCTION_TRADING_ENABLED" in command for command in commands))
+        self.assertTrue(any("credential" in command.lower() or "api" in command.lower() and "key" in command.lower() for command in commands))
         self.assertIn("curl -fsS http://127.0.0.1:18080/health", commands)
         self.assertIn("curl -fsS http://127.0.0.1:18080/api/strategy/status", commands)
         self.assertFalse(any("smart_arb_live_bridge.py" in command for command in commands))

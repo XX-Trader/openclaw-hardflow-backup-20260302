@@ -313,6 +313,7 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
             "solution_review_soft_gate.md",
             "graphify_scope_validation.md",
             "pre_execution_risk.json",
+            "execution_guard.json",
             "group_plan_publish.md",
         )
     if stage in {"verification", "code_review", "deployment", "memory_writeback", "git_publish"}:
@@ -326,6 +327,7 @@ def stage_context_files(stage: str) -> tuple[str, ...]:
             "solution_review_soft_gate.md",
             "graphify_scope_validation.md",
             "pre_execution_risk.json",
+            "execution_guard.json",
             "group_plan_publish.md",
             "patch_summary.md",
             "verification_report.md",
@@ -485,7 +487,8 @@ Prior accepted stage context:
 
 Safety contract:
 - Do not print, move, or modify secrets, tokens, cookies, credentials, auth state files, or private API keys.
-- Do not place exchange orders, transfer funds, start trading strategies, or enable live trading.
+- Do not place exchange orders, transfer funds, start trading strategies, or enable live trading unless `execution_guard.json` exists, `guard_status=ready`, and its small-amount, whitelist, idempotency, audit, and readback controls are implemented.
+- Do not delete, overwrite, drop, truncate, migrate, or perform force-push-like actions unless `execution_guard.json` exists, `guard_status=ready`, and its target, backup, audit, restore, and retention controls are implemented.
 - Keep changes scoped to the requirement and the existing repository patterns.
 - Record evidence with concrete files, commands, and outcomes.
 - Do not edit pipeline artifact files such as research_report.md, requirements_discussion.md, patch_summary.md, verification_report.md, code_review.md, or deployment_report.md.
@@ -511,7 +514,7 @@ Run at least four short rounds of discussion:
 1. project-agent summarizes the user goal, git/branch context, available project context, existing memory decisions, likely change locations, and missing context.
 2. reviewer challenges ambiguity, hidden risks, missing tests, deployment impact, safety boundaries, and whether web research is still missing.
 3. project-agent revises a whole-task requirement: acceptance criteria, target files, verification commands, non-goals, and current logic. Do not split the task into deferred slices merely for granularity.
-4. reviewer gives final risk routing: low/medium can auto-execute; high risk must be sent to the group for human confirmation before code execution.
+4. reviewer gives final risk routing: low/medium can auto-execute; high-permission actions must define execution_guard controls; hard blockers are credential leakage, unclear targets, or failed backup/audit preparation.
 Return the final refined requirement and a group-ready summary with context used, graphify observations, assumptions, risks, branch/git observations, and open questions.
 """
     elif stage == "code_execution":
@@ -525,6 +528,7 @@ Return the final refined requirement and a group-ready summary with context used
 Act as {role} executor for {focus}. Read project memory/docs/todo/done and the relevant code before editing.
 Treat Prior accepted stage context, `delivery_plan.json`, and Repair context as hard constraints. Do not implement later-phase strategy work if the current requirement or research context says to stay on P0 memory/environment work.
 If `solution_review_soft_gate.md` exists, treat its absorbed reviewer blockers as mandatory implementation constraints: fix them while coding or explicitly report why a blocker still needs manual acceptance. It is not permission to ignore reviewer findings.
+If `execution_guard.json` exists, follow it as the high-permission execution contract. Trading, order, withdrawal, transfer, delete, overwrite, migration, and force-push-like operations are allowed when the guard is ready and the required backup, audit, idempotency, and readback controls are implemented. Stop only for credential leakage, unclear targets, or failed backup/audit preparation.
 Implement the complete accepted requirement as constrained by the reviewed plan; do not create artificial deferred task slices.
 Run the most relevant local checks you can run in this environment.
 Return a patch summary with changed files, commands run, and remaining risk.
@@ -533,7 +537,7 @@ Return a patch summary with changed files, commands run, and remaining risk.
         role = str(args.reviewer_role or "").strip() or "reviewer-a"
         if stage == "requirements_review":
             expected = "ready_for_solution"
-            focus = "requirements clarity, scope, acceptance criteria, risk routing, and human confirmation boundaries"
+            focus = "requirements clarity, scope, acceptance criteria, risk routing, and execution_guard boundaries"
         elif stage == "solution_review":
             expected = "ready_for_implement"
             focus = "implementation plan, reuse of existing runtime skills, dependency risk, and deployment boundaries"
@@ -545,9 +549,9 @@ Return a patch summary with changed files, commands run, and remaining risk.
         specific = """
 Act as {role}. Review the pipeline artifacts for {focus}.
 You are one side of a multi-model review gate. Produce your own independent verdict and evidence, then explain how your findings should be merged with other reviewers until no blocker remains.
-For solution review, validate the structured `delivery_plan.json` contract first; `solution.md` is only the human-readable rendering. Use `graphify_context.md` and `graphify_scope_validation.md` to challenge missing related modules/tests and respect its policy: warning by default, block only for cross-repo paths, credential/auth material, or production trading/order/fund-transfer risk.
-Solution review is a soft planning gate for ordinary plan-quality issues: invalid/missing target rationale, missing tests, command gaps, docs/memory assertions, or acceptance gaps should be written as Blocker lines and a revised plan, but the runner may absorb them into code_execution constraints. Only credential/secret/cookie/auth-state handling, destructive production data changes, force push, or explicit unsafe bypass requests should be treated as hard stop before implementation.
-Do not require artificial task-splitting granularity; review the whole accepted requirement and block only with concrete evidence. High-risk strategy actions should be routed for human confirmation and downstream review, not treated as a permanent stop solely because high-risk words appear.
+For solution review, validate the structured `delivery_plan.json` contract first; `solution.md` is only the human-readable rendering. Use `graphify_context.md` and `graphify_scope_validation.md` to challenge missing related modules/tests and respect its policy: warning by default, block only for cross-repo paths or credential/auth material; production trading/order/fund-transfer risk is routed to `execution_guard.json`.
+Solution review is a soft planning gate for ordinary plan-quality and high-permission execution issues: invalid/missing target rationale, missing tests, command gaps, docs/memory assertions, acceptance gaps, trading/order/withdrawal/transfer actions, or destructive changes should be written as Blocker lines and a revised plan, but the runner may absorb them into code_execution constraints through `execution_guard.json`. Only credential/secret/cookie/auth-state leakage, unclear destructive targets, failed backup/audit preparation, or explicit unsafe bypass requests should be treated as hard stop before implementation.
+Do not require artificial task-splitting granularity; review the whole accepted requirement and block only with concrete evidence. High-permission strategy, funds, and destructive actions should be routed to `execution_guard.json` plus downstream review, not treated as a permanent stop solely because high-risk words appear.
 If you return requires_revision, write every non-pass reason as explicit Blocker lines and then give a complete revised plan that another reviewer/coordinator can merge directly into delivery_plan.json. Include file-level actions, create_if_missing rationale, verification commands, publish containment, docs/memory/todo/done content assertions, and final acceptance boundaries when relevant.
 For every review stage, include a Reviewer discussion note: what you agree with from the available prior artifacts, what you challenge, and how the joint final plan should change. Do not stop at "inspect first"; the review output must be sufficient for revise_solution to produce an implementable plan.
 Include exactly these reviewer identity lines:
@@ -975,7 +979,7 @@ def build_chinese_commit_message() -> str:
             "",
             "备注:",
             "- 提交说明与发布备注使用中文。",
-            "- 禁止 force push；如远端冲突或凭证问题，停止并回流人工处理。",
+            "- 不默认 force push；如用户明确要求，必须先按 execution_guard 记录目标分支、备份/回滚路径与审计证据。",
             f"- 证据目录: {run_dir}",
             "",
         ]

@@ -121,6 +121,7 @@ ARTIFACT_EVIDENCE_LABELS = {
     "solution_review.md": "方案评审报告",
     "group_plan_publish.md": "群发执行方案",
     "pre_execution_risk.json": "执行风险门禁",
+    "execution_guard.json": "执行保护契约",
     "failure_summary.md": "失败群发摘要",
     "patch_summary.md": "代码补丁摘要",
     "verification_report.md": "验证报告",
@@ -206,6 +207,19 @@ HIGH_RISK_PATTERNS = [
         r"(?:真实交易|实盘交易).{0,20}(?:授权|开启|执行)",
     )
 ]
+HARD_REPAIR_RISK_PATTERNS = (
+    HIGH_RISK_PATTERNS[0],  # explicit credential/header assignment
+    HIGH_RISK_PATTERNS[1],  # positive credential access request
+    HIGH_RISK_PATTERNS[2],  # sensitive header assignment
+    HIGH_RISK_PATTERNS[3],  # explicit blocking high-risk finding
+    HIGH_RISK_PATTERNS[4],  # secret scanner rules
+    HIGH_RISK_PATTERNS[12],  # Chinese credential/secret access request
+)
+GUARDED_REPAIR_RISK_PATTERNS = tuple(
+    pattern
+    for index, pattern in enumerate(HIGH_RISK_PATTERNS)
+    if index not in {0, 1, 2, 3, 4, 12}
+)
 SAFE_NEGATED_RISK_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -980,6 +994,15 @@ POSITIVE_SECRET_ACCESS_RE = re.compile(
     r"(?:读取|查看|输出|打印|提交|上传|使用|修改).{0,40}(?:密钥|凭证|token|cookie|私钥|会话|auth)",
     re.IGNORECASE,
 )
+PLAN_TARGET_CREDENTIAL_CLEANUP_RE = re.compile(
+    r"(?:remove|exclude|filter|cleanup|clean\s+up|剔除|移除|过滤|清理).{0,100}"
+    r"(?:credential|auth[-_ ]?state|auth\.json|credentials?|凭证|密钥|token|cookie).{0,100}"
+    r"(?:target_files|delivery_plan|目标文件|方案合同)|"
+    r"(?:target_files|delivery_plan|目标文件|方案合同).{0,100}"
+    r"(?:remove|exclude|filter|cleanup|clean\s+up|剔除|移除|过滤|清理).{0,100}"
+    r"(?:credential|auth[-_ ]?state|auth\.json|credentials?|凭证|密钥|token|cookie)",
+    re.IGNORECASE,
+)
 
 
 def is_repairable_review_contract_issue(state: dict | None, raw_evidence: str) -> bool:
@@ -1003,21 +1026,9 @@ def is_repairable_solution_plan_revision(state: dict | None, raw_evidence: str, 
         return False
     if POSITIVE_SECRET_ACCESS_RE.search(evidence or ""):
         return False
-    hard_patterns = (
-        HIGH_RISK_PATTERNS[0],  # explicit credential/header assignment
-        HIGH_RISK_PATTERNS[2],  # sensitive header assignment
-        HIGH_RISK_PATTERNS[4],  # secret scanner rules
-        HIGH_RISK_PATTERNS[5],  # PRODUCTION_TRADING_ENABLED=true
-        HIGH_RISK_PATTERNS[6],  # live trading/order/fund verbs
-        HIGH_RISK_PATTERNS[7],  # required trading/fund action
-        HIGH_RISK_PATTERNS[8],  # rm -rf
-        HIGH_RISK_PATTERNS[9],  # DROP TABLE
-        HIGH_RISK_PATTERNS[10],  # TRUNCATE TABLE
-        HIGH_RISK_PATTERNS[11],  # force push
-        HIGH_RISK_PATTERNS[13],  # fund/trading Chinese terms
-        HIGH_RISK_PATTERNS[14],  # required fund/trading Chinese terms
-        HIGH_RISK_PATTERNS[15],  # real trading authorization
-    )
+    if PLAN_TARGET_CREDENTIAL_CLEANUP_RE.search(raw_evidence or ""):
+        return True
+    hard_patterns = HARD_REPAIR_RISK_PATTERNS
     return not any(pattern.search(evidence) for pattern in hard_patterns)
 
 
@@ -1029,20 +1040,19 @@ def classify_repair_risk(state: dict | None) -> tuple[str, list[str]]:
     next_action = str(state.get("next_action") or "").strip()
     raw_evidence = failure_evidence(state, redact=False)
     evidence = risk_scan_text(raw_evidence)
-    reasons = [pattern.pattern for pattern in HIGH_RISK_PATTERNS if pattern.search(evidence)]
-    if reasons:
+    hard_reasons = [pattern.pattern for pattern in HARD_REPAIR_RISK_PATTERNS if pattern.search(evidence)]
+    guarded_reasons = [pattern.pattern for pattern in GUARDED_REPAIR_RISK_PATTERNS if pattern.search(evidence)]
+    if hard_reasons:
         if is_repairable_solution_plan_revision(state, raw_evidence, evidence):
             return "medium", [f"可回流方案修订: {next_action}"]
         if is_repairable_review_contract_issue(state, raw_evidence) and not any(
             pattern.search(evidence)
-            for pattern in (
-                HIGH_RISK_PATTERNS[0],  # explicit credential/header assignment
-                HIGH_RISK_PATTERNS[2],  # sensitive header assignment
-                HIGH_RISK_PATTERNS[4],  # secret scanner rules
-            )
+            for pattern in HARD_REPAIR_RISK_PATTERNS
         ):
             return "medium", [f"可回流审查返工: {next_action}"]
-        return "high", reasons[:4]
+        return "high", hard_reasons[:4]
+    if guarded_reasons and next_action in REPAIRABLE_NEXT_ACTIONS | {"fix_execution_guard", "await_human_confirmation"}:
+        return "medium", ["高权限动作已降级为执行保护契约，可继续回流"] + guarded_reasons[:3]
     if next_action in REPAIRABLE_NEXT_ACTIONS:
         return "medium", [f"可回流动作: {next_action}"]
     return "high", [f"不在自动修复白名单: {next_action or 'none'}"]
@@ -1082,7 +1092,7 @@ def repair_context_markdown(state: dict, attempt: int, risk: str, reasons: list[
             "## Repair Contract",
             "- Repair through the normal pipeline stages; do not bypass verification, code review, deployment, memory writeback, or git publish.",
             "- Fix the root cause if it is within the repository/runtime permissions.",
-            "- Stop and report if the next step requires secrets, real trading authorization, fund movement, or destructive data operations.",
+            "- Stop only for secret leakage/credential handling, unclear targets, or failed backup/audit preparation. Trading, fund movement, and destructive operations should continue through the execution guard when protected.",
         ]
     )
 
@@ -1273,7 +1283,7 @@ def render_chat_summary(
         if evidence:
             lines.append(f"- 证据: {evidence}")
         if risk == "high":
-            lines.append(f"- 处理: 需要人工确认；原因={compact_text(', '.join(reasons), 240)}")
+            lines.append(f"- 处理: 需要修复硬阻断；原因={compact_text(', '.join(reasons), 240)}")
         elif next_action in REPAIRABLE_NEXT_ACTIONS:
             lines.append(f"- 处理: 可自动修复，下一轮会回流到 {next_action}。")
         else:

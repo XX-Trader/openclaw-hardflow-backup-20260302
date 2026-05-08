@@ -1,13 +1,22 @@
 # PITFALLS
 
+## 2026-05-08 - 不要把高权限动作关键词当成执行前硬停
+
+类型：pitfall
+范围：`pre_execution_risk.json`、`execution_guard.json`、`risk_gate`、`smart_arb_pipeline_entry.py` 自动修复
+事实：用户已经确认真实交易、下单、划转、提现、force push 和破坏性删除/覆盖/数据库操作都是代码功能的一部分，不应因为关键词反复卡在相同位置。旧链路的根因是把“动作风险识别”和“是否可执行”绑成同一个硬门禁，导致计划还没实际运行就不断改计划。现在风险识别仍保留，但默认产出执行保护契约；只有凭证泄露、目标不明确、备份/审计准备失败才停。
+证据：`execution_guard.json` 写入 guarded actions 与 controls；`test_guarded_trading_plan_generates_execution_guard_and_continues`、`test_pre_execution_risk_requires_clear_target_for_destructive_work`、`test_positive_credential_request_still_high_risk`、`test_trading_fund_and_destructive_requests_are_guarded_repairable` 覆盖新边界。
+最后验证：2026-05-08 14:53
+复用建议：以后修类似流程卡死，先问“这是执行保护不足，还是硬红线”。资金/交易/破坏性操作补小额、白名单、幂等、审计、回读、备份和恢复；不要通过反复修改方案、删除业务关键词或绕过 code_review 解决。
+
 ## 2026-05-07 - 不要把方案质量 blocker 当成实现前硬停
 
 类型：pitfall
 范围：`solution_review.md`、`solution_review_soft_gate.md`、`code_execution`、`code_review`
-事实：用户确认方案侧 review 应该长期吸收和改进，而不是普通计划问题一出现就停住。旧链路会把 `solution_review` 的 `requires_revision` 一律阻断，导致方案质量问题、路径缺口、验收命令缺口和 docs/memory 断言不足被反复卡在方案阶段。现在这些属于软门禁：先记录、吸收、继续实现，再由 code_review 检查是否按要求改对。高风险策略动作也不应因为出现关键词永久停住；它们应进入人工确认和后续 reviewer/测试门禁。凭证/密钥/cookie/auth-state、force push 和破坏性生产数据仍是实现前硬边界。
+事实：用户确认方案侧 review 应该长期吸收和改进，而不是普通计划问题一出现就停住。旧链路会把 `solution_review` 的 `requires_revision` 一律阻断，导致方案质量问题、路径缺口、验收命令缺口和 docs/memory 断言不足被反复卡在方案阶段。现在这些属于软门禁：先记录、吸收、继续实现，再由 code_review 检查是否按要求改对。高风险策略动作也不应因为出现关键词永久停住；2026-05-08 起它们进入 `execution_guard.json` 和后续 reviewer/测试门禁。凭证/密钥/cookie/auth-state 泄露、目标不明确、备份/审计失败仍是实现前硬边界。
 证据：新增 `solution_review_soft_gate.md` artifact 与 `PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE`；普通 blocker 测试通过并继续到 code_execution，凭证 blocker 测试仍硬停。
 最后验证：2026-05-07 15:32
-复用建议：以后看到“方案评审未通过”先看 blocker 类型。计划质量问题要进入 soft gate；安全/凭证/破坏性生产问题才硬停。用户纠正“这个不是高风险”时，应沉淀到风险分类和项目记忆，不要简单删除整套风险门禁。
+复用建议：以后看到“方案评审未通过”先看 blocker 类型。计划质量问题要进入 soft gate；凭证泄露、目标不清或备份/审计失败才硬停。用户纠正“这个不是高风险”时，应沉淀到风险分类和项目记忆，不要简单删除整套风险门禁。
 
 ## 2026-05-07 - solution_review 不能只返回泛化失败结论
 
@@ -67,7 +76,7 @@
 
 类型：pitfall
 范围：`skills/library/project-delivery-pipeline/scripts/pipeline_runner.py`、`pre_execution_risk.json`、nofx `smart-arb-pipeline`
-事实：旧 `scrub_negated_risk_lines()` 以整行维度处理风险文本。若用户或 agent 在同一句里写“允许真实交易下单，但不读取凭证”，整行会因为包含否定式凭证边界被丢弃，导致真实交易/下单没有进入 pre-execution high-risk 分类。修复后先剥离纯否定风险列表，再按中英文标点和转折/并列词切分子句；纯否定安全边界被删除，但正向 `PRODUCTION_TRADING_ENABLED=true`、真实交易、真实下单仍触发 high-risk。人工确认后 `execution_decision=confirmed_execute`，未确认仍阻塞。
+事实：旧 `scrub_negated_risk_lines()` 以整行维度处理风险文本。若用户或 agent 在同一句里写“允许真实交易下单，但不读取凭证”，整行会因为包含否定式凭证边界被丢弃，导致真实交易/下单没有进入 pre-execution 分类。修复后先剥离纯否定风险列表，再按中英文标点和转折/并列词切分子句；纯否定安全边界被删除。2026-05-08 起，正向 `PRODUCTION_TRADING_ENABLED=true`、真实交易、真实下单进入 `guarded_execute` 和 `execution_guard.json`；正向凭证读取/打印仍 hard block。
 证据：新增 `test_pre_execution_risk_keeps_positive_trading_when_same_line_has_negated_credentials` 覆盖“允许真实交易下单 smoke，不读取或打印凭证”仍判 high；新增 `test_pre_execution_risk_ignores_pure_negated_trading_and_credentials` 覆盖“不启动真实交易、不下单、不划转、Do not place orders, transfer funds, or enable live trading”仍判 low。本地 `test_project_delivery_pipeline_runner` 55 项 OK，入口/backlog/installer/profile 58 项 OK；nofx 远端定向 62 项 OK；高风险确认 smoke `cli-spreadagent-20260506T153935576001Z` 验证 high-risk confirmed 继续执行。
 最后验证：2026-05-06 23:40
 复用建议：以后遇到风险误判时不要回到“整行丢弃”或简单关键词删除；必须按子句区分否定安全边界与正向高风险动作，并同时覆盖“纯否定不阻塞”和“混合句正向风险仍识别”两类测试。
@@ -77,7 +86,7 @@
 类型：pitfall
 范围：`human_inbox.py`、`backlog_runner.py`、`smart_arb_pipeline_entry.py`、`pipeline_runner.py`
 事实：人工确认只写在 Task Center 的 `human_confirmed=true` 不足以让 pipeline 继续。旧链路里 `backlog_runner` 即使用人工确认选中任务，也没有把确认传给 `smart_arb_pipeline_entry.py`；`pipeline_runner.py` 的 `risk_gate` 也没有确认输入，因此高风险方案在用户确认后仍会阻塞到 `await_human_confirmation`。已新增 `--human-risk-confirmed` 并贯通入口、runner 和风险门禁。
-证据：`backlog_runner.py` 已确认高风险候选会设置 `human_risk_confirmed` 并追加 `--human-risk-confirmed`；`smart_arb_pipeline_entry.py` 会把该参数传给 runner；`pipeline_runner.py` 写入 `human_confirmation_confirmed` 与 `confirmed_execute`；`test_confirmed_high_risk_task_passes_human_risk_flag_to_pipeline`、`test_main_passes_human_risk_confirmation_to_runner`、`test_high_risk_plan_runs_after_human_risk_confirmation` 覆盖该链路。
+证据：该历史问题当时通过 `backlog_runner.py`、`smart_arb_pipeline_entry.py` 和 `pipeline_runner.py` 透传 `--human-risk-confirmed` 解决；2026-05-08 起新 run 以 `execution_guard.json` 为主，`human_confirmation_confirmed` 只作为确认来源留痕。
 最后验证：2026-05-06 22:58
 复用建议：以后不要通过删除高风险扫描解决“确认后仍阻拦”；正确做法是保留 high-risk 分类，确认后传递明确凭证，并让后续测试、review、部署和发布门禁继续工作。
 
@@ -133,7 +142,7 @@
 事实：`Secret-like content detected in staged diff` 不一定代表业务代码审查失败，也不一定代表存在真实密钥；旧扫描器会把 staged diff 里的 `DASHBOARD_BASIC_PASS`、`BASIC_PASS`、`rotatable-pass`、`Authorization: Basic Auth` 或“替换为实际强密码”等环境变量名、测试假密码和文档占位误判为 secret。修复后扫描器只看新增行，并按 value 上下文判断：真实 token、cookie、Authorization payload、OAuth secret、交易所 key、`.env` 实值、高熵随机串和 PEM private key 仍阻断；环境变量名、空值、`os.getenv(...)` 空默认、测试假密码、Markdown 行内 Basic Auth / Bearer token 占位说明放行；`os.getenv(..., '真实 token')` 与 `Authorization: Bearer live-real-short-token test only` 这类真实短值不放行。阻断报告必须输出脱敏的文件、行号、规则、风险等级和片段，不能只给笼统一句 secret-like。
 证据：`staged_diff_secret_findings()` 解析 staged diff 新增行，输出 `file/line/rule/risk/blocking/snippet`；`run_git_publish()` 在 `## Secret Scan Findings` 中展示脱敏 findings；测试覆盖误报放行、真 secret 阻断、docs/tests/.env.example 中短真实密钥阻断、非占位 example assignment 仍阻断、hardcoded getenv fallback secret 阻断、PEM private key marker/material 阻断、删除旧 secret 行不阻塞、阻断报告不泄露原 secret、Basic Auth/Bearer token 文档占位不阻塞、真实短 Bearer 值即使带 test/example only 仍阻断、`fix_git_publish` 遇到 secret scan high/blocking finding 不自动回流。本地 `python -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 64 项 OK；`python -B -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过。
 最后验证：2026-04-27 19:10
-复用建议：后续遇到 `git_publish/fix_git_publish`，先判断失败文本是否来自 secret scan；如果是，必须定位 staged diff 的新增行和 finding rule。真实 secret/high-risk evidence 仍停人工确认。只允许调整 allowlist/context-aware scan，不允许关闭 hard block 或发布含真实 secret 的 diff。
+复用建议：后续遇到 `git_publish/fix_git_publish`，先判断失败文本是否来自 secret scan；如果是，必须定位 staged diff 的新增行和 finding rule。真实 secret/high-risk evidence 仍 hard block。只允许调整 allowlist/context-aware scan，不允许关闭 hard block 或发布含真实 secret 的 diff。
 
 ## 2026-04-27 - 部署重启 gateway 前必须检查是否有活跃 Discord pipeline
 
@@ -167,7 +176,7 @@
 类型：pitfall
 范围：`scripts/openclaw-ops/smart_arb_pipeline_entry.py`、`scripts/openclaw-ops/smart_arb_live_bridge.py`、nofx Discord `smart-arb-pipeline`
 事实：run `discord-spreadagent-20260426T065131327963Z` 的 P0-1 OpenClaw 历史蒸馏已完成 external_research，但 code_execution 被安全门禁误判 high-risk；原因是报告里出现“未读取 / 不输出 token、key、cookie、OAuth、API key、credential”等否定式安全边界。随后新 run `discord-spreadagent-20260426T075133316811Z` 已完成 15 个阶段：external_research、需求讨论、code_execution、verification、code_review、deployment、acceptance、writeback 均通过。
-证据：`smart_arb_pipeline_entry.py` 现在按子句处理风险扫描：纯否定式安全边界、历史文档清理记录、普通 `session_id=[REDACTED]` 和否定式预脱敏噪音可回流；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]`、真实 credential assignment、真实交易/资金/破坏性操作仍按 high 停人工确认。`smart_arb_live_bridge.py` 会在 Hermes CLI 只输出 `session_id` 时，从固定 profile session 文件恢复最新 assistant 输出并脱敏；`external_research` 的 `NO_EXTERNAL_LOOKUP_NEEDED` 可据此合成 pass。entry 还会在 memory/docs-only、no service control、no deployment、no restart 需求下跳过 deployment command，避免纯写回任务重启 `smart-arb-api`。
+证据：`smart_arb_pipeline_entry.py` 现在按子句处理风险扫描：纯否定式安全边界、历史文档清理记录、普通 `session_id=[REDACTED]` 和否定式预脱敏噪音可回流；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]`、真实 credential assignment 仍 hard block。2026-05-08 起真实交易/资金/破坏性操作进入 `execution_guard.json`。`smart_arb_live_bridge.py` 会在 Hermes CLI 只输出 `session_id` 时，从固定 profile session 文件恢复最新 assistant 输出并脱敏；`external_research` 的 `NO_EXTERNAL_LOOKUP_NEEDED` 可据此合成 pass。entry 还会在 memory/docs-only、no service control、no deployment、no restart 需求下跳过 deployment command，避免纯写回任务重启 `smart-arb-api`。
 最后验证：2026-04-26 16:00
 复用建议：遇到 P0/P1 文档或项目记忆写回任务被凭证词卡住时，先判断这些词是否处在否定句、历史清理记录或预脱敏噪音中；不要为了绕过门禁删除安全边界。若命令输出只有 `session_id`，去 profile session JSON 核对实际 assistant 输出。若需求写明不触碰服务，确认 runner 命令没有 `--deployment-command`。
 
@@ -187,7 +196,7 @@
 事实：只把 `pipeline_state.json` 的 `status`、`failed_stage`、`next_action` 发回 Discord，会让用户看不到目标完成情况和具体阻塞证据。入口会读取 `command-runs/*.json`，状态卡包含 `阶段命令状态`、`阻塞原因` 和 `自动修复判断`；默认只展示 stage/agent/returncode/证据文件，避免把 reviewer/tester 原始输出刷进聊天频道。
 证据：`smart_arb_pipeline_entry.py` 新增 command report 状态行、失败证据提取、高风险分类和自动回流；`smart_arb_live_bridge.py` 会读取 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT`，把上一轮失败证据注入后续 stage prompt；测试 `test_render_chat_summary_shows_block_reason_and_repair_decision`、`test_main_auto_repairs_low_risk_blocked_run`、`test_main_auto_repair_keeps_context_when_context_file_write_fails`、`test_main_does_not_auto_repair_high_risk_blocked_run` 覆盖该行为。
 最后验证：2026-04-26 11:30
-复用建议：遇到 Discord 回复“已阻塞，不能绕过 pipeline”时，先检查入口是否为新版；新版会在低/中风险下自动回流，只有凭证、真实交易、资金、破坏性数据操作等高风险才停人工确认。
+复用建议：遇到 Discord 回复“已阻塞，不能绕过 pipeline”时，先检查入口是否为新版；新版会在低/中/guarded 风险下自动回流，只有凭证泄露、目标不明确、备份/审计失败等 hard block 才停。
 
 ## 2026-04-26 - nofx smart-arb-pipeline 旧默认值会把执行请求跑成 dry-run
 

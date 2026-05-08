@@ -537,8 +537,8 @@ SOLUTION_REVIEW_HARD_BLOCKER_RE = re.compile(
     r"(?:"
     r"credential|credentials|secret|private[-_ ]?key|api[-_ ]?key|auth[-_ ]?state|cookie|oauth|"
     r"authorization\s*:|bearer\s+[A-Za-z0-9]|"
-    r"force[-_ ]?push|git\s+push\s+--force|rm\s+-rf|DROP\s+TABLE|TRUNCATE\s+TABLE|"
-    r"删除生产数据|清空生产数据|私钥|密钥|凭证|Cookie|强制推送|破坏性删除"
+    r"without\s+backup|backup\s+failed|unknown\s+target|unclear\s+target|"
+    r"未备份|无备份|备份失败|目标不明确|目标未知|私钥|密钥|凭证|Cookie"
     r")",
     re.IGNORECASE,
 )
@@ -586,7 +586,7 @@ def render_reviewer_discussion(stage_name: str, reports: list[dict[str, Any]], v
             "- Merge reviewer-a and reviewer-b blockers into one revised delivery_plan.json where possible; remaining plan-quality blockers become code_execution constraints.",
             "- Remove invalid target_files and add explicit create_if_missing rationale for every missing file that remains.",
             "- Replace template steps with file-level business actions, mapped tests, verification commands, release gates, and acceptance boundaries.",
-            "- Continue to code_execution when no credential/secret/destructive-production hard boundary remains; code_review verifies the implementation followed these absorbed constraints.",
+            "- Continue to code_execution when no credential/secret, unclear-target, or failed-backup hard boundary remains; code_review verifies the implementation followed these absorbed constraints.",
         ]
     else:
         revision_plan = [
@@ -661,7 +661,7 @@ def render_solution_review_soft_gate(reports: list[dict[str, Any]], parsed_verdi
             f"- Parsed verdict: {parsed_verdict or 'missing'}",
             "- Decision: soft_continue",
             "- Reason: solution review plan-quality blockers are converted into implementation constraints; code_execution must absorb them and code_review remains the hard correctness gate.",
-            "- Hard boundary: credential/secret/private key/cookie/auth-state handling, destructive production data changes, and force-push style repository actions still block before implementation.",
+            "- Hard boundary: credential/secret/private key/cookie/auth-state leakage, unclear destructive targets, or failed backup/audit preparation still block before implementation.",
             "",
             "## Absorbed Reviewer Blockers",
             *blockers,
@@ -752,7 +752,7 @@ def render_dual_ai_review(stage_name: str, reports: list[dict[str, Any]], verdic
         ## Merged Reviewer Consensus
         - Review mode: prefer independent multi-model review followed by blocker merge; degrade only for provider/model runtime failures.
         - No artificial task-splitting granularity gate is allowed; reviewers judge the whole accepted requirement.
-        - If any valid reviewer raises a concrete blocker, requirements_review and code_review remain hard gates. solution_review treats plan-quality blockers as soft constraints when no credential/secret/destructive-production hard boundary is present, and passes them to code_execution and later code_review.
+        - If any valid reviewer raises a concrete blocker, requirements_review and code_review remain hard gates. solution_review treats plan-quality and guarded high-permission blockers as soft constraints when no credential/secret, unclear-target, or failed-backup hard boundary is present, and passes them to code_execution and later code_review.
         - Remaining blockers:
         {blocker_text}
         - Non-blocking reviewer runtime/model failures:
@@ -1199,12 +1199,12 @@ def render_requirements_discussion(requirement: str) -> str:
         - If no blocking questions remain, mark the requirement ready for formal review.
 
         ## Solution Review Readiness Discussion
-        Because `solution_review` is a hard gate before code execution, the discussion must
-        pre-negotiate its contract instead of discovering basic blockers later:
+        Because `solution_review` feeds implementation constraints before code execution, the discussion must
+        pre-negotiate its contract instead of discovering basic gaps later:
         - Name `must_change_targets` separately from `read_only_sources`, `reference_patterns`, `runtime_contracts`, `api_contracts`, and `forbidden_targets`.
         - `target_files` in the later delivery plan may contain only concrete repo-relative files that the implementer is expected to create or modify.
         - Files mentioned as read-only sources, inspect-only inputs, reference examples, or API/runtime/data contracts must not be promoted to `target_files`.
-        - Credential material, high-risk runtime operations, destructive repo/data actions, and dirty/behind containment must be discussed as prohibited or gated boundaries before solution generation.
+        - Credential material, unclear destructive targets, backup/audit requirements, high-permission runtime operations, and dirty/behind containment must be discussed before solution generation.
         - Verification expectations must be command-level, deterministic, and include tests, compileall, diff check, safety scan, smoke checks, docs/memory writeback, and publish containment when applicable.
 
         ## Final Requirement Document Contract
@@ -1248,12 +1248,24 @@ def render_resolved_requirement(requirement: str, artifacts: dict[str, str]) -> 
     )
 
 
-HIGH_RISK_PLAN_PATTERNS = (
-    ("enable_live_trading", re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘|(?:需要|要求|启动|启用|执行|进行|允许).{0,20}(?:真实交易|实盘交易)|\b(?:enable|start|execute|allow|perform)\b.{0,20}\b(?:real|live)[-_ ]?trading\b")),
-    ("place_real_order", re.compile(r"(?i)\b(place|create|submit)[-_ ]?(real[-_ ]?)?orders?\b|真实下单|实盘下单|下真实订单|真实交易.{0,20}下单|(?:需要|要求|执行|进行|允许).{0,20}下单")),
-    ("fund_transfer", re.compile(r"(?i)\btransfer\b.*\b(fund|asset|coin|token)\b|划转资金|资金划转|提现|withdraw")),
-    ("credential_access", re.compile(r"(?i)\b(print|read|dump|move|modify|rotate)\b.*\b(token|secret|credential|api[-_ ]?key|cookie|oauth|private key)\b|打印.*(密钥|凭证|token|cookie)|读取.*(密钥|凭证|token|cookie)")),
+HARD_STOP_PLAN_PATTERNS = (
+    ("credential_access", re.compile(r"(?i)\b(print|read|dump|show|export|commit|move|modify|rotate)\b.*\b(token|secret|credential|api[-_ ]?key|cookie|oauth|private key|auth[-_ ]?state)\b|(?:打印|读取|查看|输出|提交|上传|使用|修改|移动).{0,30}(?:密钥|凭证|token|cookie|私钥|会话|auth[-_ ]?state)")),
+    ("credential_assignment", re.compile(r"(?i)\b(?:api[-_ ]?key|secret|password|credential|cookie|private[-_ ]?key|auth[-_ ]?token)\b\s*[:=]\s*[^\s\[<]+|(?:密钥|凭证|密码|私钥|cookie)\s*[:=：]\s*[^\s\[<]+")),
+    ("unclear_destructive_target", re.compile(r"(?i)(?:unknown|unclear|missing)\s+(?:delete|drop|truncate|overwrite|migration)\s+target|(?:删除|清空|覆盖|迁移).{0,20}(?:目标不明确|目标未知|缺少目标)")),
+    ("backup_failed", re.compile(r"(?i)backup\s+(?:failed|missing|not\s+verified)|(?:备份失败|未备份|无备份|备份未验证)")),
 )
+
+GUARDED_OPERATION_PLAN_PATTERNS = (
+    ("enable_live_trading", re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘|(?:需要|要求|启动|启用|执行|进行|允许).{0,20}(?:真实交易|实盘交易)|\b(?:enable|start|execute|allow|perform)\b.{0,20}\b(?:real|live)[-_ ]?trading\b")),
+    ("place_order", re.compile(r"(?i)\b(place|create|submit|cancel)[-_ ]?(real[-_ ]?)?orders?\b|真实下单|实盘下单|下真实订单|下单|撤单|真实交易.{0,20}下单|(?:需要|要求|执行|进行|允许).{0,20}下单")),
+    ("fund_transfer", re.compile(r"(?i)\btransfer\b.*\b(fund|asset|coin|token)\b|\bwithdraw(?:al)?\b|划转资金|资金划转|划转|转账|提现|出金")),
+    ("destructive_filesystem", re.compile(r"(?i)\brm\s+-rf\b|\bremove-item\b.*\b-recurse\b|\bdelete\b.*\b(?:directory|folder|file)\b|删除.{0,20}(?:目录|文件|数据|缓存|生成物)|覆盖.{0,20}(?:目录|文件|配置)")),
+    ("destructive_database", re.compile(r"(?i)\bdrop\s+table\b|\btruncate\s+table\b|\bdelete\s+from\b|删除.{0,20}(?:数据库|表|数据表|记录)|清空.{0,20}(?:数据库|表|数据表|记录)|数据库迁移|表结构迁移")),
+    ("force_push_or_history_rewrite", re.compile(r"(?i)\bforce\s+push\b|git\s+push\s+--force|历史重写|强制推送")),
+)
+
+# Backwards-compatible alias for older tests/helpers that import this name.
+HIGH_RISK_PLAN_PATTERNS = HARD_STOP_PLAN_PATTERNS
 
 MEDIUM_RISK_PLAN_PATTERNS = (
     ("deployment_or_restart", re.compile(r"(?i)\b(deploy|restart|reload|systemctl|tmux)\b|部署|重启|发布")),
@@ -1364,6 +1376,123 @@ def pre_execution_plan_scan_text(delivery_plan: dict[str, Any]) -> str:
     return json.dumps(scan_payload, ensure_ascii=False, indent=2)
 
 
+DESTRUCTIVE_ACTION_LABELS = {"destructive_filesystem", "destructive_database", "force_push_or_history_rewrite"}
+FUND_ACTION_LABELS = {"enable_live_trading", "place_order", "fund_transfer"}
+CLEAR_DESTRUCTIVE_TARGET_RE = re.compile(
+    r"(?i)(?:drop\s+table|truncate\s+table|delete\s+from)\s+[A-Za-z0-9_.-]+|"
+    r"(?:rm\s+-rf|remove-item\b.*\b-recurse\b)\s+[A-Za-z0-9_.:~\-/\\]+|"
+    r"(?:删除|清空).{0,30}(?:表|数据表)\s*[A-Za-z0-9_.-]+|"
+    r"(?:删除|清空).{0,30}[A-Za-z0-9_.-]+\s*(?:表|数据表|记录)|"
+    r"(?:删除|清空|覆盖|迁移).{0,30}(?:`[^`]+`|[A-Za-z]:[\\/][^\s，。；;]+|[./\\][^\s，。；;]+|[A-Za-z0-9_.-]+(?:\.[A-Za-z0-9]+|[/\\][A-Za-z0-9_.-]+))"
+)
+
+
+def unique_labels(labels: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for label in labels:
+        if label not in seen:
+            seen.add(label)
+            result.append(label)
+    return result
+
+
+def delivery_plan_targets(delivery_plan: dict[str, Any]) -> list[str]:
+    targets: list[str] = []
+    for key in ("target_files", "must_change_targets", "entry_points"):
+        items = delivery_plan.get(key)
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            path = item.get("path") if isinstance(item, dict) else item
+            if str(path or "").strip():
+                targets.append(str(path).strip())
+    return unique_labels(targets)
+
+
+def build_execution_guard(
+    requirement: str,
+    delivery_plan: dict[str, Any],
+    scan_text: str,
+    hard_reasons: list[str],
+    guarded_actions: list[str],
+    medium_reasons: list[str],
+) -> dict[str, Any]:
+    """Build the protection contract that replaces keyword-only blocking."""
+    targets = delivery_plan_targets(delivery_plan)
+    destructive_actions = [item for item in guarded_actions if item in DESTRUCTIVE_ACTION_LABELS]
+    fund_actions = [item for item in guarded_actions if item in FUND_ACTION_LABELS]
+    destructive_target_match = CLEAR_DESTRUCTIVE_TARGET_RE.search("\n".join([requirement, scan_text]))
+    destructive_target_evidence = [destructive_target_match.group(0).strip()] if destructive_target_match else []
+    target_clear = bool(destructive_target_evidence)
+    guard_hard_reasons = list(hard_reasons)
+    if destructive_actions and not target_clear:
+        guard_hard_reasons.append("unclear_destructive_target")
+
+    controls: list[dict[str, Any]] = []
+    if fund_actions:
+        controls.append(
+            {
+                "action_group": "funds_and_orders",
+                "actions": fund_actions,
+                "default_amount_policy": "Use the minimum executable unit or the explicit small amount in the user request.",
+                "required_controls": [
+                    "test account, sandbox, testnet, paper account, or explicitly user-provided small live amount",
+                    "symbol/account/address whitelist when the target supports it",
+                    "client_order_id/request_id/idempotency key",
+                    "audit log with request, response, order id, tx id, and balance/status readback",
+                    "post-action order, balance, transfer, or withdrawal status verification",
+                ],
+                "blocks_only_if": "credential leakage, unknown account/market/address target, or failed audit/status recording",
+            }
+        )
+    if destructive_actions:
+        controls.append(
+            {
+                "action_group": "destructive_changes",
+                "actions": destructive_actions,
+                "targets": destructive_target_evidence,
+                "backup_required": True,
+                "required_controls": [
+                    "snapshot or backup before delete/drop/truncate/overwrite/migration",
+                    "record backup path, size, checksum or equivalent readability proof",
+                    "audit log for command, target, timestamp, and restore instructions",
+                    "post-action verification and restore/rollback command",
+                    "retain backup until acceptance TTL instead of deleting immediately",
+                ],
+                "blocks_only_if": "target is unclear, backup cannot be created or verified, or audit log cannot be written",
+            }
+        )
+    if medium_reasons and not controls:
+        controls.append(
+            {
+                "action_group": "operational_change",
+                "actions": medium_reasons,
+                "required_controls": [
+                    "record pre-change state or health snapshot",
+                    "run deterministic smoke/health verification after the action",
+                    "record rollback or restart command when applicable",
+                ],
+            }
+        )
+
+    return {
+        "schema_version": "execution-guard/v1",
+        "guard_status": "blocked" if guard_hard_reasons else "ready",
+        "guarded_actions": guarded_actions,
+        "hard_stop_reasons": unique_labels(guard_hard_reasons),
+        "target_clear": target_clear,
+        "target_files": targets,
+        "destructive_target_evidence": destructive_target_evidence,
+        "controls": controls,
+        "summary": (
+            "Guarded high-permission actions may proceed with backup/audit/readback controls."
+            if guarded_actions and not guard_hard_reasons
+            else "No guarded high-permission action detected." if not guarded_actions else "Hard stop until guard blockers are resolved."
+        ),
+    }
+
+
 def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], artifacts: dict[str, str]) -> dict[str, Any]:
     """Classify the refined plan before code execution."""
     artifact_texts = [
@@ -1373,33 +1502,48 @@ def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], a
     ]
     plan_text = pre_execution_plan_scan_text(delivery_plan)
     scan_text = scrub_negated_risk_lines("\n".join([requirement, plan_text, *artifact_texts]))
-    high_reasons = [label for label, pattern in HIGH_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
+    high_reasons = [label for label, pattern in HARD_STOP_PLAN_PATTERNS if pattern.search(scan_text)]
+    guarded_actions = [label for label, pattern in GUARDED_OPERATION_PLAN_PATTERNS if pattern.search(scan_text)]
     medium_reasons = [label for label, pattern in MEDIUM_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
     graphify_validation = read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), "")
     if re.search(r"(?im)^\s*-\s*scope_status:\s*`?block`?", graphify_validation):
-        high_reasons.append("graphify_scope_block")
-    risk_level = "high" if high_reasons else "medium" if medium_reasons else "low"
+        if re.search(r"(?i)credential|auth|secret|outside|escape|跨仓|凭证|密钥|目标不明确", graphify_validation):
+            high_reasons.append("graphify_scope_block")
+        else:
+            guarded_actions.append("graphify_scope_guard")
+    high_reasons = unique_labels(high_reasons)
+    guarded_actions = unique_labels(guarded_actions)
+    medium_reasons = unique_labels(medium_reasons)
+    execution_guard = build_execution_guard(requirement, delivery_plan, scan_text, high_reasons, guarded_actions, medium_reasons)
+    hard_stop_reasons = execution_guard.get("hard_stop_reasons") or []
+    execution_decision = "hard_block" if hard_stop_reasons else "guarded_execute" if guarded_actions else "auto_execute"
+    risk_level = "high" if hard_stop_reasons else "guarded" if guarded_actions else "medium" if medium_reasons else "low"
     return {
         "schema_version": "pre-execution-risk/v1",
         "risk_level": risk_level,
-        "human_confirmation_required": risk_level == "high",
-        "execution_decision": "block_for_human_confirmation" if risk_level == "high" else "auto_execute",
+        "human_confirmation_required": False,
+        "hard_stop_required": bool(hard_stop_reasons),
+        "execution_decision": execution_decision,
         "high_risk_reasons": high_reasons,
+        "guarded_action_reasons": guarded_actions,
+        "hard_stop_reasons": hard_stop_reasons,
         "medium_risk_reasons": medium_reasons,
-        "low_risk_reason": "No real trading, credential access, fund transfer, dependency/deployment, or migration trigger was found." if risk_level == "low" else "",
+        "low_risk_reason": "No credential leakage, guarded high-permission action, dependency/deployment, or migration trigger was found." if risk_level == "low" else "",
+        "execution_guard": execution_guard,
         "group_publish_required": True,
     }
 
 
 def apply_human_risk_confirmation(risk: dict[str, Any], config: PipelineConfig) -> dict[str, Any]:
-    """Mark a high-risk plan as confirmed when the caller carries audited human approval."""
+    """Carry audited caller approval without turning guardable actions into hard gates."""
     payload = dict(risk)
-    confirmed = bool(config.human_risk_confirmed) and bool(payload.get("human_confirmation_required"))
+    confirmed = bool(config.human_risk_confirmed)
     payload["human_confirmation_confirmed"] = confirmed
     if confirmed:
-        payload["execution_decision"] = "confirmed_execute"
         payload["confirmation_source"] = "human_risk_confirmed_flag"
         payload["confirmed_at"] = utc_now()
+        if payload.get("execution_decision") == "guarded_execute":
+            payload["execution_decision"] = "confirmed_guarded_execute"
     return payload
 
 
@@ -1413,6 +1557,13 @@ def render_group_plan_publish(requirement: str, artifacts: dict[str, str], deliv
     graphify_scope = read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), "")
     target_files = "\n".join(f"- `{item.get('path')}`" for item in delivery_plan.get("target_files", [])[:40]) or "- 待 code agent 基于项目记忆继续定位"
     verification_commands = "\n".join(f"- `{item.get('command')}`" for item in delivery_plan.get("verification_commands", [])[:40]) or "- 待 tester/code agent 补齐"
+    execution_guard = risk.get("execution_guard") if isinstance(risk.get("execution_guard"), dict) else {}
+    guard_controls = execution_guard.get("controls") if isinstance(execution_guard.get("controls"), list) else []
+    guard_summary = "\n".join(
+        f"- `{item.get('action_group')}`: {', '.join(item.get('actions') or []) or 'operational_change'}"
+        for item in guard_controls[:8]
+        if isinstance(item, dict)
+    ) or "- 无需额外高权限保护契约"
     return dedent(
         f"""
         # 群回传执行方案
@@ -1436,15 +1587,21 @@ def render_group_plan_publish(requirement: str, artifacts: dict[str, str], deliv
         ## 风险判断
         - risk_level: `{risk.get('risk_level')}`
         - execution_decision: `{risk.get('execution_decision')}`
-        - human_confirmation_required: `{risk.get('human_confirmation_required')}`
+        - hard_stop_required: `{risk.get('hard_stop_required')}`
         - human_confirmation_confirmed: `{risk.get('human_confirmation_confirmed', False)}`
         - high_risk_reasons: `{', '.join(risk.get('high_risk_reasons') or []) or 'none'}`
+        - guarded_action_reasons: `{', '.join(risk.get('guarded_action_reasons') or []) or 'none'}`
         - medium_risk_reasons: `{', '.join(risk.get('medium_risk_reasons') or []) or 'none'}`
 
+        ## 执行保护契约
+        - guard_status: `{execution_guard.get('guard_status', 'missing')}`
+        - hard_stop_reasons: `{', '.join(execution_guard.get('hard_stop_reasons') or []) or 'none'}`
+        {guard_summary}
+
         ## 执行规则
-        - 高风险：未带人工确认凭证时必须先把本方案发到群里，等待用户确认，不进入 code_execution。
-        - 已确认高风险：人工确认凭证会写入 `pre_execution_risk.json`，继续进入 code_execution，但后续测试、双代码审查、部署和 Git 发布门禁不变。
-        - 低/中风险：本方案仍作为群回传摘要与证据 artifact，随后自动进入 code_execution。
+        - 资金动作、下单、提现、划转、删除、覆盖、迁移等关键词不再作为硬停；命中后生成 `execution_guard.json`，按小金额、备份、审计、幂等和回读约束继续执行。
+        - 只有凭证泄露/打印/提交、目标不明确、备份或审计准备失败时，`execution_decision=hard_block` 并停在 `risk_gate`。
+        - 低/中/guarded 风险：本方案仍作为群回传摘要与证据 artifact，随后自动进入 code_execution。
         - 测试、审核、部署或 git publish 任一失败时，必须生成失败摘要，记录失败阶段、命令、证据目录和下一步修复动作，再回流修复。
 
         ## 摘要引用
@@ -2257,7 +2414,7 @@ def add_verification_command(commands: list[dict[str, Any]], command: str, sourc
 def added_line_safety_scan_command() -> str:
     return (
         "/bin/sh -c \"git diff --unified=0 -- 智能多平台套利 tests "
-        "| rg -n '^\\+.*(PRODUCTION_TRADING_ENABLED\\s*=\\s*true|credential\\s*[:=]|credentials\\s*[:=]|api[_ -]?key\\s*[:=]|secret\\s*[:=]|private endpoint|place_order|transfer|signing)' "
+        "| rg -n '^\\+.*(credential\\s*[:=]|credentials\\s*[:=]|api[_ -]?key\\s*[:=]|secret\\s*[:=]|password\\s*[:=]|private[_ -]?key\\s*[:=]|Authorization\\s*[:=]|Cookie\\s*[:=])' "
         "&& exit 1 || test $? -eq 1\""
     )
 
@@ -2559,7 +2716,7 @@ def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], del
     if GRAPHIFY_BLOCK_PATTERNS["credential_path"].search(scan_plan_text):
         findings.append({"severity": "block", "path": "delivery_plan.json", "reason": "plan text references credential/auth/secret material"})
     if GRAPHIFY_BLOCK_PATTERNS["production_trading"].search(scan_plan_text):
-        findings.append({"severity": "block", "path": "delivery_plan.json", "reason": "plan text appears to enable production trading, real orders, or fund transfer"})
+        findings.append({"severity": "warning", "path": "delivery_plan.json", "reason": "plan text includes trading/order/fund movement and must be covered by execution_guard"})
     status = graphify_scope_validation_status(findings)
     return {
         "schema_version": "graphify-scope-validation/v1",
@@ -2567,7 +2724,7 @@ def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], del
         "graph_available": graph_path.exists(),
         "graph_json": str(graph_path) if graph_path.exists() else "missing",
         "repo": str(repo),
-        "policy": "warning by default; block only for cross-repo paths, credentials/auth material, or production trading/order/fund-transfer risk",
+        "policy": "warning by default; block only for cross-repo paths or credentials/auth material; trading/order/fund-transfer risk is routed to execution_guard",
         "findings": findings,
         "recommended_verification": [item.get("command") for item in delivery_plan.get("verification_commands", []) if isinstance(item, dict) and item.get("command")][:12],
         "source_artifacts": {key: artifacts[key] for key in ("graphify_context", "delivery_plan", "solution_package") if key in artifacts},
@@ -3136,8 +3293,7 @@ def compile_delivery_plan(
         "docs/research/** as target_files/must_change_targets",
         "MEMORY.md / memory/** / docs/INDEX.md / todo.md / done.md as target_files/must_change_targets",
         "Apollo historical MEXC files unless proven directly referenced by current MVP runtime",
-        "new Hyperliquid real stock-token adapter files",
-        "real trading/order/transfer/withdrawal/control write paths",
+        "credential-bearing private account/auth files",
     ]
     return {
         "schema_version": "delivery-plan/v1",
@@ -3182,7 +3338,9 @@ def compile_delivery_plan(
             for path in classified_context_paths.get("inspect_only_sources", [])
         ],
         "runtime_contracts": [
-            "Keep production trading disabled unless the route carries explicit human risk confirmation and later gates allow it.",
+            "Trading, order, transfer, withdrawal, deletion, overwrite, and migration requests proceed through execution_guard instead of keyword blocking.",
+            "Use the minimum executable amount or the explicit small amount requested by the user for funds/order actions.",
+            "Destructive data/file actions require backup path, backup verification, audit record, and restore instructions before execution.",
             "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
         ],
         "api_contracts": api_contracts,
@@ -3204,9 +3362,9 @@ def compile_delivery_plan(
         ],
         "out_of_scope": [
             "Do not broaden the task beyond the accepted requirement.",
-            "Do not invent artificial deferred slices; handle the complete accepted requirement unless risk_gate blocks for human confirmation.",
-            "Do not use secrets, credentials, private keys, cookies, or auth state files.",
-            "Do not start real trading, place orders, transfer funds, or change production trading controls.",
+            "Do not invent artificial deferred slices; handle the complete accepted requirement unless execution_guard reports a hard blocker.",
+            "Do not leak, print, commit, or log secrets, credentials, private keys, cookies, or auth state files.",
+            "Do not execute destructive operations when the target is unclear or backup/audit preparation failed.",
         ],
         "implementation_steps": implementation_steps,
         "verification_commands": configured_verification_commands(config, task_type, "\n".join([original_requirement_full, requirements_discussion, requirements_review, git_context, repair_context])),
@@ -3222,15 +3380,16 @@ def compile_delivery_plan(
             "If rollback fails, stop with manual_cleanup_required.",
         ],
         "human_blockers": [
-            "Stop before any credential, secret value, private key, cookie, or auth state handling.",
-            "Stop before production market/account actions or destructive repository/data changes.",
+            "Stop before any credential, secret value, private key, cookie, or auth state leakage, printing, logging, or commit.",
+            "Stop when a destructive repository/data target is unclear.",
+            "Stop when required backup, backup verification, audit logging, or restore instruction creation fails.",
             "Target files cannot be located from repository evidence and implementation would require guessing.",
             "blocked_manual_acceptance_required: real Discord channel acceptance cannot be safely proven inside the pipeline.",
         ],
         "risk_boundaries": [
-            {"name": "credentials", "allowed": False, "description": "No credential or secret access."},
-            {"name": "real_trading", "allowed": False, "description": "Production trading remains disabled."},
-            {"name": "fund_movement", "allowed": False, "description": "No orders, transfers, withdrawals, or fund movement."},
+            {"name": "credentials", "allowed": False, "description": "No credential or secret leakage, printing, logging, or commit."},
+            {"name": "funds_and_orders", "allowed": True, "description": "Allowed with minimum amount, whitelist/idempotency where available, audit log, and status readback."},
+            {"name": "destructive_changes", "allowed": True, "description": "Allowed with clear target, backup, backup verification, audit log, and restore path."},
         ],
         "plan_findings": {
             "discovery_required": discovery_required,
@@ -4959,6 +5118,8 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         config,
     )
     record_payload("pre_execution_risk", "pre_execution_risk.json", pre_execution_risk)
+    execution_guard = pre_execution_risk.get("execution_guard") if isinstance(pre_execution_risk.get("execution_guard"), dict) else {}
+    record_payload("execution_guard", "execution_guard.json", execution_guard)
     record(
         "plan_publish",
         "group_plan_publish.md",
@@ -4967,8 +5128,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     )
     if (
         not config.dry_run
-        and pre_execution_risk.get("human_confirmation_required")
-        and not pre_execution_risk.get("human_confirmation_confirmed")
+        and pre_execution_risk.get("execution_decision") == "hard_block"
     ):
         return finalize_pipeline_state(
             config,
@@ -4980,9 +5140,9 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 stages,
                 artifacts,
                 "risk_gate",
-                "await_human_confirmation",
-                "pre-execution risk gate requires group-visible human confirmation before code execution",
-                "group_plan_publish.md",
+                "fix_execution_guard",
+                "pre-execution guard found a hard blocker before code execution",
+                "execution_guard.json",
                 str(pre_execution_risk.get("risk_level") or "high"),
             ),
             requirement,

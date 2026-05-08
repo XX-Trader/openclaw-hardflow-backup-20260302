@@ -1,5 +1,14 @@
 # TASK_HISTORY
 
+## 2026-05-08 - 执行保护契约替代高权限关键词硬停
+
+类型：bugfix
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`test_project_delivery_pipeline_runner.py`、`test_smart_arb_pipeline_entry.py`
+事实：按用户新口径，真实交易、下单、提现、划转、force push、删除、覆盖和数据库破坏性操作不再因为关键词停在 `risk_gate`。runner 现在输出 `execution_guard.json`，把这类动作转成可执行保护契约；entry 自动修复可继续回流 guarded 动作；live bridge 在 code_execution 和 review 阶段读取该契约。硬停只保留凭证泄露/打印/提交、破坏性目标不明确、备份或审计准备失败。
+证据：新增/更新 `HARD_STOP_PLAN_PATTERNS`、`GUARDED_OPERATION_PLAN_PATTERNS`、`build_execution_guard()`、`execution_guard.json` artifact、`guarded_execute`/`hard_block` 决策；测试覆盖交易 guarded 继续、凭证 hard_block、破坏性目标不明 hard_block、明确目标+备份 destructive guarded、entry guarded 自动修复。
+最后验证：2026-05-08 14:53 本地 `py_compile` 通过；`git diff --check` 通过；`test_smart_arb_pipeline_entry` 54 项 OK；`test_project_delivery_pipeline_runner` 75 项 OK；高权限风险定向测试覆盖交易 guarded、凭证 hard block、泛称破坏性目标 hard block 和明确目标 destructive guarded；code-reviewer 复审通过。
+复用建议：以后处理交易/资金/破坏性操作时，不要删除业务动作，也不要恢复关键词硬停；先补 `execution_guard.json` 所需的小额/白名单/幂等/审计/回读/备份/恢复证据。凭证仍必须 hard stop。
+
 ## 2026-05-07 - solution_review 凭证目标文件自动修方案部署到 nofx
 
 类型：deploy

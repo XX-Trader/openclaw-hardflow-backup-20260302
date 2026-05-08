@@ -655,9 +655,11 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             risk.write_text(
                 json.dumps(
                     {
-                        "risk_level": "high",
-                        "execution_decision": "block_for_human_confirmation",
-                        "human_confirmation_required": True,
+                        "risk_level": "guarded",
+                        "execution_decision": "guarded_execute",
+                        "human_confirmation_required": False,
+                        "hard_stop_required": False,
+                        "guarded_action_reasons": ["place_order"],
                     },
                     ensure_ascii=False,
                 ),
@@ -668,7 +670,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             state = {
                 "run_id": "discord-spreadagent-plan",
                 "status": "blocked",
-                "next_action": "await_human_confirmation",
+                "next_action": "fix_execution_guard",
                 "failed_stage": "risk_gate",
                 "run_dir": str(tmp_path),
                 "artifacts": {
@@ -685,7 +687,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             text = module.render_chat_summary(state, source="discord", profile="spreadagent", returncode=0)
 
         self.assertIn("## 群回传执行方案", text)
-        self.assertIn("risk=high; decision=block_for_human_confirmation", text)
+        self.assertIn("risk=guarded; decision=guarded_execute", text)
         self.assertIn("group_plan_publish.md", text)
         self.assertIn("## 群回传失败摘要", text)
         self.assertIn("failure_summary.md", text)
@@ -1141,7 +1143,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "reviewer-a: Final verdict: requires_revision. 当前 delivery_plan 仍把 inspect-only 文件放入 "
             "target_files，api_contracts 缺少 /api/stock-tokens/status、/api/stock-tokens/markets、"
             "/api/stock-tokens/opportunities，只读验收合同；verification_commands 仍含自然语言伪命令。 "
-            r"处理: 需要人工确认；原因=\bforce\s+push\b, "
+            r"处理: 需要执行保护契约；原因=\bforce\s+push\b, "
             r"(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}(?:密钥|凭证|token|cookie|私钥|会话), "
             r"(?:下单|划转|转账|提现|出金|资金操作)"
         )
@@ -1178,9 +1180,9 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "delivery_plan.json 已包含顶层结构字段，并且没有发现 credential/auth、真实交易、下单、划转、提现、force push 等硬风险。 "
             "但当前方案仍有 plan-quality blocker，需要 revise_solution。 "
             "forbidden_targets: new Hyperliquid real stock-token adapter files; "
-            "real trading/order/transfer/withdrawal/control write paths; "
+            "credential-bearing private account/auth files; "
             "no `reset` `stash` `checkout --` merge commit force push or destructive data cleanup. "
-            "verification_commands: fail on PRODUCTION_TRADING_ENABLED=true or place_order; "
+            "verification_commands: fail on credential leakage and unclear destructive targets; "
             "added-line safety scan 确认未启用 PRODUCTION_TRADING_ENABLED=true /资金路径； "
             "读取/导入 stock_token_public_adapter 断言 DEFAULT_ENABLED_PLATFORMS 不含 kraken/mexc。 "
             "处理: 需要人工确认；原因=\\b(?:withdraw(?:als?)?|transfer\\s+funds|place\\s+orders?|submit\\s+orders?)\\b, "
@@ -1240,34 +1242,15 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual("high", repair_risk)
         self.assertEqual(reasons, repair_reasons)
 
-    def test_positive_credential_or_trading_request_still_high_risk(self):
+    def test_positive_credential_request_still_high_risk(self):
         module = load_module()
         fake_openai_key = "sk-" + "1234567890abcdefghijklmnop"
         for detail in (
             "需要读取凭证并启用真实交易授权",
-            "set PRODUCTION_TRADING_ENABLED=true before retrying",
-            "do not set PRODUCTION_TRADING_ENABLED=true; set PRODUCTION_TRADING_ENABLED=true",
-            "do not set PRODUCTION_TRADING_ENABLED=true and set PRODUCTION_TRADING_ENABLED=true",
             "needs credentials to continue",
-            "needs fund movement to continue",
-            "requires funds operation before proceeding",
-            "需要资金操作后继续",
-            "do not use credentials, but needs fund movement to continue",
-            "do not use credentials and needs fund movement to continue",
-            "no credentials required and enable live trading",
-            "不要读取凭证，但需要资金操作后继续",
-            "不要读取凭证并且需要资金操作后继续",
             f"api_key={fake_openai_key} and continue",
             "password=hunter2 and continue",
             "credential=session-cookie and continue",
-            "transfer funds to continue",
-            "withdraw to continue",
-            "place order now",
-            "下单后继续",
-            "提现后继续",
-            "划转资金后继续",
-            "no credentials required and transfer funds",
-            "no credentials required and place order now",
         ):
             with self.subTest(detail=detail):
                 state = {
@@ -1294,6 +1277,60 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 self.assertTrue(reasons)
                 self.assertFalse(should_repair)
                 self.assertEqual("high", repair_risk)
+                self.assertEqual(reasons, repair_reasons)
+
+    def test_trading_fund_and_destructive_requests_are_guarded_repairable(self):
+        module = load_module()
+        for detail in (
+            "set PRODUCTION_TRADING_ENABLED=true before retrying",
+            "do not set PRODUCTION_TRADING_ENABLED=true; set PRODUCTION_TRADING_ENABLED=true",
+            "do not set PRODUCTION_TRADING_ENABLED=true and set PRODUCTION_TRADING_ENABLED=true",
+            "needs fund movement to continue",
+            "requires funds operation before proceeding",
+            "需要资金操作后继续",
+            "do not use credentials, but needs fund movement to continue",
+            "do not use credentials and needs fund movement to continue",
+            "no credentials required and enable live trading",
+            "不要读取凭证，但需要资金操作后继续",
+            "不要读取凭证并且需要资金操作后继续",
+            "transfer funds to continue",
+            "withdraw to continue",
+            "place order now",
+            "下单后继续",
+            "提现后继续",
+            "划转资金后继续",
+            "no credentials required and transfer funds",
+            "no credentials required and place order now",
+            "drop table audit_logs after backup",
+            "rm -rf build-output after backup",
+            "force push after reviewer approval",
+        ):
+            with self.subTest(detail=detail):
+                state = {
+                    "run_id": "discord-spreadagent-test",
+                    "status": "blocked",
+                    "next_action": "run_external_research",
+                    "failed_stage": "external_research",
+                    "run_dir": "",
+                    "artifacts": {},
+                    "stages": [
+                        {
+                            "name": "external_research",
+                            "status": "blocked",
+                            "detail": detail,
+                            "next_action": "run_external_research",
+                        },
+                    ],
+                }
+
+                risk, reasons = module.classify_repair_risk(state)
+                should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
+
+                self.assertEqual("medium", risk)
+                self.assertTrue(reasons)
+                self.assertIn("高权限动作已降级为执行保护契约", reasons[0])
+                self.assertTrue(should_repair)
+                self.assertEqual("medium", repair_risk)
                 self.assertEqual(reasons, repair_reasons)
 
     def test_negated_english_safety_terms_do_not_block_repair(self):
@@ -1631,7 +1668,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                     {
                         "name": "code_execution",
                         "status": "blocked",
-                        "detail": "requires real trading authorization before placing orders",
+                        "detail": "requires API key credentials before continuing",
                         "next_action": "return_to_code_execution",
                     },
                 ],
@@ -1647,7 +1684,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertEqual(1, rc)
         self.assertEqual(1, run_mock.call_count)
-        self.assertIn("需要人工确认", out.getvalue())
+        self.assertIn("未继续自动修复: high", out.getvalue())
 
     def test_main_dry_run_flag_is_rejected(self):
         module = load_module()
