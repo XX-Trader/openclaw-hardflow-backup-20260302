@@ -642,6 +642,60 @@ def solution_review_hard_blocker_lines(reports: list[dict[str, Any]], limit: int
     return lines
 
 
+CODE_REVIEW_SECRET_LEAK_RE = re.compile(
+    r"(?:"
+    r"(?:hard[- ]?coded|leak(?:s|ed|age)?|expos(?:e|es|ed|ure)?|"
+    r"print(?:s|ed|ing)?|log(?:s|ged|ging)?|commit(?:s|ted|ting)?|"
+    r"upload(?:s|ed|ing)?|dump(?:s|ed|ing)?|read(?:s|ing)?|show(?:s|ed|ing)?)"
+    r".{0,100}"
+    r"(?:api[-_ ]?key|secret|credential|password|private[-_ ]?key|cookie|oauth|auth[-_ ]?(?:token|json|state)|"
+    r"凭证|密钥|密码|私钥|会话|token|cookie)"
+    r"|"
+    r"(?:api[-_ ]?key|secret|password|private[-_ ]?key|auth[-_ ]?token|cookie|credential|"
+    r"密钥|密码|凭证|私钥)\s*[:=：]\s*(?!\[REDACTED\]|<redacted>|REDACTED|xxx|\*{3,}|None\b|null\b)[^\s`'\"<>]{8,}"
+    r")",
+    re.IGNORECASE,
+)
+
+CODE_REVIEW_SECRET_CONTEXT_ONLY_RE = re.compile(
+    r"(?:secret\s+scan|credential\s+scan|安全扫描|扫描|断言|assertion|"
+    r"forbidden|forbidden_targets?|排除|禁止目标|安全边界|safety\s+contract|"
+    r"do\s+not|must\s+not|without|\bno\b|\bnot\b|不得|不要|不能|禁止|不允许|不读取|不打印|不泄露|未读取|未打印|未泄露|未提交|未上传)",
+    re.IGNORECASE,
+)
+
+
+def code_review_secret_leak_blocker_lines(reports: list[dict[str, Any]], limit: int = 10) -> list[str]:
+    """Return only concrete credential/password leakage blockers from code review.
+
+    Code-review artifacts contain a lot of safety-contract prose ("secret scan",
+    "do not read credentials", forbidden target examples).  Under the simplified
+    user-approved gate policy, that prose must not trigger rollback.  We only
+    keep positive evidence that the implementation actually leaks, prints,
+    commits, uploads, or hardcodes credential material, or contains an obvious
+    credential assignment value.
+    """
+    lines: list[str] = []
+    seen: set[str] = set()
+    for report in blocking_review_reports("code_review", reports) or reports:
+        role = reviewer_role_for_report(report) or "reviewer"
+        for raw_line in scrub_negated_risk_lines(report_text(report)).splitlines():
+            text = " ".join(raw_line.strip().strip("-* ").split())
+            if not text or len(text) < 8:
+                continue
+            if CODE_REVIEW_SECRET_CONTEXT_ONLY_RE.search(text) and not CODE_REVIEW_SECRET_LEAK_RE.search(text):
+                continue
+            if not CODE_REVIEW_SECRET_LEAK_RE.search(text):
+                continue
+            if text in seen:
+                continue
+            seen.add(text)
+            lines.append(f"- {role}: {clip_text(text, 260)}")
+            if len(lines) >= limit:
+                return lines
+    return lines
+
+
 def solution_review_can_soft_continue(reports: list[dict[str, Any]], parsed_verdict: str | None) -> bool:
     if parsed_verdict == EXPECTED_VERDICTS["solution_review"]:
         return False
@@ -5215,6 +5269,7 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
 
     code_command_report = None
     code_workspace_patch_file: Path | None = None
+    code_workspace_patch_applied_to_command_cwd = False
     if config.code_command:
         code_command_report = run_stage_command(
             config,
@@ -5230,6 +5285,8 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             candidate = Path(str(code_command_report["workspace_patch_file"]))
             if candidate.exists() and candidate.stat().st_size > 0:
                 code_workspace_patch_file = candidate
+        applied_result = (code_command_report.get("workspace_patch") or {}).get("applied_to_command_cwd") or {}
+        code_workspace_patch_applied_to_command_cwd = bool(applied_result.get("ok") and applied_result.get("applied"))
     if code_command_report and not code_command_report.get("ok"):
         record_payload(
             "code_execution_warning",
@@ -5325,13 +5382,13 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     )
     gate_ok, parsed_verdict = gate_result("code_review", code_review)
     if not gate_ok:
-        hard_review_blockers = solution_review_hard_blocker_lines(code_review_command_reports)
+        hard_review_blockers = code_review_secret_leak_blocker_lines(code_review_command_reports)
         if hard_review_blockers:
             rollback_report = rollback_applied_code_patch(
                 config,
                 run_dir,
                 artifacts,
-                code_workspace_patch_file,
+                code_workspace_patch_file if code_workspace_patch_applied_to_command_cwd else None,
                 "code_review_secret_failed",
             )
             if rollback_failed(rollback_report):

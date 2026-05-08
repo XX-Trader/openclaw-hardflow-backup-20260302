@@ -1924,6 +1924,47 @@ Verification commands:
             self.assertTrue(revised_plan.get("solution_review_absorbed_revision", {}).get("applied"))
             self.assertTrue(revised_plan.get("plan_findings", {}).get("repair_context_present"))
 
+    def test_code_review_secret_scan_prose_is_not_secret_leak_blocker(self):
+        reports = [
+            {
+                "ok": False,
+                "stdout": "\n".join(
+                    [
+                        "Final verdict: requires_revision",
+                        "Reviewer role: reviewer-a",
+                        "Reviewer provider: test-provider",
+                        "Reviewer model: test-model",
+                        "Blocker: secret scan command is missing from verification_commands.",
+                        "Blocker: 排除 workflow/pipeline artifacts/credential/auth/private files。",
+                        "Blocker: 未读取、打印、提交或上传任何 token/cookie/OAuth/API key/private key/auth JSON/credential-imports。",
+                    ]
+                ),
+                "stderr": "",
+                "error": "",
+            }
+        ]
+        self.assertEqual([], _mod.code_review_secret_leak_blocker_lines(reports))
+
+    def test_code_review_real_secret_leak_is_secret_blocker(self):
+        reports = [
+            {
+                "ok": False,
+                "stdout": "\n".join(
+                    [
+                        "Final verdict: requires_revision",
+                        "Reviewer role: reviewer-a",
+                        "Reviewer provider: test-provider",
+                        "Reviewer model: test-model",
+                        "Blocker: implementation prints API key credentials to stdout.",
+                    ]
+                ),
+                "stderr": "",
+                "error": "",
+            }
+        ]
+        blockers = _mod.code_review_secret_leak_blocker_lines(reports)
+        self.assertTrue(any("API key credentials" in item for item in blockers))
+
     def test_solution_review_negated_credential_contract_is_not_hard_gate(self):
         report = {
             "ok": True,
