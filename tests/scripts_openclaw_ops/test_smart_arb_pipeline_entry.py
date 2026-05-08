@@ -61,6 +61,38 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
 
         self.assertEqual(4, args.auto_repair_attempts)
 
+    def test_solution_review_negative_risk_boundaries_are_repairable(self):
+        module = load_module()
+        state = {
+            "status": "blocked",
+            "failed_stage": "solution_review",
+            "next_action": "revise_solution",
+            "run_dir": "",
+            "stages": [
+                {
+                    "name": "solution_review",
+                    "status": "blocked",
+                    "artifact": "",
+                    "detail": "\n".join(
+                        [
+                            "solution review did not allow implementation after iterative reviewer repair loop",
+                            "Blocker: risk_boundaries contradict the accepted requirement.",
+                            "delivery_plan.json target_files and verification_commands are good.",
+                            "Required revised plan: replace risk_boundaries with task-specific boundaries:",
+                            "- credentials allowed = false",
+                            "- funds_and_orders allowed = false; any 下单、划转、提现 must stop.",
+                            r"reason=\b(?:api[_ -]?keys?|secrets?|passwords?|credentials?|private\s+keys?)\b\s*[:=]",
+                        ]
+                    ),
+                }
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+
+        self.assertEqual("medium", risk)
+        self.assertTrue(any("回流" in reason or "revise_solution" in reason for reason in reasons))
+
     def test_render_chat_summary_shows_agents_and_stage_results(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:

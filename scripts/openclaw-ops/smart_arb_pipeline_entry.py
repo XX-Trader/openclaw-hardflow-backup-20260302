@@ -280,6 +280,8 @@ SAFE_DOCUMENTATION_HISTORY_PATTERNS = [
         r"(?:new\s+Hyperliquid\s+real\s+stock-token\s+adapter\s+files|real\s+trading/order/transfer/withdrawal/control\s+write\s+paths|真实交易/下单/划转/提现/控制写路径|未发现.{0,260}PRODUCTION_TRADING_ENABLED\s*=\s*true|确认未启用.{0,120}PRODUCTION_TRADING_ENABLED\s*=\s*true|reset/stash/checkout.{0,80}force\s+push|no\s+`?reset`?.{0,160}force\s+push|未发现.{0,160}(?:下单|划转|转账|提现|出金|资金操作)|只做最小安全口径修正)",
         r"(?:没有|未|不曾).{0,20}(?:启动|执行|进行|发生|完成)?(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作)",
         r"(?:原因|处理)\s*[:=：].{0,260}(?:\\b|\(\?:|\?<!stock_|withdraw|place\\s\+orders|submit\\s\+orders|密钥|凭证|token|cookie).{0,260}",
+        r"(?s)(?:risk_boundaries|risk[-_ ]?boundaries|安全边界).{0,500}(?:credentials?|secrets?|private\s+keys?|cookies?|auth|凭证|密钥|token)\s*=\s*\[REDACTED\]\s*allowed\s*=\s*false",
+        r"(?:credentials?|secrets?|private\s+keys?|cookies?|auth|凭证|密钥|token)\s*=\s*\[REDACTED\]\s*allowed\s*=\s*false",
         r"(?:不是|并非).{0,80}(?:硬风险|真实交易|凭证|credential).{0,160}(?:plan[-_ ]?quality|方案质量|requires_revision|revise_solution)",
     )
 ]
