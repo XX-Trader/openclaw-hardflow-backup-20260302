@@ -1818,7 +1818,7 @@ REPO_PATH_RESOLVE_SKIP_PARTS = {
 
 def resolve_repo_basename_path(path: str, repo_root: Path | None, context_text: str = "") -> str:
     normalized = normalize_plan_path_token(path)
-    if not normalized or "/" in normalized or not repo_root:
+    if not normalized or not repo_root:
         return normalized
     if normalized in PROJECT_MEMORY_FILES or normalized in WORKFLOW_HOST_BASENAMES:
         return normalized
@@ -1833,9 +1833,16 @@ def resolve_repo_basename_path(path: str, repo_root: Path | None, context_text: 
     suffix = Path(normalized).suffix.lower()
     if suffix not in {".py", ".md", ".json", ".json5", ".yaml", ".yml", ".toml", ".js", ".ts", ".html", ".css", ".sh"}:
         return normalized
+    # Reviewers sometimes quote a valid repo suffix without the project package
+    # prefix (for example `api/routes/dashboard.py` instead of
+    # `智能多平台套利/api/routes/dashboard.py`).  Resolve unique suffix drift
+    # before solution_review so implementers never receive non-existent pseudo
+    # targets.  Absolute/runtime-looking paths are still rejected earlier by
+    # plan_path_rejection_reason and are not normalized here.
+    search_pattern = normalized if "/" not in normalized else f"**/{normalized}"
     matches: list[str] = []
     try:
-        for candidate in repo.rglob(normalized):
+        for candidate in repo.glob(search_pattern):
             if not candidate.is_file():
                 continue
             rel_path = candidate.relative_to(repo)
@@ -2754,7 +2761,7 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     if lower.startswith("apollo/") or lower.startswith("智能多平台套利/apollo/"):
         return ("inspect_only_sources", "apollo_historical_or_absent_not_current_mvp_target")
     if lower in {"智能多平台套利/arbitrage_config.json5", "智能多平台套利/api/routes/dashboard.py", "智能多平台套利/api/static/dashboard/dashboard.css"} and (
-        re.search(r"(?:未发现|没有发现|无|不存在|无漂移证据|未证明|未检出).{0,120}(?:arbitrage_config\.json5|api/routes/dashboard\.py|dashboard\.css|kraken|mexc|mvp|漂移)", context, re.IGNORECASE)
+        re.search(r"(?:未发现|没有发现|无|不存在|无漂移证据|未证明|未检出).{0,160}(?:arbitrage_config\.json5|api/routes/dashboard\.py|dashboard\.css|kraken|mexc|mvp|漂移)|(?:api/routes/dashboard\.py|dashboard\.css|arbitrage_config\.json5).{0,160}(?:路径错误|不存在|没有\s*create_if_missing|无漂移证据|未证明)", context, re.IGNORECASE)
         or not re.search(r"(?:kraken|mexc|stock[-_ ]?token|mvp|必须修改|必改).{0,80}(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改)|(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改).{0,80}(?:kraken|mexc|stock[-_ ]?token|mvp)", context, re.IGNORECASE)
     ):
         return ("inspect_only_sources", "conditional_config_dashboard_css_without_drift_evidence")
@@ -2764,10 +2771,17 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     ):
         return ("inspect_only_sources", "packaging_file_not_business_scope")
     if lower in {"智能多平台套利/api/static/dashboard/index.html", "智能多平台套利/api/static/dashboard/dashboard.js", "智能多平台套利/arbitrage/market_adapters/__init__.py"} and (
-        re.search(r"(?:未发现|没有发现|无).{0,20}(?:硬编码|hard[-_ ]?coded|hardcoded)", context, re.IGNORECASE)
+        re.search(r"(?:不是|非|未证明|没有证明|缺少证据|仅|只是|条件项|inspect[-_ ]?first|按需检查|检查是否).{0,180}(?:必改|must[-_ ]?change|必须修改|硬编码|static|dashboard|market_adapters|adapter)|(?:static|dashboard|market_adapters|adapter|index\.html|dashboard\.js).{0,180}(?:不是|非|未证明|没有证明|缺少证据|条件项|inspect[-_ ]?first|按需检查|检查是否).{0,80}(?:必改|must[-_ ]?change|必须修改)?", context, re.IGNORECASE)
+        or re.search(r"(?:Hyperliquid|adapter|适配器).{0,160}(?:不新增|禁止新增|inspect[-_ ]?only|negative\s+scope|非目标)|(?:不新增|禁止新增|inspect[-_ ]?only|negative\s+scope|非目标).{0,160}(?:Hyperliquid|adapter|适配器)", context, re.IGNORECASE)
+        or re.search(r"(?:未发现|没有发现|无).{0,20}(?:硬编码|hard[-_ ]?coded|hardcoded)", context, re.IGNORECASE)
         or not re.search(r"(?:硬编码|hard[-_ ]?coded|hardcoded|必须修改|必改)", context, re.IGNORECASE)
     ):
         return ("inspect_only_sources", "conditional_ui_or_adapter_registry_reference")
+    if lower == "tests/test_basic_auth_proxy.py" and (
+        re.search(r"tests/test_basic_auth_proxy\.py.{0,180}(?:没有包含|未包含|若只是|只是|参考|reference)|(?:没有包含|未包含|若只是|只是|参考|reference).{0,180}tests/test_basic_auth_proxy\.py", context, re.IGNORECASE)
+        or not re.search(r"(?:tests/test_basic_auth_proxy\.py).{0,160}(?:必须修改|必改|pytest\s+.*tests/test_basic_auth_proxy\.py|验证命令.*tests/test_basic_auth_proxy\.py|verification.*tests/test_basic_auth_proxy\.py)|(?:必须修改|必改|pytest\s+.*tests/test_basic_auth_proxy\.py|验证命令.*tests/test_basic_auth_proxy\.py|verification.*tests/test_basic_auth_proxy\.py).{0,160}(?:tests/test_basic_auth_proxy\.py)", context, re.IGNORECASE)
+    ):
+        return ("reference_patterns", "auth_proxy_test_reference_without_verification_contract")
     if "/apollo/" in lower and nearby_negative_scope(context, value, r"Apollo|MEXC|历史"):
         return ("inspect_only_sources", "apollo_history_negative_scope")
     if "hyperliquid" in lower and nearby_negative_scope(context, value, r"Hyperliquid|adapter|适配器"):

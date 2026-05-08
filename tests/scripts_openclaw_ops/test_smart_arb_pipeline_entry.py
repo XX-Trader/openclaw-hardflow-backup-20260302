@@ -1171,6 +1171,44 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual("medium", repair_risk)
         self.assertIn("可回流动作: revise_solution", repair_reasons)
 
+    def test_revise_solution_forbidden_safety_prose_auto_repairs(self):
+        module = load_module()
+        detail = (
+            "solution_review requires_revision. Final verdict: requires_revision. "
+            "delivery_plan.json 已包含顶层结构字段，并且没有发现 credential/auth、真实交易、下单、划转、提现、force push 等硬风险。 "
+            "但当前方案仍有 plan-quality blocker，需要 revise_solution。 "
+            "forbidden_targets: new Hyperliquid real stock-token adapter files; "
+            "real trading/order/transfer/withdrawal/control write paths; "
+            "no `reset` `stash` `checkout --` merge commit force push or destructive data cleanup. "
+            "verification_commands: fail on PRODUCTION_TRADING_ENABLED=true or place_order; "
+            "读取/导入 stock_token_public_adapter 断言 DEFAULT_ENABLED_PLATFORMS 不含 kraken/mexc。"
+        )
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "revise_solution",
+            "failed_stage": "solution_review",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "solution_review",
+                    "status": "blocked",
+                    "detail": detail,
+                    "next_action": "revise_solution",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 3)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流动作: revise_solution", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+        self.assertIn("可回流动作: revise_solution", repair_reasons)
+
     def test_revise_solution_real_secret_access_still_blocks_auto_repair(self):
         module = load_module()
         state = {

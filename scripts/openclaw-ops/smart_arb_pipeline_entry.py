@@ -200,7 +200,7 @@ HIGH_RISK_PATTERNS = [
         r"\bdrop\s+table\b",
         r"\btruncate\s+table\b",
         r"\bforce\s+push\b",
-        r"(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}(?:密钥|凭证|token|cookie|私钥|会话)",
+        r"(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}(?:密钥|凭证|(?<!stock_)token|cookie|私钥|会话)",
         r"(?:下单|划转|转账|提现|出金|资金操作)",
         r"(?:需要|要求|启动|启用|执行|进行|允许).{0,20}(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作)",
         r"(?:真实交易|实盘交易).{0,20}(?:授权|开启|执行)",
@@ -260,6 +260,10 @@ SAFE_DOCUMENTATION_HISTORY_PATTERNS = [
         r"未在.{0,40}(?:文档|输出|日志).{0,40}(?:保留|记录|包含).{0,80}(?:token|key|pat|密钥|凭证|cookie).{0,40}(?:明文)?",
         r"(?:触发点|触发项|原因|自动修复判断).{0,80}(?:风险规则|high|高风险|文本中仍出现).{0,160}(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作|凭证|密钥|token|cookie)",
         r"(?:原因|reasons?)\s*[:=：].{0,260}(?:\\[bBsSdDwW]|\(\?:|\{0,\d+\}|\[A-Za-z|\[\\^).{0,260}",
+        r"(?:没有|未|不曾).{0,80}(?:credential|auth|凭证|真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作|force\s+push|破坏性).{0,80}(?:硬风险|硬阻塞|风险|阻塞)",
+        r"(?:fail\s+on|安全扫描|Diff\s+safety\s+scan|新增行扫描).{0,220}(?:PRODUCTION_TRADING_ENABLED\s*=\s*true|place_order|transfer|withdraw|credential|auth|真实交易|下单|划转|提现)",
+        r"(?:forbidden_targets?|forbidden|禁止目标|安全边界).{0,260}(?:real\s+trading|orders?|transfer|withdraw|credential|auth|force\s+push|真实交易|下单|划转|提现|凭证|密钥)",
+        r"(?:new\s+Hyperliquid\s+real\s+stock-token\s+adapter\s+files|real\s+trading/order/transfer/withdrawal/control\s+write\s+paths|reset/stash/checkout.{0,80}force\s+push|no\s+`?reset`?.{0,160}force\s+push|只做最小安全口径修正)",
         r"(?:没有|未|不曾).{0,20}(?:启动|执行|进行|发生|完成)?(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作)",
     )
 ]

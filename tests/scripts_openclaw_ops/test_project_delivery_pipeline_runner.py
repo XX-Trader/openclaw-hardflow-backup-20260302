@@ -2834,6 +2834,89 @@ Verification commands:
             reasons = {item["path"]: item["reason"] for item in plan["target_files"]}
             self.assertIn("solution_review Blocker", reasons["智能多平台套利/api/routes/stock_tokens.py"])
 
+    def test_solution_revise_filters_reviewer_path_drift_and_conditional_targets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            for rel in (
+                "智能多平台套利/api/routes/stock_tokens.py",
+                "智能多平台套利/api/routes/dashboard.py",
+                "智能多平台套利/api/stock_token_public_adapter.py",
+                "智能多平台套利/api/static/dashboard/index.html",
+                "智能多平台套利/api/static/dashboard/dashboard.js",
+                "智能多平台套利/arbitrage/market_adapters/__init__.py",
+                "tests/test_dashboard_api.py",
+                "tests/test_basic_auth_proxy.py",
+                "tests/test_stock_token_public_adapter.py",
+            ):
+                path = repo / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("# fixture\n", encoding="utf-8")
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir()
+            artifacts: dict[str, str] = {}
+            discussion = run_dir / "requirements_discussion.md"
+            discussion.write_text(
+                "智能多平台套利/api/routes/stock_tokens.py 和 智能多平台套利/api/stock_token_public_adapter.py 是平台范围必改入口。\n"
+                "dashboard static index.html/dashboard.js 需检查是否有静态文案需要同步，不是已证明必改。\n"
+                "Hyperliquid adapter / Apollo 历史 MEXC 范围是 inspect-only/negative scope，不新增真实 adapter。\n",
+                encoding="utf-8",
+            )
+            review = run_dir / "requirements_review.md"
+            review.write_text("Final verdict: ready_for_solution\n", encoding="utf-8")
+            artifacts["requirements_discussion"] = str(discussion)
+            artifacts["requirements_review"] = str(review)
+            old_repair = os.environ.get("PIPELINE_REPAIR_CONTEXT")
+            os.environ["PIPELINE_REPAIR_CONTEXT"] = (
+                "# Smart Arb Auto Repair Context\n"
+                "- Failed stage: solution_review\n"
+                "- Next action: revise_solution\n"
+                "Blocker: delivery_plan.json 的 target_files/must_change_targets 包含 `api/routes/dashboard.py`，"
+                "但该路径在当前 repo 中不存在；存在的相近真实路径是 `智能多平台套利/api/routes/dashboard.py`，"
+                "当前 plan 没有 create_if_missing rationale，且缺少漂移证据。\n"
+                "Blocker: `智能多平台套利/arbitrage/market_adapters/__init__.py` 被列入 target_files/must_change_targets，"
+                "但本轮明确禁止新增 Hyperliquid 真实 adapter，应作为 inspect-only/negative scope。\n"
+                "Blocker: dashboard 静态文件 `智能多平台套利/api/static/dashboard/index.html` 和 "
+                "`智能多平台套利/api/static/dashboard/dashboard.js` 被列为 must_change_targets，但证据只是检查是否有静态文案需要同步，"
+                "不是已证明必改，必须降为条件项/inspect-first。\n"
+                "Blocker: `tests/test_basic_auth_proxy.py` 被列为 must_change_targets，但 verification_commands 没有包含它；"
+                "若只是 proxy 白名单参考，应移到 reference_patterns。\n"
+                "Blocker: 核心必改仍是 智能多平台套利/api/routes/stock_tokens.py 与 智能多平台套利/api/stock_token_public_adapter.py。\n"
+            )
+            try:
+                plan = _mod.compile_delivery_plan(
+                    PipelineConfig(project_key="demo", command_cwd=repo),
+                    {"host": "hermes"},
+                    "交易所模块 / 平台范围：页面和配置不再显示 Kraken/MEXC 为 MVP，保持只读。",
+                    artifacts,
+                )
+            finally:
+                if old_repair is None:
+                    os.environ.pop("PIPELINE_REPAIR_CONTEXT", None)
+                else:
+                    os.environ["PIPELINE_REPAIR_CONTEXT"] = old_repair
+
+            target_paths = [item["path"] for item in plan["target_files"]]
+            must_change_paths = [item["path"] for item in plan["must_change_targets"]]
+            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", target_paths)
+            self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", target_paths)
+            for rejected in (
+                "api/routes/dashboard.py",
+                "智能多平台套利/api/routes/dashboard.py",
+                "智能多平台套利/api/static/dashboard/index.html",
+                "智能多平台套利/api/static/dashboard/dashboard.js",
+                "智能多平台套利/arbitrage/market_adapters/__init__.py",
+                "tests/test_basic_auth_proxy.py",
+            ):
+                self.assertNotIn(rejected, target_paths)
+                self.assertNotIn(rejected, must_change_paths)
+            inspect_paths = [item["path"] for item in plan["inspect_only_sources"]]
+            self.assertIn("智能多平台套利/api/routes/dashboard.py", inspect_paths)
+            self.assertIn("智能多平台套利/api/static/dashboard/index.html", inspect_paths)
+            self.assertIn("智能多平台套利/api/static/dashboard/dashboard.js", inspect_paths)
+            self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", inspect_paths)
+            reference_paths = [item["path"] for item in plan["reference_patterns"]]
+            self.assertIn("tests/test_basic_auth_proxy.py", reference_paths)
+
 
 if __name__ == "__main__":
     unittest.main()
