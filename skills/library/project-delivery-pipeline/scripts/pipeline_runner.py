@@ -3298,6 +3298,39 @@ def compile_delivery_plan(
         "Apollo historical MEXC files unless proven directly referenced by current MVP runtime",
         "credential-bearing private account/auth files",
     ]
+    safety_contract_text = "\n".join([original_requirement_full, requirements_discussion, requirements_review, repair_context])
+    read_only_signal_only_scope = bool(
+        re.search(
+            r"(?:仅|只|保持).{0,80}(?:read[-_ ]?only|signal[-_ ]?only|mock|replay|只读|信号|回放)|"
+            r"(?:不执行|不启动|不进行|禁止|不得|不要).{0,80}(?:真实交易|实盘交易|订单|下单|划转|转账|提现|出金|资金转移|资金操作)|"
+            r"PRODUCTION_TRADING_ENABLED\s*=\s*false",
+            safety_contract_text,
+            re.IGNORECASE,
+        )
+    )
+    if read_only_signal_only_scope:
+        runtime_contracts = [
+            "This requirement is read-only/signal-only/mock/replay; do not execute real trading, orders, transfers, withdrawals, or fund movement.",
+            "Keep PRODUCTION_TRADING_ENABLED=false and validate only through public/read-only API, tests, mock, replay, or signal outputs.",
+            "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
+        ]
+        risk_boundaries = [
+            {"name": "credentials", "allowed": False, "description": "No credential or secret leakage, printing, logging, or commit."},
+            {"name": "funds_and_orders", "allowed": False, "description": "This task explicitly excludes real trading, orders, transfers, withdrawals, and fund movement."},
+            {"name": "destructive_changes", "allowed": False, "description": "Do not perform destructive repository/data actions for this read-only/signal-only scoped task."},
+        ]
+    else:
+        runtime_contracts = [
+            "Trading, order, transfer, withdrawal, deletion, overwrite, and migration requests proceed through execution_guard instead of keyword blocking.",
+            "Use the minimum executable amount or the explicit small amount requested by the user for funds/order actions.",
+            "Destructive data/file actions require backup path, backup verification, audit record, and restore instructions before execution.",
+            "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
+        ]
+        risk_boundaries = [
+            {"name": "credentials", "allowed": False, "description": "No credential or secret leakage, printing, logging, or commit."},
+            {"name": "funds_and_orders", "allowed": True, "description": "Allowed with minimum amount, whitelist/idempotency where available, audit log, and status readback."},
+            {"name": "destructive_changes", "allowed": True, "description": "Allowed with clear target, backup, backup verification, audit log, and restore path."},
+        ]
     return {
         "schema_version": "delivery-plan/v1",
         "task_type": task_type,
@@ -3340,12 +3373,7 @@ def compile_delivery_plan(
             {"path": path, "reason": "Mentioned as inspect-only/conditional context and excluded from required target_files."}
             for path in classified_context_paths.get("inspect_only_sources", [])
         ],
-        "runtime_contracts": [
-            "Trading, order, transfer, withdrawal, deletion, overwrite, and migration requests proceed through execution_guard instead of keyword blocking.",
-            "Use the minimum executable amount or the explicit small amount requested by the user for funds/order actions.",
-            "Destructive data/file actions require backup path, backup verification, audit record, and restore instructions before execution.",
-            "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
-        ],
+        "runtime_contracts": runtime_contracts,
         "api_contracts": api_contracts,
         "forbidden_targets": forbidden_targets,
         "solution_review_readiness": {
@@ -3389,11 +3417,7 @@ def compile_delivery_plan(
             "Target files cannot be located from repository evidence and implementation would require guessing.",
             "blocked_manual_acceptance_required: real Discord channel acceptance cannot be safely proven inside the pipeline.",
         ],
-        "risk_boundaries": [
-            {"name": "credentials", "allowed": False, "description": "No credential or secret leakage, printing, logging, or commit."},
-            {"name": "funds_and_orders", "allowed": True, "description": "Allowed with minimum amount, whitelist/idempotency where available, audit log, and status readback."},
-            {"name": "destructive_changes", "allowed": True, "description": "Allowed with clear target, backup, backup verification, audit log, and restore path."},
-        ],
+        "risk_boundaries": risk_boundaries,
         "plan_findings": {
             "discovery_required": discovery_required,
             "repair_context_present": bool(repair_context),

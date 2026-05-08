@@ -3063,6 +3063,10 @@ Verification commands:
                 "natural_language_not_file_path",
                 _mod.plan_path_rejection_reason("Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot"),
             )
+            risk_by_name = {item["name"]: item for item in plan["risk_boundaries"]}
+            self.assertFalse(risk_by_name["funds_and_orders"]["allowed"])
+            self.assertFalse(risk_by_name["destructive_changes"]["allowed"])
+            self.assertTrue(any("read-only/signal-only" in item for item in plan["runtime_contracts"]))
 
 
 if __name__ == "__main__":
