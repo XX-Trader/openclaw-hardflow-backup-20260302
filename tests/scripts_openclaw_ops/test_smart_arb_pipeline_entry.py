@@ -1182,7 +1182,9 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "no `reset` `stash` `checkout --` merge commit force push or destructive data cleanup. "
             "verification_commands: fail on PRODUCTION_TRADING_ENABLED=true or place_order; "
             "added-line safety scan 确认未启用 PRODUCTION_TRADING_ENABLED=true /资金路径； "
-            "读取/导入 stock_token_public_adapter 断言 DEFAULT_ENABLED_PLATFORMS 不含 kraken/mexc。"
+            "读取/导入 stock_token_public_adapter 断言 DEFAULT_ENABLED_PLATFORMS 不含 kraken/mexc。 "
+            "处理: 需要人工确认；原因=\\b(?:withdraw(?:als?)?|transfer\\s+funds|place\\s+orders?|submit\\s+orders?)\\b, "
+            "(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}(?:密钥|凭证|(?<!stock_)token|cookie|私钥|会话)"
         )
         state = {
             "run_id": "discord-spreadagent-test",

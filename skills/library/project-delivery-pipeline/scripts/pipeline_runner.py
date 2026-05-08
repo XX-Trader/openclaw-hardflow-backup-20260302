@@ -2788,6 +2788,11 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return ("reference_patterns", "api_main_route_wiring_reference_not_target")
     if lower in {"智能多平台套利/market_adapters/__init__.py", "market_adapters/__init__.py"}:
         return ("inspect_only_sources", "adapter_registry_path_drift_not_business_target")
+    if lower == "智能多平台套利/arbitrage/market_adapters/base.py" and (
+        re.search(r"(?:market_adapters/base\.py|market adapter base|adapter base|base\.py).{0,220}(?:candidate target|referenced by requirements discussion|候选|上下文|没有证明|未证明|缺少证据|不是.*必改|不应.*target|应.*inspect|容易把|除非.*直接引用)|(?:candidate target|referenced by requirements discussion|候选|上下文|没有证明|未证明|缺少证据|不是.*必改|不应.*target|应.*inspect|容易把|除非.*直接引用).{0,220}(?:market_adapters/base\.py|market adapter base|adapter base|base\.py)", context, re.IGNORECASE)
+        or not re.search(r"(?:market_adapters/base\.py|market adapter base|adapter base|base\.py).{0,180}(?:必须修改|必改|直接引用|当前页面|stock-token API|public adapter 默认配置|runtime 口径|MVP runtime)|(?:必须修改|必改|直接引用|当前页面|stock-token API|public adapter 默认配置|runtime 口径|MVP runtime).{0,180}(?:market_adapters/base\.py|market adapter base|adapter base|base\.py)", context, re.IGNORECASE)
+    ):
+        return ("inspect_only_sources", "adapter_base_reference_without_mvp_runtime_evidence")
     if re.search(r"\s/\s", value) or value in {"Gate / MEXC", "交易所模块 / 平台范围"}:
         return ("reference_patterns", "natural_language_scope_not_repo_target")
     if lower in {"kraken/mexc", "gate/mexc", "gate / mexc"}:

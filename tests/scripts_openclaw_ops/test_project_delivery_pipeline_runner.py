@@ -2854,6 +2854,7 @@ Verification commands:
                 "智能多平台套利/api/static/dashboard/index.html",
                 "智能多平台套利/api/static/dashboard/dashboard.js",
                 "智能多平台套利/arbitrage/market_adapters/__init__.py",
+                "智能多平台套利/arbitrage/market_adapters/base.py",
                 "智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md",
                 "tests/test_dashboard_api.py",
                 "tests/test_apollo_quant.py",
@@ -2888,6 +2889,8 @@ Verification commands:
                 "当前 plan 没有 create_if_missing rationale，且缺少漂移证据。\n"
                 "Blocker: `智能多平台套利/arbitrage/market_adapters/__init__.py` 被列入 target_files/must_change_targets，"
                 "但本轮明确禁止新增 Hyperliquid 真实 adapter，应作为 inspect-only/negative scope。\n"
+                "Blocker: delivery_plan.json 把 智能多平台套利/arbitrage/market_adapters/base.py 作为 target_files / must_change_targets / entry_points，"
+                "理由仅是 candidate target / referenced by requirements discussion，没有证明它是当前页面、stock-token API、public adapter 默认配置或 MVP runtime 口径的必改文件，应降级 inspect-only。\n"
                 "Blocker: dashboard 静态文件 `智能多平台套利/api/static/dashboard/index.html` 和 "
                 "`智能多平台套利/api/static/dashboard/dashboard.js` 被列为 must_change_targets，但证据只是检查是否有静态文案需要同步，"
                 "不是已证明必改，必须降为条件项/inspect-first。\n"
@@ -2930,6 +2933,7 @@ Verification commands:
                 "智能多平台套利/api/static/dashboard/index.html",
                 "智能多平台套利/api/static/dashboard/dashboard.js",
                 "智能多平台套利/arbitrage/market_adapters/__init__.py",
+                "智能多平台套利/arbitrage/market_adapters/base.py",
                 "智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md",
                 "tests/test_apollo_quant.py",
                 "tests/test_dashboard_api.py",
@@ -2944,6 +2948,7 @@ Verification commands:
             self.assertIn("智能多平台套利/api/static/dashboard/index.html", inspect_paths)
             self.assertIn("智能多平台套利/api/static/dashboard/dashboard.js", inspect_paths)
             self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", inspect_paths)
+            self.assertIn("智能多平台套利/arbitrage/market_adapters/base.py", inspect_paths)
             reference_paths = [item["path"] for item in plan["reference_patterns"]]
             self.assertIn("tests/test_apollo_quant.py", reference_paths)
             self.assertIn("tests/test_dashboard_api.py", reference_paths)
