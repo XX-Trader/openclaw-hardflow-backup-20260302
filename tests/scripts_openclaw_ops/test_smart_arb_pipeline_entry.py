@@ -93,6 +93,34 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual("medium", risk)
         self.assertTrue(any("回流" in reason or "revise_solution" in reason for reason in reasons))
 
+    def test_solution_review_negated_credential_evidence_is_repairable(self):
+        module = load_module()
+        state = {
+            "status": "blocked",
+            "failed_stage": "solution_review",
+            "next_action": "revise_solution",
+            "run_dir": "",
+            "stages": [
+                {
+                    "name": "solution_review",
+                    "status": "blocked",
+                    "artifact": "",
+                    "detail": (
+                        "solution review did not allow implementation after iterative reviewer repair loop\n"
+                        "本轮没有发现真实凭证泄露、读取 cookie/token/auth 文件、真实交易/下单/划转/提现、或破坏性操作的硬停证据；"
+                        "阻塞原因属于 plan-quality / scope-convergence。\n"
+                        "Blocker: delivery_plan.json 仍把 execution_guard.json 错误提升为必改目标。\n"
+                        "Blocker: target_files 包含自然语言伪目标 Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot。\n"
+                    ),
+                }
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+
+        self.assertEqual("medium", risk)
+        self.assertNotIn("high", " ".join(reasons).lower())
+
     def test_render_chat_summary_shows_agents_and_stage_results(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmp:

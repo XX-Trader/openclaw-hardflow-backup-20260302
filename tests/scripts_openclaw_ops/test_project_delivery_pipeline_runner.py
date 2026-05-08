@@ -2997,6 +2997,10 @@ Verification commands:
                 "没有 create_if_missing=true / rationale，应降级 inspect_only。\n"
                 "Blocker: target_files 包含 `下单/划转/提现/credentials`，这是 credential/auth 风险路径，不是业务 repo 文件；"
                 "必须移除并只保留在 forbidden_targets。\n"
+                "Blocker: delivery_plan.json 仍把 execution_guard.json 错误提升为必改目标；本任务已明确禁止预建 guard，"
+                "必须从 target_files、must_change_targets、implementation_steps 删除。\n"
+                "Blocker: delivery_plan.json 把自然语言 `Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot` 当成 required file，"
+                "这不是 concrete repo-relative file，必须移除。\n"
                 "Blocker: Apollo 历史文件 智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md、"
                 "Apollo 测试 tests/test_apollo_quant.py、根目录 `套利策略介绍文档.md`、dashboard 测试 tests/test_dashboard_api.py 被提升为必改目标，"
                 "但 requirements_discussion 已说明它们应为 inspect/reference/conditional，不应无证据进入 must_change_targets。\n"
@@ -3034,6 +3038,8 @@ Verification commands:
                 "tests/test_dashboard_api.py",
                 "套利策略介绍文档.md",
                 "下单/划转/提现/credentials",
+                "execution_guard.json",
+                "Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot",
                 "tests/test_basic_auth_proxy.py",
             ):
                 self.assertNotIn(rejected, target_paths)
@@ -3052,6 +3058,11 @@ Verification commands:
             findings = plan.get("plan_findings", {}).get("filtered_target_candidates", [])
             self.assertTrue(any(item.get("reason") == "file_line_reference_not_target" for item in findings))
             self.assertTrue(any(item.get("reason") == "credential_or_trading_natural_language_not_target" for item in findings))
+            self.assertEqual("pipeline_artifact_file", _mod.plan_path_rejection_reason("execution_guard.json"))
+            self.assertEqual(
+                "natural_language_not_file_path",
+                _mod.plan_path_rejection_reason("Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot"),
+            )
 
 
 if __name__ == "__main__":

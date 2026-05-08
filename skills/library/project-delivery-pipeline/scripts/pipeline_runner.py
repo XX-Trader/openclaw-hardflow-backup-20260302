@@ -172,6 +172,7 @@ PIPELINE_ARTIFACT_FILES = {
     "delivery_evidence.md",
     "delivery_plan.json",
     "deployment_report.md",
+    "execution_guard.json",
     "failure_summary.md",
     "git_publish_report.md",
     "patch_summary.md",
@@ -1671,6 +1672,8 @@ def plan_path_rejection_reason(path: str) -> str:
         return "runtime_contract_not_file_path"
     if name in PIPELINE_ARTIFACT_FILES:
         return "pipeline_artifact_file"
+    if re.search(r"\s", path):
+        return "natural_language_not_file_path"
     if re.search(r"\.(?:py|md|json|json5|ya?ml|toml|js|ts|html|css|sh):\d+(?:-\d+)?\b", path, re.IGNORECASE):
         return "file_line_reference_not_target"
     if SENSITIVE_TARGET_BASENAME_RE.fullmatch(name):
