@@ -2246,9 +2246,12 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
     # reviewer text.  Only concrete commands enter delivery_plan; descriptions
     # such as "pytest 测试必须通过" are intentionally ignored.
     if re.search(r"tests/test_stock_token_public_adapter\.py", value) and re.search(r"tests/test_dashboard_api\.py", value):
+        stock_token_tests = ["tests/test_stock_token_public_adapter.py", "tests/test_dashboard_api.py"]
+        if re.search(r"tests/test_stock_token_platform_scope\.py", value):
+            stock_token_tests.append("tests/test_stock_token_platform_scope.py")
         add_verification_command(
             commands,
-            "/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_stock_token_public_adapter.py tests/test_dashboard_api.py",
+            "/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q " + " ".join(stock_token_tests),
         )
     for match in re.finditer(r"(?:/home/arbops/\.venvs/[^\s]+/bin/python|python|python3|/usr/bin/python3)\s+(?:-B\s+)?-m\s+(?:pytest|compileall)[^\r\n；;。、`]*", value, re.IGNORECASE):
         add_verification_command(commands, match.group(0).strip())

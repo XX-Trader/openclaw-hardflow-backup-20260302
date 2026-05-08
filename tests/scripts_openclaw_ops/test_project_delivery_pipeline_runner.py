@@ -2834,6 +2834,15 @@ Verification commands:
             reasons = {item["path"]: item["reason"] for item in plan["target_files"]}
             self.assertIn("solution_review Blocker", reasons["智能多平台套利/api/routes/stock_tokens.py"])
 
+    def test_stock_token_platform_scope_target_is_in_verification_command(self):
+        commands = _mod.explicit_verification_commands(
+            "target_files includes tests/test_stock_token_platform_scope.py and "
+            "verification_commands should run tests/test_stock_token_public_adapter.py tests/test_dashboard_api.py"
+        )
+        pytest_commands = [item["command"] for item in commands if " -m pytest " in item.get("command", "")]
+        self.assertTrue(pytest_commands)
+        self.assertIn("tests/test_stock_token_platform_scope.py", pytest_commands[0])
+
     def test_solution_revise_filters_reviewer_path_drift_and_conditional_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"

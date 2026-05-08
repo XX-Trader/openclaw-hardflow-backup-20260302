@@ -263,7 +263,7 @@ SAFE_DOCUMENTATION_HISTORY_PATTERNS = [
         r"(?:没有|未|不曾).{0,80}(?:credential|auth|凭证|真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作|force\s+push|破坏性).{0,80}(?:硬风险|硬阻塞|风险|阻塞)",
         r"(?:fail\s+on|安全扫描|Diff\s+safety\s+scan|新增行扫描).{0,220}(?:PRODUCTION_TRADING_ENABLED\s*=\s*true|place_order|transfer|withdraw|credential|auth|真实交易|下单|划转|提现)",
         r"(?:forbidden_targets?|forbidden|禁止目标|安全边界).{0,260}(?:real\s+trading|orders?|transfer|withdraw|credential|auth|force\s+push|真实交易|下单|划转|提现|凭证|密钥)",
-        r"(?:new\s+Hyperliquid\s+real\s+stock-token\s+adapter\s+files|real\s+trading/order/transfer/withdrawal/control\s+write\s+paths|reset/stash/checkout.{0,80}force\s+push|no\s+`?reset`?.{0,160}force\s+push|只做最小安全口径修正)",
+        r"(?:new\s+Hyperliquid\s+real\s+stock-token\s+adapter\s+files|real\s+trading/order/transfer/withdrawal/control\s+write\s+paths|真实交易/下单/划转/提现/控制写路径|未发现.{0,260}PRODUCTION_TRADING_ENABLED\s*=\s*true|确认未启用.{0,120}PRODUCTION_TRADING_ENABLED\s*=\s*true|reset/stash/checkout.{0,80}force\s+push|no\s+`?reset`?.{0,160}force\s+push|未发现.{0,160}(?:下单|划转|转账|提现|出金|资金操作)|只做最小安全口径修正)",
         r"(?:没有|未|不曾).{0,20}(?:启动|执行|进行|发生|完成)?(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作)",
     )
 ]

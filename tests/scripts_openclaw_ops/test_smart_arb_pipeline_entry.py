@@ -1181,6 +1181,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             "real trading/order/transfer/withdrawal/control write paths; "
             "no `reset` `stash` `checkout --` merge commit force push or destructive data cleanup. "
             "verification_commands: fail on PRODUCTION_TRADING_ENABLED=true or place_order; "
+            "added-line safety scan 确认未启用 PRODUCTION_TRADING_ENABLED=true /资金路径； "
             "读取/导入 stock_token_public_adapter 断言 DEFAULT_ENABLED_PLATFORMS 不含 kraken/mexc。"
         )
         state = {
