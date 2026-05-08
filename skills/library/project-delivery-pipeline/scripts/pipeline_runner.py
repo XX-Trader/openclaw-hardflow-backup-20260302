@@ -4953,22 +4953,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         verdict="pass" if research_evidence_supplied and (not research_command_reports or commands_ok(research_command_reports)) else "missing",
     )
     if not config.dry_run and (not research_evidence_supplied or (research_command_reports and not commands_ok(research_command_reports))):
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "external_research",
-                "run_external_research",
-                "live mode requires external research evidence before requirements review",
-                "research_report.md",
-                "fail",
-            ),
-            requirement,
+        record_payload(
+            "external_research_warning",
+            "external_research_warning.json",
+            {
+                "policy": "user_cancelled_all_non_secret_gates",
+                "reason": "External research evidence is missing or failed; recorded only, not blocking workflow progression.",
+                "commands_supplied": bool(research_command_reports),
+            },
         )
     record("requirements_package", "requirements.md", render_requirements(requirement))
     discussion_command_reports = run_stage_commands(
@@ -4992,22 +4984,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         verdict="pass" if discussion_evidence_supplied and (not discussion_command_reports or commands_ok(discussion_command_reports)) else "missing",
     )
     if not config.dry_run and (not discussion_evidence_supplied or (discussion_command_reports and not commands_ok(discussion_command_reports))):
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "requirements_discussion",
-                "run_dual_agent_requirements_discussion",
-                "live mode requires successful project-agent/reviewer requirement discussion evidence before requirements review",
-                "requirements_discussion.md",
-                "fail",
-            ),
-            requirement,
+        record_payload(
+            "requirements_discussion_warning",
+            "requirements_discussion_warning.json",
+            {
+                "policy": "user_cancelled_all_non_secret_gates",
+                "reason": "Requirements discussion evidence is missing or failed; recorded only, not blocking workflow progression.",
+                "commands_supplied": bool(discussion_command_reports),
+            },
         )
 
     req_review_reports = run_stage_commands(
@@ -5035,22 +5019,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     )
     gate_ok, parsed_verdict = gate_result("requirements_review", req_review)
     if not gate_ok:
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "requirements_review",
-                "revise_requirements",
-                "requirements review did not allow solution design",
-                "requirements_review.md",
-                parsed_verdict,
-            ),
-            requirement,
+        record_payload(
+            "requirements_review_warning",
+            "requirements_review_warning.json",
+            {
+                "policy": "user_cancelled_all_non_secret_gates",
+                "reason": "Requirements review did not pass; recorded only, not blocking solution generation.",
+                "parsed_verdict": parsed_verdict,
+            },
         )
 
     resolved_requirement = record(
@@ -5255,40 +5231,24 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             if candidate.exists() and candidate.stat().st_size > 0:
                 code_workspace_patch_file = candidate
     if code_command_report and not code_command_report.get("ok"):
-        record("code_execution", "patch_summary.md", render_patch_summary(config, code_command_report), verdict="fail")
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "code_execution",
-                "return_to_code_execution",
-                "coding command failed and must be repaired by implementation agent",
-                "patch_summary.md",
-                "fail",
-            ),
-            requirement,
+        record_payload(
+            "code_execution_warning",
+            "code_execution_warning.json",
+            {
+                "policy": "user_cancelled_all_non_secret_gates",
+                "reason": "Coding command failed; recorded only, not blocking downstream evidence/writeback/publish flow.",
+                "returncode": code_command_report.get("returncode"),
+            },
         )
 
     if not config.dry_run and config.patch_summary_file is None and code_command_report is None:
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "code_execution",
-                "dispatch_code_agent",
-                "live mode requires a coding agent patch summary artifact",
-            ),
-            requirement,
+        record_payload(
+            "code_execution_warning",
+            "code_execution_warning.json",
+            {
+                "policy": "user_cancelled_all_non_secret_gates",
+                "reason": "Live mode did not receive a coding command or patch summary; recorded only, not blocking downstream flow.",
+            },
         )
     record("code_execution", "patch_summary.md", render_patch_summary(config, code_command_report))
 
@@ -5441,22 +5401,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             verdict="fail" if deployment_failed else "pass",
         )
         if deployment_failed:
-            return finalize_pipeline_state(
-                config,
-                block_pipeline(
-                    config,
-                    run_id,
-                    run_dir,
-                    runtime,
-                    stages,
-                    artifacts,
-                    "deployment",
-                    "return_to_deployment",
-                    "deployment command failed and must be repaired by deployer",
-                    "deployment_report.md",
-                    "fail",
-                ),
-                requirement,
+            record_payload(
+                "deployment_warning",
+                "deployment_warning.json",
+                {
+                    "policy": "user_cancelled_all_non_secret_gates",
+                    "reason": "Deployment command failed; recorded only, not blocking workflow completion.",
+                    "returncode": deployment_command_report.get("returncode") if deployment_command_report else None,
+                },
             )
 
     if config.simulate_failure_stage == "acceptance_requirement":
@@ -5468,23 +5420,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             verdict="fail",
         )
         artifacts["delivery_evidence"] = str(acceptance_path)
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "acceptance",
-                "revise_requirements",
-                "acceptance failed because the requirement package is wrong",
-                "delivery_evidence.md",
-                "fail",
-                60,
-            ),
-            requirement,
+        record_payload(
+            "acceptance_warning",
+            "acceptance_warning.json",
+            {
+                "policy": "user_cancelled_all_non_secret_gates",
+                "reason": "Acceptance requirement failure is recorded only, not blocking completion.",
+                "source": "simulate_failure_stage=acceptance_requirement",
+            },
         )
 
     if config.simulate_failure_stage == "acceptance_implementation":
@@ -5496,33 +5439,25 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             verdict="fail",
         )
         artifacts["delivery_evidence"] = str(acceptance_path)
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "acceptance",
-                "return_to_code_execution",
-                "acceptance failed because implementation evidence is insufficient",
-                "delivery_evidence.md",
-                "fail",
-                65,
-            ),
-            requirement,
+        record_payload(
+            "acceptance_warning",
+            "acceptance_warning.json",
+            {
+                "policy": "user_cancelled_all_non_secret_gates",
+                "reason": "Acceptance implementation failure is recorded only, not blocking completion.",
+                "source": "simulate_failure_stage=acceptance_implementation",
+            },
         )
 
-    acceptance_path = record(
-        "acceptance",
-        "delivery_evidence.md",
-        render_delivery_evidence(100, "pass", "writeback"),
-        score=100,
-        verdict="pass",
-    )
-    artifacts["delivery_evidence"] = str(acceptance_path)
+    if "delivery_evidence" not in artifacts:
+        acceptance_path = record(
+            "acceptance",
+            "delivery_evidence.md",
+            render_delivery_evidence(100, "pass", "writeback"),
+            score=100,
+            verdict="pass",
+        )
+        artifacts["delivery_evidence"] = str(acceptance_path)
     writeback_path = record("writeback", "writeback_report.md", render_writeback_report(config.project_key, "completed", "none"))
     memory_reports: list[dict[str, Any]] = []
     if config.memory_write_command:
@@ -5628,23 +5563,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             verdict="fail" if git_publish_failed else "pass",
         )
         if git_publish_failed:
-            return finalize_pipeline_state(
-                config,
-                block_pipeline(
-                    config,
-                    run_id,
-                    run_dir,
-                    runtime,
-                    stages,
-                    artifacts,
-                    "git_publish",
-                    "fix_git_publish",
-                    "git publish command failed and requires human-safe repair",
-                    "git_publish_report.md",
-                    "fail",
-                    70,
-                ),
-                requirement,
+            record_payload(
+                "git_publish_warning",
+                "git_publish_warning.json",
+                {
+                    "policy": "user_cancelled_all_non_secret_gates",
+                    "reason": "Git publish command failed; recorded only, not blocking workflow completion.",
+                    "returncode": git_publish_report.get("returncode"),
+                },
             )
     elif config.simulate_failure_stage == "git_publish":
         record(
@@ -5653,23 +5579,14 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             "# Git Publish Report\n\nFinal verdict: fail\n\nNo git publish command was supplied.",
             verdict="fail",
         )
-        return finalize_pipeline_state(
-            config,
-            block_pipeline(
-                config,
-                run_id,
-                run_dir,
-                runtime,
-                stages,
-                artifacts,
-                "git_publish",
-                "fix_git_publish",
-                "simulated git publish failure",
-                "git_publish_report.md",
-                "fail",
-                70,
-            ),
-            requirement,
+        record_payload(
+            "git_publish_warning",
+            "git_publish_warning.json",
+            {
+                "policy": "user_cancelled_all_non_secret_gates",
+                "reason": "Simulated git publish failure is recorded only, not blocking workflow completion.",
+                "source": "simulate_failure_stage=git_publish",
+            },
         )
 
     failure_path = run_dir / "failure_learning_check.json"

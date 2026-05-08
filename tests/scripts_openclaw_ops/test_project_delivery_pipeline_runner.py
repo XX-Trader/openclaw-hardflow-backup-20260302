@@ -1504,11 +1504,12 @@ Verification commands:
             )
 
             run_dir = Path(tmp) / "requirements-failure"
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("requirements_review", state["failed_stage"])
-            self.assertEqual("revise_requirements", state["next_action"])
+            self.assertEqual("completed", state["status"])
+            self.assertIsNone(state.get("failed_stage"))
+            self.assertEqual("none", state["next_action"])
             self.assertTrue((run_dir / "requirements_review.md").exists())
-            self.assertFalse((run_dir / "solution.md").exists())
+            self.assertTrue((run_dir / "solution.md").exists())
+            self.assertIn("requirements_review_warning", state["artifacts"])
 
     def test_acceptance_requirement_failure_routes_to_requirement_revision(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1523,10 +1524,11 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("acceptance", state["failed_stage"])
-            self.assertEqual("revise_requirements", state["next_action"])
+            self.assertEqual("completed", state["status"])
+            self.assertIsNone(state.get("failed_stage"))
+            self.assertEqual("none", state["next_action"])
             self.assertIn("delivery_evidence", state["artifacts"])
+            self.assertIn("acceptance_warning", state["artifacts"])
 
     def test_hermes_runtime_home_is_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1970,9 +1972,10 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertEqual("completed", state["status"])
+            self.assertIsNone(state.get("failed_stage"))
             self.assertIn("solution_review_soft_gate", state["artifacts"])
+            self.assertIn("code_execution_warning", state["artifacts"])
             self.assertIn("command_requirements_review_1", state["artifacts"])
             self.assertNotIn("command_requirements_review_2", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
@@ -2021,9 +2024,10 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertEqual("completed", state["status"])
+            self.assertIsNone(state.get("failed_stage"))
             self.assertIn("solution_review_soft_gate", state["artifacts"])
+            self.assertIn("code_execution_warning", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Reviewer roles: reviewer-a, reviewer-a", review)
             self.assertIn("Final verdict: ready_for_solution", review)
@@ -2069,9 +2073,10 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertEqual("completed", state["status"])
+            self.assertIsNone(state.get("failed_stage"))
             self.assertIn("solution_review_soft_gate", state["artifacts"])
+            self.assertIn("code_execution_warning", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Distinct commands: false", review)
             self.assertIn("Final verdict: ready_for_solution", review)
@@ -2327,8 +2332,9 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertEqual("completed", state["status"])
+            self.assertIsNone(state.get("failed_stage"))
+            self.assertIn("code_execution_warning", state["artifacts"])
             self.assertEqual("user change", (repo / "feature.txt").read_text(encoding="utf-8"))
             report = json.loads(Path(state["artifacts"]["command_code_execution_1"]).read_text(encoding="utf-8"))
             self.assertTrue(report["workspace_patch"]["command_cwd_preflight"]["dirty"])
@@ -2549,11 +2555,12 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("deployment", state["failed_stage"])
-            self.assertEqual("return_to_deployment", state["next_action"])
+            self.assertEqual("completed", state["status"])
+            self.assertIsNone(state.get("failed_stage"))
+            self.assertEqual("none", state["next_action"])
             self.assertIn("deployment", state["artifacts"])
-            self.assertNotIn("acceptance", state["artifacts"])
+            self.assertIn("deployment_warning", state["artifacts"])
+            self.assertIn("acceptance", state["artifacts"])
 
     def test_git_publish_command_failure_blocks_after_writeback(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2590,11 +2597,12 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("blocked", state["status"])
-            self.assertEqual("git_publish", state["failed_stage"])
-            self.assertEqual("fix_git_publish", state["next_action"])
+            self.assertEqual("completed", state["status"])
+            self.assertIsNone(state.get("failed_stage"))
+            self.assertEqual("none", state["next_action"])
             self.assertIn("writeback", state["artifacts"])
             self.assertIn("git_publish", state["artifacts"])
+            self.assertIn("git_publish_warning", state["artifacts"])
 
     def test_git_publish_receives_memory_writeback_workspace_patch(self):
         with tempfile.TemporaryDirectory() as tmp:
