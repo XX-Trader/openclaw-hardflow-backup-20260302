@@ -315,7 +315,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             for path in artifact_paths:
                 path.write_text(
                     "- 安全扫描确认未新增生产交易、下单、撤单、划转、提现、凭证读取路径\n"
-                    "- Python 断言 diff 新增行不含 PRODUCTION_TRADING_ENABLED=true、create_order、cancel_order、withdraw、transfer、credential/auth JSON 读取等危险行为\n",
+                    "- Python 断言 diff 新增行不含 PRODUCTION_TRADING_ENABLED=true、create_order、cancel_order、withdraw、transfer、credential/auth JSON 读取等危险行为\n"
+                    "- 验收命令包含 PRODUCTION_TRADING_ENABLED=true 与 credential/auth 路径安全扫描。\n"
+                    "- forbidden_targets: Any implementation that places real orders, cancels orders, transfers funds, withdraws, enables live trading, reads credentials or prints secrets.\n"
+                    "- graphify_scope_validation 的 warning 不是跨仓、凭证、生产交易、真实下单或资金动作风险。\n"
+                    "- 只有凭证/secret/auth-state、破坏性 reset/stash/checkout、force push、生产真实交易/下单/划转/提现或显式绕过安全门禁才应作为硬停止。\n",
                     encoding="utf-8",
                 )
             artifacts = {

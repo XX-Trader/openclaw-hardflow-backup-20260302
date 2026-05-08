@@ -1270,8 +1270,8 @@ RISK_TERM_RE = re.compile(
     r"PRODUCTION_TRADING_ENABLED|凭证|密钥|下单|划转|转账|提现|出金|交易|资金"
 )
 NEGATED_RISK_RE = re.compile(
-    r"(?i)\b(do not|does not|is not|are not|will not|don't|never|must not|without|no )\b|"
-    r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|没有发现|未发现|未检出|未编辑|未修改|未触碰|无.{0,20}(?:硬风险|风险|凭证|密钥|真实交易|force\s+push)|保持.*false|未启动|不启动|不真实交易|不实盘交易|不是交易执行|不是.{0,20}(?:交易执行|交易需求|硬阻塞|硬风险)|只有发现|仅当发现|除非发现|不下单|不撤单|不划转|不转账|不提现|不出金|不读取|不打印|不泄露|不触发|不新增|不含|不包含|未新增|确认未新增"
+    r"(?i)\b(do not|does not|is not|are not|will not|don't|never|must not|without|no |not\b)\b|"
+    r"不要|不得|禁止|不能|不允许|不涉及|不需要|无需|无须|不会|没有发现|未发现|未检出|未编辑|未修改|未触碰|无.{0,120}(?:硬风险|风险|凭证|密钥|真实交易|实盘交易|生产交易|下单|划转|提现|force\s+push)|保持.*false|未启动|不启动|不真实交易|不实盘交易|不是交易执行|不是.{0,120}(?:交易执行|交易需求|硬阻塞|硬风险|跨仓|凭证|生产交易|真实交易|真实下单|资金动作)|只有发现|仅当发现|除非发现|不下单|不撤单|不划转|不转账|不提现|不出金|不读取|不打印|不泄露|不触发|不新增|不含|不包含|未新增|确认未新增"
 )
 RISK_APPROVAL_RE = re.compile(
     r"(?i)\b(?:approved|confirmed)\b|已人工确认|人工确认|用户确认|明确确认|确认[:：]|"
@@ -1298,12 +1298,27 @@ SAFE_NEGATED_RISK_LIST_PATTERNS = (
         re.IGNORECASE,
     ),
     re.compile(
+        r"(?:PRODUCTION_TRADING_ENABLED\s*=\s*true|create_order|cancel_order|withdraw|transfer|credential|auth|token|cookie|凭证|密钥|真实交易|下单|撤单|划转|提现).{0,120}"
+        r"(?:安全扫描|残留口径断言|路径安全扫描|scan|assertion)",
+        re.IGNORECASE,
+    ),
+    re.compile(
         r"(?:不是.{0,80}(?:交易执行需求|交易执行|硬风险|硬阻塞)|只有发现|仅当发现|除非发现).{0,600}"
         r"(?:credential|auth|force\s*push|真实交易|实盘交易|下单|撤单|划转|转账|提现|出金|资金)",
         re.IGNORECASE,
     ),
     re.compile(
         r"(?:真实交易|实盘交易|下单|撤单|划转|转账|提现|出金|资金).{0,40}(?:相关实现|相关调用|相关实现或调用|相关需求)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?i)(?:forbidden_targets?|forbidden|禁止目标|安全边界|不得|不要|禁止|不允许|不需要|无需|无须|any\s+implementation\s+that).{0,260}"
+        r"(?:place(?:s)?\s+real\s+orders?|cancel(?:s)?\s+orders?|transfer(?:s)?\s+funds?|withdraws?|enable(?:s)?\s+live\s+trading|read(?:s)?\s+credentials?|print(?:s)?\s+secrets?|"
+        r"真实交易|实盘交易|下单|撤单|划转|转账|提现|出金|资金|凭证|密钥|token|cookie|credential|auth)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:只有|仅当).{0,120}(?:凭证|secret|auth-state|真实交易|生产真实交易|下单|划转|提现|force\s*push).{0,160}(?:才|方可).{0,80}(?:硬停止|硬风险|阻塞|停止)",
         re.IGNORECASE,
     ),
 )
