@@ -2770,6 +2770,65 @@ Verification commands:
                 any(item.get("reason") in {"read_only_source", "reference_pattern", "inspect_only_context", "read_only_or_reference_context"} for item in findings)
             )
 
+    def test_repair_context_promotes_reviewer_blocker_targets_over_inspect_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / "智能多平台套利" / "api" / "routes").mkdir(parents=True)
+            (repo / "智能多平台套利" / "api" / "routes" / "stock_tokens.py").write_text("# route\n", encoding="utf-8")
+            (repo / "智能多平台套利" / "api" / "stock_token_public_adapter.py").write_text("# adapter\n", encoding="utf-8")
+            (repo / "tests").mkdir(parents=True)
+            (repo / "tests" / "test_dashboard_api.py").write_text("# dashboard tests\n", encoding="utf-8")
+            (repo / "tests" / "test_stock_token_public_adapter.py").write_text("# adapter tests\n", encoding="utf-8")
+            artifacts: dict[str, str] = {}
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir()
+            discussion = run_dir / "requirements_discussion.md"
+            discussion.write_text(
+                "reference_patterns: 智能多平台套利/api/routes/stock_tokens.py 先按参考模式检查。\n"
+                "inspect_only: 智能多平台套利/api/stock_token_public_adapter.py 先按需检查。\n",
+                encoding="utf-8",
+            )
+            review = run_dir / "requirements_review.md"
+            review.write_text("Final verdict: ready_for_solution\n", encoding="utf-8")
+            artifacts["requirements_discussion"] = str(discussion)
+            artifacts["requirements_review"] = str(review)
+            old_repair = os.environ.get("PIPELINE_REPAIR_CONTEXT")
+            os.environ["PIPELINE_REPAIR_CONTEXT"] = (
+                "# Smart Arb Auto Repair Context\n"
+                "- Failed stage: solution_review\n"
+                "- Next action: revise_solution\n"
+                "## Previous Failure Evidence\n"
+                "Blocker: delivery_plan.json.target_files 遗漏核心必改业务文件："
+                "智能多平台套利/api/routes/stock_tokens.py 与 智能多平台套利/api/stock_token_public_adapter.py。\n"
+                "这些 adapter 与 stock_tokens route 是必改文件，不应被降级为 inspect_only；"
+                "这是普通 plan-quality blocker，不是凭证、真实交易、资金动作或 force push 硬风险。\n"
+            )
+            try:
+                plan = _mod.compile_delivery_plan(
+                    PipelineConfig(project_key="demo", command_cwd=repo),
+                    {"host": "hermes"},
+                    "交易所模块 / 平台范围：页面和配置不再显示 Kraken/MEXC 为 MVP，保持只读。",
+                    artifacts,
+                )
+            finally:
+                if old_repair is None:
+                    os.environ.pop("PIPELINE_REPAIR_CONTEXT", None)
+                else:
+                    os.environ["PIPELINE_REPAIR_CONTEXT"] = old_repair
+
+            target_paths = [item["path"] for item in plan["target_files"]]
+            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", target_paths)
+            self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", target_paths)
+            self.assertEqual(
+                ["智能多平台套利/api/routes/stock_tokens.py", "智能多平台套利/api/stock_token_public_adapter.py", "tests/test_dashboard_api.py", "tests/test_stock_token_public_adapter.py"],
+                [item["path"] for item in plan["must_change_targets"]],
+            )
+            inspect_paths = [item["path"] for item in plan["inspect_only_sources"]]
+            self.assertNotIn("智能多平台套利/api/stock_token_public_adapter.py", inspect_paths)
+            reference_paths = [item["path"] for item in plan["reference_patterns"]]
+            self.assertNotIn("智能多平台套利/api/routes/stock_tokens.py", reference_paths)
+            reasons = {item["path"]: item["reason"] for item in plan["target_files"]}
+            self.assertIn("solution_review Blocker", reasons["智能多平台套利/api/routes/stock_tokens.py"])
 
 
 if __name__ == "__main__":

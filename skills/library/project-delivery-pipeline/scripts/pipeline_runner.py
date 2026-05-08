@@ -1645,6 +1645,59 @@ def merge_classified_plan_paths(*groups: dict[str, list[str]]) -> dict[str, list
     return merged
 
 
+REVIEWER_REQUIRED_TARGET_CONTEXT_RE = re.compile(
+    r"(?:Blocker|requires_revision|reviewer|方案评审|阻塞|修订).{0,220}"
+    r"(?:遗漏|缺少|未覆盖|必须|必改|must[-_ ]?change|required|不应被降级|不得降级|不能降级|not\s+downgraded)|"
+    r"(?:遗漏|缺少|未覆盖|必须|必改|must[-_ ]?change|required|不应被降级|不得降级|不能降级|not\s+downgraded).{0,220}"
+    r"(?:Blocker|requires_revision|reviewer|方案评审|阻塞|修订|target_files|must_change_targets)",
+    re.IGNORECASE,
+)
+
+
+def reviewer_required_target_paths(
+    text: str,
+    *,
+    repo_root: Path | None = None,
+    resolution_context: str = "",
+    filtered_findings: list[dict[str, str]] | None = None,
+    limit: int = 24,
+) -> list[str]:
+    """Extract reviewer-mandated implementation targets from repair context.
+
+    Ordinary plan extraction is intentionally conservative because reviewers also
+    mention read-only sources, forbidden files, and inspect-only examples.  Once
+    solution_review has already returned a non-hard requires_revision, explicit
+    Blocker lines such as "遗漏 X" or "X 是必改文件，不应降级为 inspect_only"
+    are the handoff contract for revise_solution and must override older
+    reference/inspect-only classification unless the path is later rejected by
+    credential/runtime/forbidden target filters.
+    """
+    paths: list[str] = []
+    seen: set[str] = set()
+    full_context = str(text or "") + "\n" + str(resolution_context or "")
+    for segment in path_context_segments(text):
+        if not REVIEWER_REQUIRED_TARGET_CONTEXT_RE.search(segment):
+            continue
+        for _raw, path, rejection_reason in iter_plan_path_tokens(segment):
+            if rejection_reason:
+                add_filtered_target_finding(
+                    filtered_findings,
+                    path,
+                    "solution_review_blocker_required_target",
+                    rejection_reason,
+                    segment,
+                )
+                continue
+            resolved_path = resolve_repo_basename_path(path, repo_root, full_context)
+            if not resolved_path or resolved_path in seen:
+                continue
+            seen.add(resolved_path)
+            paths.append(resolved_path)
+            if len(paths) >= limit:
+                return paths
+    return paths
+
+
 def control_plane_plan_path_reason(path: str) -> str:
     normalized = str(path or "").replace("\\", "/").strip()
     if not normalized:
@@ -2542,6 +2595,8 @@ def target_file_reason(path: str, confidence: str, exists: bool, evidence_text: 
         rationale = create_if_missing_rationale(value, evidence_text)
         if rationale:
             return f"Create if missing: {rationale}"
+    if confidence == "solution_review_blocker_required_target":
+        return "Promoted from non-hard solution_review Blocker: reviewer identified this concrete business file as missing from target_files/must_change_targets; revise_solution must preserve it unless a true forbidden target rule applies."
     if value.endswith("api/routes/stock_tokens.py"):
         return "Stock-token read-only API route referenced by requirements discussion; use the concrete repo-relative path instead of basename drift."
     if value.endswith("api/stock_token_public_adapter.py"):
@@ -2823,6 +2878,13 @@ def compile_delivery_plan(
         repo_root=config.command_cwd,
         resolution_context=planning_context,
     )
+    reviewer_required_paths = reviewer_required_target_paths(
+        repair_context,
+        limit=48,
+        filtered_findings=filtered_target_candidates,
+        repo_root=config.command_cwd,
+        resolution_context=planning_context,
+    )
     discussion_target_paths = low_trust_plan_paths(
         requirements_discussion,
         limit=48,
@@ -2854,18 +2916,21 @@ def compile_delivery_plan(
         source_by_path.setdefault(path, "explicit")
     for path in repair_target_paths:
         source_by_path.setdefault(path, "repair_context")
+    for path in reviewer_required_paths:
+        source_by_path[path] = "solution_review_blocker_required_target"
+        remove_classified_context_path(classified_context_paths, path)
     for path in discussion_target_paths:
         source_by_path.setdefault(path, "requirements_discussion")
     for path in review_target_paths:
         source_by_path.setdefault(path, "review_candidate")
     target_paths = post_filter_target_paths(
-        merge_plan_paths(explicit_target_paths, repair_target_paths, discussion_target_paths, review_target_paths, limit=64),
+        merge_plan_paths(explicit_target_paths, reviewer_required_paths, repair_target_paths, discussion_target_paths, review_target_paths, limit=64),
         filtered_target_candidates,
     )
     if non_target_path_set:
         kept_target_paths = []
         for path in target_paths:
-            if path in non_target_path_set:
+            if path in non_target_path_set and path not in set(reviewer_required_paths):
                 add_filtered_target_finding(
                     filtered_target_candidates,
                     path,
