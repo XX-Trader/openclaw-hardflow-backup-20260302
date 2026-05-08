@@ -304,6 +304,35 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         self.assertEqual("low", risk["risk_level"])
         self.assertFalse(risk["high_risk_reasons"])
 
+    def test_pre_execution_risk_ignores_safety_scan_and_direct_run_repair_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_paths = [
+                Path(tmp) / "requirements.md",
+                Path(tmp) / "requirements-review.md",
+                Path(tmp) / "solution-review.md",
+                Path(tmp) / "graphify.md",
+            ]
+            for path in artifact_paths:
+                path.write_text(
+                    "- 安全扫描确认未新增生产交易、下单、撤单、划转、提现、凭证读取路径\n"
+                    "- Python 断言 diff 新增行不含 PRODUCTION_TRADING_ENABLED=true、create_order、cancel_order、withdraw、transfer、credential/auth JSON 读取等危险行为\n",
+                    encoding="utf-8",
+                )
+            artifacts = {
+                "requirements_discussion": str(artifact_paths[0]),
+                "requirements_review": str(artifact_paths[1]),
+                "solution_review": str(artifact_paths[2]),
+                "graphify_scope_validation": str(artifact_paths[3]),
+            }
+            risk = _mod.assess_pre_execution_risk(
+                "用户明确授权 direct_run 修复 workflow 后自动调用 coding_workflow；保持 PRODUCTION_TRADING_ENABLED=false，仅 read-only/signal-only/mock/replay；不真实交易、不下单、不撤单、不划转、不提现、不读取或打印 token/cookie/OAuth/API key/private key/auth JSON/credential-imports。",
+                {"implementation_steps": [{"description": "确认 diff 新增行不包含 PRODUCTION_TRADING_ENABLED=true、create_order、cancel_order、withdraw、transfer、credential-imports、auth JSON 读取。"}]},
+                artifacts,
+            )
+
+        self.assertEqual("low", risk["risk_level"])
+        self.assertFalse(risk["high_risk_reasons"])
+
     def test_graphify_context_does_not_trust_mismatched_repo_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

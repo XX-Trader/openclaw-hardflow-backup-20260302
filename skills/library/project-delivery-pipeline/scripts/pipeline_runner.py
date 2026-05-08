@@ -1271,10 +1271,11 @@ RISK_TERM_RE = re.compile(
 )
 NEGATED_RISK_RE = re.compile(
     r"(?i)\b(do not|does not|is not|are not|will not|don't|never|must not|without|no )\b|"
-    r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|没有发现|未发现|未检出|未编辑|未修改|未触碰|无.{0,20}(?:硬风险|风险|凭证|密钥|真实交易|force\s+push)|保持.*false|未启动|不启动|不下单|不划转|不读取|不泄露"
+    r"不要|不得|禁止|不能|不允许|不涉及|无需|无须|不会|没有发现|未发现|未检出|未编辑|未修改|未触碰|无.{0,20}(?:硬风险|风险|凭证|密钥|真实交易|force\s+push)|保持.*false|未启动|不启动|不真实交易|不实盘交易|不是交易执行|不是.{0,20}(?:交易执行|交易需求|硬阻塞|硬风险)|只有发现|仅当发现|除非发现|不下单|不撤单|不划转|不转账|不提现|不出金|不读取|不打印|不泄露|不触发|不新增|不含|不包含|未新增|确认未新增"
 )
 RISK_APPROVAL_RE = re.compile(
-    r"(?i)\b(?:approved|confirmed)\b|已人工确认|人工确认|用户确认|明确确认|确认[:：]|(?<!不)允许"
+    r"(?i)\b(?:approved|confirmed)\b|已人工确认|人工确认|用户确认|明确确认|确认[:：]|"
+    r"(?<!不)允许.{0,20}(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|real\s+trading|live\s+trading|orders?|transfer|withdraw)",
 )
 SAFE_NEGATED_RISK_LIST_PATTERNS = (
     re.compile(
@@ -1288,6 +1289,21 @@ SAFE_NEGATED_RISK_LIST_PATTERNS = (
         r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露)"
         r"(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许)).){0,180}"
         r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|PRODUCTION_TRADING_ENABLED)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:diff|新增行|安全扫描|Python\s*断言|确认|检查|scan).{0,80}"
+        r"(?:不含|不包含|未新增|确认未新增|不触发|no\s+.*(?:found|detected)).{0,240}"
+        r"(?:PRODUCTION_TRADING_ENABLED|create_order|cancel_order|withdraw|transfer|credential|auth\s*JSON|token|cookie|凭证|密钥|真实交易|下单|撤单|划转|提现)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:不是.{0,80}(?:交易执行需求|交易执行|硬风险|硬阻塞)|只有发现|仅当发现|除非发现).{0,600}"
+        r"(?:credential|auth|force\s*push|真实交易|实盘交易|下单|撤单|划转|转账|提现|出金|资金)",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"(?:真实交易|实盘交易|下单|撤单|划转|转账|提现|出金|资金).{0,40}(?:相关实现|相关调用|相关实现或调用|相关需求)",
         re.IGNORECASE,
     ),
 )
