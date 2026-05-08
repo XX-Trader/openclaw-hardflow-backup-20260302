@@ -5323,7 +5323,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source-url", action="append", default=[])
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--simulate-failure-stage", choices=sorted(SIMULATED_FAILURES))
-    parser.add_argument("--max-repair-loops", type=int, default=2)
+    parser.add_argument("--max-repair-loops", type=int, default=4)
     parser.add_argument("--research-report-file", type=Path)
     parser.add_argument("--research-command", action="append", default=[], help="trusted command that produces research evidence")
     parser.add_argument("--requirements-discussion-command", action="append", default=[], help="trusted command that makes project-agent and reviewer discuss/refine requirements")

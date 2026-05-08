@@ -259,6 +259,7 @@ SAFE_DOCUMENTATION_HISTORY_PATTERNS = [
         r"(?:按用户要求|已|已经).{0,30}从待办中删除.{0,80}(?:凭证|密钥|token|cookie|安全轮换).{0,80}(?:事项|TODO|任务|跟踪)",
         r"未在.{0,40}(?:文档|输出|日志).{0,40}(?:保留|记录|包含).{0,80}(?:token|key|pat|密钥|凭证|cookie).{0,40}(?:明文)?",
         r"(?:触发点|触发项|原因|自动修复判断).{0,80}(?:风险规则|high|高风险|文本中仍出现).{0,160}(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作|凭证|密钥|token|cookie)",
+        r"(?:原因|reasons?)\s*[:=：].{0,260}(?:\\[bBsSdDwW]|\(\?:|\{0,\d+\}|\[A-Za-z|\[\\^).{0,260}",
         r"(?:没有|未|不曾).{0,20}(?:启动|执行|进行|发生|完成)?(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作)",
     )
 ]
@@ -962,9 +963,9 @@ REPAIRABLE_REVIEW_CONTRACT_RE = re.compile(
     re.IGNORECASE,
 )
 REPAIRABLE_SOLUTION_PLAN_RE = re.compile(
-    r"(?:solution_review|revise_solution|delivery_plan|target_files|方案包|方案合同|目标文件|目标路径|"
-    r"移除|剔除|过滤|不得包含|不能进入|remove|exclude|filter).{0,240}"
-    r"(?:auth\.json|credential|credentials|auth[-_ ]?state|secret|cookie|oauth|api[-_ ]?key|token|凭证|密钥)",
+    r"(?:solution_review|revise_solution|delivery_plan|target_files|must_change_targets|entry_points|"
+    r"implementation_steps|api_contracts|verification_commands|方案包|方案合同|目标文件|目标路径|"
+    r"移除|剔除|过滤|不得包含|不能进入|remove|exclude|filter|pseudo|伪路径|只读验收|可执行验证)",
     re.IGNORECASE,
 )
 POSITIVE_SECRET_ACCESS_RE = re.compile(

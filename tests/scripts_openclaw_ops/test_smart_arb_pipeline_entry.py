@@ -1134,6 +1134,43 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         self.assertEqual("medium", repair_risk)
         self.assertIn("可回流方案修订: revise_solution", repair_reasons)
 
+    def test_revise_solution_plan_quality_blocker_with_regex_reason_auto_repairs(self):
+        module = load_module()
+        detail = (
+            "solution_review did not allow implementation after iterative reviewer repair loop. "
+            "reviewer-a: Final verdict: requires_revision. 当前 delivery_plan 仍把 inspect-only 文件放入 "
+            "target_files，api_contracts 缺少 /api/stock-tokens/status、/api/stock-tokens/markets、"
+            "/api/stock-tokens/opportunities，只读验收合同；verification_commands 仍含自然语言伪命令。 "
+            r"处理: 需要人工确认；原因=\bforce\s+push\b, "
+            r"(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}(?:密钥|凭证|token|cookie|私钥|会话), "
+            r"(?:下单|划转|转账|提现|出金|资金操作)"
+        )
+        state = {
+            "run_id": "discord-spreadagent-test",
+            "status": "blocked",
+            "next_action": "revise_solution",
+            "failed_stage": "solution_review",
+            "run_dir": "",
+            "artifacts": {},
+            "stages": [
+                {
+                    "name": "solution_review",
+                    "status": "blocked",
+                    "detail": detail,
+                    "next_action": "revise_solution",
+                },
+            ],
+        }
+
+        risk, reasons = module.classify_repair_risk(state)
+        should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 3)
+
+        self.assertEqual("medium", risk)
+        self.assertIn("可回流动作: revise_solution", reasons)
+        self.assertTrue(should_repair)
+        self.assertEqual("medium", repair_risk)
+        self.assertIn("可回流动作: revise_solution", repair_reasons)
+
     def test_revise_solution_real_secret_access_still_blocks_auto_repair(self):
         module = load_module()
         state = {
