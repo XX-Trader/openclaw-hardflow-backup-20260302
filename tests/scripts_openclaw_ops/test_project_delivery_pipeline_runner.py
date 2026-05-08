@@ -428,6 +428,61 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
         self.assertEqual("low", risk["risk_level"])
         self.assertFalse(risk["high_risk_reasons"])
 
+    def test_pre_execution_risk_ignores_generated_execution_guard_repair_context(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_paths = [
+                Path(tmp) / "requirements.md",
+                Path(tmp) / "requirements-review.md",
+                Path(tmp) / "solution-review.md",
+                Path(tmp) / "graphify.md",
+            ]
+            repair_context = """
+Repair context from previous blocked attempt:
+# Smart Arb Auto Repair Context
+- Failed stage: risk_gate
+- Next action: fix_execution_guard
+## Previous Failure Evidence
+pre-execution guard found a hard blocker before code execution fix_execution_guard {
+  "schema_version": "execution-guard/v1",
+  "guard_status": "blocked",
+  "guarded_actions": ["enable_live_trading", "place_order", "fund_transfer", "destructive_filesystem"],
+  "hard_stop_reasons": ["credential_access"]
+}
+## requirements_discussion
+当前任务仅修正 read-only MVP 平台口径。
+"""
+            for path in artifact_paths:
+                path.write_text(repair_context, encoding="utf-8")
+            artifacts = {
+                "requirements_discussion": str(artifact_paths[0]),
+                "requirements_review": str(artifact_paths[1]),
+                "solution_review": str(artifact_paths[2]),
+                "graphify_scope_validation": str(artifact_paths[3]),
+            }
+            risk = _mod.assess_pre_execution_risk(
+                "用户已选择 direct_run 修复 workflow 后自动调用 coding_workflow。Repair context from previous blocked attempt: fix_execution_guard {\"schema_version\": \"execution-guard/v1\", \"guarded_actions\": [\"enable_live_trading\", \"place_order\", \"fund_transfer\", \"destructive_filesystem\"], \"hard_stop_reasons\": [\"credential_access\"]} 保持 PRODUCTION_TRADING_ENABLED=false，仅 read-only/signal-only/mock/replay；不真实交易、不下单、不撤单、不划转、不提现、不读取或打印 token/cookie/OAuth/API key/private key/auth JSON/credential-imports。",
+                {
+                    "target_files": [{"path": "智能多平台套利/api/routes/stock_tokens.py"}],
+                    "implementation_steps": [
+                        {"description": "Update fallback payloads to omit Kraken/MEXC from MVP defaults and retain Binance/OKX/Bitget/Bybit/Gate/Hyperliquid read-only scope."}
+                    ],
+                    "risk_boundaries": [
+                        {"name": "funds_and_orders", "allowed": False},
+                        {"name": "destructive_changes", "allowed": False},
+                    ],
+                    "runtime_contracts": [
+                        "This requirement is read-only/signal-only/mock/replay; do not execute real trading, orders, transfers, withdrawals, or fund movement."
+                    ],
+                },
+                artifacts,
+            )
+
+        self.assertEqual("low", risk["risk_level"])
+        self.assertFalse(risk["high_risk_reasons"])
+        self.assertFalse(risk["guarded_action_reasons"])
+        self.assertEqual("auto_execute", risk["execution_decision"])
+        self.assertEqual("ready", risk["execution_guard"]["guard_status"])
+
     def test_graphify_context_does_not_trust_mismatched_repo_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
