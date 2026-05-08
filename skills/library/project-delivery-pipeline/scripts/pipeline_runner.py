@@ -2378,6 +2378,16 @@ def verification_command_rejection_reason(command: str) -> str:
             return "malformed_pytest_command"
         return ""
     if re.match(r"^(?:/home/arbops/\.venvs/[^\s]+/bin/python|python|python3|/usr/bin/python3)\s+", value):
+        if " -m compileall" in value and re.search(r"stock_token_publi(?:\s|$)", value) and "stock_token_public_adapter.py" not in value:
+            return "malformed_truncated_compileall_target"
+        if " -m compileall" in value:
+            tokens = value.split()
+            if "-q" in tokens:
+                targets = tokens[tokens.index("-q") + 1 :]
+                for target in targets:
+                    normalized_target = target.strip("'\"")
+                    if normalized_target.startswith("智能多平台套利/") and not (normalized_target.endswith(".py") or normalized_target in {"智能多平台套利", "智能多平台套利/"}):
+                        return "malformed_compileall_target"
         if " -m pytest" in value or " -B -m compileall" in value or " -m compileall" in value:
             return ""
         return "unsupported_python_verification_command"
@@ -2835,9 +2845,13 @@ def implementation_step_description(path: str, item: dict[str, Any]) -> str:
             f"{item['create_if_missing_rationale']} Wire it into the smallest existing business entry point and cover it with targeted tests."
         )
     if value.endswith("api/routes/stock_tokens.py"):
-        return "Inspect the concrete stock-token route, keep it read-only/simulation-only, and verify it does not expose private account material or trading actions."
+        return "Update the read-only stock-token route fallback/status/markets/opportunities payloads so default MVP/public_adapter_snapshot/next_backend_steps omit Kraken/MEXC and tokenized-stock spot MVP, retain Binance/OKX/Bitget/Bybit/Gate/Hyperliquid as allowed read-only scope, and expose no trading/private-account actions."
     if value.endswith("api/stock_token_public_adapter.py"):
-        return "Inspect the public stock-token adapter and preserve the public-data-only contract used by stock-token read-only smoke tests."
+        return "Update the public stock-token adapter defaults so DEFAULT_ENABLED_PLATFORMS keeps Binance/OKX/Bitget/Bybit/Gate/Hyperliquid, removes Kraken/MEXC from MVP defaults, treats Hyperliquid as read-only scope without a real adapter, and preserves public-data-only behavior."
+    if value.endswith("tests/test_stock_token_public_adapter.py"):
+        return "Add regression assertions that default public adapter scope excludes Kraken/MEXC and tokenized-stock spot MVP, includes Binance/OKX/Bitget/Bybit/Gate/Hyperliquid, and does not instantiate a real Hyperliquid adapter."
+    if value.endswith("tests/test_dashboard_api.py"):
+        return "Add API/dashboard regression assertions that /api/stock-tokens default responses and visible MVP/platform labels exclude Kraken/MEXC and tokenized-stock spot MVP while retaining Binance/OKX/Bitget/Bybit/Gate/Hyperliquid read-only scope."
     if value.endswith("api/routes/funding.py") or value.endswith("api/routes/dashboard.py"):
         return "Inspect the read-only API route and ensure funding/dashboard responses expose deterministic monitoring state without private account actions."
     if "/monitoring/" in value:
@@ -3275,6 +3289,13 @@ def compile_delivery_plan(
         append_classified_context_path(classified_context_paths, "read_only_sources", "Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf / 交易所模块 tbl1jj9DTcfAd6tZ / 平台范围")
         append_classified_context_path(classified_context_paths, "read_only_sources", "Feishu fact: 保留 Binance/OKX/Bitget/Bybit/Gate/Hyperliquid；Kraken/MEXC 非 MVP；币股现货不进 MVP")
     if re.search(r"stock[-_ ]?token|/api/stock-tokens|Kraken|MEXC|Hyperliquid|平台范围", planning_context, re.IGNORECASE):
+        implementation_steps.append(
+            {
+                "id": "platform-scope-mvp-contract",
+                "description": "Encode the accepted platform scope as executable code and tests: default API/page/MVP口径 excludes Kraken/MEXC and tokenized-stock spot MVP, includes Binance/OKX/Bitget/Bybit/Gate/Hyperliquid, keeps Hyperliquid read-only without creating a real adapter, and updates fallback/research matrix/next_backend_steps/public_adapter_snapshot accordingly.",
+                "required": True,
+            }
+        )
         for pattern in (
             "READ_ONLY / SIMULATION_ONLY / NO_TRADING contract",
             "/api/stock-tokens/status / markets / opportunities response shape",

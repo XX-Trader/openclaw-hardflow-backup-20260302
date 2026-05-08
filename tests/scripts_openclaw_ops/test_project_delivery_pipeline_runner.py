@@ -3068,6 +3068,13 @@ Verification commands:
             self.assertFalse(risk_by_name["funds_and_orders"]["allowed"])
             self.assertFalse(risk_by_name["destructive_changes"]["allowed"])
             self.assertTrue(any("read-only/signal-only" in item for item in plan["runtime_contracts"]))
+            step_text = "\n".join(item.get("description", "") for item in plan["implementation_steps"] if isinstance(item, dict))
+            self.assertIn("excludes Kraken/MEXC", step_text)
+            self.assertIn("tokenized-stock spot MVP", step_text)
+            self.assertIn("DEFAULT_ENABLED_PLATFORMS", step_text)
+            verification_text = "\n".join(item.get("command", "") for item in plan["verification_commands"] if isinstance(item, dict))
+            self.assertNotIn("stock_token_publi`", verification_text)
+            self.assertNotIn("stock_token_publi\n", verification_text)
 
 
 if __name__ == "__main__":

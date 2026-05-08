@@ -1872,10 +1872,18 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         chinese_regex_reason_text = (
             r"自动修复判断 - 判断: 未继续自动修复: high; "
             r"(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}"
-            r"(?:密钥|凭证|(?<!stock_)tokens?(?!ized)(?![A-Za-z0-9_])|cookie|私钥|会话)"
+            r"(?:密钥|凭证|(?<!stock_)(?<!stock-)(?<!stock )tokens?(?!ized)(?![A-Za-z0-9_])|cookie|私钥|会话)"
         )
         chinese_regex_scan = module.risk_scan_text(chinese_regex_reason_text)
         self.assertFalse(any(pattern.search(chinese_regex_scan) for pattern in module.HIGH_RISK_PATTERNS), chinese_regex_scan)
+
+        stock_token_plan_text = "要求实现阶段检查页面是否硬编码 stock-token，并把币股现货不进 MVP 转成断言。"
+        stock_token_scan = module.risk_scan_text(stock_token_plan_text)
+        self.assertFalse(any(pattern.search(stock_token_scan) for pattern in module.HARD_REPAIR_RISK_PATTERNS), stock_token_scan)
+
+        negated_requirement_list_text = "计划没有要求真实交易、下单、划转、提现、读取凭证或新增真实 Hyperliquid stock-token adapter。"
+        negated_requirement_scan = module.risk_scan_text(negated_requirement_list_text)
+        self.assertFalse(any(pattern.search(negated_requirement_scan) for pattern in module.HARD_REPAIR_RISK_PATTERNS), negated_requirement_scan)
 
         status_card_text = (
             "自动修复判断\n"
