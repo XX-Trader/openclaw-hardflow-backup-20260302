@@ -664,6 +664,25 @@ CODE_REVIEW_SECRET_CONTEXT_ONLY_RE = re.compile(
     re.IGNORECASE,
 )
 
+CODE_REVIEW_SECRET_NEGATIVE_SCAN_RE = re.compile(
+    r"(?:"
+    r"(?:secret\s+scan|credential\s+scan|安全扫描|扫描|commit\s+diff|diff|新增行|added[- ]?lines?)"
+    r".{0,180}"
+    r"(?:no|none|without|not\s+(?:found|detected|present)|clean|passed|pass|"
+    r"无|未发现|没有|未检测到|不存在|不含|不包含)"
+    r".{0,140}"
+    r"(?:structural|结构化|credential|credentials|secret|secrets|token|tokens|api[-_ ]?key|password|"
+    r"private[-_ ]?key|cookie|auth|assignment|leak|泄露|赋值|证据|凭证|密钥|密码|私钥)"
+    r"|"
+    r"(?:no|none|without|not\s+(?:found|detected|present)|无|未发现|没有|未检测到|不存在|不含|不包含)"
+    r".{0,120}"
+    r"(?:structural|结构化)"
+    r".{0,120}"
+    r"(?:credential|credentials|secret|secrets|token|tokens|api[-_ ]?key|password|assignment|赋值|凭证|密钥)"
+    r")",
+    re.IGNORECASE,
+)
+
 
 def code_review_secret_leak_blocker_lines(reports: list[dict[str, Any]], limit: int = 10) -> list[str]:
     """Return only concrete credential/password leakage blockers from code review.
@@ -682,6 +701,8 @@ def code_review_secret_leak_blocker_lines(reports: list[dict[str, Any]], limit: 
         for raw_line in scrub_negated_risk_lines(report_text(report)).splitlines():
             text = " ".join(raw_line.strip().strip("-* ").split())
             if not text or len(text) < 8:
+                continue
+            if CODE_REVIEW_SECRET_NEGATIVE_SCAN_RE.search(text):
                 continue
             if CODE_REVIEW_SECRET_CONTEXT_ONLY_RE.search(text) and not CODE_REVIEW_SECRET_LEAK_RE.search(text):
                 continue

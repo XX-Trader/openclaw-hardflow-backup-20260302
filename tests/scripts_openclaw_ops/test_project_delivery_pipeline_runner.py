@@ -1935,6 +1935,8 @@ Verification commands:
                         "Reviewer provider: test-provider",
                         "Reviewer model: test-model",
                         "Blocker: secret scan command is missing from verification_commands.",
+                        "Blocker: Secret scan：commit diff 中无结构化 credential/secret/token 赋值。",
+                        "Blocker: Secret scan: no structural credential/secret/token assignment in commit diff.",
                         "Blocker: 排除 workflow/pipeline artifacts/credential/auth/private files。",
                         "Blocker: 未读取、打印、提交或上传任何 token/cookie/OAuth/API key/private key/auth JSON/credential-imports。",
                     ]

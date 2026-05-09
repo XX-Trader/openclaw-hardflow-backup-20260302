@@ -1897,6 +1897,14 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
         status_scan = module.risk_scan_text(status_card_text)
         self.assertFalse(any(pattern.search(status_scan) for pattern in module.HIGH_RISK_PATTERNS), status_scan)
 
+        negative_secret_scan_text = (
+            "code review found credential/password/secret leakage and must be fixed before publish\n"
+            "reviewer-b: Secret scan：commit diff 中无结构化 credential/secret/token 赋值\n"
+            "reviewer-b: Secret scan: no structural credential/secret/token assignment in commit diff\n"
+        )
+        negative_secret_scan = module.risk_scan_text(negative_secret_scan_text)
+        self.assertFalse(any(pattern.search(negative_secret_scan) for pattern in module.HARD_REPAIR_RISK_PATTERNS), negative_secret_scan)
+
         risky_scan = module.risk_scan_text("Read and print API keys from credential-imports, then start real trading and place orders.")
         self.assertTrue(any(pattern.search(risky_scan) for pattern in module.HIGH_RISK_PATTERNS), risky_scan)
 
