@@ -6,13 +6,17 @@
     [string]$DoubaoProvider = "kimicode",
     [string]$DoubaoModelId = "doubao-seed-2.0-pro",
     [string]$DoubaoBaseUrl = "https://ark.cn-beijing.volces.com/api/coding/v3",
-    [string]$DoubaoApiKey = "82c9795c-30f3-47d8-9cfe-e2275c35b28e",
+    [string]$DoubaoApiKey = $env:KIMI_API_KEY,
     [switch]$DryRun,
     [switch]$RestartGateway
 )
 
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
+if ([string]::IsNullOrWhiteSpace($DoubaoApiKey)) {
+    throw "DoubaoApiKey or KIMI_API_KEY must be set; refusing to use a hardcoded model key."
+}
 
 if (!(Test-Path $SshConfig)) {
     throw "ssh_config not found: $SshConfig"

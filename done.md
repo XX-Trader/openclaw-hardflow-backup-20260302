@@ -5,7 +5,63 @@
 
 ---
 
+## 2026-05-09 已完成
+
+- [x] [2026-05-09] **pm-website / nofx OpenClaw 运行态清理**
+  - 已按用户确认的边界收口：OpenClaw 只运行在 `tokyo-claw`；`pm-website` 与 `nofx` 不再运行或恢复 OpenClaw，只保留 Hermes/业务服务。
+  - `pm-website` 已删除旧 `openclaw-gateway.service`、`/usr/local/bin/openclaw`、`/usr/local/lib/node_modules/openclaw`；复验无 OpenClaw 进程、无 `18789/18791` 监听、无 CLI、无 unit。
+  - `nofx` 已删除 `/root/.openclaw` 与 `/home/arbops/.openclaw`；复验无 OpenClaw 进程、无 CLI、无 unit，`arbitrageagent` / `spreadagent` 仍 running 且 Discord/Feishu connected，`smart-arb-api` 正常，Docker/socket/containerd inactive。
+  - `tokyo-claw` 已复验 OpenClaw gateway/node 仍运行，监听 `127.0.0.1:18789/18791`。
+
+- [x] [2026-05-09] **CVE-2026-31431 Copy Fail 多服务器滚动重启闭环**
+  - 已按维护窗口授权滚动重启 `pm-website`、`大白pm`、`coingod`、`hangqing-zhongxin`、`tokyo-claw`、`nofx`，每台 SSH 恢复后再继续下一台。
+  - `pm-website`、`大白pm`、`coingod`、`hangqing-zhongxin` 已运行 `6.8.0-111-generic`，`kmod 31+20240202-2ubuntu7.2` 生效，AEAD bind 均 blocked，`/var/run/reboot-required` 均不存在。
+  - `tokyo-claw` 已运行 `6.6.119-49.18.oc9.x86_64`，默认内核同版本，AEAD bind blocked，`needs-restarting -r` 显示无需重启。
+  - `nofx` 已通过 `grub2-reboot` one-shot 进入 `5.14.0-700.el9.x86_64`，默认内核同版本，`needs-restarting -r` 显示无需重启；该机 `CONFIG_CRYPTO_USER_API_AEAD=y`，AEAD bind 仍为 ok 是静态内核能力预期，不再作为未缓解判据。
+  - nofx 重启后已恢复 `hermes-discord-arbitrage`、`hermes-discord-spread` 和 `smart-arb-api`，两个 profile 的 Discord/Feishu 均 connected；内控 API `/health` 正常且策略未运行；Docker/socket/containerd 已停回 inactive。
+
 ## 2026-05-08 已完成
+
+- [x] [2026-05-08] **CVE-2026-31431 Copy Fail 多服务器排查与补丁安装**
+  - 已核对腾讯云相关服务器：`pm-website`、`大白pm`、`coingod`、`hangqing-zhongxin`、`nofx`、`tokyo-claw`，并额外复验本机 WSL。
+  - 4 台 Ubuntu 24.04 已升级 `kmod 31+20240202-2ubuntu7.2` 与 `linux-generic/linux-image-generic 6.8.0-111.111`，复验 `authencesn(hmac(sha256),cbc(aes))` AEAD bind 均 blocked。
+  - Tokyo OpenCloudOS 已安装 `kernel 6.6.119-49.18.oc9`，写入 `algif_aead` 模块禁用并卸载模块，复验 AEAD bind blocked；默认启动内核已指向新版本。
+  - nofx CentOS Stream 9 已安装 `kernel 5.14.0-700.el9`，默认启动内核已指向新版本；2026-05-09 已滚动重启进入该内核完成闭环。
+  - 本机 WSL 为 `CONFIG_CRYPTO_USER_API_AEAD=n`，AEAD bind blocked，不受当前入口影响。`google-us` SSH 握手 reset，未纳入本轮腾讯云补丁范围。
+
+- [x] [2026-05-08] **nofx Hermes 主回退与辅助任务模型路由收口**
+  - 已备份并更新 nofx `/home/arbops/.hermes/.env` 与两个 live profile：`arbitrageagent`、`spreadagent`。
+  - 主模型固定为 `openai-codex/gpt-5.5`，主思考强度为 `xhigh`；主回退链固定为 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`，回退均为 high thinking。
+  - 辅助任务默认改为 `zai/glm-4.7`，重要辅助任务 `compression` / `curator` 改为 `zai/glm-5.1`。
+  - 已删除 nofx 全局与 profile 运行态中的 OpenRouter / `ZAI_API_BASE` 残留，只保留 Codex auth、Kimi k2.6 与 GLM 5.1/4.7 两套模型 API。
+  - 已重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`，两者 Discord 均为 connected；chat smoke sessions `20260508_210549_dd9a9e`、`20260508_210617_36db94` 均成功返回且 `0 tool calls`。
+
+- [x] [2026-05-08] **WSL Hermes 主回退与辅助任务模型路由收口**
+  - 已备份并更新 `/home/ubuntu/.hermes/config.yaml` 与三个 profile 配置：`trend-backtest`、`multicore`、`multicorerouter`。
+  - 主模型固定为 `openai-codex/gpt-5.5`，主思考强度为 `xhigh`；主回退链固定为 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`。
+  - 文本辅助任务默认改为 `zai/glm-4.7`，重要辅助任务 `compression` / `curator` 改为 `zai/glm-5.1`，不再让 compression/title 通过 `auto` 路由到 OpenRouter。
+  - 运行态配置备份：`/home/ubuntu/.hermes/backups/model-routing-20260508_173733`；启动脚本备份：`/home/ubuntu/.hermes/backups/gateway-start-env-20260508_175344`。
+  - 按用户纠正，已删除 WSL Hermes 中的 `OPENROUTER_API_KEY` 与全局 `openrouter:` 配置段，只保留 Codex auth、Kimi k2.6 与 GLM 5.1/4.7 两套模型 API；删除前备份：`/home/ubuntu/.hermes/backups/remove-openrouter-20260508_1818`。
+  - 三个 profile `start-gateway.sh` 已显式加载 profile `.env` 并设置 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`，避免 screen 启动时回落到 30 秒默认连接超时。
+  - 已重启三个 WSL Hermes profile gateway：`trend-backtest=16901`、`multicore=16904`、`multicorerouter=16907`；`trend-backtest` chat smoke session `20260508_174244_373cd2` 返回 OK 且 `0 tool calls`。
+  - Kimi 直连已通过 `KIMI_API_KEY` / `KIMI_CODING_API_KEY` / `KIMI_BASE_URL` 配好；GLM 已通过 `GLM_API_KEY` / `ZAI_API_KEY` / `GLM_BASE_URL` 配好。
+  - 已清理仓库中既有的 Kimi/GLM 明文模型 key，`openclaw.json`、`openclaw/openclaw.json`、`agents/*/models.json` 改为 `${KIMI_API_KEY}` / `${GLM_API_KEY}` 占位；fleet-sync 脚本改为从环境变量读取，缺失时拒绝执行。
+
+- [x] [2026-05-08] **nofx 拉取最新 hardflow 并恢复 runtime**
+  - nofx SSH 恢复后，先停掉自动拉起且占用 CPU/overlay/log 的 Docker 栈：`nofx-frontend`、`nofx-trading`、`tiger-trader-api`、`realtime_pub_node`、`realtime_pub_redis`，并停止 `docker/containerd`；未删除业务数据。
+  - 已将 nofx hardflow 仓库从 `2b68e38` fast-forward 到 `ae795f7`，并通过 runtime installer 同步到 `/home/arbops/.hermes/ops`。
+  - 服务器重启后 tmux 为空，已只恢复必要的 `arbitrageagent`、`spreadagent` 和内控 API；`multicore-repair` 与 Docker 栈保持 stopped。
+  - 资源结论：当前 CPU 已降下，磁盘 82% 主要来自历史文件（pipeline-runs、backups、state.db/WAL、日志和 containerd 数据）；停服务只能阻止继续增长，释放空间需单独清理历史证据/缓存。
+  - 验证：远端 runner 75 项 OK、entry 54 项 OK；`git diff --check` 通过；核心安装态脚本 SHA 与仓库源码一致；`arbitrageagent/spreadagent` running；内控 API `/health` 正常且策略未运行；Docker service/socket/containerd 均 inactive。
+
+- [x] [2026-05-08] **WSL / nofx Hermes v0.13.0 与 Tokyo OpenClaw 2026.5.7 升级**
+  - 本机 WSL Hermes 已从 v0.12.0 升级到 v0.13.0（2026.5.7），`trend-backtest`、`multicore`、`multicorerouter` 三个 profile gateway 已重启并 running。
+  - WSL Hermes v0.13 默认平台连接超时为 30 秒，已在三个 profile `.env` 中加入 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`，避免 Discord 在 WSL NAT 抖动时启动失败。
+  - Tokyo Claw OpenClaw 已从 `2026.5.3-1` 升级到 `2026.5.7`，同时安装 `@openclaw/discord@2026.5.7`；gateway 重启后 `factor`、`news`、`strategy` 三个 Discord account 均 connected。
+  - 本轮复验修正 Tokyo shell 旧 shim：`command -v openclaw` 曾命中 nvm 旧 `2026.4.14`，现已对齐到服务二进制 `2026.5.7`；`openclaw-node.service` 元数据也已对齐 `v2026.5.7`。
+  - 修复 Tokyo OpenClaw agent 主模型 auth：旧 `profiles.openai-codex:default` auth-profile 格式会让 `openai-codex/gpt-5.5` 401 并 fallback；已把 Codex CLI 原生 `auth.json` 格式同步到 16 个 agent，`strategy_agent` 最终 smoke 直连 `openai-codex/gpt-5.5` 返回 `UPGRADE_FINAL_OK`，无 fallback。
+  - nofx SSH 恢复后 Hermes 已完成 v0.13.0 验收：`hermes --version` 返回 `Hermes Agent v0.13.0 (2026.5.7)`，源码 `faa13e49` / `v2026.5.7-26-gfaa13e49`，editable pip metadata 已刷新到 `hermes-agent 0.13.0`。
+  - 验证：WSL `hermes --version` 返回 `Hermes Agent v0.13.0 (2026.5.7)`，`hermes profile list` 显示三个本机 profile running，`hermes -p multicorerouter chat -q '只回复 OK，不要调用工具。'` 返回 OK；Tokyo `openclaw --version` 返回 `OpenClaw 2026.5.7 (eeef486)`，`openclaw gateway status --deep` connectivity probe ok，`openclaw channels status --json` 显示 Discord 三个 account connected；nofx `arbitrageagent` / `spreadagent` 均 running/connected，最终 chat smoke sessions `20260508_162443_ce4450`、`20260508_162458_b977e7` 均返回 OK 且 `0 tool calls`。
 
 - [x] [2026-05-08] **执行保护契约替代高权限关键词硬停**
   - 将 `risk_gate` 从“真实交易/下单/提现/划转/force push/删除等关键词即硬停”改为 `execution_guard.json` 保护契约：资金动作要求最小金额或用户指定小额、白名单、幂等键、审计日志和状态回读；破坏性动作要求目标明确、备份可验证、恢复命令、审计记录和备份保留 TTL。

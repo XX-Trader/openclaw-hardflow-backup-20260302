@@ -1,5 +1,77 @@
 # PITFALLS
 
+## 2026-05-08 - nofx 双 Hermes profile 共用 Feishu app 会出现单连接锁
+
+类型：pitfall
+范围：nofx `/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、Hermes gateway、Feishu websocket
+事实：nofx 两个 live profile 都配置了 Feishu 时，重启后同一个 Feishu app_id 只能被一个本地 Hermes gateway websocket client 占用。2026-05-08 重启模型路由后，`spreadagent` 的 Feishu 为 connected，`arbitrageagent` 的 Feishu 出现 `feishu_app_lock`；这不影响本次目标中的 Discord 入口，两个 profile 的 Discord 均为 connected。
+证据：`arbitrageagent/gateway_state.json` 显示 `discord.state=connected`，`feishu.state=fatal`，`error_code=feishu_app_lock`，错误信息指向另一个 gateway PID `118783`；`spreadagent/gateway_state.json` 显示 `discord` 与 `feishu` 均 connected。
+最后验证：2026-05-08 21:03
+复用建议：排查 nofx 入口可用性时，不要把单个 profile 的 Feishu app lock 误判为 Discord 不可用或模型配置失败。若以后要求两个 profile 同时接飞书，需要拆分 app_id 或只保留一个 profile 的 Feishu websocket。
+
+## 2026-05-08 - 仓库模型配置禁止保留明文 API key
+
+类型：pitfall
+范围：`openclaw.json`、`openclaw/openclaw.json`、`agents/*/models.json`、`skills/library/fleet-sync/scripts/sync_model_to_doubao_servers.*`
+事实：模型 provider key 不应写入仓库。用户纠正本机 WSL 只有 Codex auth、Kimi k2.6 与 GLM 5.1/4.7 两套模型 API 后，已将仓库里既有的 Kimi/GLM 明文模型 key 替换为 `${KIMI_API_KEY}` / `${GLM_API_KEY}` 占位；fleet-sync 脚本不再提供硬编码默认 key，缺少 `DOUBAO_API_KEY` 或 `KIMI_API_KEY` 时直接退出。
+证据：`rg` 已确认仓库内不再出现本轮涉及的模型 key 明文；`python` 标准库成功解析 15 个含 `${KIMI_API_KEY}` / `${GLM_API_KEY}` 占位的 JSON 文件；`bash -n skills/library/fleet-sync/scripts/sync_model_to_doubao_servers.sh` 通过。
+最后验证：2026-05-08 18:45
+复用建议：以后同步 OpenClaw/Hermes 模型配置时，仓库只保留 provider、model、baseUrl 和 env var 占位；真实 key 只放运行态 `.env` / auth store，最终输出和文档不得回显明文。
+
+## 2026-05-08 - Hermes 主聊天不是 OpenRouter，但 auxiliary auto 会让聊天记录出现 OpenRouter
+
+类型：pitfall
+范围：WSL `/home/ubuntu/.hermes/profiles/trend-backtest`、Hermes `auxiliary.compression` / `title_generation`
+事实：聊天历史里出现 `openrouter` 不等于主聊天模型切到了 OpenRouter。2026-05-08 排查 `trend-backtest` sessions/logs 时，用户/assistant 正文没有 OpenRouter 主链记录；OpenRouter 出现在辅助任务链路，旧 `auxiliary.compression.provider=auto` 且 model 为 `google/gemini-3-flash-preview`，在 Codex auto 连接/超时后 fallback 到 `openrouter`，并曾出现 OpenRouter 402 credits/max_tokens 错误。
+证据：本轮 live 配置已把常见文本辅助任务显式改为 `zai/glm-4.7` 或 `zai/glm-5.1`，并重启三个 profile。重启后 `agent.log` 尾部未出现新的 `openrouter`/auxiliary fallback 记录；主聊天 smoke 仍为 `openai-codex/gpt-5.5`，session `20260508_174244_373cd2` 返回 OK。
+最后验证：2026-05-08 17:45
+复用建议：排查类似问题时先查 `sessions/*.json(l)` 的 assistant/user 正文和 `logs/agent.log` 的 auxiliary 记录。若目标是去掉 OpenRouter 暴露面，优先把 `auxiliary.title_generation`、`auxiliary.compression`、`auxiliary.session_search` 等显式指定到直连 provider；不要把 OpenRouter 当主模型故障直接改主 provider。
+
+## 2026-05-08 - Hermes v0.13 editable metadata 与 chat smoke cwd 容易误判
+
+类型：pitfall
+范围：nofx Hermes v0.13.0、editable pip install、`hermes chat`
+事实：nofx Hermes 源码和 CLI 已升级到 v0.13.0 时，editable pip metadata 仍可能残留旧版 `0.12.0`，导致 `pip show hermes-agent` 与 `hermes --version` 不一致。另一个误判点是 v0.13 的 chat smoke 会创建 worktree；如果在 `/home/arbops` 这类非 Git 仓库目录执行，会报 `--worktree requires being inside a git repository`，这不是模型、登录态或 profile gateway 失败。
+证据：本轮 `hermes --version` 返回 `Hermes Agent v0.13.0 (2026.5.7)`，源码 `pyproject.toml` 和 `hermes_cli/__init__.py` 都是 `0.13.0`，但刷新前 `pip show hermes-agent` 为 `0.12.0`；执行 venv 内 `pip install -e /home/arbops/.hermes/hermes-agent/src --no-deps` 后 metadata 变为 `0.13.0`。在 `/home/arbops` 的 chat smoke 报 worktree cwd 错误；在 `/home/arbops/projects/SmartMultiPlatformArbitrage` 重跑后 `arbitrageagent` 和 `spreadagent` 均返回 OK。
+最后验证：2026-05-08 16:26
+复用建议：Hermes 升级验收时以 `hermes --version` 和源码 tag 为主，必要时刷新 editable metadata；chat smoke 固定切到目标项目 Git 仓库，不要在 home 目录直接跑。
+
+## 2026-05-08 - nofx CLI source 会绕过 Discord 路线选择并启动完整 pipeline
+
+类型：pitfall
+范围：nofx `/home/arbops/.local/bin/smart-arb-pipeline`、部署后 smoke、磁盘/CPU 控制
+事实：`smart-arb-pipeline` 的 Discord route-choice 硬门禁只覆盖 Discord 入口语义；使用 `--source cli` 做“最小入口 smoke”时，即使传了 `--route-choice direct_run`，仍可能按 CLI pipeline 入口启动完整 `pipeline_runner.py`，进而创建 `.hermes/pipeline-runs/cli-*` 产物、拉起 Hermes stage 子进程并占用 CPU/磁盘。
+证据：2026-05-08 nofx 部署后，`cli-spreadagent-20260508T081948453965Z` 与 `cli-spreadagent-20260508T082248775092Z` 两个原本用于最小 smoke 的命令进入完整 pipeline，出现 `requirements_discussion`、`requirements_review` 等 Hermes stage 子进程；随后已按 run id `pkill` 清理残留进程。
+最后验证：2026-05-08 16:25
+复用建议：磁盘紧张或只想验证安装入口时，不要用 CLI source 跑 pipeline smoke。优先使用 `smart-arb-pipeline --help`、核心脚本 SHA 对齐、定向单测、`hermes profile list` 和 API smoke；需要完整 pipeline smoke 时先确认磁盘余量和是否允许新增 30-40MB run artifact。
+
+## 2026-05-08 - OpenClaw 2026.5.7 中旧 Codex auth-profile 格式会触发 401
+
+类型：pitfall
+范围：Tokyo Claw OpenClaw、`~/.openclaw/agents/*/auth-profiles.json`、`openai-codex/gpt-5.5`
+事实：OpenClaw 2026.5.7 下，`auth-profiles.json` 使用旧 `{"version":1,"profiles":{"openai-codex:default":...}}` 格式时，即使 access token 未过期，也可能在 agent smoke 中返回 `Your authentication token has been invalidated`，然后 fallback 到 `kimicode/kimi-k2.6`。同一台机器上 `codex exec -m gpt-5.5` 可以成功，不代表 OpenClaw agent 已经拿到可用 auth profile。
+证据：2026-05-08 升级后，`strategy_agent` 旧 profile 格式 smoke 返回 `UPGRADE_PRIMARY_OK`，但 provider/model 为 `kimicode/kimi-k2.6`，fallbackAttempts 显示 `openai-codex/gpt-5.5` 401。把 `strategy_agent/auth-profiles.json` 临时替换为 Codex CLI 原生 `~/.codex/auth.json` 格式后，同一 agent smoke 返回 `UPGRADE_RAWAUTH_OK`，provider/model 为 `openai-codex/gpt-5.5`，无 fallback。随后 16 个 agent 已统一同步原生格式，最终 smoke 返回 `UPGRADE_FINAL_OK`。
+最后验证：2026-05-08 16:15
+复用建议：以后 Tokyo OpenClaw agent 突然 fallback 或报 Codex token invalidated 时，先比较 `codex exec` 与 `openclaw agent` 两条链路。如果 CLI 可用而 OpenClaw 不可用，优先同步原生 `auth.json` 格式到 agent auth profiles；不要只看 JWT `exp` 或反复写旧 `profiles` 格式。
+
+## 2026-05-08 - Hermes v0.13 后 WSL Discord 连接超时不是 token 丢失
+
+类型：pitfall
+范围：WSL Hermes profiles、Discord gateway、`HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT`
+事实：Hermes v0.13.0 升级后，gateway 启动阶段默认用 30 秒平台连接超时。WSL NAT / DNS / Discord websocket 偶发慢连接时，profile 会报 `discord connect timed out after 30s` 并退出，`gateway_state` 可能是 `startup_failed/retrying`；这不是 Codex auth 丢失，也不是 Discord token 缺失。提高 profile `.env` 中 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120` 后，`trend-backtest`、`multicore`、`multicorerouter` 均可重启为 running。
+证据：升级后 WSL 三个 profile 初次重启时 `multicore` 和 `multicorerouter` 均 stopped，日志显示 `Gateway failed to connect any configured messaging platform: discord: discord connect timed out after 30s`；DNS/TCP 对 Discord 后续可通。写入 120 秒超时并重启后，`hermes profile list` 显示三者 running，`multicorerouter` chat smoke 返回 OK。
+最后验证：2026-05-08 16:03
+复用建议：以后 Hermes v0.13+ profile 启动失败先看 `gateway_state.json` 和 profile `logs/startup.log`。如果是 Discord 30 秒超时，先加大 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT` 并单 profile 顺序重启；只有出现 `No Codex credentials`、`token missing/invalid` 或 Discord API 401/403 时才按 auth/token 排障。
+
+## 2026-05-08 - nofx SSH banner timeout 后不要并发重试升级
+
+类型：pitfall
+范围：nofx SSH、Hermes update、远程升级恢复
+事实：nofx Hermes v0.13 升级尝试创建了 1GB 级 Hermes pre-update zip 后，`hermes update --backup --yes` 返回 1 且日志停在 backup 阶段；随后 SSH 出现 `Connection timed out during banner exchange`，Paramiko 也报 `Error reading SSH protocol banner`。此时继续高频或并发 SSH 只会加重 sshd/IO 压力，不能证明 runtime 已升级。
+证据：升级前 nofx `hermes --version` 为 v0.12.0，`hermes update --check` 显示 behind 457；失败后最后一次可读 `hermes --version` 仍为 v0.12.0，`/home/arbops/.hermes/backups/pre-update-2026-05-08-151916.zip` 大约 1GB；后续 WSL OpenSSH 和 Paramiko 均无法完成 SSH banner。
+最后验证：2026-05-08 16:03
+复用建议：恢复 nofx 时先低频单连接登录；登录后优先查 `df -h`、`/home/arbops/.hermes/logs/update.log`、`pgrep -af 'hermes update|pip install|git|gateway'`、`hermes --version`、`hermes profile list`。必要时清理旧 pre-update zip 或修 sshd/磁盘，再重跑升级；不要把“创建了 backup zip”当作升级成功。
+
 ## 2026-05-08 - 不要把高权限动作关键词当成执行前硬停
 
 类型：pitfall
@@ -304,3 +376,20 @@
 证据：`gateway/platforms/discord.py` 在 `connect()` 中将共享 token 锁身份收敛为 `token:allowed_channels`，缺少 `DISCORD_ALLOWED_CHANNELS` 时返回 fatal；`_handle_message()` 在 DM 分支优先检查 `DISCORD_ALLOW_DMS=false` 并丢弃。相关回归测试 `test_discord_connect.py`、`test_discord_channel_controls.py`、`test_discord_reply_mode.py` 共 50 项通过。
 最后验证：2026-04-27 16:41
 复用建议：以后做多 Discord agent，不要只靠“频道不同”作为隔离。至少要有 profile 独立、session 独立、cwd 独立、`allowed_channels` 白名单、DM 策略；如果共享同一个 bot token，还必须有锁身份隔离。
+## 2026-05-08 - Copy Fail 静态 AEAD 内核不能靠模块禁用缓解
+
+类型：pitfall
+范围：CVE-2026-31431、CentOS Stream 9 / RHEL-like 内核、`CONFIG_CRYPTO_USER_API_AEAD=y`
+事实：`CONFIG_CRYPTO_USER_API_AEAD=y` 表示 AF_ALG AEAD 用户 API 静态编译进内核，`/etc/modprobe.d/disable-algif-aead.conf` 和 `rmmod algif_aead` 对这类主机没有实际缓解效果。nofx CentOS Stream 9 就是该形态：安装 `kernel-5.14.0-700.el9` 后，运行中 `5.14.0-648.el9` 仍可成功 bind `authencesn(hmac(sha256),cbc(aes))`，直到重启进入新内核前不能声明完全闭环。重启进入 `5.14.0-700.el9` 后，AEAD bind 仍为 ok 是静态能力预期，不能继续用 blocked 作为验收条件。
+证据：nofx 最终复验：`kernel=5.14.0-700.el9.x86_64`、`CONFIG_CRYPTO_USER_API_AEAD=y`、`aead_bind_state=ok`、`default_kernel=/boot/vmlinuz-5.14.0-700.el9.x86_64`、`needs-restarting -r` 显示无需重启。第一次普通重启仍落回 `5.14.0-648.el9`，设置 `grub2-reboot db785f6de1f74dfbbbc78287c3889d35-5.14.0-700.el9.x86_64` 后才成功进入新内核。
+最后验证：2026-05-09 10:36 CST
+复用建议：遇到 RHEL/CentOS/Rocky/Alma/OpenCloudOS 这类主机，先看 config 是 `y` 还是 `m`。如果是 `y`，不要把“写了 modprobe 禁用文件”当成修复完成；必须安排重启或等待可热补丁机制。若默认内核已经指向新版本但实际仍启动旧内核，先用 `grub2-reboot <BLS entry>` 做 one-shot 引导，不要删除旧内核。
+
+## 2026-05-09 - nofx 内核重启后运行态不会自动完全恢复
+
+类型：pitfall
+范围：nofx、Hermes profile gateway、`smart-arb-api`、Docker/containerd
+事实：nofx 完成内核重启后，`arbitrageagent`、`spreadagent` 与 `smart-arb-api` tmux 会话不会自动恢复，而 Docker/socket/containerd 会随系统自动变为 active。当前目标运行态是只恢复两个 Hermes profile 与内控 FastAPI，不恢复 Docker 栈和真实策略进程。
+证据：2026-05-09 内核重启后检查：`hermes profile list` 显示 `arbitrageagent=stopped`、`spreadagent=stopped`，`curl 127.0.0.1:18080/health` 失败，`docker` 与 `containerd` 为 active。手工启动 `hermes-discord-arbitrage`、`hermes-discord-spread`、`smart-arb-api` 后，两个 profile 的 Discord/Feishu 均 connected，API `/health` 正常，策略 `running=false`，Docker/socket/containerd 已停回 inactive。
+最后验证：2026-05-09 10:36 CST
+复用建议：nofx 每次系统重启后都要执行三段收口：1）确认 `uname -r` 与 `needs-restarting -r`；2）按 `start-gateway.sh` 拉起两个 Hermes profile，并启动 `smart-arb-api` tmux；3）停止 Docker/socket/containerd，除非用户明确要求恢复 Docker 栈或真实策略。

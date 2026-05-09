@@ -1,6 +1,6 @@
 # Hermes Discord 趋势回测机器人架构设计
 
-> 最后更新：2026-04-20
+> 最后更新：2026-05-08
 
 ## 1. 问题定义
 
@@ -33,7 +33,9 @@ Windows PowerShell
                     ├── Linux 工作副本（/home/ubuntu/projects/SmartTrendTracker）
                     ├── Profile 级自动执行（approvals.mode='off'）
                     ├── delegation 并行子 agent（max_concurrent_children=3）
-                    ├── 模型配置（默认 gpt-5.4）
+                    ├── 模型配置（默认 openai-codex/gpt-5.5，xhigh）
+                    ├── 主回退链（kimi-coding/kimi-k2.6 -> zai/glm-5.1）
+                    ├── 辅助任务路由（默认 zai/glm-4.7，重要任务 zai/glm-5.1）
                     └── gateway run
                             └── Discord guild / channel
                                     ├── 大群：require mention
@@ -59,23 +61,25 @@ Windows PowerShell
 
 ### 3.2 模型层
 
-第一版固定：
-
-- provider：沿用当前可用 provider
-- model：`gpt-5.4`
-- fallback：`gpt-5.3-codex-spark`
-
 当前本机落地结果：
 
-- provider：`openai-codex`
-- model：`gpt-5.4`
-- fallback：`openai-codex / gpt-5.3-codex-spark`
+- 主 provider：`openai-codex`
+- 主 model：`gpt-5.5`
+- 主思考强度：`agent.reasoning_effort=xhigh`
+- 主 fallback：`kimi-coding/kimi-k2.6 -> zai/glm-5.1`
+- 子 agent delegation：`openai-codex/gpt-5.5`，`delegation.reasoning_effort=xhigh`
+- 文本辅助任务默认：`zai/glm-4.7`
+- 重要辅助任务：`compression` / `curator` 使用 `zai/glm-5.1`
 
 这样做的原因是：
 
-- 先优先保证回测讨论质量
-- 避免低成本模型在复杂趋势判断里产生明显漂移
-- 后续如需降本，再在独立 profile 内单独调整
+- 主聊天继续优先保证回测讨论质量
+- 主回退使用高质量模型兜底，不把 `glm-4.7` 放进主回退链
+- 辅助任务多数是标题、搜索摘要、审批判断、MCP/web extract 等短任务，默认使用更快的 `glm-4.7`
+- 压缩和记忆整理会影响长期上下文质量，因此使用 `glm-5.1`
+- 旧 `auxiliary.provider=auto` 曾在 compression/title 链路中 fallback 到 OpenRouter；显式配置文本辅助任务可以避免聊天记录再出现这类 OpenRouter 辅助路由
+
+注意：Kimi/Moonshot 直连 key 已按 profile 运行时变量补齐；`config check` 已验证 OpenRouter unset、Z.AI/GLM configured、Kimi/Moonshot configured。`kimi-coding/kimi-k2.6` 与 `zai/glm-5.1` 作为主回退链并行可用。
 
 ### 3.3 工作目录层
 

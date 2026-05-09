@@ -1,6 +1,6 @@
 # nofx 控制面全景
 
-> 最后更新：2026-04-27
+> 最后更新：2026-05-08
 > 本页描述当前 nofx Hermes workflow runtime，不沿用旧 OpenClaw 14 Agent 控制面口径。
 
 ## 核心答案
@@ -8,7 +8,7 @@
 | 问题 | 当前事实 | 真相源 |
 |------|----------|--------|
 | 对外入口是什么 | `arbitrageagent`、`spreadagent` 两个 Hermes Discord profile | `/home/arbops/.hermes/profiles/<profile>/config.yaml` |
-| 使用什么模型 | 两个入口均为 `openai-codex/gpt-5.5` | profile `config.yaml` |
+| 使用什么模型 | 两个入口主模型均为 `openai-codex/gpt-5.5`；主回退 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`；辅助任务默认 `zai/glm-4.7`，`compression/curator` 为 `zai/glm-5.1`；不使用 OpenRouter | profile `config.yaml` / `.env` |
 | 真正执行什么 | `/home/arbops/.local/bin/smart-arb-pipeline` | profile `SOUL.md` 与软链接 |
 | runner 在哪里 | `/home/arbops/.hermes/ops/pipeline_runner.py` | runtime installer 安装产物 |
 | 逻辑 owner 有哪些 | `coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` | `pipeline_runner.py` / `smart_arb_pipeline_entry.py` |

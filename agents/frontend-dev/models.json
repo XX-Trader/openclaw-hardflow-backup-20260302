@@ -59,7 +59,7 @@
     },
     "glmcode": {
       "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
-      "apiKey": "85d7fd33030d4925a6aae6e31a450e88.mrKxCoSOwRj7jsHo",
+      "apiKey": "${GLM_API_KEY}",
       "api": "openai-completions",
       "models": [
         {
@@ -100,7 +100,7 @@
     },
     "kimicode": {
       "baseUrl": "https://ark.cn-beijing.volces.com/api/coding/v3",
-      "apiKey": "82c9795c-30f3-47d8-9cfe-e2275c35b28e",
+      "apiKey": "${KIMI_API_KEY}",
       "api": "openai-completions",
       "models": [
         {

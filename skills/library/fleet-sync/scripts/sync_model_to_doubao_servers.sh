@@ -33,7 +33,12 @@ FALLBACK_MODEL="${FALLBACK_MODEL:-openai-codex/gpt-5.3-codex}"
 DOUBAO_PROVIDER="${DOUBAO_PROVIDER:-kimicode}"
 DOUBAO_MODEL_ID="${DOUBAO_MODEL_ID:-doubao-seed-2.0-pro}"
 DOUBAO_BASE_URL="${DOUBAO_BASE_URL:-https://ark.cn-beijing.volces.com/api/coding/v3}"
-DOUBAO_API_KEY="${DOUBAO_API_KEY:-82c9795c-30f3-47d8-9cfe-e2275c35b28e}"
+DOUBAO_API_KEY="${DOUBAO_API_KEY:-${KIMI_API_KEY:-}}"
+
+if [[ -z "${DOUBAO_API_KEY}" ]]; then
+  echo "[sync-model] DOUBAO_API_KEY or KIMI_API_KEY must be set; refusing to use a hardcoded model key." >&2
+  exit 1
+fi
 
 if [[ ! -f "${LOCAL_GATEWAY_SERVICE_MANAGER}" ]]; then
   echo "[sync-model] gateway service manager missing: ${LOCAL_GATEWAY_SERVICE_MANAGER}" >&2

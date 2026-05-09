@@ -1,7 +1,7 @@
 # TODO
 
 > 策略：先在 **nofx 单机** 验证所有变更稳定后，再推广到其他 4 台服务器。
-> 更新时间：2026-05-08
+> 更新时间：2026-05-09
 
 ## P0 — 项目交付优先工作流（核心战略落地）
 
@@ -90,6 +90,7 @@
 - [x] [🟡 P1] 将 nofx Discord profile 高权限工作流维护模板同步到 live profile，并在无活跃 pipeline 时重启 gateway 验证
 - [x] [🟡 P1] 将 specified_agent/session-run-id 批次推送并安装到 nofx live runtime：代码批次 `22cecab` 已安装，后续文档/记忆提交已拉到 nofx 且 `HEAD...origin/main=0 0`，runtime installer `ok=true/changed=true`，远端指定 agent smoke 返回 Task Center、executor run id、agent session id、agent run id、session key 和 `回答状态: 已回答完毕`
 - [x] [🟡 P1] 将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`
+- [x] [🔴 P0] 恢复 nofx Hermes v0.13.0 升级：SSH banner timeout 恢复后已完成验收，`hermes --version` 为 `Hermes Agent v0.13.0 (2026.5.7)`，editable pip metadata 已刷新到 `0.13.0`，`arbitrageagent` / `spreadagent` 均 running/connected，最终 chat smoke sessions `20260508_162443_ce4450`、`20260508_162458_b977e7` 均返回 OK 且 `0 tool calls`。
 - [ ] [🟡 P1] 清理 `tests/scripts_openclaw_ops` 中仍指向旧 `scripts/openclaw-ops/*` 主体入口的历史测试，恢复目录级 discover 作为有效门禁
 
 ---

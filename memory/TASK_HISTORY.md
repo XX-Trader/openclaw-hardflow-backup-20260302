@@ -1,5 +1,68 @@
 # TASK_HISTORY
 
+## 2026-05-09 - pm-website / nofx OpenClaw 运行态清理
+
+类型：deploy
+范围：`pm-website`、`nofx`、`tokyo-claw`、OpenClaw / Hermes runtime 边界
+事实：按用户确认，OpenClaw 只应运行在 `tokyo-claw`。已清理 `pm-website` 和 `nofx` 上的 OpenClaw runtime 残留，不影响 Hermes 与业务服务。`tokyo-claw` 的 OpenClaw 保留并复验仍运行。
+证据：`pm-website` 删除前存在 `openclaw-gateway.service`、`/usr/local/bin/openclaw -> ../lib/node_modules/openclaw/openclaw.mjs` 与 `/usr/local/lib/node_modules/openclaw`（版本 `2026.3.13`，约 623MB）；删除后复验无 OpenClaw 进程、无 `18789/18791` 监听、无 CLI、无 unit，相关业务服务 `nginx/docker/containerd/redis/supervisor/ssh` active，Docker 容器 `dabaiquant_prod_frontend_1`、`dabaiquant_prod_backend_1`、`dabaiquant_prod_postgres_1` Up，Hermes `copyeditor` / `quantdev` gateway 仍运行。`nofx` 删除前仅有 `/root/.openclaw` 与 `/home/arbops/.openclaw`，无 OpenClaw 进程/CLI/unit；删除后复验两目录 absent，`arbitrageagent` / `spreadagent` Hermes profile running 且 Discord/Feishu connected，`smart-arb-api` `/health` 正常，Docker/socket/containerd inactive。`tokyo-claw` 复验仍有 OpenClaw gateway/node，监听 `127.0.0.1:18789/18791`。
+最后验证：2026-05-09 10:46 CST
+复用建议：后续不要在 `pm-website` 或 `nofx` 恢复 OpenClaw。若巡检发现 `pm-website` 只有 Hermes 或 nofx 缺 `openclaw` CLI，这是正确状态；OpenClaw 健康与升级只对 `tokyo-claw` 做。
+
+## 2026-05-08 - nofx Hermes 主回退与辅助任务模型配置
+
+类型：deploy
+范围：nofx `/home/arbops/.hermes`、profiles `arbitrageagent` / `spreadagent`
+事实：已将 nofx 两个 live Hermes Discord profile 按本机 WSL 同一策略收口：主模型 `openai-codex/gpt-5.5`，主思考强度 `xhigh`；主回退链 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`，两级回退均为 `reasoning_effort=high`；辅助任务默认 `zai/glm-4.7`，重要辅助任务 `compression` / `curator` 使用 `zai/glm-5.1`。全局 `.env` 与两个 profile `.env` 已补齐 Kimi/GLM 直连变量并删除 OpenRouter / `ZAI_API_BASE` 残留，`.env` 权限保持 `arbops:arbops 0600`。
+证据：变更前备份目录为 `/home/arbops/.hermes/backups/model-routing-20260508_nofx_20260508_210202`。配置脱敏核对显示两个 profile 的 `fallback_providers` 为 `kimi-k2.6`、`glm-5.1`，`delegation` 为 `openai-codex/gpt-5.5/xhigh`，辅助任务摘要为 `glm-4.7` 默认、`compression/curator=glm-5.1`；全局与两个 profile `.env/config.yaml` 均未命中 `openrouter`、`OPENROUTER_API_KEY`、`ZAI_API_BASE`。已重启 tmux 会话 `hermes-discord-arbitrage` 与 `hermes-discord-spread`，`hermes gateway list` 显示 `arbitrageagent` PID `118779`、`spreadagent` PID `118783` running；两者 `gateway_state.json` 中 Discord 均为 `connected`。chat smoke 在 `/home/arbops/projects/SmartMultiPlatformArbitrage` 执行，`arbitrageagent` session `20260508_210549_dd9a9e` 与 `spreadagent` session `20260508_210617_36db94` 均成功返回，且 `0 tool calls`。
+最后验证：2026-05-08 21:06
+复用建议：nofx 以后不应再配置 OpenRouter 承载 Kimi/GLM；Kimi 使用 `KIMI_API_KEY` / `KIMI_CODING_API_KEY` / `KIMI_BASE_URL`，GLM 使用 `GLM_API_KEY` / `ZAI_API_KEY` / `GLM_BASE_URL`。更新 nofx profile 模型路由后必须重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`，并在 Git 仓库内做 chat smoke。
+
+## 2026-05-08 - WSL Hermes 主回退与辅助任务模型配置
+
+类型：deploy
+范围：WSL `/home/ubuntu/.hermes`、profiles `trend-backtest` / `multicore` / `multicorerouter`
+事实：按用户确认的模型策略，已将本机 WSL Hermes global config 与三个 profile config 同步为：主模型 `openai-codex/gpt-5.5`、主思考强度 `xhigh`；主回退 1 `kimi-coding/kimi-k2.6`、主回退 2 `zai/glm-5.1`；辅助文本任务默认 `zai/glm-4.7`，重要辅助任务 `compression` / `curator` 使用 `zai/glm-5.1`。旧 `auxiliary.*.provider=auto` 会在辅助任务中触发 OpenRouter fallback，本轮已对常见文本辅助任务显式指定 Z.AI，避免 title/compression 再走 OpenRouter auto 链。
+证据：运行态配置备份目录为 `/home/ubuntu/.hermes/backups/model-routing-20260508_173733`，启动脚本备份目录为 `/home/ubuntu/.hermes/backups/gateway-start-env-20260508_175344`，删除 OpenRouter 与补齐 Kimi/GLM provider 前备份到 `/home/ubuntu/.hermes/backups/remove-openrouter-20260508_1818`。`hermes fallback list` 与三个 profile 的 `fallback list` 均显示 `gpt-5.5 -> kimi-k2.6 -> glm-5.1`。三个 profile `config check` 返回 0；三个 profile `start-gateway.sh` 已显式 source profile `.env` 并设置 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`；`status` 显示三个 gateway running，PID 分别为 `16901`、`16904`、`16907`。真实 chat smoke：`trend-backtest` session `20260508_174244_373cd2` 返回 `OK`，`0 tool calls`。
+最后验证：2026-05-08 18:42
+复用建议：Kimi 直连已通过 `KIMI_API_KEY` / `KIMI_CODING_API_KEY` 与 `KIMI_BASE_URL` 配好，GLM 已通过 `GLM_API_KEY` / `ZAI_API_KEY` 与 `GLM_BASE_URL` 配好；不要改回 OpenRouter 承载 Kimi，否则会重新在辅助任务或 fallback 记录里看到 OpenRouter。
+
+## 2026-05-08 - nofx Hermes v0.13.0 验收与 metadata 修复
+
+类型：deploy
+范围：nofx `/home/arbops/.hermes`、`arbitrageagent`、`spreadagent`
+事实：用户确认 nofx SSH 恢复后，已完成并验收 nofx Hermes v0.13.0。`hermes --version` 返回 `Hermes Agent v0.13.0 (2026.5.7)`，源码为 `/home/arbops/.hermes/hermes-agent/src`，Git `faa13e49`、`v2026.5.7-26-gfaa13e49`。此前 editable metadata 仍显示 `hermes-agent 0.12.0`，已用 venv Python 对当前源码执行 `pip install -e ... --no-deps`，现在 `pip show hermes-agent` 为 `0.13.0`。
+证据：官方 GitHub release latest 为 `Hermes Agent v0.13.0 (v2026.5.7)`；nofx `hermes profile list` 显示 `arbitrageagent` 与 `spreadagent` running；`gateway_state.json` 显示两者 Discord 均 connected。最终 smoke 在 `/home/arbops/projects/SmartMultiPlatformArbitrage` 运行，`arbitrageagent` session `20260508_162443_ce4450` 与 `spreadagent` session `20260508_162458_b977e7` 均返回 OK，且都是 `0 tool calls`。
+最后验证：2026-05-08 16:26
+复用建议：nofx 上验证 Hermes v0.13 时，先低频单连接 SSH，然后按 `hermes --version -> pip show -> profile list -> gateway_state.json -> Git 仓库内 chat smoke` 顺序收口。不要在 `/home/arbops` 直接跑 chat smoke；v0.13 worktree 会要求当前目录是 Git 仓库。
+
+## 2026-05-08 - nofx 拉取最新 hardflow 并恢复部署
+
+类型：deploy | pitfall
+范围：nofx hardflow 仓库、Hermes ops runtime、Discord gateway、内控 FastAPI、Docker 栈、磁盘/CPU 排查
+事实：nofx SSH banner timeout 后恢复可连。本轮先只读确认根盘 50G 已用 39G、剩余 8.9G，CPU 高峰来自服务器重启后 Docker 自动拉起的 `nofx-frontend`、`nofx-trading`、`tiger-trader-api`、`realtime_pub_node`、`realtime_pub_redis`，而磁盘高占用来自历史文件：`.hermes/pipeline-runs`、`.hermes/backups`、`spreadagent/state.db`/WAL、`/var/log` 和 containerd/docker 数据。已停止这些 Docker 容器和 `docker/containerd`，未删除数据。随后 nofx hardflow 仓库从 `2b68e38` fast-forward 到 `ae795f7`，并通过 runtime installer 安装到 `/home/arbops/.hermes`。服务器重启后 Hermes tmux 会话为空，已只恢复 `arbitrageagent`、`spreadagent` 和内控 API；不恢复 Docker 栈和 `multicore-repair`。
+证据：`HEAD...origin/main=0 0`；runtime installer 返回 `ok=true`、`changed=true`、5 个 skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`；远端源码与安装态 `compileall/py_compile` 通过；远端 runner 75 项、entry 54 项 OK；三份核心安装态脚本 SHA256 与仓库源码一致；cron `jobs_count=12`、`memtidy_hits=0`；`arbitrageagent/spreadagent` running；`/health` 为 `status=ok,strategy_running=false,ipc_connected=false`，`/api/strategy/status` 为 `running=false,pid=null`；Docker service/socket/containerd 均 inactive。误触发的两个 `cli-spreadagent-20260508T081948453965Z` / `cli-spreadagent-20260508T082248775092Z` 验收 pipeline 已按 run id 停止，避免继续占用 CPU/磁盘。
+最后验证：2026-05-08 16:25
+复用建议：以后 nofx 部署后只想做入口最小验证时，不要用 `--source cli` 跑 `smart-arb-pipeline`，因为 CLI source 会直接进入完整 pipeline；要低成本验收优先用 `--help`、安装态 SHA、单测、profile list 和 API smoke。磁盘释放需单独确认后清理历史 artifacts/backup/log/containerd，不应混在“停服务”动作里静默删除。
+
+## 2026-05-08 - Tokyo Claw OpenClaw 2026.5.7 升级复验与主模型 auth 修复
+
+类型：deploy
+范围：Tokyo Claw `/root/.openclaw`、OpenClaw gateway/node user services、Discord plugin、agent auth profiles
+事实：按用户要求，已将 Tokyo Claw OpenClaw 升级并复验到最新版 stable `2026.5.7 (eeef486)`。修复了升级过程中的旧 shim 与旧 service 元数据：shell `openclaw` 从 nvm 旧 `2026.4.14` 对齐到服务二进制，`openclaw-node.service` 元数据对齐 `2026.5.7`。同时修复 OpenAI Codex 主模型 auth：旧 `profiles.openai-codex:default` auth-profile 格式会让 `openai-codex/gpt-5.5` 401 并 fallback；已统一同步 Codex CLI 原生 `auth.json` 格式到 16 个 agent。
+证据：`openclaw --version` 和 `/usr/local/nodejs22/node-v22.22.0-linux-x64/bin/openclaw --version` 均返回 `OpenClaw 2026.5.7 (eeef486)`；`openclaw update status --json` 显示无 registry update；gateway/node user services 均 `active`；`config validate` valid；`gateway health` OK；`@openclaw/discord 2026.5.7` loaded；Discord `factor/news/strategy` account 均 running/connected；最终 `strategy_agent` smoke 返回 `UPGRADE_FINAL_OK`，provider/model 为 `openai-codex/gpt-5.5` 且无 fallback。保留备份：`upgrade-20260508-155449`、`upgrade-fix-shim-20260508-160431`、`auth-profile-raw-sync-20260508-161413`。
+最后验证：2026-05-08 16:15
+复用建议：OpenClaw 升级完成标准必须包含版本、service、plugin、channel、主模型 smoke 五项；看到 fallback 成功不能当作主模型健康。后续若 auth 再失效，优先用原生 `auth.json` 格式同步，而不是旧 profile 包装格式。
+
+## 2026-05-08 - WSL Hermes v0.13.0 与 Tokyo OpenClaw 2026.5.7 升级，nofx Hermes 升级阻塞
+
+类型：deploy | pitfall
+范围：WSL Ubuntu `/home/ubuntu/.hermes`、Tokyo Claw `/root/.openclaw`、nofx `/home/arbops/.hermes`
+事实：本机 WSL Hermes 已从 v0.12.0 升级到 v0.13.0（2026.5.7），`trend-backtest`、`multicore`、`multicorerouter` 三个 profile gateway 均已重启并 running。Tokyo Claw OpenClaw 已从 `2026.5.3-1` 升级到 `2026.5.7`，同时安装 `@openclaw/discord@2026.5.7`，gateway 重启后 `factor/news/strategy` 三个 Discord account 均 connected。nofx Hermes 升级未完成：升级前确认 v0.12.0 且 `hermes update --check` 显示 behind 457；已创建 `/home/arbops/.hermes/backups/pre-v013-20260508T071912Z/hermes-config-auth.tar.gz` 和 Hermes 自带 `pre-update-2026-05-08-151916.zip`，但 `hermes update --backup --yes` 返回 1，日志停在创建 pre-update backup；失败后最后一次可读状态仍是 v0.12.0、profile gateway 进程存在，随后 nofx SSH 进入 banner timeout，WSL OpenSSH 和 Paramiko 都无法完成握手。
+证据：WSL `hermes --version` 返回 `Hermes Agent v0.13.0 (2026.5.7)`，`hermes profile list` 显示 `multicore`、`multicorerouter`、`trend-backtest` running；`multicorerouter` 执行 `hermes -p multicorerouter chat -q '只回复 OK，不要调用工具。'` 返回 OK。WSL v0.13 默认 30 秒平台连接超时会让 Discord gateway 在 WSL NAT 抖动时退出，已在三个 profile `.env` 中设置 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120` 后重启成功。Tokyo `/usr/local/nodejs22/node-v22.22.0-linux-x64/bin/openclaw --version` 返回 `OpenClaw 2026.5.7 (eeef486)`，`openclaw gateway status --deep` 显示 runtime running、127.0.0.1:18789 connectivity probe ok，`openclaw channels status --json` 显示 Discord `factor/news/strategy` connected。nofx SSH 后续报 `Connection timed out during banner exchange` / Paramiko `Error reading SSH protocol banner`。
+最后验证：2026-05-08 16:03
+复用建议：Hermes v0.13 升级后如果 Discord profile 在 WSL 卡 `discord connect timed out after 30s`，优先提高 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT` 到 120 再重启，不要误判为 token 丢失。Tokyo OpenClaw 升级后必须同时校验 `openclaw config validate`、`gateway status --deep` 和 account 级 `channels status --json`。nofx 后续恢复时先低频单连接 SSH，检查是否有 `hermes update`/zip/pip 残留和磁盘/sshd 状态，再决定重跑 `hermes update --backup --yes` 或清理 1GB pre-update zip；不要并发重试 SSH。
+
 ## 2026-05-08 - 执行保护契约替代高权限关键词硬停
 
 类型：bugfix
@@ -395,3 +458,12 @@
 证据：相关测试覆盖 pipeline git_publish 成功/失败、写回后 patch 进入发布工作区、未验收脏改动不进入发布工作区、entry 默认注入/可跳过、live bridge 中文 commit/push 与 commit message 脱敏、repo hygiene 只读扫描、冲突标记误报防护、source watcher base path、runtime installer 安装新脚本。
 最后验证：2026-04-27 11:14 相关单元测试与 repo hygiene smoke 通过
 复用建议：仓库治理候选不直接删除；通过人工确认后再进入交付流水线。Git 发布不替代部署，deployment 仍只做内控服务 smoke；真正生产部署需按对应项目 RUNBOOK 执行。
+
+## 2026-05-08 - CVE-2026-31431 Copy Fail 多服务器排查、补丁安装与重启闭环
+
+类型：deploy
+范围：`pm-website`、`大白pm`、`coingod`、`hangqing-zhongxin`、`nofx`、`tokyo-claw`、本机 WSL Ubuntu
+事实：已按腾讯云通告和发行版仓库状态完成多宿主排查、补丁安装和滚动重启。4 台 Ubuntu 24.04 腾讯云主机原运行 `6.8.0-71-generic` 且 `CONFIG_CRYPTO_USER_API_AEAD=m`，均可 bind `authencesn(hmac(sha256),cbc(aes))`；已升级到 `kmod 31+20240202-2ubuntu7.2`、`linux-generic/linux-image-generic 6.8.0-111.111`，并重启进入 `6.8.0-111-generic`，复验 AEAD bind blocked、`/var/run/reboot-required` 清空。Tokyo OpenCloudOS 原运行 `6.6.117-45.1.oc9` 且 `CONFIG_CRYPTO_USER_API_AEAD=m`，已安装并重启进入 `kernel 6.6.119-49.18.oc9`，`/etc/modprobe.d/disable-algif-aead.conf` 继续生效，AEAD bind blocked，`needs-restarting -r` 显示无需重启。nofx CentOS Stream 9 原运行 `5.14.0-648.el9` 且 `CONFIG_CRYPTO_USER_API_AEAD=y`，已安装并重启进入 `kernel 5.14.0-700.el9`；静态 AEAD 入口仍可创建 socket，这是该内核配置的预期行为，闭环判据改为运行修复内核且 `needs-restarting -r` 显示无需重启。nofx 重启后 Hermes profile 和内控 API 不会自动恢复，已手工恢复 `arbitrageagent`、`spreadagent` 与 `smart-arb-api`，并把自动拉起的 Docker/containerd 停回 inactive。本机 WSL 内核 `5.10.16.3-microsoft-standard-WSL2` 为 `CONFIG_CRYPTO_USER_API_AEAD=n`，AEAD bind blocked，不受当前入口影响。`google-us` 连接在 SSH 握手阶段 reset，未纳入本轮腾讯云补丁范围。
+证据：最终远程复验显示 `pm-website`、`大白pm`、`coingod`、`hangqing-zhongxin` 均为 `kernel=6.8.0-111-generic`、`aead_bind_state=blocked`、`reboot_required_file=no`、`pkg:kmod=31+20240202-2ubuntu7.2`、`pkg:linux-generic=6.8.0-111.111`；Tokyo 复验显示 `kernel=6.6.119-49.18.oc9.x86_64`、`default_kernel=/boot/vmlinuz-6.6.119-49.18.oc9.x86_64`、`aead_bind_state=blocked`、`needs-restarting` 为无需重启；nofx 复验显示 `kernel=5.14.0-700.el9.x86_64`、`default_kernel=/boot/vmlinuz-5.14.0-700.el9.x86_64`、`CONFIG_CRYPTO_USER_API_AEAD=y`、`needs-restarting` 为无需重启。nofx 恢复后 `tmux ls` 包含 `hermes-discord-arbitrage`、`hermes-discord-spread`、`smart-arb-api`；`gateway_state.json` 显示两个 profile 的 `platforms.discord.state=connected`、`platforms.feishu.state=connected`；`/health` 返回 `status=ok,strategy_running=false,ipc_connected=false`，`/api/strategy/status` 返回 `running=false,pid=null`；`docker.socket`、`docker`、`containerd` 均为 inactive。
+最后验证：2026-05-09 10:36 CST
+复用建议：以后处理 CVE-2026-31431 先判定 `CONFIG_CRYPTO_USER_API_AEAD`：`n` 不受影响；`m` 可用发行版 kmod 修复或手工 `install algif_aead /bin/false` 立即缓解，再安装新内核并滚动重启；`y` 只能靠运行修复内核，不能用 AEAD bind blocked 作为验收指标。Ubuntu 云主机如 `coingod` 更新后 `/boot/grub/grub.cfg` 未生成新内核条目，先 `sudo update-grub` 再重启。RHEL-like 主机如 nofx 默认内核已指向新版本但重启仍落旧内核时，使用 `grub2-reboot <BLS entry>` 做一次 one-shot 引导，再复验 `uname -r` 和 `needs-restarting -r`。

@@ -1,7 +1,7 @@
 # Hermes Discord 趋势回测机器人
 
-> 状态：已配置完成，待用户侧 Discord 烟测
-> 最后更新：2026-04-20
+> 状态：已配置完成，2026-05-08 已复验 WSL Hermes v0.13.0 模型路由
+> 最后更新：2026-05-08
 
 ## 1. 需求定义
 
@@ -88,10 +88,12 @@
 
 ## 5. 实际落地结果
 
-- Hermes 已升级到 `v0.10.0 (2026.4.16)`
+- Hermes 已升级到 `v0.13.0 (2026.5.7)`
 - `trend-backtest` 独立 profile 已创建
-- 默认模型已固定为 `gpt-5.4`
-- 显式回退模型链已固定为：`gpt-5.3-codex-spark`
+- 默认主模型已固定为 `openai-codex/gpt-5.5`，profile `agent.reasoning_effort=xhigh`
+- 显式主回退链已固定为：`kimi-coding/kimi-k2.6 -> zai/glm-5.1`，回退项标注 `reasoning_effort=high`
+- 常见文本辅助任务已显式配置：默认辅助任务使用 `zai/glm-4.7`，重要辅助任务 `compression` / `curator` 使用 `zai/glm-5.1`
+- Kimi/Moonshot 直连 key 已配置（2026-05-08 已复验）：`KIMI_API_KEY` / `KIMI_CODING_API_KEY` 已注入 profile 运行时环境；`config check` 显示 Kimi/Moonshot configured，第一回退 `kimi-coding/kimi-k2.6` 与第二回退 `zai/glm-5.1` 均可用。
 - 已通过 Discord API 核对到真实 guild：`智能趋势跟踪` (`1492491333653368894`)
 - 已识别文本频道 5 个，其中小群 free-response 频道为：
   - `1495659215598125217` `趋势回测测试`
@@ -107,6 +109,7 @@
 - `trend-backtest/config.yaml` 已显式写入 `delegation` 配置，默认允许 `delegate_task` 使用 `terminal/file/web` 工具集并发启动最多 `3` 个子 agent
 - Linux 工作副本根目录的本地 `HERMES.md` 已补充“默认自主执行、独立步骤优先并行、复杂任务可拆 delegation”的运行指令
 - Hermes Discord 规则测试已通过：`34 passed`
+- 2026-05-08 复验：三个 WSL profile `start-gateway.sh` 已显式加载 profile `.env` 并设置 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`；三个 profile gateway 已重启并 running，`trend-backtest` smoke session `20260508_174244_373cd2` 返回 OK 且 `0 tool calls`
 - 运行时注意：Hermes 会按 session 缓存 system prompt，因此旧 Discord 会话如需立刻吃到新 `SOUL.md`，应执行一次 `/reset` 或直接开启新会话
 
 ## 6. 验收标准

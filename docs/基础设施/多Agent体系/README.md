@@ -1,13 +1,13 @@
 # 多 Agent / Workflow Owner 体系
 
-> 最后更新：2026-04-27
+> 最后更新：2026-05-08
 > 本页是 nofx 当前 workflow 口径，不再使用 2026-03 的 14 Agent 注册表作为 active 事实源。当前 active owner 严格为 9 个。
 
 ## 当前结论
 
 nofx 现在按四层理解：
 
-1. **入口层**：服务器对外运行两个 Hermes Discord profile：`arbitrageagent`、`spreadagent`。它们是入口，不是完整工作流本身；两者模型均为 `openai-codex/gpt-5.5`。
+1. **入口层**：服务器对外运行两个 Hermes Discord profile：`arbitrageagent`、`spreadagent`。它们是入口，不是完整工作流本身；两者主模型均为 `openai-codex/gpt-5.5`，主回退链为 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`，辅助任务默认 `zai/glm-4.7`，重要辅助任务使用 `zai/glm-5.1`。
 2. **工作流层**：真正执行入口是 `/home/arbops/.local/bin/smart-arb-pipeline`，它调用 `/home/arbops/.hermes/ops/pipeline_runner.py`。
 3. **逻辑 owner 层**：`coordinator`、`project-agent`、`web-agent`、`reviewer`、`backend-dev`、`frontend-dev`、`tester`、`deployer`、`doc-writer` 是 workflow 阶段责任人 / workspace 标签，不是常驻进程。
 4. **定时任务层**：cron/task-center 只挂在 active owner 上，当前为 `coordinator` 与 `project-agent`；`ops-agent`、`optimization-agent` 不再作为 active owner。
@@ -16,8 +16,8 @@ nofx 现在按四层理解：
 
 | profile | 类型 | 模型 | 作用 |
 |---------|------|------|------|
-| `arbitrageagent` | Hermes Discord profile | `openai-codex/gpt-5.5` | 套利策略运维与策略开发入口 |
-| `spreadagent` | Hermes Discord profile | `openai-codex/gpt-5.5` | 价差费率监控与只读观测入口 |
+| `arbitrageagent` | Hermes Discord profile | 主 `openai-codex/gpt-5.5`；回退 `kimi-k2.6 -> glm-5.1`；辅助默认 `glm-4.7` | 套利策略运维与策略开发入口 |
+| `spreadagent` | Hermes Discord profile | 主 `openai-codex/gpt-5.5`；回退 `kimi-k2.6 -> glm-5.1`；辅助默认 `glm-4.7` | 价差费率监控与只读观测入口 |
 
 这两个 profile 收到执行类请求后必须创建 `smart-arb-pipeline` run，不在 profile 会话里直接实现、部署、安装依赖、修改代码或提交 Git。
 

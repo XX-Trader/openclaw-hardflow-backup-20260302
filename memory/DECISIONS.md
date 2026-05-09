@@ -1,5 +1,14 @@
 # DECISIONS
 
+## 2026-05-09 - OpenClaw 只保留在 Tokyo Claw
+
+类型：decision
+范围：`tokyo-claw`、`pm-website`、`nofx`、Hermes / OpenClaw runtime 边界
+事实：用户确认 OpenClaw 只应运行在 `tokyo-claw`。`pm-website` 与 `nofx` 不再运行 OpenClaw；这两台如需 agent/runtime 能力，保留 Hermes 和现有业务服务。后续巡检或重启恢复时，不要把 `pm-website` / `nofx` 上的 OpenClaw 进程、systemd unit、`~/.openclaw` 配置或 CLI 当作应恢复服务。
+证据：2026-05-09 已在 `pm-website` 删除旧 `openclaw-gateway.service`、`/usr/local/bin/openclaw`、`/usr/local/lib/node_modules/openclaw`；复验无 OpenClaw 进程、无 `18789/18791` 监听、无 CLI、无 unit。已在 `nofx` 删除 `/root/.openclaw` 与 `/home/arbops/.openclaw`；复验无 OpenClaw 进程、无 CLI、无 unit。`tokyo-claw` 仍运行 OpenClaw，监听 `127.0.0.1:18789/18791`，进程为 `/usr/local/nodejs22/.../openclaw/dist/index.js gateway --port 18789` 与 `openclaw-node`。
+最后验证：2026-05-09 10:46 CST
+复用建议：以后处理多服务器运行态时，OpenClaw 健康检查只对 `tokyo-claw` 执行；`pm-website` 只看 Hermes copyeditor/quantdev、Docker/nginx/redis/supervisor 等业务服务；`nofx` 只看 Hermes `arbitrageagent` / `spreadagent`、`smart-arb-api` 和既定 Docker stopped 边界。
+
 ## 2026-05-08 - execution_guard 替代高权限关键词硬门禁
 
 类型：decision

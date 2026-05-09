@@ -1,6 +1,6 @@
 # Hermes Discord 趋势回测机器人实施规划
 
-> 最后更新：2026-04-20
+> 最后更新：2026-05-08
 
 ## 1. 实施策略
 
@@ -54,6 +54,9 @@
 - [x] 在 `trend-backtest/config.yaml` 写入 `approvals.mode='off'`，只对 `trend-backtest` 关闭命令审批弹窗
 - [x] 在 `trend-backtest/config.yaml` 写入 `delegation` 配置，显式开启并行子 agent
 - [x] 固定 `delegation.max_concurrent_children=3`
+- [x] 2026-05-08 将主模型升级配置为 `openai-codex/gpt-5.5` + `agent.reasoning_effort=xhigh`
+- [x] 2026-05-08 将主回退链改为 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`
+- [x] 2026-05-08 将文本辅助任务显式收口为默认 `zai/glm-4.7`、重要任务 `zai/glm-5.1`
 
 ### Phase 4: Discord 拓扑探测与规则写入
 
@@ -95,7 +98,24 @@ hermes update
 
 ### 3.3 密钥写入
 
-Discord token 与 GitHub PAT 都只写 profile 运行时环境，不写入仓库；Git 仓库访问通过 repo-local helper 从 profile `.env` 读取。`trend-backtest` 的默认工作目录固定为 `/home/ubuntu/projects/SmartTrendTracker`。命令审批通过该 profile 的 `config.yaml` 固定为 `approvals.mode='off'`，并显式启用 `delegation` 以支持并行子 agent。
+Discord token、GitHub PAT、Z.AI/Kimi/OpenRouter 等 provider key 都只写 profile 运行时环境，不写入仓库；Git 仓库访问通过 repo-local helper 从 profile `.env` 读取。`trend-backtest` 的默认工作目录固定为 `/home/ubuntu/projects/SmartTrendTracker`。命令审批通过该 profile 的 `config.yaml` 固定为 `approvals.mode='off'`，并显式启用 `delegation` 以支持并行子 agent。
+
+### 3.4 模型路由复验
+
+```bash
+hermes -p trend-backtest fallback list
+hermes -p trend-backtest config check
+hermes -p trend-backtest status
+hermes -p trend-backtest chat -q '只回复 OK，不要调用工具。'
+```
+
+2026-05-08 复验结论：
+
+- `fallback list`：`gpt-5.5 -> kimi-k2.6 -> glm-5.1`
+- `config check`：OpenRouter unset，Z.AI/GLM configured，Kimi/Moonshot configured
+- gateway：`trend-backtest=16901`、`multicore=16904`、`multicorerouter=16907`
+- start scripts：三个 profile `start-gateway.sh` 已 source profile `.env` 并设置 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`
+- smoke：`trend-backtest` session `20260508_174244_373cd2` 返回 OK，`0 tool calls`
 
 ## 4. 风险与缓解
 

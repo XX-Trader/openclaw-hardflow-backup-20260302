@@ -1,5 +1,59 @@
 # DEPLOYMENT
 
+## 2026-05-08 21:06 - nofx Hermes 模型路由与辅助任务路由配置
+
+类型：deploy
+范围：nofx `/home/arbops/.hermes`、profiles `arbitrageagent` / `spreadagent`
+事实：nofx live Hermes 已按 WSL 同一模型策略配置。两个 Discord profile 的主模型为 `openai-codex/gpt-5.5`，`agent.reasoning_effort=xhigh`；主回退链为 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`，两级回退均标注 `reasoning_effort=high`。`delegation` 使用 `openai-codex/gpt-5.5/xhigh`；辅助任务默认使用 `zai/glm-4.7`，`compression` / `curator` 使用 `zai/glm-5.1`。`/home/arbops/.hermes/.env` 与两个 profile `.env` 只保留 Codex auth、Kimi k2.6、GLM 5.1/4.7 所需变量，已删除 OpenRouter 与 `ZAI_API_BASE` 残留。
+证据：备份目录 `/home/arbops/.hermes/backups/model-routing-20260508_nofx_20260508_210202`；脱敏检查显示 `.env` 为 `arbops:arbops 0600`，`config.yaml` 未命中 `openrouter`、`OPENROUTER_API_KEY` 或 `ZAI_API_BASE`。已重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread` tmux 会话，`hermes gateway list` 显示 `arbitrageagent` PID `118779`、`spreadagent` PID `118783` running；`gateway_state.json` 显示两者 Discord `connected`。chat smoke：`arbitrageagent` session `20260508_210549_dd9a9e`、`spreadagent` session `20260508_210617_36db94` 均成功返回，`0 tool calls`。
+最后验证：2026-05-08 21:06
+复用建议：nofx profile 配置是运行态真相源，不能只改仓库模板或全局 `.env`。以后改模型路由要同步两个 profile 的 `.env/config.yaml`，用 Git for Windows `ssh.exe -F F:/ssh_keys/ssh_config nofx` 低频连接，远端操作保持 `arbops` 权限和 `.env 0600`。
+
+## 2026-05-08 17:45 - WSL Hermes 模型路由与辅助任务路由配置
+
+类型：deploy
+范围：WSL `/home/ubuntu/.hermes`、profiles `trend-backtest` / `multicore` / `multicorerouter`
+事实：本机 WSL Hermes global config 与三个 profile config 已统一配置为主模型 `openai-codex/gpt-5.5`、主思考强度 `xhigh`、主回退链 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`。文本辅助任务已从 `auto` 改为显式 Z.AI：默认辅助任务走 `zai/glm-4.7`，`compression` 与 `curator` 走 `zai/glm-5.1`。按用户纠正，本机 WSL 只保留 Codex auth、Kimi k2.6 与 GLM 5.1/4.7 两套模型 API；`OPENROUTER_API_KEY` 与全局 `openrouter:` 配置段已删除。三个 profile `start-gateway.sh` 已显式加载 profile `.env` 并设置 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`，随后重启到 screen 会话 `trend-backtest-gw`、`multicore-gw`、`multicorerouter-gw`，进程命令均为 `hermes -p <profile> gateway run --replace`。
+证据：配置备份目录 `/home/ubuntu/.hermes/backups/model-routing-20260508_173733`，启动脚本备份目录 `/home/ubuntu/.hermes/backups/gateway-start-env-20260508_175344`，删除 OpenRouter 与补齐 Kimi/GLM provider 的备份目录 `/home/ubuntu/.hermes/backups/remove-openrouter-20260508_1818`；`gateway list` 显示 `trend-backtest=16901`、`multicore=16904`、`multicorerouter=16907` running；`hermes -p trend-backtest chat -q '只回复 OK，不要调用工具。'` 返回 OK，session `20260508_174244_373cd2`，`0 tool calls`。`config check` 显示 OpenRouter unset，Z.AI/GLM 与 Kimi/Moonshot configured。
+最后验证：2026-05-08 17:45
+复用建议：后续改 WSL Hermes 模型路由必须同时改 global config 与三个 profile override，并重启 profile gateway；只改 `~/.hermes/config.yaml` 不会覆盖 profile 运行态。本机 WSL 不应再写 `OPENROUTER_API_KEY`；Kimi 使用 `KIMI_API_KEY` / `KIMI_CODING_API_KEY` / `KIMI_BASE_URL`，GLM 使用 `GLM_API_KEY` / `ZAI_API_KEY` / `GLM_BASE_URL`。
+
+## 2026-05-08 16:26 - nofx Hermes v0.13.0 验收与 editable metadata 修复
+
+类型：deploy
+范围：nofx `/home/arbops/.hermes`、Hermes source `/home/arbops/.hermes/hermes-agent/src`、profile `arbitrageagent` / `spreadagent`
+事实：nofx SSH 恢复后，Hermes 已确认升级到官方 latest `Hermes Agent v0.13.0 (2026.5.7)`。源码位于 `/home/arbops/.hermes/hermes-agent/src`，Git 为 `faa13e49`，`git describe` 为 `v2026.5.7-26-gfaa13e49`；`pyproject.toml` 与 `hermes_cli/__init__.py` 均为 `0.13.0`。升级后 editable pip metadata 曾残留 `hermes-agent 0.12.0`，已执行 `/home/arbops/.hermes/hermes-agent/venv/bin/python -m pip install -e /home/arbops/.hermes/hermes-agent/src --no-deps` 刷新为 `0.13.0`。本轮没有修改 nofx profile 配置或 hardflow/SmartMulti 业务代码；未重启 gateway，因为 `arbitrageagent` 与 `spreadagent` 已处于新版 running/connected 状态。
+证据：GitHub 官方 release 页面显示 latest 为 `Hermes Agent v0.13.0 (v2026.5.7)`，release date 为 2026-05-07。nofx `hermes --version` 返回 `Hermes Agent v0.13.0 (2026.5.7)`、`OpenAI SDK: 2.24.0`、`Up to date`；pip show 刷新后返回 `Version: 0.13.0` 且 editable project location 为 `/home/arbops/.hermes/hermes-agent/src`。`hermes profile list` 显示 `arbitrageagent` 与 `spreadagent` running；两者 `gateway_state.json` 分别为 `running/connected`，PID 为 `7242` 与 `7237`。在 `/home/arbops/projects/SmartMultiPlatformArbitrage` 内执行 chat smoke：`arbitrageagent` session `20260508_162443_ce4450`、`spreadagent` session `20260508_162458_b977e7` 均返回 OK，`0 tool calls`。
+最后验证：2026-05-08 16:26
+复用建议：nofx Hermes 升级恢复后先用 `hermes --version` 与源码 tag 判断真实 runtime，不要只看 `pip show`；editable metadata 如果残留旧版本，执行 venv 内 `pip install -e <src> --no-deps` 刷新。`hermes chat` smoke 必须在 Git 仓库内执行，例如 `/home/arbops/projects/SmartMultiPlatformArbitrage`，否则 v0.13 会因 worktree 要求直接失败。
+
+## 2026-05-08 16:25 - nofx 拉取 ae795f7 并恢复 hardflow runtime
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、内控 FastAPI、Docker 栈
+事实：nofx SSH 恢复后，已按低频单连接进入服务器，先停掉自动拉起且占用 CPU/overlay/log 的 Docker 栈（`nofx-frontend`、`nofx-trading`、`tiger-trader-api`、`realtime_pub_node`、`realtime_pub_redis`）以及 `docker/containerd`，未删除业务数据。随后 hardflow 仓库从 `2b68e38` fast-forward 到 `ae795f7`，`HEAD...origin/main=0 0`，runtime installer 已把最新 5 个 workflow skills、22 个 ops scripts、12 个 cron jobs 安装到 `/home/arbops/.hermes`。服务器重启后 tmux 为空，已仅恢复必要的 `arbitrageagent`、`spreadagent` 和内控 API；`multicore-repair` 与 Docker 栈保持 stopped。一次误用 `--source cli` 的入口 smoke 触发了完整 pipeline run，已按 run id 停止相关进程，避免继续占 CPU/磁盘。
+证据：远端 `compileall` 覆盖源码与安装态通过；远端 `test_project_delivery_pipeline_runner` 75 项 OK、`test_smart_arb_pipeline_entry` 54 项 OK；`git diff --check` 通过；安装态 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` SHA256 与仓库源码一致；`jobs_count=12`、`memtidy_hits=0`、`backlog_runner_30m=1`；`/health` 返回 `status=ok,strategy_running=false,ipc_connected=false`，`/api/strategy/status` 返回 `running=false,pid=null`；`hermes profile list` 显示 `arbitrageagent` 与 `spreadagent` running，`multicore-repair` stopped；Docker 三个 service 均 inactive。资源复核：根盘 50G 已用 39G（82%），主要占用为 `.hermes/pipeline-runs` 3.4G、`.hermes/backups` 1.2G、`spreadagent/state.db` 与 WAL 约 0.95G、`/var/log` 1.1G、`/var/lib/containerd` 1.6G；停服务只能阻止继续增长，不会释放历史文件。
+最后验证：2026-05-08 16:25
+复用建议：nofx 发生 SSH banner timeout 后，先低频单连接重试；登录后先查 `df -hT`、`du -xhd1 /home/arbops/.hermes`、Docker/tmux/systemd 状态，再停明显自动拉起的非 hardflow Docker 栈。要释放磁盘必须另行清理旧 pipeline artifacts、pre-update zip、日志或 containerd 数据；这属于删除历史证据/缓存，执行前需明确确认保留范围。
+
+## 2026-05-08 16:15 - Tokyo Claw OpenClaw 2026.5.7 复验与 Codex auth-profile 修复
+
+类型：deploy
+范围：Tokyo Claw `/root/.openclaw`、`/root/.config/systemd/user/openclaw-{gateway,node}.service`、`/root/.nvm/versions/node/v22.22.0/bin/openclaw`
+事实：Tokyo Claw OpenClaw 已升级并复验为 `2026.5.7 (eeef486)`。本轮修正了两个升级后容易误导的状态：shell PATH 前面的 nvm `openclaw` shim 曾继续指向旧 `2026.4.14`，已改为指向 `/usr/local/nodejs22/node-v22.22.0-linux-x64/bin/openclaw`；`openclaw-node.service` 的 `Description` 和 `OPENCLAW_SERVICE_VERSION` 已从旧 `2026.4.15` 对齐到 `2026.5.7`，没有覆盖原有 GitHub token drop-in。OpenClaw 2026.5.7 下，旧 `profiles.openai-codex:default` auth-profile 格式会导致 `openai-codex/gpt-5.5` 返回 401 `token invalidated`；已把 Codex CLI 原生 `~/.codex/auth.json` 格式同步到 16 个 agent 的 `auth-profiles.json`，主模型 smoke 恢复为直连 `openai-codex/gpt-5.5`。
+证据：`openclaw --version` 与服务二进制均返回 `OpenClaw 2026.5.7 (eeef486)`；`openclaw update status --json` 显示 stable/latest 无可用 registry update；`systemctl --user is-active openclaw-gateway.service openclaw-node.service` 均为 `active`，两份 service 元数据均显示 `v2026.5.7`；`openclaw config validate --json` 返回 `valid=true`；`openclaw gateway health` 返回 OK；`openclaw channels status --json` 显示 Discord `factor/news/strategy` 均 running/connected；`openclaw plugins list --json` 显示 `@openclaw/discord 2026.5.7` loaded；`strategy_agent` smoke 返回 `UPGRADE_FINAL_OK`，provider/model 为 `openai-codex/gpt-5.5`，`fallbackAttempts=None`。备份目录包括 `/root/.openclaw/backups/upgrade-20260508-155449`、`upgrade-fix-shim-20260508-160431`、`auth-profile-raw-sync-20260508-161413`。
+最后验证：2026-05-08 16:15
+复用建议：Tokyo OpenClaw 升级后必须同时检查服务二进制、shell `command -v openclaw`、systemd unit 元数据、`@openclaw/discord` 插件和 account 级 channel 状态。若 agent smoke 显示 fallback 到 `kimicode/kimi-k2.6` 且 `openai-codex/gpt-5.5` 报 401，但 `codex exec -m gpt-5.5` 可用，优先把 Codex CLI 原生 `auth.json` 格式同步到 agent `auth-profiles.json`，不要继续使用旧 `profiles.openai-codex:default` 格式。
+
+## 2026-05-08 16:03 - WSL Hermes 与 Tokyo OpenClaw 升级，nofx Hermes 升级阻塞
+
+类型：deploy | blocked
+范围：WSL Ubuntu `/home/ubuntu/.hermes`、Tokyo Claw `/root/.openclaw`、nofx `/home/arbops/.hermes`
+事实：WSL Hermes 已升级到 v0.13.0（2026.5.7），三个本机 profile `trend-backtest`、`multicore`、`multicorerouter` 均已重启并 running。Tokyo Claw OpenClaw 已升级到 `2026.5.7`，`@openclaw/discord@2026.5.7` 已安装，gateway 重新启动后 account 级 Discord 状态恢复 connected。nofx Hermes 升级被 SSH banner timeout 阻塞，未完成升级；升级尝试前已做服务器本地配置/auth 快照，失败后最后确认仍为 v0.12.0，之后无法继续登录验证。
+证据：WSL `hermes --version` 为 v0.13.0，`hermes profile list` 三个 profile running，`hermes -p multicorerouter chat -q '只回复 OK，不要调用工具。'` 返回 OK；为适配 v0.13 默认平台连接超时，WSL 三个 profile `.env` 已写入 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`。Tokyo `openclaw --version` 为 `OpenClaw 2026.5.7 (eeef486)`，`npm list -g --depth=0` 显示 `openclaw@2026.5.7` 和 `@openclaw/discord@2026.5.7`，`openclaw gateway status --deep` connectivity probe ok，`channels status --json` 显示 `factor`、`news`、`strategy` connected。nofx 备份路径为 `/home/arbops/.hermes/backups/pre-v013-20260508T071912Z/hermes-config-auth.tar.gz` 和 `/home/arbops/.hermes/backups/pre-update-2026-05-08-151916.zip`；后续 WSL OpenSSH 与 Paramiko 均报 SSH banner 超时。
+最后验证：2026-05-08 16:03
+复用建议：nofx 恢复后不要直接假设已升级；先查 `hermes --version`、`/home/arbops/.hermes/logs/update.log`、`df -h`、`pgrep -af 'hermes update|pip|git|gateway'` 和 profile gateway 状态。若仍是 v0.12.0，先处理 SSH/IO/备份 zip，再重跑 `hermes update --backup --yes`；成功后按 WSL 经验必要时给 profile `.env` 加 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`。
+
 ## 2026-05-07 16:20 - nofx 安装 solution_review 凭证目标文件自动修方案批次
 
 类型：deploy
