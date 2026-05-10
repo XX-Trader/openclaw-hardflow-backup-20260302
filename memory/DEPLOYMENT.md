@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-10 20:30 - nofx 安装业务动作门禁删除批次
+
+类型：deploy
+范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.local/bin/smart-arb-pipeline`
+事实：本机提交 `4b22b6b0` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `182a8c0` fast-forward 到 `4b22b6b`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 已把删除业务动作 workflow 门禁、审核/验证/deployment/git_publish 失败回流、以及 Git 发布 staged diff 密码/密钥扫描保留逻辑安装到 `/home/arbops/.hermes/ops`。本轮只更新 hardflow/Hermes ops 与文档记忆，没有修改 profile SOUL，因此未重启 Discord gateway。
+证据：runtime installer 返回 `ok=true`、`changed=true`、5 个 workflow skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`。远端仓库与安装态三份核心脚本 SHA256 一致：`pipeline_runner.py=00bfe1800073aa62bdd6a0b04a387e7d3a4597b22d4a672470fc49d427abafc2`、`smart_arb_pipeline_entry.py=ae70a1de274baa36d0853d90cbbeaaca66a42b9d1c220588a7688b9eee025050`、`smart_arb_live_bridge.py=b211cbdd5b85f741614b57c29d4cadf60f042543c49e8c636183718bfb851648`。远端 `py_compile` 覆盖仓库与安装态三脚本通过；`compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check`、`smart-arb-pipeline --help` 通过；远端 entry/live bridge 97 项 OK，runner 13 个关键回归 OK。内控 API `/health` 返回 `status=ok,strategy_running=false,ipc_connected=false`，`/api/strategy/status` 返回 `running=false,pid=null`。`hermes -p arbitrageagent status` 与 `hermes -p spreadagent status` 均显示 gateway running，Discord configured。
+最后验证：2026-05-10 20:30 CST
+复用建议：以后 nofx 工作流如果仍因真实交易、下单、划转、提现、资金操作等字样卡在 `risk_gate` 或寻找 `execution_guard.json`，优先确认远端仓库和 `/home/arbops/.hermes/ops` 是否已安装 `4b22b6b` 或更新提交。新逻辑应看 `failed_stage`、`next_action`、`failure_summary.md` 与对应 stage artifact；Git 上传仍必须保留 staged diff 密码/Token/Cookie/私钥/凭证材料扫描。
+
 ## 2026-05-09 23:10 - nofx Discord profile 迁入智能趋势跟踪
 
 类型：deploy

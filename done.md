@@ -11,6 +11,7 @@
   - 已按用户口径删除/停用交易、下单、资金划转、提现等业务相关 workflow 门禁；`pre_execution_risk.json` 只保留执行前记录，不再生成 `execution_guard.json`。
   - 审核与开发改为失败回流闭环：需求审核、方案审核、验证、代码审核、deployment、git_publish 失败都会记录失败原因并回到对应修复动作，直到通过。
   - Git 发布阶段仍保留 staged diff 密码/Token/Cookie/私钥/凭证材料扫描；命中真实敏感信息会阻塞到 `fix_git_publish`，不允许上传。
+  - 已推送并安装到 nofx：提交 `4b22b6b0` 已进入 `origin/main`，nofx 仓库已快进到该提交，runtime installer 已同步到 `/home/arbops/.hermes/ops`。
   - 验证：`test_smart_arb_pipeline_entry` + `test_smart_arb_live_bridge` 97 项 OK；runner 业务门禁/失败回流定向用例 OK；runner 全模块因历史长用例超过 6 分钟未作为通过证据。
 
 ## 2026-05-09 已完成
