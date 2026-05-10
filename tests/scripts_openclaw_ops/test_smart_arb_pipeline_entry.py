@@ -715,23 +715,23 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
             risk.write_text(
                 json.dumps(
                     {
-                        "risk_level": "guarded",
-                        "execution_decision": "guarded_execute",
+                        "risk_level": "low",
+                        "execution_decision": "auto_execute",
                         "human_confirmation_required": False,
                         "hard_stop_required": False,
-                        "guarded_action_reasons": ["place_order"],
+                        "guarded_action_reasons": [],
                     },
                     ensure_ascii=False,
                 ),
                 encoding="utf-8",
             )
             failure = tmp_path / "failure_summary.md"
-            failure.write_text("# 失败步骤群回传摘要\n\n## 失败阶段\n- stage: `risk_gate`\n", encoding="utf-8")
+            failure.write_text("# 失败步骤群回传摘要\n\n## 失败阶段\n- stage: `code_review`\n", encoding="utf-8")
             state = {
                 "run_id": "discord-spreadagent-plan",
                 "status": "blocked",
-                "next_action": "fix_execution_guard",
-                "failed_stage": "risk_gate",
+                "next_action": "return_to_code_execution",
+                "failed_stage": "code_review",
                 "run_dir": str(tmp_path),
                 "artifacts": {
                     "plan_publish": str(plan),
@@ -740,18 +740,18 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 },
                 "stages": [
                     {"name": "plan_publish", "status": "completed", "artifact": "group_plan_publish.md"},
-                    {"name": "risk_gate", "status": "blocked", "artifact": "group_plan_publish.md"},
+                    {"name": "code_review", "status": "blocked", "artifact": "code_review.md"},
                 ],
             }
 
             text = module.render_chat_summary(state, source="discord", profile="spreadagent", returncode=0)
 
         self.assertIn("## 群回传执行方案", text)
-        self.assertIn("risk=guarded; decision=guarded_execute", text)
+        self.assertIn("risk=low; decision=auto_execute", text)
         self.assertIn("group_plan_publish.md", text)
         self.assertIn("## 群回传失败摘要", text)
         self.assertIn("failure_summary.md", text)
-        self.assertIn("风险门禁", text)
+        self.assertIn("代码审查", text)
 
     def test_main_default_prints_chat_summary(self):
         module = load_module()
@@ -1339,7 +1339,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 self.assertEqual("high", repair_risk)
                 self.assertEqual(reasons, repair_reasons)
 
-    def test_trading_fund_and_destructive_requests_are_guarded_repairable(self):
+    def test_business_operation_requests_are_plain_repairable(self):
         module = load_module()
         for detail in (
             "set PRODUCTION_TRADING_ENABLED=true before retrying",
@@ -1387,8 +1387,7 @@ class SmartArbPipelineEntryTests(unittest.TestCase):
                 should_repair, repair_risk, repair_reasons = module.should_auto_repair(state, 0, 2)
 
                 self.assertEqual("medium", risk)
-                self.assertTrue(reasons)
-                self.assertIn("高权限动作已降级为执行保护契约", reasons[0])
+                self.assertEqual(["可回流动作: run_external_research"], reasons)
                 self.assertTrue(should_repair)
                 self.assertEqual("medium", repair_risk)
                 self.assertEqual(reasons, repair_reasons)

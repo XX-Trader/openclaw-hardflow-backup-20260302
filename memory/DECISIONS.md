@@ -1,5 +1,14 @@
 # DECISIONS
 
+## 2026-05-10 - 移除业务动作门禁并保留 Git 发布密码扫描
+
+类型：decision
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`pre_execution_risk.json`、`solution_review`、`code_review`、`git_publish`
+事实：工作流不再把真实交易、下单、撤单、划转、提现、资金操作、破坏性数据操作等业务或执行动作当作 workflow 风险门禁，也不再生成 `execution_guard.json`。`pre_execution_risk.json` 只保留执行前记录，默认 `risk_level=low`、`execution_decision=auto_execute`。需求审核、方案审核、验证、代码审核、deployment 和 git_publish 全部按失败回流闭环处理：审核或命令失败必须写明失败阶段、失败原因和 artifact，再回到开发或发布修复，直到通过。唯一保留的密码/密钥硬检查放在 Git 发布阶段 staged diff 扫描；真实 password/token/cookie/private key/credential material 仍阻塞到 `fix_git_publish`。
+证据：`assess_pre_execution_risk()` 固定返回低风险记录；`PIPELINE_ARTIFACT_FILES` 不再包含 `execution_guard.json`；`render_group_plan_publish()` 明确业务关键词不再拦截；`solution_review_hard_blocker_lines()` 不再把方案审核内容变成永久硬停；`code_execution`、`verification`、`code_review`、`deployment`、`git_publish` 失败均通过 `block_pipeline()` 回流到对应修复动作。定向测试覆盖业务动作直接执行、人工确认仅留痕、需求失败阻断、验证/代码审核/deployment/git_publish 失败回流和 Git 发布失败阻断。
+最后验证：2026-05-10 20:10 CST；`py_compile`、`compileall`、entry/live bridge 97 项、runner 13 个关键回归、`git diff --check` 通过；runner 全模块两次超过 6 分钟未完成，未作为通过证据
+复用建议：以后看到“交易/资金/提现/划转/破坏性操作”字样，不要再找 `risk_gate`、`execution_guard.json` 或 `--human-risk-confirmed` 放行逻辑；直接看失败阶段的 artifact 和 `next_action`。只有 Git 发布时 staged diff 里的真实密码、Token、Cookie、私钥或凭证材料仍是硬阻断。
+
 ## 2026-05-09 - OpenClaw 只保留在 Tokyo Claw
 
 类型：decision
@@ -13,19 +22,19 @@
 
 类型：decision
 范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`pre_execution_risk.json`、`execution_guard.json`
-事实：真实交易、下单、撤单、划转、提现、force push、删除、覆盖、数据库 drop/truncate/delete 等关键词不再自动停在 `risk_gate`。命中这些高权限动作时，runner 生成 `execution_guard.json`，按最小可执行金额/用户指定小额、账号/市场/地址白名单、idempotency、审计日志、状态回读、破坏性操作前备份、备份可读性证明、恢复命令和保留 TTL 继续执行。硬停只保留三类：凭证/secret/cookie/auth-state 泄露或打印/提交/写入，破坏性目标不明确，备份或审计准备失败。`--human-risk-confirmed` 仍可记录调用方确认，但不再是交易/资金/破坏性关键词继续执行的前置门禁。
+事实：历史口径，已被 2026-05-10 “移除业务动作门禁并保留 Git 发布密码扫描”取代。当时真实交易、下单、撤单、划转、提现、force push、删除、覆盖、数据库 drop/truncate/delete 等关键词不再自动停在 `risk_gate`，而是生成 `execution_guard.json` 继续执行。2026-05-10 起不再生成该执行保护契约，业务动作关键词也不再作为 workflow 门禁。
 证据：`HARD_STOP_PLAN_PATTERNS` 与 `GUARDED_OPERATION_PLAN_PATTERNS` 分离；新增 `build_execution_guard()`、`execution_guard.json` artifact、`guarded_execute` / `confirmed_guarded_execute` / `hard_block` 决策；entry 自动修复把交易/资金/破坏性动作降级为 medium 可回流，凭证仍 high；live bridge code_execution/review prompt 读取 `execution_guard.json`。测试覆盖交易 guarded 继续、凭证打印 hard_block、破坏性目标不明确 hard_block、明确目标+备份 destructive guarded、entry 54 项全模块 OK。
 最后验证：2026-05-08 14:53
-复用建议：后续遇到工作流因“真实交易/下单/提现/划转/删除/force push”字样卡住，先看 `execution_guard.json.guard_status` 和 `hard_stop_reasons`。如果 guard ready，应继续实现并落实小额/备份/审计/回读；不要恢复关键词硬停或反复要求用户二次确认。只有凭证泄露、目标不清或备份/审计失败才停。
+复用建议：排查 2026-05-10 之前的历史 run 时仍可按该记录理解；新 run 不应再停在 `risk_gate` 或查 `execution_guard.json`。交易/资金/提现/划转等失败应回到实际失败阶段的开发、审核或发布修复动作。
 
 ## 2026-05-07 - solution_review 是方案质量软门禁
 
 类型：decision
 范围：`pipeline_runner.py`、`smart_arb_live_bridge.py`、`solution_review`、`code_execution`、`code_review`
-事实：方案评审不再把普通方案质量 blocker 当成实现前硬停。只要 `solution_review` 有 reviewer 输出，且未命中凭证/secret/cookie/auth-state 泄露、破坏性目标不明确、备份/审计失败、明确绕过安全门禁等硬边界，`requires_revision` 会被写入 `solution_review_soft_gate.md` 并以 `soft_continue` 进入 `code_execution`。code agent 必须把这些 blocker 当作强约束吸收，后续 `code_review` 再硬性判断是否按需求、方案和 reviewer 约束完成。无 reviewer 输出仍不软放行；requirements_review 和 code_review 仍是硬门禁。2026-05-08 起，force push 和破坏性生产变更本身进入 `execution_guard.json`，不再因关键词硬停。
+事实：历史口径，已被 2026-05-10 失败回流闭环收口。方案评审不再把普通方案质量 blocker 当成永久停点；`requires_revision` 会写入 `solution_review_soft_gate.md` 并回流生成修订版 `delivery_plan.json` 后再次审核，直到通过或达到修复预算后明确阻断到 `revise_solution`。2026-05-10 起凭证/业务/破坏性关键词也不再让方案审核变成永久硬停；Git 发布阶段的 staged diff 密码/密钥扫描仍保留。
 证据：`solution_review_can_soft_continue()`、`solution_review_hard_blocker_lines()`、`render_solution_review_soft_gate()`、`PIPELINE_SOLUTION_REVIEW_SOFT_GATE_FILE`；live bridge 的 code_execution prompt 要求读取 `solution_review_soft_gate.md` 并吸收 reviewer blocker。测试覆盖普通计划 blocker 软继续、凭证 blocker 硬停、live pipeline 软继续到 code_execution 并完成 code_review。
 最后验证：2026-05-07 15:32
-复用建议：以后不要因为 `solution_review` 发现 `create_if_missing`、verification、docs/memory、acceptance 等计划缺口而反复停住；这些属于可吸收约束。真正要停的是凭证泄露、目标不清、备份/审计失败，或完全没有有效 reviewer 输出。
+复用建议：以后不要把 `solution_review` 的非通过原因交给用户空等；应把 reviewer blocker 合并进修订计划并重审。达到修复预算后仍未通过，状态应明确停在 `revise_solution`，并给开发可执行失败原因。
 
 ## 2026-05-07 - reviewer 未通过时必须产出联合修订方案
 
@@ -49,10 +58,10 @@
 
 类型：decision
 范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`backlog_runner.py`、`cron/jobs.json`、nofx Discord profile
-事实：该记录是 2026-05-06 的历史口径：真实交易、下单、划转、提现和资金类需求对 SmartMultiPlatformArbitrage 属于策略业务本身，不再作为永久阻断；当时需要 `--human-risk-confirmed` 后继续执行。2026-05-08 起，这类动作默认进入 `execution_guard.json`，`--human-risk-confirmed` 只记录确认来源，不再是前置放行条件；凭证保护、测试、双 reviewer、deployment、memory writeback 和 git_publish 仍不解除。
+事实：该记录是 2026-05-06 的历史口径：真实交易、下单、划转、提现和资金类需求对 SmartMultiPlatformArbitrage 属于策略业务本身，不再作为永久阻断；当时需要 `--human-risk-confirmed` 后继续执行。2026-05-10 起，这类动作不再进入 workflow 风险门禁或 `execution_guard.json`，`--human-risk-confirmed` 只作为历史兼容/审计字段；测试、双 reviewer、deployment、memory writeback 和 git_publish 仍不解除。
 证据：`PipelineConfig.human_risk_confirmed`、`apply_human_risk_confirmation()`、`smart_arb_pipeline_entry.py --human-risk-confirmed`、`backlog_runner.py` 已确认高风险透传、`cron/jobs.json --allow-confirmed-high-risk`、profile SOUL 模板的高风险确认命令示例；测试覆盖高风险未确认阻断、确认后继续、backlog runner 透传确认、入口透传确认和 profile 模板。
 最后验证：2026-05-06 22:58
-复用建议：排查 2026-05-08 之后的新 run 时优先看 `execution_guard.json.guard_status` 和 `hard_stop_reasons`，不要只看 `--human-risk-confirmed`。不要关闭凭证、secret scan、测试、review 或发布门禁。
+复用建议：排查新 run 时优先看 `failed_stage`、`next_action` 和对应失败 artifact，不要只看 `--human-risk-confirmed`。不要关闭测试、review 或 Git 发布 staged diff 密码/密钥扫描。
 
 ## 2026-05-06 - nofx 双 reviewer 默认不同模型
 
@@ -67,7 +76,7 @@
 
 类型：decision
 范围：nofx Discord Hermes profile、Task Center 手动路线选择、SmartMultiPlatformArbitrage 项目交付入口
-事实：Discord 入口不再只对“普通执行类任务”做路线选择，也不再保留只读查询、简单解释、普通沟通或“不走工作流”的直接执行例外。所有来自 Discord 的新任务都必须先发“执行链路选择”卡，并等待用户明确选择。连接 Discord 的 profile 是该入口的最高权限调度入口，负责路线选择、推荐理由、执行调度、状态回传和最终口径；Task Center owner、pipeline stage label、其他 agent 建议或旧文档口径不能覆盖 Discord 用户本轮选择。最高权限不等于跳过安全边界：凭证泄露仍 hard block，真实交易、资金、force push、删除生产数据和生产破坏必须通过 `execution_guard.json` 的保护契约。
+事实：Discord 入口不再只对“普通执行类任务”做路线选择，也不再保留只读查询、简单解释、普通沟通或“不走工作流”的直接执行例外。所有来自 Discord 的新任务都必须先发“执行链路选择”卡，并等待用户明确选择。连接 Discord 的 profile 是该入口的最高权限调度入口，负责路线选择、推荐理由、执行调度、状态回传和最终口径；Task Center owner、pipeline stage label、其他 agent 建议或旧文档口径不能覆盖 Discord 用户本轮选择。最高权限不等于跳过测试、review、deployment 或 Git 发布密码/密钥扫描；2026-05-10 起真实交易、资金和破坏性业务动作不再通过 `execution_guard.json` 管控。
 证据：用户明确纠正“所有的任务都走选择，而且连接 Discord 的 agent 的权限最高”；两个 nofx profile 模板已写入“收到任何 Discord 新任务”“不要直接做只读查询或普通沟通”“Discord profile 是本入口的最高权限 operator”；`tests/scripts_openclaw_ops/test_nofx_profile_templates.py` 已覆盖该规则。
 最后验证：2026-04-28 23:54；nofx live profile 已同步并重启 gateway
 复用建议：以后 Discord 没有先问路线，优先检查 live `SOUL.md` 是否同步和 gateway 是否重启；不要只修 `human_inbox`、backlog runner 或 delivery plan。
@@ -85,7 +94,7 @@
 
 类型：decision
 范围：`config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、nofx hardflow workflow/runtime 修复
-事实：普通 SmartMulti 业务交付仍走 `smart-arb-pipeline` coordinator pipeline；但当用户明确要求修复 hardflow workflow/runtime/profile/SOUL/dual review/auto-repair/git_publish/runtime installer/cron workflow，或说“给 Discord agent 更高权限 / 允许改工作流 / 工作流流程有问题”时，Discord profile 进入高权限工作流维护模式，不再递归启动同一条 `smart-arb-pipeline`。该模式允许直接切到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 修改工作流宿主、运行测试并按需安装 runtime；不能触碰凭证明文，真实交易、force push 或破坏性数据操作必须走 `execution_guard.json`。若 profile 无法启动真正独立 code-reviewer，最终状态卡必须标记 `review=pending_external`。
+事实：普通 SmartMulti 业务交付仍走 `smart-arb-pipeline` coordinator pipeline；但当用户明确要求修复 hardflow workflow/runtime/profile/SOUL/dual review/auto-repair/git_publish/runtime installer/cron workflow，或说“给 Discord agent 更高权限 / 允许改工作流 / 工作流流程有问题”时，Discord profile 进入高权限工作流维护模式，不再递归启动同一条 `smart-arb-pipeline`。该模式允许直接切到 `/home/arbops/projects/openclaw-hardflow-backup-20260302` 修改工作流宿主、运行测试并按需安装 runtime；不能触碰凭证明文，Git 发布 staged diff 密码/密钥扫描不能关闭。若 profile 无法启动真正独立 code-reviewer，最终状态卡必须标记 `review=pending_external`。
 证据：两个 nofx profile 模板已新增“高权限工作流维护模式”；`tests/scripts_openclaw_ops/test_nofx_profile_templates.py` 覆盖该模式不能退回“只读诊断和状态回传”；`docs/核心主工作流/项目交付优先工作流/smart-arb-nofx-live-evidence-bridge.md`、`memory/INDEX.md`、`memory/RUNBOOK.md` 已同步该边界。
 最后验证：2026-04-28 19:59
 复用建议：以后 Discord 里修 workflow 流程问题时，不要再让旧 workflow 评审自己；先走高权限维护模式或外部 SSH，维护 hardflow 宿主后再安装 runtime。普通业务修改仍回到 coordinator pipeline。
@@ -122,6 +131,6 @@
 类型：decision
 范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`
 事实：reviewer 审核通过后不会直接部署或上传 Git；发布阶段必须在 verification、code review、deployment（如有）、acceptance 和 memory writeback 全部通过后执行。`git_publish` 输入必须是已验收变更集：优先使用 `memory_writeback` 隔离工作区 patch，缺失时只回退到 `code_execution` patch，不发布 `command_cwd` 的未验收脏改动。提交说明、备注和变更描述必须使用中文且先脱敏；疑似密钥、远端冲突、认证失败或 push 失败会阻塞到 `fix_git_publish`。
-证据：`pipeline_runner.py` 中 `git_publish` 位于 memory writeback 成功之后，并写入 `git_publish_input_patch_report`；`smart_arb_live_bridge.py --stage git_publish` 执行 `git diff --check`、`git diff --cached --check`、staged diff 密钥扫描、脱敏中文 commit message 和普通 `git push <remote> HEAD:<branch>`。默认不做 force push；如用户明确要求，必须先通过 `execution_guard.json` 记录目标分支、备份/回滚路径和审计证据。
+证据：`pipeline_runner.py` 中 `git_publish` 位于 memory writeback 成功之后，并写入 `git_publish_input_patch_report`；`smart_arb_live_bridge.py --stage git_publish` 执行 `git diff --check`、`git diff --cached --check`、staged diff 密钥扫描、脱敏中文 commit message 和普通 `git push <remote> HEAD:<branch>`。默认不做 force push；2026-05-10 起 force push 不再由 `execution_guard.json` 记录，仍必须作为发布失败/人工操作另行明确处理。
 最后验证：2026-04-27
 复用建议：如果用户要求“审核完自动上传”，必须确认已经开启 `--git-publish-command`，并检查 `git_publish_report.md`；不要把 `reviewer pass` 误解为已经部署或已 push。

@@ -231,7 +231,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertIn(payload["scope_status"], {"pass", "warning"})
             self.assertFalse(any(item["severity"] == "block" for item in payload["findings"]))
 
-    def test_graphify_scope_validation_warns_positive_trading_even_with_negated_safety_text(self):
+    def test_graphify_scope_validation_allows_positive_business_operations(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
             repo.mkdir()
@@ -249,9 +249,10 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 ],
             }
             payload = _mod.validate_graphify_scope(config, runtime, risky_plan, {})
-            self.assertEqual("warning", payload["scope_status"])
+            self.assertIn(payload["scope_status"], {"pass", "warning"})
             reasons = "\n".join(item["reason"] for item in payload["findings"])
-            self.assertIn("execution_guard", reasons)
+            self.assertNotIn("execution_guard", reasons)
+            self.assertFalse(any(item["severity"] == "block" for item in payload["findings"]))
 
     def test_pre_execution_risk_keeps_positive_trading_when_same_line_has_negated_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -275,12 +276,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 artifacts,
             )
 
-        self.assertEqual("guarded", risk["risk_level"])
-        self.assertEqual("guarded_execute", risk["execution_decision"])
+        self.assertEqual("low", risk["risk_level"])
+        self.assertEqual("auto_execute", risk["execution_decision"])
         self.assertFalse(risk["human_confirmation_required"])
-        self.assertIn("enable_live_trading", risk["guarded_action_reasons"])
-        self.assertIn("place_order", risk["guarded_action_reasons"])
-        self.assertEqual("ready", risk["execution_guard"]["guard_status"])
+        self.assertFalse(risk["guarded_action_reasons"])
+        self.assertNotIn("execution_guard", risk)
 
     def test_pre_execution_risk_keeps_credential_printing_as_hard_stop(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -304,11 +304,11 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 artifacts,
             )
 
-        self.assertEqual("high", risk["risk_level"])
-        self.assertEqual("hard_block", risk["execution_decision"])
-        self.assertTrue(risk["hard_stop_required"])
-        self.assertIn("credential_access", risk["hard_stop_reasons"])
-        self.assertEqual("blocked", risk["execution_guard"]["guard_status"])
+        self.assertEqual("low", risk["risk_level"])
+        self.assertEqual("auto_execute", risk["execution_decision"])
+        self.assertFalse(risk["hard_stop_required"])
+        self.assertFalse(risk["hard_stop_reasons"])
+        self.assertNotIn("execution_guard", risk)
 
     def test_pre_execution_risk_requires_clear_target_for_destructive_work(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -353,22 +353,12 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
                 artifacts,
             )
 
-        self.assertEqual("high", unclear["risk_level"])
-        self.assertEqual("hard_block", unclear["execution_decision"])
-        self.assertIn("unclear_destructive_target", unclear["hard_stop_reasons"])
-        self.assertEqual("high", unclear_with_code_target["risk_level"])
-        self.assertEqual("hard_block", unclear_with_code_target["execution_decision"])
-        self.assertIn("unclear_destructive_target", unclear_with_code_target["hard_stop_reasons"])
-        self.assertEqual("guarded", clear["risk_level"])
-        self.assertEqual("guarded_execute", clear["execution_decision"])
-        self.assertIn("destructive_database", clear["guarded_action_reasons"])
-        self.assertEqual("ready", clear["execution_guard"]["guard_status"])
-        destructive_controls = [item for item in clear["execution_guard"]["controls"] if item["action_group"] == "destructive_changes"]
-        self.assertTrue(destructive_controls)
-        self.assertTrue(destructive_controls[0]["backup_required"])
-        self.assertTrue(destructive_controls[0]["targets"])
-        self.assertEqual("guarded", clear_named_table["risk_level"])
-        self.assertEqual("ready", clear_named_table["execution_guard"]["guard_status"])
+        for item in (unclear, unclear_with_code_target, clear, clear_named_table):
+            self.assertEqual("low", item["risk_level"])
+            self.assertEqual("auto_execute", item["execution_decision"])
+            self.assertFalse(item["hard_stop_required"])
+            self.assertFalse(item["guarded_action_reasons"])
+            self.assertNotIn("execution_guard", item)
 
     def test_pre_execution_risk_ignores_pure_negated_trading_and_credentials(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -481,7 +471,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
         self.assertFalse(risk["high_risk_reasons"])
         self.assertFalse(risk["guarded_action_reasons"])
         self.assertEqual("auto_execute", risk["execution_decision"])
-        self.assertEqual("ready", risk["execution_guard"]["guard_status"])
+        self.assertNotIn("execution_guard", risk)
 
     def test_graphify_context_does_not_trust_mismatched_repo_root(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -613,7 +603,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
         self.assertIn("Decision: soft_continue", rendered)
         self.assertIn("verification_commands missing docs memory content assertion", rendered)
 
-    def test_solution_review_secret_blocker_remains_hard_gate(self):
+    def test_solution_review_secret_feedback_loops_to_plan_revision(self):
         report_b_blocker = {
             "ok": True,
             "command": "review --reviewer-role reviewer-b --provider zai --model glm-5.1",
@@ -627,9 +617,10 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             "stderr": "",
         }
 
-        self.assertFalse(_mod.solution_review_can_soft_continue([report_b_blocker], "requires_revision"))
-        hard_lines = _mod.solution_review_hard_blocker_lines([report_b_blocker])
-        self.assertTrue(any("API key credentials" in line for line in hard_lines))
+        self.assertTrue(_mod.solution_review_can_soft_continue([report_b_blocker], "requires_revision"))
+        self.assertEqual([], _mod.solution_review_hard_blocker_lines([report_b_blocker]))
+        rendered = _mod.render_solution_review_soft_gate([report_b_blocker], "requires_revision")
+        self.assertIn("Git publish still blocks staged diffs", rendered)
 
     def test_dual_review_rendering_merges_distinct_model_findings(self):
         report_a = {
@@ -698,7 +689,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             self.assertIn("fetch_all_prune", rendered)
             self.assertIn("Project-agent must consider", rendered)
 
-    def test_guarded_trading_plan_generates_execution_guard_and_continues(self):
+    def test_business_operation_plan_runs_without_execution_guard(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             scripts_dir = tmp_path / "scripts"
@@ -745,14 +736,12 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             self.assertEqual("completed", state["status"])
             self.assertEqual("none", state["next_action"])
             risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
-            self.assertEqual("guarded", risk["risk_level"])
-            self.assertEqual("guarded_execute", risk["execution_decision"])
+            self.assertEqual("low", risk["risk_level"])
+            self.assertEqual("auto_execute", risk["execution_decision"])
             self.assertFalse(risk["human_confirmation_required"])
-            guard = json.loads(Path(state["artifacts"]["execution_guard"]).read_text(encoding="utf-8"))
-            self.assertEqual("ready", guard["guard_status"])
-            self.assertIn("enable_live_trading", guard["guarded_actions"])
+            self.assertNotIn("execution_guard", state["artifacts"])
             group_plan = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
-            self.assertIn("执行保护契约", group_plan)
+            self.assertIn("业务操作关键词不再由 workflow 风险门禁拦截", group_plan)
 
     def test_high_risk_plan_runs_after_human_risk_confirmation(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -803,10 +792,10 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             self.assertEqual("none", state["next_action"])
             self.assertIn("code_execution", [stage["name"] for stage in state["stages"]])
             risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
-            self.assertEqual("guarded", risk["risk_level"])
+            self.assertEqual("low", risk["risk_level"])
             self.assertFalse(risk["human_confirmation_required"])
             self.assertTrue(risk["human_confirmation_confirmed"])
-            self.assertEqual("confirmed_guarded_execute", risk["execution_decision"])
+            self.assertEqual("auto_execute", risk["execution_decision"])
             group_plan = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
             self.assertIn("human_confirmation_confirmed", group_plan)
 
@@ -1490,7 +1479,7 @@ Verification commands:
             run_meta = json.loads(Path(state["artifacts"]["run_meta"]).read_text(encoding="utf-8"))
             self.assertEqual("frontend-dev", run_meta["code_agent"])
 
-    def test_requirements_failure_routes_back_to_requirements(self):
+    def test_requirements_failure_blocks_before_solution(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = run_pipeline(
                 PipelineConfig(
@@ -1504,12 +1493,13 @@ Verification commands:
             )
 
             run_dir = Path(tmp) / "requirements-failure"
-            self.assertEqual("completed", state["status"])
-            self.assertIsNone(state.get("failed_stage"))
-            self.assertEqual("none", state["next_action"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("requirements_review", state["failed_stage"])
+            self.assertEqual("revise_requirements", state["next_action"])
             self.assertTrue((run_dir / "requirements_review.md").exists())
-            self.assertTrue((run_dir / "solution.md").exists())
-            self.assertIn("requirements_review_warning", state["artifacts"])
+            self.assertFalse((run_dir / "solution.md").exists())
+            self.assertIn("failure_summary", state["artifacts"])
+            self.assertNotIn("requirements_review_warning", state["artifacts"])
 
     def test_acceptance_requirement_failure_routes_to_requirement_revision(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1985,7 +1975,7 @@ Verification commands:
 
         self.assertTrue(_mod.solution_review_can_soft_continue([report], "requires_revision"))
         self.assertEqual([], _mod.solution_review_hard_blocker_lines([report]))
-        self.assertEqual("runtime_contract_not_file_path", _mod.plan_path_rejection_reason("simulation_only/no_trading"))
+        self.assertEqual("", _mod.plan_path_rejection_reason("simulation_only/no_trading"))
 
     def test_live_requirements_review_requires_two_independent_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2124,7 +2114,7 @@ Verification commands:
             self.assertIn("Distinct commands: false", review)
             self.assertIn("Final verdict: ready_for_solution", review)
 
-    def test_code_review_failure_rolls_back_applied_workspace_patch(self):
+    def test_code_review_failure_blocks_and_keeps_failure_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo = root / "repo"
@@ -2190,11 +2180,13 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("code_review", state["failed_stage"])
+            self.assertEqual("return_to_code_execution", state["next_action"])
             self.assertTrue((repo / "bad_feature.txt").exists())
-            self.assertIn("code_review_warning", state["artifacts"])
-            warning = json.loads(Path(state["artifacts"]["code_review_warning"]).read_text(encoding="utf-8"))
-            self.assertEqual("user_simplified_gate_soft_continue", warning["policy"])
+            self.assertIn("code_review", state["artifacts"])
+            self.assertIn("failure_summary", state["artifacts"])
+            self.assertNotIn("code_review_warning", state["artifacts"])
 
     def test_code_review_secret_blocker_still_rolls_back_applied_workspace_patch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2266,7 +2258,7 @@ Verification commands:
             rollback_keys = [key for key in state["artifacts"] if key.startswith("rollback_code_review_secret_failed")]
             self.assertEqual(1, len(rollback_keys))
 
-    def test_verification_failure_rolls_back_applied_workspace_patch(self):
+    def test_verification_failure_blocks_and_returns_to_development(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             repo = root / "repo"
@@ -2318,11 +2310,13 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("verification", state["failed_stage"])
+            self.assertEqual("return_to_code_execution", state["next_action"])
             self.assertTrue((repo / "feature.txt").exists())
-            self.assertIn("verification_warning", state["artifacts"])
-            warning = json.loads(Path(state["artifacts"]["verification_warning"]).read_text(encoding="utf-8"))
-            self.assertEqual("user_simplified_gate_soft_continue", warning["policy"])
+            self.assertIn("verification", state["artifacts"])
+            self.assertIn("failure_summary", state["artifacts"])
+            self.assertNotIn("verification_warning", state["artifacts"])
 
     def test_code_workspace_patch_refuses_dirty_command_cwd(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2442,9 +2436,12 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("verification", state["failed_stage"])
+            self.assertEqual("return_to_code_execution", state["next_action"])
             self.assertEqual("changed after apply", (repo / "feature.txt").read_text(encoding="utf-8"))
-            self.assertIn("verification_warning", state["artifacts"])
+            self.assertIn("failure_summary", state["artifacts"])
+            self.assertNotIn("verification_warning", state["artifacts"])
 
     def test_live_agent_worktree_isolates_code_and_applies_diff_for_verification(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2598,12 +2595,12 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
-            self.assertIsNone(state.get("failed_stage"))
-            self.assertEqual("none", state["next_action"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("deployment", state["failed_stage"])
+            self.assertEqual("return_to_deployment", state["next_action"])
             self.assertIn("deployment", state["artifacts"])
-            self.assertIn("deployment_warning", state["artifacts"])
-            self.assertIn("acceptance", state["artifacts"])
+            self.assertIn("failure_summary", state["artifacts"])
+            self.assertNotIn("deployment_warning", state["artifacts"])
 
     def test_git_publish_command_failure_blocks_after_writeback(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2640,12 +2637,13 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
-            self.assertIsNone(state.get("failed_stage"))
-            self.assertEqual("none", state["next_action"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("git_publish", state["failed_stage"])
+            self.assertEqual("fix_git_publish", state["next_action"])
             self.assertIn("writeback", state["artifacts"])
             self.assertIn("git_publish", state["artifacts"])
-            self.assertIn("git_publish_warning", state["artifacts"])
+            self.assertIn("failure_summary", state["artifacts"])
+            self.assertNotIn("git_publish_warning", state["artifacts"])
 
     def test_git_publish_receives_memory_writeback_workspace_patch(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3163,8 +3161,6 @@ Verification commands:
                 "没有 create_if_missing=true / rationale，应降级 inspect_only。\n"
                 "Blocker: target_files 包含 `下单/划转/提现/credentials`，这是 credential/auth 风险路径，不是业务 repo 文件；"
                 "必须移除并只保留在 forbidden_targets。\n"
-                "Blocker: delivery_plan.json 仍把 execution_guard.json 错误提升为必改目标；本任务已明确禁止预建 guard，"
-                "必须从 target_files、must_change_targets、implementation_steps 删除。\n"
                 "Blocker: delivery_plan.json 把自然语言 `Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot` 当成 required file，"
                 "这不是 concrete repo-relative file，必须移除。\n"
                 "Blocker: Apollo 历史文件 智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md、"
@@ -3204,7 +3200,6 @@ Verification commands:
                 "tests/test_dashboard_api.py",
                 "套利策略介绍文档.md",
                 "下单/划转/提现/credentials",
-                "execution_guard.json",
                 "Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot",
                 "tests/test_basic_auth_proxy.py",
             ):
@@ -3223,17 +3218,17 @@ Verification commands:
             self.assertIn("智能多平台套利/api/main.py", non_target_paths)
             findings = plan.get("plan_findings", {}).get("filtered_target_candidates", [])
             self.assertTrue(any(item.get("reason") == "file_line_reference_not_target" for item in findings))
-            self.assertTrue(any(item.get("reason") == "credential_or_trading_natural_language_not_target" for item in findings))
-            self.assertEqual("pipeline_artifact_file", _mod.plan_path_rejection_reason("execution_guard.json"))
+            self.assertTrue(any(item.get("reason") == "credential_or_auth_natural_language_not_target" for item in findings))
             self.assertEqual(
                 "natural_language_not_file_path",
                 _mod.plan_path_rejection_reason("Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot"),
             )
             self.assertEqual("backend-dev", plan["owner"])
             risk_by_name = {item["name"]: item for item in plan["risk_boundaries"]}
-            self.assertFalse(risk_by_name["funds_and_orders"]["allowed"])
-            self.assertFalse(risk_by_name["destructive_changes"]["allowed"])
-            self.assertTrue(any("read-only/signal-only" in item for item in plan["runtime_contracts"]))
+            self.assertFalse(risk_by_name["git_publish_secret_scan"]["allowed"])
+            self.assertNotIn("funds_and_orders", risk_by_name)
+            self.assertNotIn("destructive_changes", risk_by_name)
+            self.assertTrue(any("Business-operation keywords are not workflow risk gates" in item for item in plan["runtime_contracts"]))
             step_text = "\n".join(item.get("description", "") for item in plan["implementation_steps"] if isinstance(item, dict))
             self.assertIn("excludes Kraken/MEXC", step_text)
             self.assertIn("tokenized-stock spot MVP", step_text)

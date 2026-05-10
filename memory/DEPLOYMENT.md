@@ -1,5 +1,14 @@
 # DEPLOYMENT
 
+## 2026-05-09 23:10 - nofx Discord profile 迁入智能趋势跟踪
+
+类型：deploy
+范围：nofx `/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、Discord guild `智能趋势跟踪`
+事实：nofx 两个 live Hermes Discord profile 已从旧 guild `智能价差套利` 迁入 `智能趋势跟踪` 的 `套利策略` 分类。`arbitrageagent` 当前 Discord home / allowed / free-response channel 为 `套利策略测试` `1502616919713386647`；`spreadagent` 当前 Discord home / allowed / free-response channel 为 `价差监控测试` `1502616918190854165`。目标分类下同时创建了管理频道 `价差套利` `1502616916907393115` 和 `多agent-修复` `1502616927669850153`。
+证据：变更备份为 `/home/arbops/.hermes/profiles/arbitrageagent/.env.bak-discord-merge-20260509T230846`、`/home/arbops/.hermes/profiles/arbitrageagent/config.yaml.bak-discord-merge-20260509T230846`、`/home/arbops/.hermes/profiles/spreadagent/.env.bak-discord-merge-20260509T230846`、`/home/arbops/.hermes/profiles/spreadagent/config.yaml.bak-discord-merge-20260509T230846`。重启 tmux 会话后，`arbitrageagent` PID `184108`、`spreadagent` PID `184113` 均 `gateway_state=running`，Discord 均 `connected`。
+最后验证：2026-05-09 23:10 CST
+复用建议：后续修改 nofx Discord 频道时直接改两个 profile 的 `.env` 和 `config.yaml`，保持文件属主 `arbops:arbops` 与权限 `0600`，并通过 tmux 重启 `hermes-discord-arbitrage` / `hermes-discord-spread`；当前 nofx 的 user systemd bus 可能 inactive，不能只依赖 `systemctl --user restart`。
+
 ## 2026-05-08 21:06 - nofx Hermes 模型路由与辅助任务路由配置
 
 类型：deploy
@@ -133,7 +142,7 @@
 事实：本机提交 `68b536a6` 和追加修复 `d236192e` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库为 `HEAD=d236192`、`HEAD...origin/main=0 0`。本轮完成三项门禁修复：1. `--human-risk-confirmed` 从 backlog/Discord 入口透传到 pipeline risk gate，用户确认后的高风险策略任务不再停在 `await_human_confirmation`；2. reviewer-b 默认切到 `kimi-coding/kimi-k2.6`，避免双 reviewer 同模型伪双审；3. 风险文本清洗改为按子句处理，纯否定安全边界会剥离，但同一句里的正向真实交易/下单仍会触发高风险并在确认后继续。
 证据：runtime installer 返回 `ok=true`、`changed=true`、5 个 workflow skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`；live profile `SOUL.md` SHA256 为 `arbitrageagent=5b2e7466a45c89c88a7950798d8d59209cb877c0e15d3787ffc7b248dd84440f`、`spreadagent=5292b57f196c549541f1def7609b3d0672f222c17586058f01e11e27b2b23d98`。远端 `compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/control-plane-ops/scripts/policy` 通过；远端定向 unittest 62 项 OK。高风险确认 echo smoke `cli-spreadagent-20260506T153935576001Z` 返回 `status=completed`、`next_action=none`、Task Center `passed`，`pre_execution_risk.json` 为 `risk_level=high`、`execution_decision=confirmed_execute`、`human_confirmation_confirmed=true`、`high_risk_reasons=enable_live_trading,place_real_order,graphify_scope_block`。已重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`，两者 `gateway_state=running` 且 Discord `connected`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
 最后验证：2026-05-06 23:40
-复用建议：以后 nofx 策略类真实交易/下单/划转/提现/资金任务不要删除风险扫描；应保留 high-risk 分类，人工确认后传 `--human-risk-confirmed`，并继续跑双 reviewer、测试、部署/写回/git publish 门禁。远端命令优先用 `runuser -u arbops -- /bin/sh -c`，不要用 root 直接 Git，也避免 `bash -lc` 触发 `/etc/bashrc` 的 brew 权限噪音。
+复用建议：这是 2026-05-06 历史口径，已被 2026-05-10 门禁收口取代。新 run 中 nofx 策略类真实交易/下单/划转/提现/资金任务不再保留 high-risk workflow 分类，也不再依赖 `--human-risk-confirmed`；应看 `failed_stage`、`next_action` 和对应 artifact，继续跑 reviewer、测试、部署/写回/git publish 闭环。远端命令优先用 `runuser -u arbops -- /bin/sh -c`，不要用 root 直接 Git，也避免 `bash -lc` 触发 `/etc/bashrc` 的 brew 权限噪音。
 
 ## 2026-04-29 03:19 - nofx 安装 specified_agent/session-run-id 批次
 

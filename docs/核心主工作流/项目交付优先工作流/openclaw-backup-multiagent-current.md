@@ -1,6 +1,6 @@
 # OpenClaw Backup 多 Agent 工作流当前口径
 
-更新时间：2026-05-07
+更新时间：2026-05-10
 
 ## 1. 项目边界
 
@@ -11,7 +11,7 @@
 - 入口命令：`/home/arbops/.local/bin/smart-arb-pipeline`
 - 业务项目示例：`/home/arbops/projects/SmartMultiPlatformArbitrage`
 
-SmartMultiPlatformArbitrage 只作为被交付/被修改的业务项目之一；多 agent 协调、路线选择、review 门禁、risk gate、失败摘要、git publish 等能力属于 OpenClaw backup 工作流。
+SmartMultiPlatformArbitrage 只作为被交付/被修改的业务项目之一；多 agent 协调、路线选择、review 门禁、失败摘要、git publish 等能力属于 OpenClaw backup 工作流。
 
 ## 2. 用户期望的完整流程
 
@@ -24,14 +24,14 @@ SmartMultiPlatformArbitrage 只作为被交付/被修改的业务项目之一；
 5. `project-agent` 与 reviewer 做需求讨论，综合项目地图和外部资料，形成完整需求、验收标准、风险边界、目标文件和测试命令。
 6. 多个 reviewer 优先用不同模型独立审查需求；某一路 provider/model 失败时按 fallback 链重试，所有有效 blocker 合并后修订，直到无 blocker、达到自动修复上限或高风险人工门禁。
 7. `project-agent` 生成结构化 `delivery_plan.json`，`solution.md` 只作为人工可读渲染。
-8. graphify/RAG 作为软上下文补充跨模块影响面；只在跨仓路径、凭证/密钥、真实交易/下单/划转等风险时变成 hard block。
+8. graphify/RAG 作为软上下文补充跨模块影响面；只在跨仓路径、凭证/密钥文件目标等仓库边界问题时变成 hard block，业务动作关键词不作为 workflow 风险门禁。
 9. 多个 reviewer 优先用不同模型独立审查方案；若某一路模型不可用，至少一个有效通过且无明确 blocker 可降级进入执行。
 10. `coordinator` 输出 `group_plan_publish.md`，把完整执行方案、风险和验证方式回传群里。
-11. `risk_gate` 写入 `pre_execution_risk.json`：低/中风险自动执行；高风险未确认时必须等人工确认，已确认时必须记录 `human_confirmation_confirmed=true` 后继续。
+11. `pre_execution_risk.json` 只保留执行前记录，默认 `auto_execute`；业务动作关键词不再进入 `risk_gate` 或 `execution_guard.json`。
 12. `backend-dev` / `frontend-dev` / 指定 agent 执行代码或文档修改。
 13. `tester` 运行确定性测试、compileall、diff check、API smoke 或项目指定验收。
 14. 多 reviewer 优先用不同模型做代码审查；任一有效 reviewer 有 blocker 就回到修改/测试循环，模型失败本身走 fallback 或降级。
-15. `deployer` 只在允许时部署或 smoke；真实交易、下单、划转、提现和资金类策略执行需要人工确认凭证，不得擅自读取/打印凭证、解除风控或绕过审查。
+15. `deployer` 只在允许时部署或 smoke；交易、下单、划转、提现等业务动作由实现、测试和 reviewer 判断，不再由 workflow 关键词门禁拦截。
 16. `git_publish` 在测试和 review 通过后提交/推送，并验证远端包含目标提交。
 17. 任一步失败时写 `failure_summary.md`，把具体失败阶段、失败原因、下一步修复建议总结回群。
 18. 完成后写回项目 memory/docs/todo/done，并输出中文状态卡。
@@ -46,7 +46,7 @@ SmartMultiPlatformArbitrage 只作为被交付/被修改的业务项目之一；
 - 不允许为了粒度而制造人工延期项；
 - 只有出现真实 blocker 时才阻断，例如：目标文件无效、上下文不足、测试缺失、生产风险、凭证风险、跨仓越权、需求本身矛盾；
 - 可在 `delivery_plan.json.scope_slices` 中保留 `holistic-scope` 作为整体交付范围；
-- 如果风险门禁判断为高风险，才等待人工确认。
+- 不再因为交易、资金、提现、划转等业务动作关键词等待人工确认。
 
 ## 4. 多 reviewer 多模型规则
 
@@ -150,8 +150,8 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 
 ### 6.3 风险边界
 
-- graphify 是 **软上下文**，不是自动修改器；它不能绕过人工路线选择、review、测试和 risk gate。
-- 图谱缺失或过期默认是 warning，不应直接阻断；但跨仓路径、凭证/密钥、真实交易/下单/划转风险必须 hard block。
+- graphify 是 **软上下文**，不是自动修改器；它不能绕过人工路线选择、review、测试和 Git 发布密码扫描。
+- 图谱缺失或过期默认是 warning，不应直接阻断；跨仓路径、凭证/密钥文件目标等仓库边界问题才应 hard block，交易/下单/划转等业务动作不作为 graphify hard block。
 - 不同项目图谱必须分开：OpenClaw backup 图谱不能用来推断 SmartMultiPlatformArbitrage 业务目标文件，反之亦然。
 - `graphify-out/` 不写入业务仓库；索引应放在 profile runtime 索引目录，避免污染项目提交。
 
@@ -178,25 +178,22 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 - 如果本地事实足够，必须明确写 `NO_EXTERNAL_LOOKUP_NEEDED`，并说明为什么无需联网；
 - 输出 `research_report.md`，作为 requirements discussion 和 reviewer 输入。
 
-## 8. 风险门禁
+## 8. 执行前记录与失败回流
 
-`pre_execution_risk.json` 是编码前风险事实源。
+`pre_execution_risk.json` 是编码前记录，不再承担业务动作风险门禁。
 
-低/中风险：
+默认行为：
 
-- 可自动分配给前端/后端/tester/reviewer；
-- 仍需完整测试与 review；
-- 失败必须回流修复。
+- 记录 `risk_level=low` 与 `execution_decision=auto_execute`；
+- 业务动作关键词不生成 `execution_guard.json`；
+- 仍需完整测试、review、deployment（如有）和 Git 发布检查；
+- 失败必须带失败原因回流修复。
 
-高风险：
+保留硬检查：
 
-- 凭证、token、cookie、OAuth、API key、私钥、auth state；
-- 真实交易、下单、撤单、平仓、划转、提现、链上签名；
-- force push、reset hard、删除生产数据；
-- 跨仓越权或无法确认目标文件；
-- 生产部署/权限边界不清。
-
-高风险默认停在 `risk_gate`，等待群里人工确认。用户已经在路线选择或 human inbox 中明确确认的 SmartMulti 策略类真实交易/下单/划转/提现/资金方案，可以携带 `--human-risk-confirmed` 继续进入 `code_execution`；`pre_execution_risk.json` 必须写入 `execution_decision=confirmed_execute` 和 `human_confirmation_confirmed=true`。这只解除重复等待人工确认，不解除凭证保护、测试、双 reviewer、deployment、memory writeback 或 git_publish。
+- Git 发布 staged diff 中的真实 password、token、cookie、private key、credential material；
+- 跨仓路径或凭证文件被错误列为代码目标；
+- 无有效 reviewer 输出或达到修复预算仍未通过的审核阶段。
 
 ## 9. 失败与自动修复循环
 
@@ -214,7 +211,7 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 
 - 默认最多 4 次；
 - 只修复低/中风险、review contract、solution review、code review、verification 等可修复问题；
-- 高风险不自动修，必须等人工；
+- Git 发布密码/密钥扫描失败会阻塞上传并回到 `fix_git_publish`；
 - 每次修复都生成 `auto_repair_context_N.md`；
 - 最终仍需通过多 reviewer、测试和 git publish。
 
@@ -249,7 +246,7 @@ project-agent 的核心问题不是“直接写代码”，而是回答：
 1. 每个完成项必须说明它属于哪个项目：OpenClaw backup workflow、SmartMultiPlatformArbitrage 业务项目、nofx 运行态，或跨项目需求管理。
 2. 每个完成项必须绑定“对应需求/规划”，避免完成记录和未来规划脱节。
 3. 每个完成项必须给出证据，例如 Git commit、runtime 安装结果、测试结果、飞书链接、API smoke、状态卡证据目录。
-4. 对 graphify 相关需求，完成项必须说明图谱如何影响需求：God Nodes、Surprising Connections、Suggested Questions、目标文件、测试、风险门禁。
+4. 对 graphify 相关需求，完成项必须说明图谱如何影响需求：God Nodes、Surprising Connections、Suggested Questions、目标文件、测试、边界检查。
 5. 如果需求太多，可以继续新增专题说明表，例如 `Graphify图谱需求说明`、`业务需求验收说明`、`运行态部署说明`；但总表、规划表、完成说明表必须互相引用。
 
 这样飞书结构同时包含：

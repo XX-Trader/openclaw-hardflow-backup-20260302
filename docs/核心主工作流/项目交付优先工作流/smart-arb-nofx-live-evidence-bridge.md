@@ -66,7 +66,7 @@ Discord 入口默认不是直接执行，而是先由连接 Discord 的 profile 
 
 `--route-choice` 是代码层人工选择凭证，不只是提示词约定。`smart_arb_pipeline_entry.py` 默认要求 Discord source 携带有效路线才会执行：缺失时只输出 `# nofx 执行链路选择` 并返回 `回答状态: 等待人工选择`；`coding_workflow` / `todo_auto_candidate` 进入 coordinator pipeline；`specified_agent` 必须带 `--assignee <agent-id>`，并生成 `specified_agent_dispatch` Task Center 任务交给 `task_executor_runner.py` 调用指定 agent。nofx 当前没有 `openclaw` CLI 时，入口会自动使用 `/home/arbops/.local/bin/hermes` 和当前 profile 的 `HERMES_HOME` 进行 Hermes chat 执行，并把 Hermes `session_id` 回写成 agent session/run 证据。如果显式传入 `direct_run` 或 `requirement_discussion`，入口仍跳过 pipeline，避免 profile 把非 pipeline 选择误送进工作流。
 
-如果用户选择 `direct_run`，当前 Discord profile 作为最高权限 operator 直接处理，不进入 pipeline；仍必须遵守凭证、force push、删除生产数据等安全边界。安全仓库同步只允许 clean 工作树上的 `git fetch` + `git pull --ff-only`，并做 `git status`、`HEAD == origin/main` 和内控 API smoke。真实交易、下单、划转、提现和资金类策略需求不是永久阻断，但不能在 `direct_run` 中绕过测试和审查；必须走 `coding_workflow` / `todo_auto_candidate`，并在用户明确确认后携带 `--human-risk-confirmed`。
+如果用户选择 `direct_run`，当前 Discord profile 作为最高权限 operator 直接处理，不进入 pipeline；安全仓库同步只允许 clean 工作树上的 `git fetch` + `git pull --ff-only`，并做 `git status`、`HEAD == origin/main` 和内控 API smoke。真实交易、下单、划转、提现和资金类策略需求不再是 workflow 风险门禁；如果需要编码、验证、审核或发布，仍应走 `coding_workflow` / `todo_auto_candidate`，并由测试、reviewer 与 Git 发布密码扫描闭环控制。
 
 默认输出面向聊天频道：`smart-arb-pipeline` 会把 runner JSON 转成中文状态卡，展示 run id、总状态、Task Center 任务、每个阶段对应的 agent、真实 agent session/run id（存在时）、完成/阻塞情况、阶段命令状态、阻塞证据、自动修复判断和证据目录。`specified_agent` 状态卡必须明确显示被调用 agent、Task Center task id、executor run id、agent session/run id、当前阶段、是否完成和失败原因。默认不展开 reviewer/tester/terminal stdout/stderr，也不额外输出“关键证据”列表。需要机器读取原始状态时，加 `--emit-json`；排障时需要原始 runner 输出时，加 `--no-chat-summary`；需要脱敏命令摘要时，加 `--chat-include-command-output`。
 
@@ -79,7 +79,7 @@ live 默认注入以下命令证据：
 | `external_research` | Hermes / web-agent 查外部资料和项目事实；纯本地 workflow/runtime 回归且无外部资料要求时，可用本地 artifact 合成 `NO_EXTERNAL_LOOKUP_NEEDED` 证据 | `command_external_research_*` |
 | `requirements_discussion` | project-agent 与 reviewer 双 AI 讨论需求 | `command_requirements_discussion_*` |
 | `requirements_review` | reviewer-a / reviewer-b 优先双模型审需求；provider/model 失败时 fallback，至少一个有效 `ready_for_solution` 且无 blocker 可降级放行 | `command_requirements_review_1/2` |
-| `solution_review` | reviewer-a / reviewer-b 优先双模型审 `delivery_plan.json`；provider/model 失败时 fallback，至少一个有效 `ready_for_implement` 且无 blocker 可降级放行；普通方案质量 blocker 写入 `solution_review_soft_gate.md` 后软继续，凭证/secret/cookie/auth-state、force push、破坏性生产数据或无 reviewer 输出仍硬停 | `command_solution_review_1/2` |
+| `solution_review` | reviewer-a / reviewer-b 优先双模型审 `delivery_plan.json`；provider/model 失败时 fallback，至少一个有效 `ready_for_implement` 且无 blocker 可降级放行；不通过时把 blocker 写入 `solution_review_soft_gate.md` 并回流修订方案，达到预算仍未通过则停在 `revise_solution` | `command_solution_review_1/2` |
 | `code_execution` | Hermes headless 执行代码改动 | `command_code_execution_*` |
 | `verification` | 固定命令验证，默认 `git diff --check` 与 `compileall -q scripts strategy_runtime`，单命令超时默认 300 秒 | `command_verification_*` |
 | `code_review` | reviewer-a / reviewer-b 优先双模型审代码；provider/model 失败时 fallback，至少一个有效 `pass` 且无 blocker 可降级放行 | `command_code_review_1/2` |
@@ -106,12 +106,12 @@ Discord 状态卡必须回答三个问题：
 - 每次回流前，入口把上一轮失败证据写入上一轮失败 run 目录的 `auto_repair_context_<n>.md`，并通过 `PIPELINE_REPAIR_CONTEXT_FILE` / `SMART_ARB_ENTRY_REPAIR_CONTEXT_FILE` 或内联 `PIPELINE_REPAIR_CONTEXT` 传给 live bridge；后续 Hermes stage prompt 会看到上一轮失败原因。
 - 自动回流仍重新走完整 coordinator pipeline，不允许直接绕过验证、代码审查、部署、记忆写回或 Git 发布。
 - `solution_review` 不通过时，自动回流的输入不只是 `requires_revision`。`solution_review.md` / failure summary 必须包含 `Joint Non-Pass Reasons` 和 `Complete Revision Plan`，把 invalid target、缺失 `create_if_missing_rationale`、模板化实施步骤、验证命令缺口、git publish containment、docs/memory/todo/done 内容断言和 Discord manual acceptance gate 一起传给下一轮。普通方案质量问题不再硬停，而是生成 `solution_review_soft_gate.md` 注入 `code_execution`；后续 `code_review` 必须检查这些 blocker 是否被实现吸收。
-- 2026-05-07 本地修复补充：`auth.json`、`credentials.json`、`secret.json`、`cookie.json`、`oauth_state.json`、`token.json` 等凭证/auth-state basename 不能进入 `delivery_plan.json.target_files`，只能进入 `plan_findings.filtered_target_candidates`；`solution_review -> revise_solution` 中“移除凭证目标文件”的 blocker 归类为可回流方案修订，真正读取/打印/使用/修改凭证仍是 high-risk 硬停。本条需安装到 nofx runtime 后才成为 live 行为。
+- 2026-05-10 补充：交易、下单、划转、提现等业务动作不再触发 workflow 风险门禁，也不再生成 `execution_guard.json`；审核失败、验证失败、deployment 失败和 git_publish 失败都必须回流修复，直到通过。Git 发布 staged diff 中的真实密码/Token/Cookie/私钥/凭证材料仍会阻塞上传。
 - 状态卡默认展开最多 24 条命令摘要，可用 `SMART_ARB_CHAT_COMMAND_LIMIT` 或 `--chat-command-limit` 调整；Discord profile 必须把中文状态卡回传到聊天频道，长消息分段发送，不能只给 run id、失败阶段和证据目录。
 - 非代码 Hermes 阶段不允许直接编辑 `research_report.md`、`requirements_discussion.md`、`verification_report.md` 等 pipeline artifacts；stage evidence 必须通过 stdout/final answer 返回，由 runner 持久化。bridge 会在启动非代码 Hermes 子进程前剔除 `PIPELINE_*_REPORT_FILE` artifact 路径变量，避免 agent 通过环境变量直接定位并覆盖 artifact。
 - `external_research` 对本地记忆蒸馏、环境基线、权限修复、workflow/runtime 回归这类不依赖互联网的问题，可以输出 `NO_EXTERNAL_LOOKUP_NEEDED`、原因和本地证据，作为有效 research evidence。如果 Hermes 阶段空输出或缺 pass 状态，bridge 只会在 `run_meta.json.source_urls` 没有 http/https、需求没有官方/联网资料要求、且本地上下文 artifact 足够时合成本地证据；否则输出 bridge diagnostic 并保持失败。
 - 如果 Hermes CLI stdout/stderr 只输出 `session_id: ...`，bridge 会在 `/home/arbops/.hermes/profiles/<profile>/sessions/session_<id>.json` 恢复最新 assistant 内容并先脱敏，再用于 stage pass 判定和状态卡输出。
-- 检测到正向要求读取/输出/使用凭证、API key、token/private key、session_id，或启用真实交易、下单、资金转移、提现、破坏性数据操作或 force push 等高风险内容时，未带人工确认凭证不会继续，状态卡显示需要人工确认。`不得泄露凭证`、`不启动真实交易`、`不下单不划转` 这类纯否定式安全约束不会单独触发高风险阻断；`Need api_key=[REDACTED]`、`Need Authorization: [REDACTED]`、`Need session_id=[REDACTED]` 仍是 high，`No need for ...` / `Do not need ...` 可作为否定式预脱敏噪音回流；如果同一段里还有 `but needs credentials`、`但需要资金操作` 等正向子句，仍按高风险处理。SmartMulti 策略类真实交易/资金高风险项在用户明确确认后可携带 `--human-risk-confirmed` 继续执行，但凭证读取/打印、force push、删除生产数据和绕过风控仍不可绕过。
+- 2026-05-10 起，状态卡不再把业务动作关键词归类为高风险人工确认。凭证/密钥问题如果出现在审核阶段，应作为 reviewer 失败原因回流修复；如果出现在 Git 发布 staged diff，则阻塞到 `fix_git_publish`，修复后重新上传。
 - 前序 artifact 注入后续 Hermes prompt 前会脱敏常见 header/assignment、长 token、GitHub PAT、OpenAI `sk-`、Slack token、HF token、Google OAuth/API key 和 AWS access key，避免修复上下文扩散短格式 secret。
 
 ### 当前 fan-out 与 workspace 边界
@@ -255,4 +255,4 @@ curl -fsS http://127.0.0.1:18080/api/strategy/status
 - `--live-bridge-no-yolo` 可关闭 headless 代码执行的 yolo 模式。
 - profile 配置必须归属运行用户 `arbops`；如果 `config.yaml` 被 root 写成 `0600`，Discord `/sethome` 会因为无法写入 profile 配置而失败。
 - nofx 当前按早期高信任模式配置：两个 Discord profile 关闭命令审批和 security scan，`arbops` 通过 `/etc/sudoers.d/90-arbops-hermes` 获得无密码 sudo，用于服务器级修复和部署。
-- 真实交易启动必须另走 SmartMultiPlatformArbitrage 的策略运行手册；本 bridge 的 deployment 只负责内控 API。
+- 真实交易启动属于 SmartMultiPlatformArbitrage 业务实现和策略运行手册范围；本 bridge 的 deployment 只负责内控 API 与工作流证据，不再用关键词门禁拦截业务动作。

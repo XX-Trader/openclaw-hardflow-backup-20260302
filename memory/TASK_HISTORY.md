@@ -1,5 +1,23 @@
 # TASK_HISTORY
 
+## 2026-05-10 - nofx smart-arb-pipeline 业务门禁删除与失败回流收口
+
+类型：task
+范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、测试、项目交付工作流文档
+事实：按用户新口径，已删除/停用交易、下单、划转、提现、资金操作等业务动作相关 workflow 门禁和规则；`execution_guard.json` 不再作为 pipeline artifact。审核与开发改为闭环：requirements/solution/code review、verification、deployment、git_publish 失败都会记录失败原因并回到对应修复动作；git_publish 失败也不再 warning 继续。密码/密钥类硬检查只保留在 Git 发布 staged diff 扫描。
+证据：主链三脚本不再命中 `execution_guard`、`risk_gate`、`PRODUCTION_TRADING`、`下单`、`划转`、`提现` 等旧门禁关键词；定向 unittest 覆盖 entry/live bridge、业务动作不再生成 guard、人工确认仅留痕、审核/验证/deploy/git_publish 失败阻断回流。
+最后验证：2026-05-10 20:10 CST；`py_compile`、`compileall`、entry/live bridge 97 项、runner 13 个关键回归、`git diff --check` 通过；runner 全模块两次超过 6 分钟未完成，未作为通过证据
+复用建议：后续 nofx 任务如果因业务动作关键词卡住，应先确认运行态是否已安装本批次；新逻辑下应查看 `failed_stage` 和 `next_action`，而不是恢复 `execution_guard` 或 `--human-risk-confirmed`。
+
+## 2026-05-09 - nofx Discord profile 迁入智能趋势跟踪
+
+类型：deploy
+范围：Discord guild `智能趋势跟踪`、nofx `/home/arbops/.hermes/profiles/arbitrageagent`、`spreadagent`
+事实：已把 `智能价差套利` 的 nofx 两个 Hermes Discord profile 迁入 `智能趋势跟踪` 的 `套利策略` 分类。目标 guild `智能趋势跟踪` ID 为 `1492491333653368894`，分类 `套利策略` ID 为 `1501891508867960982`。已创建并使用新频道：`套利策略测试` `1502616919713386647` 绑定 `arbitrageagent`，`价差监控测试` `1502616918190854165` 绑定 `spreadagent`；另创建 `价差套利` `1502616916907393115` 和 `多agent-修复` `1502616927669850153` 作为管理频道。旧 guild `智能价差套利` 不再是 nofx 两个 live profile 的目标频道。
+证据：Discord API 复核 `套利策略监控机器人` 与 `价差监控机器人` 已在目标 guild；变更前备份为 `/home/arbops/.hermes/profiles/arbitrageagent/.env.bak-discord-merge-20260509T230846`、`config.yaml.bak-discord-merge-20260509T230846`、`/home/arbops/.hermes/profiles/spreadagent/.env.bak-discord-merge-20260509T230846`、`config.yaml.bak-discord-merge-20260509T230846`。重启 tmux 会话 `hermes-discord-arbitrage` 与 `hermes-discord-spread` 后，`gateway_state.json` 显示两者 `gateway_state=running` 且 `platforms.discord.state=connected`，PID 分别为 `184108` 与 `184113`。`hermes -p arbitrageagent status` 显示 Discord home `1502616919713386647`；`hermes -p spreadagent status` 显示 Discord home `1502616918190854165`。
+最后验证：2026-05-09 23:10 CST
+复用建议：以后 nofx Discord profile 排查优先看 `智能趋势跟踪` 的 `套利策略` 分类，不要再把 `智能价差套利` 旧频道当 live 目标。若需要回滚，先恢复上述 `.bak-discord-merge-20260509T230846` 文件，再重启两个 tmux gateway。
+
 ## 2026-05-09 - pm-website / nofx OpenClaw 运行态清理
 
 类型：deploy
@@ -67,10 +85,10 @@
 
 类型：bugfix
 范围：`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py`、`test_project_delivery_pipeline_runner.py`、`test_smart_arb_pipeline_entry.py`
-事实：按用户新口径，真实交易、下单、提现、划转、force push、删除、覆盖和数据库破坏性操作不再因为关键词停在 `risk_gate`。runner 现在输出 `execution_guard.json`，把这类动作转成可执行保护契约；entry 自动修复可继续回流 guarded 动作；live bridge 在 code_execution 和 review 阶段读取该契约。硬停只保留凭证泄露/打印/提交、破坏性目标不明确、备份或审计准备失败。
+事实：历史口径，已被 2026-05-10 新规则取代。当时真实交易、下单、提现、划转、force push、删除、覆盖和数据库破坏性操作不再因为关键词停在 `risk_gate`，而是输出 `execution_guard.json` 保护契约。2026-05-10 起不再生成该 artifact，业务动作关键词不再作为 workflow 门禁。
 证据：新增/更新 `HARD_STOP_PLAN_PATTERNS`、`GUARDED_OPERATION_PLAN_PATTERNS`、`build_execution_guard()`、`execution_guard.json` artifact、`guarded_execute`/`hard_block` 决策；测试覆盖交易 guarded 继续、凭证 hard_block、破坏性目标不明 hard_block、明确目标+备份 destructive guarded、entry guarded 自动修复。
 最后验证：2026-05-08 14:53 本地 `py_compile` 通过；`git diff --check` 通过；`test_smart_arb_pipeline_entry` 54 项 OK；`test_project_delivery_pipeline_runner` 75 项 OK；高权限风险定向测试覆盖交易 guarded、凭证 hard block、泛称破坏性目标 hard block 和明确目标 destructive guarded；code-reviewer 复审通过。
-复用建议：以后处理交易/资金/破坏性操作时，不要删除业务动作，也不要恢复关键词硬停；先补 `execution_guard.json` 所需的小额/白名单/幂等/审计/回读/备份/恢复证据。凭证仍必须 hard stop。
+复用建议：排查 2026-05-10 之前历史 run 时可按该记录理解；新 run 应看 `failed_stage`、`next_action` 和失败 artifact，不再补 `execution_guard.json`。
 
 ## 2026-05-07 - solution_review 凭证目标文件自动修方案部署到 nofx
 

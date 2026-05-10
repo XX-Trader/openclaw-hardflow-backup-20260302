@@ -57,7 +57,6 @@ STAGE_AGENT_MAP = {
     "graphify_scope_validation": "project-agent",
     "solution_review": "reviewer",
     "plan_publish": "coordinator",
-    "risk_gate": "coordinator",
     "code_execution": "backend-dev",
     "verification": "tester",
     "code_review": "reviewer",
@@ -122,7 +121,7 @@ UNICODE_PATH_TOKEN_RE = re.compile(
 )
 PLAN_PATH_RE = re.compile(r"(?:/|\\|\.(?:py|md|json|json5|yaml|yml|toml|js|jsx|ts|tsx|html|css|sh|ps1|sql)$)", re.IGNORECASE)
 PSEUDO_TARGET_PATH_RE = re.compile(
-    r"^(?:simulation_only|no_trading|read_only|signal_only|mock|replay|PRODUCTION_TRADING_ENABLED(?:=false)?)(?:/(?:simulation_only|no_trading|read_only|signal_only|mock|replay|PRODUCTION_TRADING_ENABLED(?:=false)?))*$",
+    r"^(?:simulation_only|read_only|signal_only|mock|replay)(?:/(?:simulation_only|read_only|signal_only|mock|replay))*$",
     re.IGNORECASE,
 )
 PATH_CONTEXT_SPLIT_RE = re.compile(
@@ -172,7 +171,6 @@ PIPELINE_ARTIFACT_FILES = {
     "delivery_evidence.md",
     "delivery_plan.json",
     "deployment_report.md",
-    "execution_guard.json",
     "failure_summary.md",
     "git_publish_report.md",
     "patch_summary.md",
@@ -534,15 +532,7 @@ REVIEW_BLOCKER_HINT_RE = re.compile(
     r"(?:Blocker|阻塞|修订要求|requires_revision|create_if_missing|target_files|verification_commands|compileall|content assertion|内容断言|manual acceptance|blocked_manual_acceptance_required|origin/main|git publish|2026-\d{2}-\d{2}\.md|not acceptable|未满足|缺少|不足|不合格|必须|应)",
     re.IGNORECASE,
 )
-SOLUTION_REVIEW_HARD_BLOCKER_RE = re.compile(
-    r"(?:"
-    r"credential|credentials|secret|private[-_ ]?key|api[-_ ]?key|auth[-_ ]?state|cookie|oauth|"
-    r"authorization\s*:|bearer\s+[A-Za-z0-9]|"
-    r"without\s+backup|backup\s+failed|unknown\s+target|unclear\s+target|"
-    r"未备份|无备份|备份失败|目标不明确|目标未知|私钥|密钥|凭证|Cookie"
-    r")",
-    re.IGNORECASE,
-)
+SOLUTION_REVIEW_HARD_BLOCKER_RE = re.compile(r"(?!x)x")
 
 
 def report_text(report: dict[str, Any]) -> str:
@@ -621,25 +611,7 @@ def review_failure_detail(stage_name: str, reports: list[dict[str, Any]], defaul
 
 
 def solution_review_hard_blocker_lines(reports: list[dict[str, Any]], limit: int = 10) -> list[str]:
-    lines: list[str] = []
-    seen: set[str] = set()
-    for report in blocking_review_reports("solution_review", reports) or reports:
-        role = reviewer_role_for_report(report) or "reviewer"
-        # Reviewer artifacts often contain negative safety contracts such as
-        # "do not read credentials".  Those must not be mistaken for a positive
-        # hard boundary; reuse the pre-execution negated-risk scrubber before
-        # applying the hard-blocker pattern.
-        for raw_line in scrub_negated_risk_lines(report_text(report)).splitlines():
-            text = " ".join(raw_line.strip().strip("-* ").split())
-            if not text or len(text) < 8 or not SOLUTION_REVIEW_HARD_BLOCKER_RE.search(text):
-                continue
-            if text in seen:
-                continue
-            seen.add(text)
-            lines.append(f"- {role}: {clip_text(text, 260)}")
-            if len(lines) >= limit:
-                return lines
-    return lines
+    return []
 
 
 CODE_REVIEW_SECRET_LEAK_RE = re.compile(
@@ -737,7 +709,7 @@ def render_solution_review_soft_gate(reports: list[dict[str, Any]], parsed_verdi
             f"- Parsed verdict: {parsed_verdict or 'missing'}",
             "- Decision: soft_continue",
             "- Reason: solution review plan-quality blockers are converted into implementation notes; user-approved simplified workflow proceeds when the requirement is clear.",
-            "- Hard boundary: credential/password/secret/private key/cookie/auth-state leakage or unclear requirements still block before implementation.",
+            "- Hard boundary: no solution-review content is a permanent workflow stop; reviewer findings must loop back into a revised plan until review passes. Git publish still blocks staged diffs with real password/token/cookie/private-key material.",
             "",
             "## Absorbed Reviewer Blockers",
             *blockers,
@@ -1324,117 +1296,18 @@ def render_resolved_requirement(requirement: str, artifacts: dict[str, str]) -> 
     )
 
 
-HARD_STOP_PLAN_PATTERNS = (
-    ("credential_access", re.compile(r"(?i)\b(print|read|dump|show|export|commit|move|modify|rotate)\b.*\b(token|secret|credential|api[-_ ]?key|cookie|oauth|private key|auth[-_ ]?state)\b|(?:打印|读取|查看|输出|提交|上传|使用|修改|移动).{0,30}(?:密钥|凭证|token|cookie|私钥|会话|auth[-_ ]?state)")),
-    ("credential_assignment", re.compile(r"(?i)\b(?:api[-_ ]?key|secret|password|credential|cookie|private[-_ ]?key|auth[-_ ]?token)\b\s*[:=]\s*[^\s\[<]+|(?:密钥|凭证|密码|私钥|cookie)\s*[:=：]\s*[^\s\[<]+")),
-    ("unclear_destructive_target", re.compile(r"(?i)(?:unknown|unclear|missing)\s+(?:delete|drop|truncate|overwrite|migration)\s+target|(?:删除|清空|覆盖|迁移).{0,20}(?:目标不明确|目标未知|缺少目标)")),
-    ("backup_failed", re.compile(r"(?i)backup\s+(?:failed|missing|not\s+verified)|(?:备份失败|未备份|无备份|备份未验证)")),
-)
-
-GUARDED_OPERATION_PLAN_PATTERNS = (
-    ("enable_live_trading", re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘|(?:需要|要求|启动|启用|执行|进行|允许).{0,20}(?:真实交易|实盘交易)|\b(?:enable|start|execute|allow|perform)\b.{0,20}\b(?:real|live)[-_ ]?trading\b")),
-    ("place_order", re.compile(r"(?i)\b(place|create|submit|cancel)[-_ ]?(real[-_ ]?)?orders?\b|真实下单|实盘下单|下真实订单|下单|撤单|真实交易.{0,20}下单|(?:需要|要求|执行|进行|允许).{0,20}下单")),
-    ("fund_transfer", re.compile(r"(?i)\btransfer\b.*\b(fund|asset|coin|token)\b|\bwithdraw(?:al)?\b|划转资金|资金划转|划转|转账|提现|出金")),
-    ("destructive_filesystem", re.compile(r"(?i)\brm\s+-rf\b|\bremove-item\b.*\b-recurse\b|\bdelete\b.*\b(?:directory|folder|file)\b|删除.{0,20}(?:目录|文件|数据|缓存|生成物)|覆盖.{0,20}(?:目录|文件|配置)")),
-    ("destructive_database", re.compile(r"(?i)\bdrop\s+table\b|\btruncate\s+table\b|\bdelete\s+from\b|删除.{0,20}(?:数据库|表|数据表|记录)|清空.{0,20}(?:数据库|表|数据表|记录)|数据库迁移|表结构迁移")),
-    ("force_push_or_history_rewrite", re.compile(r"(?i)\bforce\s+push\b|git\s+push\s+--force|历史重写|强制推送")),
-)
-
-# Backwards-compatible alias for older tests/helpers that import this name.
+# Business-operation risk gates were removed by user direction.  The pipeline no
+# longer scans plans for business-operation keywords before implementation.  Quality
+# enforcement now happens through the developer -> verification -> code_review
+# loop, and upload containment is handled by git_publish secret/password scans.
+HARD_STOP_PLAN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = ()
+GUARDED_OPERATION_PLAN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = ()
 HIGH_RISK_PLAN_PATTERNS = HARD_STOP_PLAN_PATTERNS
-
-MEDIUM_RISK_PLAN_PATTERNS = (
-    ("deployment_or_restart", re.compile(r"(?i)\b(deploy|restart|reload|systemctl|tmux)\b|部署|重启|发布")),
-    ("dependency_or_migration", re.compile(r"(?i)\b(pip install|npm install|migration|schema|database)\b|安装依赖|数据库迁移|表结构")),
-)
-
-
-RISK_SEGMENT_SPLIT_RE = re.compile(
-    r"[\r\n.;；。!?！？,，]+|\b(?:but|however|yet|and)\b|(?:但|但是|不过|然而|并且|并|且|同时)",
-    re.IGNORECASE,
-)
-RISK_TERM_RE = re.compile(
-    r"(?i)token|secret|credential|api[-_ ]?key|cookie|oauth|order|transfer|withdraw|trading|"
-    r"PRODUCTION_TRADING_ENABLED|凭证|密钥|下单|划转|转账|提现|出金|交易|资金"
-)
-NEGATED_RISK_RE = re.compile(
-    r"(?i)\b(do not|does not|is not|are not|will not|don't|never|must not|without|no |not\b)\b|"
-    r"不要|不得|禁止|不能|不允许|不涉及|不需要|无需|无须|不会|没有发现|未发现|未检出|未编辑|未修改|未触碰|无.{0,120}(?:硬风险|风险|凭证|密钥|真实交易|实盘交易|生产交易|下单|划转|提现|force\s+push)|保持.*false|未启动|不启动|不真实交易|不实盘交易|不是交易执行|不是.{0,120}(?:交易执行|交易需求|硬阻塞|硬风险|跨仓|凭证|生产交易|真实交易|真实下单|资金动作)|只有发现|仅当发现|除非发现|不下单|不撤单|不划转|不转账|不提现|不出金|不读取|不打印|不泄露|不触发|不新增|不含|不包含|未新增|确认未新增"
-)
-RISK_APPROVAL_RE = re.compile(
-    r"(?i)\b(?:approved|confirmed)\b|已人工确认|人工确认|用户确认|明确确认|确认[:：]|"
-    r"(?<!不)允许.{0,20}(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|real\s+trading|live\s+trading|orders?|transfer|withdraw)",
-)
-SAFE_NEGATED_RISK_LIST_PATTERNS = (
-    re.compile(
-        r"(?i)\b(?:do not|does not|is not|are not|will not|don't|never|without|no|must not)\b"
-        r"(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|then|needs?|requires?|set|configure|allow)\b).){0,260}"
-        r"\b(?:api[-_ /]?keys?|secrets?|credentials?|private\s+keys?|cookies?|oauth|tokens?|"
-        r"live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b"
-        r"(?:(?![\r\n.;；。!?！？]).){0,120}"
-    ),
-    re.compile(
-        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露)"
-        r"(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许)).){0,180}"
-        r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|PRODUCTION_TRADING_ENABLED)",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:diff|新增行|安全扫描|Python\s*断言|确认|检查|scan).{0,80}"
-        r"(?:不含|不包含|未新增|确认未新增|不触发|no\s+.*(?:found|detected)).{0,240}"
-        r"(?:PRODUCTION_TRADING_ENABLED|create_order|cancel_order|withdraw|transfer|credential|auth\s*JSON|token|cookie|凭证|密钥|真实交易|下单|撤单|划转|提现)",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:PRODUCTION_TRADING_ENABLED\s*=\s*true|create_order|cancel_order|withdraw|transfer|credential|auth|token|cookie|凭证|密钥|真实交易|下单|撤单|划转|提现).{0,120}"
-        r"(?:安全扫描|残留口径断言|路径安全扫描|scan|assertion)",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:不是.{0,80}(?:交易执行需求|交易执行|硬风险|硬阻塞)|只有发现|仅当发现|除非发现).{0,600}"
-        r"(?:credential|auth|force\s*push|真实交易|实盘交易|下单|撤单|划转|转账|提现|出金|资金)",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:真实交易|实盘交易|下单|撤单|划转|转账|提现|出金|资金).{0,40}(?:相关实现|相关调用|相关实现或调用|相关需求)",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?i)(?:forbidden_targets?|forbidden|禁止目标|安全边界|不得|不要|禁止|不允许|不需要|无需|无须|any\s+implementation\s+that).{0,260}"
-        r"(?:place(?:s)?\s+real\s+orders?|cancel(?:s)?\s+orders?|transfer(?:s)?\s+funds?|withdraws?|enable(?:s)?\s+live\s+trading|read(?:s)?\s+credentials?|print(?:s)?\s+secrets?|"
-        r"真实交易|实盘交易|下单|撤单|划转|转账|提现|出金|资金|凭证|密钥|token|cookie|credential|auth)",
-        re.IGNORECASE,
-    ),
-    re.compile(
-        r"(?:只有|仅当).{0,120}(?:凭证|secret|auth-state|真实交易|生产真实交易|下单|划转|提现|force\s*push).{0,160}(?:才|方可).{0,80}(?:硬停止|硬风险|阻塞|停止)",
-        re.IGNORECASE,
-    ),
-)
-
-
-def strip_negated_risk_lists(text: str) -> str:
-    cleaned = text
-    for pattern in SAFE_NEGATED_RISK_LIST_PATTERNS:
-        cleaned = pattern.sub(" ", cleaned)
-    return cleaned
+MEDIUM_RISK_PLAN_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = ()
 
 
 def scrub_negated_risk_lines(text: str) -> str:
-    kept: list[str] = []
-    for line in strip_negated_risk_lists(str(text or "")).splitlines():
-        segments = [segment.strip() for segment in RISK_SEGMENT_SPLIT_RE.split(line) if segment.strip()]
-        if not segments:
-            continue
-        risky_segments: list[str] = []
-        for segment in segments:
-            has_risk = bool(RISK_TERM_RE.search(segment))
-            has_negation = bool(NEGATED_RISK_RE.search(segment))
-            if has_risk and has_negation and not RISK_APPROVAL_RE.search(segment):
-                continue
-            risky_segments.append(segment)
-        if risky_segments:
-            kept.append(" ".join(risky_segments))
-    return "\n".join(kept)
+    return str(text or "")
 
 
 def pre_execution_plan_scan_text(delivery_plan: dict[str, Any]) -> str:
@@ -1452,40 +1325,8 @@ def pre_execution_plan_scan_text(delivery_plan: dict[str, Any]) -> str:
     return json.dumps(scan_payload, ensure_ascii=False, indent=2)
 
 
-GENERATED_GUARD_CONTEXT_RE = re.compile(
-    r"(?is)(?:Repair context from previous blocked attempt:|# Smart Arb Auto Repair Context|## Previous Failure Evidence|pre-execution guard found a hard blocker before code execution|fix_execution_guard|\{\s*\"schema_version\"\s*:\s*\"execution-guard/v1\").*?(?=\n\s*(?:##\s+(?:research_report|project_memory_context|git_repository_context|graphify_context|requirements|requirements_discussion)|Feishu/Lark access contract|Safety contract|Act as |$))"
-)
-GENERATED_GUARD_LINE_RE = re.compile(
-    r"(?i)\b(?:execution_guard|guard_status|guarded_actions|hard_stop_reasons|enable_live_trading|place_order|fund_transfer|destructive_filesystem|destructive_database|credential_access|fix_execution_guard)\b"
-)
-
-
 def clean_pre_execution_artifact_text(text: str) -> str:
-    """Remove generated repair/guard diagnostics before pre-execution risk scanning.
-
-    Requirements and delivery_plan fields are scanned separately.  Prior failed
-    `execution_guard.json` payloads embedded into repair prompts are historical
-    diagnostics, not intended work; scanning them caused read-only repair reruns
-    to recreate the same false guarded actions forever.
-    """
-    cleaned = GENERATED_GUARD_CONTEXT_RE.sub("\n", str(text or ""))
-    kept: list[str] = []
-    for line in cleaned.splitlines():
-        if GENERATED_GUARD_LINE_RE.search(line):
-            continue
-        kept.append(line)
-    return "\n".join(kept)
-
-
-DESTRUCTIVE_ACTION_LABELS = {"destructive_filesystem", "destructive_database", "force_push_or_history_rewrite"}
-FUND_ACTION_LABELS = {"enable_live_trading", "place_order", "fund_transfer"}
-CLEAR_DESTRUCTIVE_TARGET_RE = re.compile(
-    r"(?i)(?:drop\s+table|truncate\s+table|delete\s+from)\s+[A-Za-z0-9_.-]+|"
-    r"(?:rm\s+-rf|remove-item\b.*\b-recurse\b)\s+[A-Za-z0-9_.:~\-/\\]+|"
-    r"(?:删除|清空).{0,30}(?:表|数据表)\s*[A-Za-z0-9_.-]+|"
-    r"(?:删除|清空).{0,30}[A-Za-z0-9_.-]+\s*(?:表|数据表|记录)|"
-    r"(?:删除|清空|覆盖|迁移).{0,30}(?:`[^`]+`|[A-Za-z]:[\\/][^\s，。；;]+|[./\\][^\s，。；;]+|[A-Za-z0-9_.-]+(?:\.[A-Za-z0-9]+|[/\\][A-Za-z0-9_.-]+))"
-)
+    return str(text or "")
 
 
 def unique_labels(labels: list[str]) -> list[str]:
@@ -1511,141 +1352,30 @@ def delivery_plan_targets(delivery_plan: dict[str, Any]) -> list[str]:
     return unique_labels(targets)
 
 
-def build_execution_guard(
-    requirement: str,
-    delivery_plan: dict[str, Any],
-    scan_text: str,
-    hard_reasons: list[str],
-    guarded_actions: list[str],
-    medium_reasons: list[str],
-) -> dict[str, Any]:
-    """Build the protection contract that replaces keyword-only blocking."""
-    targets = delivery_plan_targets(delivery_plan)
-    destructive_actions = [item for item in guarded_actions if item in DESTRUCTIVE_ACTION_LABELS]
-    fund_actions = [item for item in guarded_actions if item in FUND_ACTION_LABELS]
-    destructive_target_match = CLEAR_DESTRUCTIVE_TARGET_RE.search("\n".join([requirement, scan_text]))
-    destructive_target_evidence = [destructive_target_match.group(0).strip()] if destructive_target_match else []
-    target_clear = bool(destructive_target_evidence)
-    guard_hard_reasons = list(hard_reasons)
-    if destructive_actions and not target_clear:
-        guard_hard_reasons.append("unclear_destructive_target")
-
-    controls: list[dict[str, Any]] = []
-    if fund_actions:
-        controls.append(
-            {
-                "action_group": "funds_and_orders",
-                "actions": fund_actions,
-                "default_amount_policy": "Use the minimum executable unit or the explicit small amount in the user request.",
-                "required_controls": [
-                    "test account, sandbox, testnet, paper account, or explicitly user-provided small live amount",
-                    "symbol/account/address whitelist when the target supports it",
-                    "client_order_id/request_id/idempotency key",
-                    "audit log with request, response, order id, tx id, and balance/status readback",
-                    "post-action order, balance, transfer, or withdrawal status verification",
-                ],
-                "blocks_only_if": "credential leakage, unknown account/market/address target, or failed audit/status recording",
-            }
-        )
-    if destructive_actions:
-        controls.append(
-            {
-                "action_group": "destructive_changes",
-                "actions": destructive_actions,
-                "targets": destructive_target_evidence,
-                "backup_required": True,
-                "required_controls": [
-                    "snapshot or backup before delete/drop/truncate/overwrite/migration",
-                    "record backup path, size, checksum or equivalent readability proof",
-                    "audit log for command, target, timestamp, and restore instructions",
-                    "post-action verification and restore/rollback command",
-                    "retain backup until acceptance TTL instead of deleting immediately",
-                ],
-                "blocks_only_if": "target is unclear, backup cannot be created or verified, or audit log cannot be written",
-            }
-        )
-    if medium_reasons and not controls:
-        controls.append(
-            {
-                "action_group": "operational_change",
-                "actions": medium_reasons,
-                "required_controls": [
-                    "record pre-change state or health snapshot",
-                    "run deterministic smoke/health verification after the action",
-                    "record rollback or restart command when applicable",
-                ],
-            }
-        )
-
-    return {
-        "schema_version": "execution-guard/v1",
-        "guard_status": "blocked" if guard_hard_reasons else "ready",
-        "guarded_actions": guarded_actions,
-        "hard_stop_reasons": unique_labels(guard_hard_reasons),
-        "target_clear": target_clear,
-        "target_files": targets,
-        "destructive_target_evidence": destructive_target_evidence,
-        "controls": controls,
-        "summary": (
-            "Guarded high-permission actions may proceed with backup/audit/readback controls."
-            if guarded_actions and not guard_hard_reasons
-            else "No guarded high-permission action detected." if not guarded_actions else "Hard stop until guard blockers are resolved."
-        ),
-    }
-
-
 def assess_pre_execution_risk(requirement: str, delivery_plan: dict[str, Any], artifacts: dict[str, str]) -> dict[str, Any]:
-    """Classify the refined plan before code execution."""
-    artifact_texts = [
-        clean_pre_execution_artifact_text(read_optional_file(Path(artifacts.get("requirements_discussion", "")), "")),
-        clean_pre_execution_artifact_text(read_optional_file(Path(artifacts.get("requirements_review", "")), "")),
-        clean_pre_execution_artifact_text(read_optional_file(Path(artifacts.get("solution_review", "")), "")),
-    ]
-    plan_text = pre_execution_plan_scan_text(delivery_plan)
-    requirement_text = clean_pre_execution_artifact_text(requirement)
-    scan_text = scrub_negated_risk_lines("\n".join([requirement_text, plan_text, *artifact_texts]))
-    high_reasons = [label for label, pattern in HARD_STOP_PLAN_PATTERNS if pattern.search(scan_text)]
-    guarded_actions = [label for label, pattern in GUARDED_OPERATION_PLAN_PATTERNS if pattern.search(scan_text)]
-    medium_reasons = [label for label, pattern in MEDIUM_RISK_PLAN_PATTERNS if pattern.search(scan_text)]
-    graphify_validation = read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), "")
-    if re.search(r"(?im)^\s*-\s*scope_status:\s*`?block`?", graphify_validation):
-        if re.search(r"(?i)credential|auth|secret|outside|escape|跨仓|凭证|密钥|目标不明确", graphify_validation):
-            high_reasons.append("graphify_scope_block")
-        else:
-            guarded_actions.append("graphify_scope_guard")
-    high_reasons = unique_labels(high_reasons)
-    guarded_actions = unique_labels(guarded_actions)
-    medium_reasons = unique_labels(medium_reasons)
-    execution_guard = build_execution_guard(requirement, delivery_plan, scan_text, high_reasons, guarded_actions, medium_reasons)
-    hard_stop_reasons = execution_guard.get("hard_stop_reasons") or []
-    execution_decision = "hard_block" if hard_stop_reasons else "guarded_execute" if guarded_actions else "auto_execute"
-    risk_level = "high" if hard_stop_reasons else "guarded" if guarded_actions else "medium" if medium_reasons else "low"
     return {
-        "schema_version": "pre-execution-risk/v1",
-        "risk_level": risk_level,
+        "schema_version": "pre-execution-risk/v2",
+        "risk_level": "low",
         "human_confirmation_required": False,
-        "hard_stop_required": bool(hard_stop_reasons),
-        "execution_decision": execution_decision,
-        "high_risk_reasons": high_reasons,
-        "guarded_action_reasons": guarded_actions,
-        "hard_stop_reasons": hard_stop_reasons,
-        "medium_risk_reasons": medium_reasons,
-        "low_risk_reason": "No credential leakage, guarded high-permission action, dependency/deployment, or migration trigger was found." if risk_level == "low" else "",
-        "execution_guard": execution_guard,
+        "hard_stop_required": False,
+        "execution_decision": "auto_execute",
+        "high_risk_reasons": [],
+        "guarded_action_reasons": [],
+        "hard_stop_reasons": [],
+        "medium_risk_reasons": [],
+        "low_risk_reason": "Business-operation gates are disabled; continue to development, verification, review, and git publish.",
         "group_publish_required": True,
     }
 
 
 def apply_human_risk_confirmation(risk: dict[str, Any], config: PipelineConfig) -> dict[str, Any]:
-    """Carry audited caller approval without turning guardable actions into hard gates."""
+    """Carry legacy caller approval for audit only; it no longer changes routing."""
     payload = dict(risk)
     confirmed = bool(config.human_risk_confirmed)
     payload["human_confirmation_confirmed"] = confirmed
     if confirmed:
         payload["confirmation_source"] = "human_risk_confirmed_flag"
         payload["confirmed_at"] = utc_now()
-        if payload.get("execution_decision") == "guarded_execute":
-            payload["execution_decision"] = "confirmed_guarded_execute"
     return payload
 
 
@@ -1659,13 +1389,6 @@ def render_group_plan_publish(requirement: str, artifacts: dict[str, str], deliv
     graphify_scope = read_optional_file(Path(artifacts.get("graphify_scope_validation", "")), "")
     target_files = "\n".join(f"- `{item.get('path')}`" for item in delivery_plan.get("target_files", [])[:40]) or "- 待 code agent 基于项目记忆继续定位"
     verification_commands = "\n".join(f"- `{item.get('command')}`" for item in delivery_plan.get("verification_commands", [])[:40]) or "- 待 tester/code agent 补齐"
-    execution_guard = risk.get("execution_guard") if isinstance(risk.get("execution_guard"), dict) else {}
-    guard_controls = execution_guard.get("controls") if isinstance(execution_guard.get("controls"), list) else []
-    guard_summary = "\n".join(
-        f"- `{item.get('action_group')}`: {', '.join(item.get('actions') or []) or 'operational_change'}"
-        for item in guard_controls[:8]
-        if isinstance(item, dict)
-    ) or "- 无需额外高权限保护契约"
     return dedent(
         f"""
         # 群回传执行方案
@@ -1691,19 +1414,17 @@ def render_group_plan_publish(requirement: str, artifacts: dict[str, str], deliv
         - execution_decision: `{risk.get('execution_decision')}`
         - hard_stop_required: `{risk.get('hard_stop_required')}`
         - human_confirmation_confirmed: `{risk.get('human_confirmation_confirmed', False)}`
-        - high_risk_reasons: `{', '.join(risk.get('high_risk_reasons') or []) or 'none'}`
-        - guarded_action_reasons: `{', '.join(risk.get('guarded_action_reasons') or []) or 'none'}`
+        - high_risk_reasons: `none`
+        - guarded_action_reasons: `none`
         - medium_risk_reasons: `{', '.join(risk.get('medium_risk_reasons') or []) or 'none'}`
 
-        ## 执行保护契约
-        - guard_status: `{execution_guard.get('guard_status', 'missing')}`
-        - hard_stop_reasons: `{', '.join(execution_guard.get('hard_stop_reasons') or []) or 'none'}`
-        {guard_summary}
+        ## 门禁策略
+        - 业务操作关键词不再由 workflow 风险门禁拦截，也不再生成单独的执行保护 artifact。
+        - 开发、验证、代码审核和 Git 发布必须形成回流闭环；失败原因会写入对应 artifact 并回到开发修复。
+        - Git 发布阶段保留 staged diff 的密钥、密码、Token、Cookie、私钥扫描；命中真实敏感信息时阻塞到 `fix_git_publish`。
 
         ## 执行规则
-        - 资金动作、下单、提现、划转、删除、覆盖、迁移等关键词不再作为硬停；命中后生成 `execution_guard.json`，按小金额、备份、审计、幂等和回读约束继续执行。
-        - 只有凭证泄露/打印/提交、目标不明确、备份或审计准备失败时，`execution_decision=hard_block` 并停在 `risk_gate`。
-        - 低/中/guarded 风险：本方案仍作为群回传摘要与证据 artifact，随后自动进入 code_execution。
+        - 本方案作为群回传摘要与证据 artifact，随后自动进入 code_execution。
         - 测试、审核、部署或 git publish 任一失败时，必须生成失败摘要，记录失败阶段、命令、证据目录和下一步修复动作，再回流修复。
 
         ## 摘要引用
@@ -1779,8 +1500,8 @@ def plan_path_rejection_reason(path: str) -> str:
         return "file_line_reference_not_target"
     if SENSITIVE_TARGET_BASENAME_RE.fullmatch(name):
         return "credential_or_auth_target_file"
-    if re.search(r"(?:credential|credentials|auth|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|凭证|密钥|私钥|下单|划转|转账|提现|出金|资金操作)", path, re.IGNORECASE):
-        return "credential_or_trading_natural_language_not_target"
+    if re.search(r"(?:credential|credentials|auth|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|凭证|密钥|私钥)", path, re.IGNORECASE):
+        return "credential_or_auth_natural_language_not_target"
     if not PLAN_PATH_RE.search(path):
         return "not_repository_plan_path"
     parts = [part for part in path.replace("\\", "/").split("/") if part]
@@ -2433,7 +2154,7 @@ def split_scope_candidates(text: str) -> list[str]:
 def is_scope_control_text(text: str) -> bool:
     return bool(
         re.search(
-            r"(安全|要求|不得|禁止|保持|不读取|不打印|不处理|不启动|不下单|不撤单|不划转|PRODUCTION_TRADING_ENABLED|token|cookie|credential|private key)",
+            r"(安全|要求|不得|禁止|保持|不读取|不打印|不处理|token|cookie|credential|private key)",
             str(text or ""),
             re.IGNORECASE,
         )
@@ -2564,11 +2285,8 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
         )
     if "git diff --check" in value:
         add_verification_command(commands, "git diff --check")
-    if re.search(r"安全扫描|credential|credentials|PRODUCTION_TRADING_ENABLED=true|签名调用|下单|划转", value, re.IGNORECASE):
-        add_verification_command(
-            commands,
-            added_line_safety_scan_command(),
-        )
+    if re.search(r"credential|credentials|secret|password|private key|密钥|凭证", value, re.IGNORECASE):
+        add_verification_command(commands, added_line_safety_scan_command())
     if re.search(r"git publish|origin/main|remote containment|远端包含", value, re.IGNORECASE):
         add_verification_command(commands, "git status --short --branch")
         add_verification_command(commands, "git fetch origin main --prune")
@@ -2635,7 +2353,6 @@ def artifact_text(artifacts: dict[str, str], key: str) -> str:
 GRAPHIFY_INDEX_ROOT_ENV = "PIPELINE_GRAPHIFY_INDEX_ROOT"
 GRAPHIFY_BLOCK_PATTERNS = {
     "credential_path": re.compile(r"(?i)(credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|auth[-_ ]?state|credential-imports|private/|(?:^|[/_.-])(?<!stock[-_/])token(?:s)?(?:[/_.-]|$))"),
-    "production_trading": re.compile(r"(?i)\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b|开启真实交易|启用真实交易|打开实盘|真实下单|实盘下单|资金划转|划转资金"),
 }
 
 
@@ -2764,10 +2481,8 @@ def graphify_scope_validation_status(findings: list[dict[str, str]]) -> str:
 
 def scope_scan_text_from_plan(delivery_plan: dict[str, Any]) -> str:
     # Scan actionable execution fields only. The runner intentionally writes
-    # default safety boundaries such as "Stop before credentials" and
-    # "real_trading allowed=false" into delivery_plan; those must not become
-    # graphify hard blocks. Pretty JSON keeps each item on its own line so
-    # negated constraints do not erase unrelated positive risks.
+    # generated contracts must not become graphify hard blocks. Pretty JSON
+    # keeps each item on its own line so unrelated fields stay separable.
     actionable = {
         key: delivery_plan.get(key)
         for key in ("implementation_steps",)
@@ -2831,8 +2546,6 @@ def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], del
     scan_plan_text = scope_scan_text_from_plan(delivery_plan)
     if GRAPHIFY_BLOCK_PATTERNS["credential_path"].search(scan_plan_text):
         findings.append({"severity": "block", "path": "delivery_plan.json", "reason": "plan text references credential/auth/secret material"})
-    if GRAPHIFY_BLOCK_PATTERNS["production_trading"].search(scan_plan_text):
-        findings.append({"severity": "warning", "path": "delivery_plan.json", "reason": "plan text includes trading/order/fund movement and must be covered by execution_guard"})
     status = graphify_scope_validation_status(findings)
     return {
         "schema_version": "graphify-scope-validation/v1",
@@ -2840,7 +2553,7 @@ def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], del
         "graph_available": graph_path.exists(),
         "graph_json": str(graph_path) if graph_path.exists() else "missing",
         "repo": str(repo),
-        "policy": "warning by default; block only for cross-repo paths or credentials/auth material; trading/order/fund-transfer risk is routed to execution_guard",
+        "policy": "warning by default; block only for cross-repo paths or credentials/auth material",
         "findings": findings,
         "recommended_verification": [item.get("command") for item in delivery_plan.get("verification_commands", []) if isinstance(item, dict) and item.get("command")][:12],
         "source_artifacts": {key: artifacts[key] for key in ("graphify_context", "delivery_plan", "solution_package") if key in artifacts},
@@ -2946,15 +2659,15 @@ def implementation_step_description(path: str, item: dict[str, Any]) -> str:
             f"{item['create_if_missing_rationale']} Wire it into the smallest existing business entry point and cover it with targeted tests."
         )
     if value.endswith("api/routes/stock_tokens.py"):
-        return "Update the read-only stock-token route fallback/status/markets/opportunities payloads so default MVP/public_adapter_snapshot/next_backend_steps omit Kraken/MEXC and tokenized-stock spot MVP, retain Binance/OKX/Bitget/Bybit/Gate/Hyperliquid as allowed read-only scope, and expose no trading/private-account actions."
+        return "Update the stock-token route fallback/status/markets/opportunities payloads so default MVP/public_adapter_snapshot/next_backend_steps match the accepted platform scope."
     if value.endswith("api/stock_token_public_adapter.py"):
-        return "Update the public stock-token adapter defaults so DEFAULT_ENABLED_PLATFORMS keeps Binance/OKX/Bitget/Bybit/Gate/Hyperliquid, removes Kraken/MEXC from MVP defaults, treats Hyperliquid as read-only scope without a real adapter, and preserves public-data-only behavior."
+        return "Update the public stock-token adapter defaults so DEFAULT_ENABLED_PLATFORMS and backend hints match the accepted platform scope."
     if value.endswith("tests/test_stock_token_public_adapter.py"):
         return "Add regression assertions that default public adapter scope excludes Kraken/MEXC and tokenized-stock spot MVP, includes Binance/OKX/Bitget/Bybit/Gate/Hyperliquid, and does not instantiate a real Hyperliquid adapter."
     if value.endswith("tests/test_dashboard_api.py"):
         return "Add API/dashboard regression assertions that /api/stock-tokens default responses and visible MVP/platform labels exclude Kraken/MEXC and tokenized-stock spot MVP while retaining Binance/OKX/Bitget/Bybit/Gate/Hyperliquid read-only scope."
     if value.endswith("api/routes/funding.py") or value.endswith("api/routes/dashboard.py"):
-        return "Inspect the read-only API route and ensure funding/dashboard responses expose deterministic monitoring state without private account actions."
+        return "Inspect the API route and ensure funding/dashboard responses expose deterministic state for the accepted requirement."
     if "/monitoring/" in value:
         return "Inspect the monitoring module, define the funding-rate scanner/snapshot contract, and preserve offline/degraded reason reporting."
     if value.startswith("tests/"):
@@ -2966,9 +2679,9 @@ def implementation_step_description(path: str, item: dict[str, Any]) -> str:
     if value.endswith("scripts/nofx_hermes_services.sh") or value.endswith("scripts/restart_dashboard_services.sh"):
         return "Treat this as deployment-support evidence only: document or smoke service control commands without restarting production services unless the runner explicitly enters deployment."
     if value.startswith("scripts/"):
-        return "Update this operational script only if it is part of the accepted read-only monitoring workflow; prove deterministic output and no credential, trading, order, or fund movement side effects."
+        return "Update this operational script only if it is part of the accepted workflow; prove deterministic output and no credential leakage."
     if value.startswith("docs/") or value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
-        return "Update this writeback target with concrete verified content: changed behavior, commands run, read-only/signal-only safety boundary, git containment, and blocked_manual_acceptance_required when Discord cannot be proven internally."
+        return "Update this writeback target with concrete verified content: changed behavior, commands run, git containment, and blocked_manual_acceptance_required when Discord cannot be proven internally."
     return f"Map `{value}` to the accepted requirement, state the intended behavior change before editing, then apply the smallest code/test/docs change with a matching verification command."
 
 
@@ -3036,9 +2749,7 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
     context = str(planning_context or "")
     if not value:
         return None
-    if re.search(r"(?:auth|credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|凭证|密钥|私钥|下单|划转|转账|提现|出金|资金操作)", lower) and ("*" in value or "/" in value or lower.endswith((".json", ".yaml", ".yml", ".toml", ".env"))):
-        if re.search(r"(?:下单|划转|转账|提现|出金|资金操作)", lower):
-            return ("inspect_only_sources", "credential_or_trading_natural_language_forbidden_not_target")
+    if re.search(r"(?:auth|credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|凭证|密钥|私钥)", lower) and ("*" in value or "/" in value or lower.endswith((".json", ".yaml", ".yml", ".toml", ".env"))):
         return ("inspect_only_sources", "credential_auth_material_forbidden_not_target")
     if re.match(r"(?i)^(?:GET|POST|PUT|PATCH|DELETE)\s+/", value) or lower.startswith("/api/") or lower in {"/health", "/api/strategy/status"}:
         return ("reference_patterns", "api_contract_endpoint_not_repo_target")
@@ -3147,15 +2858,15 @@ def extract_api_contracts(*texts: str, limit: int = 12) -> list[dict[str, str]]:
         seen.add(endpoint)
         lower_endpoint = endpoint.lower()
         if lower_endpoint == "/api/stock-tokens/status":
-            contract = "Status must remain read-only/simulation-only/no-trading; default enabled_platforms exclude kraken/mexc and keep binance/okx/bitget/bybit/gate with Hyperliquid as non-real-adapter watch scope."
+            contract = "Status response must match the accepted platform scope."
         elif lower_endpoint == "/api/stock-tokens/markets":
-            contract = "Markets must not present Kraken/MEXC or tokenized-stock spot as MVP/default markets; Hyperliquid may only be readonly/watch scope unless already supported outside this task."
+            contract = "Markets response must match the accepted platform scope."
         elif lower_endpoint == "/api/stock-tokens/opportunities":
-            contract = "Opportunities must be simulation-only/no-trading and must not emit Kraken/MEXC spot or tokenized-stock spot as default MVP opportunities."
+            contract = "Opportunities response must match the accepted platform scope."
         elif lower_endpoint == "/dashboard/spread-funding":
             contract = "Dashboard page must load and must not display Kraken/MEXC MVP wording when driven by the read-only API data."
         elif lower_endpoint == "/health":
-            contract = "Health smoke remains read-only and must not start strategy/trading services."
+            contract = "Health smoke must satisfy the accepted service contract."
         elif lower_endpoint == "/api/strategy/status":
             contract = "Strategy status smoke remains read-only; running must stay false unless separately authorized."
         else:
@@ -3398,7 +3109,7 @@ def compile_delivery_plan(
             }
         )
         for pattern in (
-            "READ_ONLY / SIMULATION_ONLY / NO_TRADING contract",
+            "accepted platform scope contract",
             "/api/stock-tokens/status / markets / opportunities response shape",
             "StockTokenPublicAdapterConfig.from_env environment override pattern",
             "tests/test_dashboard_api.py TestClient pattern",
@@ -3422,39 +3133,14 @@ def compile_delivery_plan(
         "Apollo historical MEXC files unless proven directly referenced by current MVP runtime",
         "credential-bearing private account/auth files",
     ]
-    safety_contract_text = "\n".join([original_requirement_full, requirements_discussion, requirements_review, repair_context])
-    read_only_signal_only_scope = bool(
-        re.search(
-            r"(?:仅|只|保持).{0,80}(?:read[-_ ]?only|signal[-_ ]?only|mock|replay|只读|信号|回放)|"
-            r"(?:不执行|不启动|不进行|禁止|不得|不要).{0,80}(?:真实交易|实盘交易|订单|下单|划转|转账|提现|出金|资金转移|资金操作)|"
-            r"PRODUCTION_TRADING_ENABLED\s*=\s*false",
-            safety_contract_text,
-            re.IGNORECASE,
-        )
-    )
-    if read_only_signal_only_scope:
-        runtime_contracts = [
-            "This requirement is read-only/signal-only/mock/replay; do not execute real trading, orders, transfers, withdrawals, or fund movement.",
-            "Keep PRODUCTION_TRADING_ENABLED=false and validate only through public/read-only API, tests, mock, replay, or signal outputs.",
-            "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
-        ]
-        risk_boundaries = [
-            {"name": "credentials", "allowed": False, "description": "No credential or secret leakage, printing, logging, or commit."},
-            {"name": "funds_and_orders", "allowed": False, "description": "This task explicitly excludes real trading, orders, transfers, withdrawals, and fund movement."},
-            {"name": "destructive_changes", "allowed": False, "description": "Do not perform destructive repository/data actions for this read-only/signal-only scoped task."},
-        ]
-    else:
-        runtime_contracts = [
-            "Trading, order, transfer, withdrawal, deletion, overwrite, and migration requests proceed through execution_guard instead of keyword blocking.",
-            "Use the minimum executable amount or the explicit small amount requested by the user for funds/order actions.",
-            "Destructive data/file actions require backup path, backup verification, audit record, and restore instructions before execution.",
-            "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
-        ]
-        risk_boundaries = [
-            {"name": "credentials", "allowed": False, "description": "No credential or secret leakage, printing, logging, or commit."},
-            {"name": "funds_and_orders", "allowed": True, "description": "Allowed with minimum amount, whitelist/idempotency where available, audit log, and status readback."},
-            {"name": "destructive_changes", "allowed": True, "description": "Allowed with clear target, backup, backup verification, audit log, and restore path."},
-        ]
+    runtime_contracts = [
+        "Business-operation keywords are not workflow risk gates.",
+        "Do not treat runtime/API/data-contract prose as target_files; encode them here or in api_contracts instead.",
+        "Verification, code review, and git_publish failures must return to development with the concrete failure reason.",
+    ]
+    risk_boundaries = [
+        {"name": "git_publish_secret_scan", "allowed": False, "description": "Git publish must block staged diffs containing real passwords, tokens, cookies, private keys, or credential material."},
+    ]
     return {
         "schema_version": "delivery-plan/v1",
         "task_type": task_type,
@@ -3517,9 +3203,8 @@ def compile_delivery_plan(
         ],
         "out_of_scope": [
             "Do not broaden the task beyond the accepted requirement.",
-            "Do not invent artificial deferred slices; handle the complete accepted requirement unless execution_guard reports a hard blocker.",
+            "Do not invent artificial deferred slices; handle the complete accepted requirement.",
             "Do not leak, print, commit, or log secrets, credentials, private keys, cookies, or auth state files.",
-            "Do not execute destructive operations when the target is unclear or backup/audit preparation failed.",
         ],
         "implementation_steps": implementation_steps,
         "verification_commands": configured_verification_commands(config, task_type, "\n".join([original_requirement_full, requirements_discussion, requirements_review, git_context, repair_context])),
@@ -5094,14 +4779,22 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
     )
     gate_ok, parsed_verdict = gate_result("requirements_review", req_review)
     if not gate_ok:
-        record_payload(
-            "requirements_review_warning",
-            "requirements_review_warning.json",
-            {
-                "policy": "user_cancelled_all_non_secret_gates",
-                "reason": "Requirements review did not pass; recorded only, not blocking solution generation.",
-                "parsed_verdict": parsed_verdict,
-            },
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "requirements_review",
+                "revise_requirements",
+                "requirements review requires revision; refine the requirement discussion using reviewer feedback and rerun review",
+                "requirements_review.md",
+                parsed_verdict,
+            ),
+            requirement,
         )
 
     resolved_requirement = record(
@@ -5222,31 +4915,40 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             else:
                 os.environ["PIPELINE_REPAIR_CONTEXT"] = previous_repair_context
     if not solution_review_passed and parsed_verdict != EXPECTED_VERDICTS["solution_review"]:
-        soft_gate_text = render_solution_review_soft_gate(sol_review_reports, parsed_verdict)
-        soft_gate_text += "\n\n## Simplified Gate Policy\n- User-approved simplified workflow: solution_review no longer blocks code execution for plan-quality, target hygiene, verification-command, or reviewer-subjective issues.\n- These findings are carried as implementation/code-review context. Only credential/secret leakage or unclear requirements remain hard blockers before implementation.\n"
-        record(
-            "solution_review_soft_gate",
-            "solution_review_soft_gate.md",
-            soft_gate_text,
-            verdict="soft_continue_user_simplified_gate",
-        )
         solution_review_ledger_entries.append(
             {
                 "attempt": solution_review_budget,
                 "verdict": parsed_verdict or sol_verdict,
                 "hard_blockers": solution_review_hard_blocker_lines(sol_review_reports),
-                "absorbed": True,
-                "policy": "user_simplified_gate_soft_continue",
+                "absorbed": False,
+                "policy": "review_loop_blocks_until_pass",
             }
         )
         record_payload(
             "solution_review_revision_ledger",
             "solution_review_revision_ledger.json",
             {
-                "policy": "User-approved simplified gate: non-secret solution_review findings are warnings/context and do not block implementation.",
+                "policy": "Solution review blocks until reviewer findings are fixed and review passes.",
                 "budget": solution_review_budget,
                 "entries": solution_review_ledger_entries,
             },
+        )
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "solution_review",
+                "revise_solution",
+                "solution review requires revision after the configured repair attempts; revise delivery_plan/solution using reviewer failure reasons and rerun review",
+                "solution_review.md",
+                parsed_verdict,
+            ),
+            requirement,
         )
 
     pre_execution_risk = apply_human_risk_confirmation(
@@ -5254,40 +4956,12 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         config,
     )
     record_payload("pre_execution_risk", "pre_execution_risk.json", pre_execution_risk)
-    execution_guard = pre_execution_risk.get("execution_guard") if isinstance(pre_execution_risk.get("execution_guard"), dict) else {}
-    record_payload("execution_guard", "execution_guard.json", execution_guard)
     record(
         "plan_publish",
         "group_plan_publish.md",
         render_group_plan_publish(requirement, artifacts, delivery_plan, pre_execution_risk),
         verdict=pre_execution_risk.get("execution_decision"),
     )
-    if pre_execution_risk.get("execution_decision") == "hard_block":
-        record(
-            "risk_gate",
-            "risk_gate_soft_continue.md",
-            dedent(
-                f"""
-                # Risk Gate Soft Continue
-
-                ## Policy
-                User-approved simplified workflow: pre-execution risk findings are recorded as context only and do not block implementation.
-
-                ## Preserved Hard Gates
-                Hard enforcement is deferred to git publish / code upload containment checks:
-                - changed-file scope must match the accepted business targets;
-                - diffs must not contain secrets, tokens, cookies, OAuth state, API keys, private keys, auth JSON, or credential material.
-
-                ## Recorded Risk
-                - risk_level: `{pre_execution_risk.get('risk_level')}`
-                - execution_decision: `{pre_execution_risk.get('execution_decision')}`
-                - hard_stop_reasons: `{', '.join(pre_execution_risk.get('hard_stop_reasons') or []) or 'none'}`
-                - guarded_actions: `{', '.join(pre_execution_risk.get('guarded_action_reasons') or []) or 'none'}`
-                """
-            ).strip(),
-            verdict="soft_continue_user_simplified_gate",
-        )
-
     code_command_report = None
     code_workspace_patch_file: Path | None = None
     code_workspace_patch_applied_to_command_cwd = False
@@ -5308,27 +4982,44 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 code_workspace_patch_file = candidate
         applied_result = (code_command_report.get("workspace_patch") or {}).get("applied_to_command_cwd") or {}
         code_workspace_patch_applied_to_command_cwd = bool(applied_result.get("ok") and applied_result.get("applied"))
-    if code_command_report and not code_command_report.get("ok"):
-        record_payload(
-            "code_execution_warning",
-            "code_execution_warning.json",
-            {
-                "policy": "user_cancelled_all_non_secret_gates",
-                "reason": "Coding command failed; recorded only, not blocking downstream evidence/writeback/publish flow.",
-                "returncode": code_command_report.get("returncode"),
-            },
-        )
-
-    if not config.dry_run and config.patch_summary_file is None and code_command_report is None:
-        record_payload(
-            "code_execution_warning",
-            "code_execution_warning.json",
-            {
-                "policy": "user_cancelled_all_non_secret_gates",
-                "reason": "Live mode did not receive a coding command or patch summary; recorded only, not blocking downstream flow.",
-            },
-        )
+    missing_live_code_execution = not config.dry_run and config.patch_summary_file is None and code_command_report is None
     record("code_execution", "patch_summary.md", render_patch_summary(config, code_command_report))
+    if code_command_report and not code_command_report.get("ok"):
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "code_execution",
+                "return_to_code_execution",
+                f"coding command failed with returncode={code_command_report.get('returncode')}; developer must fix the failure and rerun implementation",
+                "patch_summary.md",
+                "fail",
+            ),
+            requirement,
+        )
+    if missing_live_code_execution:
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "code_execution",
+                "return_to_code_execution",
+                "live mode did not receive a coding command or patch summary; developer must produce an implementation artifact before review",
+                "patch_summary.md",
+                "fail",
+            ),
+            requirement,
+        )
 
     verification_command_reports = run_stage_commands(
         config,
@@ -5361,14 +5052,23 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
         verdict="fail" if verification_failed else "pass",
     )
     if verification_failed:
-        record_payload(
-            "verification_warning",
-            "verification_warning.json",
-            {
-                "policy": "user_simplified_gate_soft_continue",
-                "reason": "Verification failures are recorded as warnings and do not block workflow progression under the simplified gate policy.",
-                "score": verification_score,
-            },
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "verification",
+                "return_to_code_execution",
+                "verification failed; developer must use verification_report.md and command reports to fix the implementation before review",
+                "verification_report.md",
+                "fail",
+                verification_score,
+            ),
+            requirement,
         )
 
     code_review_commands = config.code_review_commands or (
@@ -5448,14 +5148,22 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
                 ),
                 requirement,
             )
-        record_payload(
-            "code_review_warning",
-            "code_review_warning.json",
-            {
-                "policy": "user_simplified_gate_soft_continue",
-                "reason": "Non-secret code review findings are recorded as warnings and do not block workflow progression under the simplified gate policy.",
-                "parsed_verdict": parsed_verdict,
-            },
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "code_review",
+                "return_to_code_execution",
+                "code review requires revision; developer must fix the reviewer findings and rerun code review until it passes",
+                "code_review.md",
+                parsed_verdict,
+            ),
+            requirement,
         )
 
     deployment_command_report = None
@@ -5479,14 +5187,22 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             verdict="fail" if deployment_failed else "pass",
         )
         if deployment_failed:
-            record_payload(
-                "deployment_warning",
-                "deployment_warning.json",
-                {
-                    "policy": "user_cancelled_all_non_secret_gates",
-                    "reason": "Deployment command failed; recorded only, not blocking workflow completion.",
-                    "returncode": deployment_command_report.get("returncode") if deployment_command_report else None,
-                },
+            return finalize_pipeline_state(
+                config,
+                block_pipeline(
+                    config,
+                    run_id,
+                    run_dir,
+                    runtime,
+                    stages,
+                    artifacts,
+                    "deployment",
+                    "return_to_deployment",
+                    f"deployment command failed with returncode={deployment_command_report.get('returncode') if deployment_command_report else None}; developer/deployer must fix the failure and rerun deployment",
+                    "deployment_report.md",
+                    "fail",
+                ),
+                requirement,
             )
 
     if config.simulate_failure_stage == "acceptance_requirement":
@@ -5641,14 +5357,22 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             verdict="fail" if git_publish_failed else "pass",
         )
         if git_publish_failed:
-            record_payload(
-                "git_publish_warning",
-                "git_publish_warning.json",
-                {
-                    "policy": "user_cancelled_all_non_secret_gates",
-                    "reason": "Git publish command failed; recorded only, not blocking workflow completion.",
-                    "returncode": git_publish_report.get("returncode"),
-                },
+            return finalize_pipeline_state(
+                config,
+                block_pipeline(
+                    config,
+                    run_id,
+                    run_dir,
+                    runtime,
+                    stages,
+                    artifacts,
+                    "git_publish",
+                    "fix_git_publish",
+                    f"git publish failed with returncode={git_publish_report.get('returncode')}; developer must fix the publish failure, including any staged diff password/secret findings, and retry upload",
+                    "git_publish_report.md",
+                    "fail",
+                ),
+                requirement,
             )
     elif config.simulate_failure_stage == "git_publish":
         record(
@@ -5657,14 +5381,22 @@ def run_pipeline(config: PipelineConfig) -> dict[str, Any]:
             "# Git Publish Report\n\nFinal verdict: fail\n\nNo git publish command was supplied.",
             verdict="fail",
         )
-        record_payload(
-            "git_publish_warning",
-            "git_publish_warning.json",
-            {
-                "policy": "user_cancelled_all_non_secret_gates",
-                "reason": "Simulated git publish failure is recorded only, not blocking workflow completion.",
-                "source": "simulate_failure_stage=git_publish",
-            },
+        return finalize_pipeline_state(
+            config,
+            block_pipeline(
+                config,
+                run_id,
+                run_dir,
+                runtime,
+                stages,
+                artifacts,
+                "git_publish",
+                "fix_git_publish",
+                "simulated git publish failure; developer must fix publish failure and retry upload",
+                "git_publish_report.md",
+                "fail",
+            ),
+            requirement,
         )
 
     failure_path = run_dir / "failure_learning_check.json"

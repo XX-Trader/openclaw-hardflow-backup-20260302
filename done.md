@@ -5,7 +5,21 @@
 
 ---
 
+## 2026-05-10 已完成
+
+- [x] [2026-05-10] **项目交付工作流删除业务动作门禁**
+  - 已按用户口径删除/停用交易、下单、资金划转、提现等业务相关 workflow 门禁；`pre_execution_risk.json` 只保留执行前记录，不再生成 `execution_guard.json`。
+  - 审核与开发改为失败回流闭环：需求审核、方案审核、验证、代码审核、deployment、git_publish 失败都会记录失败原因并回到对应修复动作，直到通过。
+  - Git 发布阶段仍保留 staged diff 密码/Token/Cookie/私钥/凭证材料扫描；命中真实敏感信息会阻塞到 `fix_git_publish`，不允许上传。
+  - 验证：`test_smart_arb_pipeline_entry` + `test_smart_arb_live_bridge` 97 项 OK；runner 业务门禁/失败回流定向用例 OK；runner 全模块因历史长用例超过 6 分钟未作为通过证据。
+
 ## 2026-05-09 已完成
+
+- [x] [2026-05-09] **nofx Discord profile 迁入智能趋势跟踪**
+  - 已在 `智能趋势跟踪` 的 `套利策略` 分类下创建频道：`价差套利`、`价差监控测试`、`套利策略测试`、`多agent-修复`。
+  - 已确认 `套利策略监控机器人` 与 `价差监控机器人` 加入 `智能趋势跟踪`，并把 nofx `arbitrageagent` 指向 `套利策略测试` `1502616919713386647`、`spreadagent` 指向 `价差监控测试` `1502616918190854165`。
+  - 已备份 nofx 两个 profile 的 `.env/config.yaml` 到 `.bak-discord-merge-20260509T230846`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread` tmux gateway。
+  - 验证：两个 profile 的 `gateway_state=running`，Discord 均为 `connected`；Hermes status 显示 home channel 已切到新频道。
 
 - [x] [2026-05-09] **pm-website / nofx OpenClaw 运行态清理**
   - 已按用户确认的边界收口：OpenClaw 只运行在 `tokyo-claw`；`pm-website` 与 `nofx` 不再运行或恢复 OpenClaw，只保留 Hermes/业务服务。

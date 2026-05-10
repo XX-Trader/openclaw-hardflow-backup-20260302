@@ -214,8 +214,8 @@ class SmartArbLiveBridgeTests(unittest.TestCase):
         self.assertIn("complete revised plan", prompt)
         self.assertIn("Reviewer discussion note", prompt)
         self.assertIn("Do not stop at \"inspect first\"", prompt)
-        self.assertIn("soft planning gate", prompt)
-        self.assertIn("destructive production data changes", prompt)
+        self.assertIn("hard feedback loop", prompt)
+        self.assertIn("Final verdict: requires_revision", prompt)
 
     def test_code_execution_prompt_absorbs_solution_review_soft_gate(self):
         bridge = self._load_bridge_module()

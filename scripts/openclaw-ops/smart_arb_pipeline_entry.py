@@ -97,7 +97,6 @@ STAGE_LABELS = {
     "graphify_scope_validation": "图谱范围校验",
     "solution_review": "方案评审",
     "plan_publish": "群发方案",
-    "risk_gate": "风险门禁",
     "code_execution": "代码执行",
     "verification": "验证",
     "code_review": "代码审查",
@@ -120,8 +119,7 @@ ARTIFACT_EVIDENCE_LABELS = {
     "solution.md": "方案整理报告",
     "solution_review.md": "方案评审报告",
     "group_plan_publish.md": "群发执行方案",
-    "pre_execution_risk.json": "执行风险门禁",
-    "execution_guard.json": "执行保护契约",
+    "pre_execution_risk.json": "执行前记录",
     "failure_summary.md": "失败群发摘要",
     "patch_summary.md": "代码补丁摘要",
     "verification_report.md": "验证报告",
@@ -180,6 +178,7 @@ STATUS_LABELS = {
 }
 REPAIRABLE_NEXT_ACTIONS = {
     "run_external_research",
+    "revise_requirements",
     "revise_solution",
     "return_to_code_execution",
     "return_to_deployment",
@@ -194,38 +193,17 @@ HIGH_RISK_PATTERNS = [
         r"\b(?:authorization|proxy-authorization|cookie|set-cookie|x-api-key|x-auth-token|x-csrf-token)\b\s*[:=]",
         r"\b(?:risk=high.{0,120}blocking=true|blocking=true.{0,120}risk=high)\b",
         r"\brule=(?:known_secret_pattern|high_entropy_secret_value|sensitive_header_assignment|sensitive_assignment|private_key_marker|private_key_material)\b",
-        r"PRODUCTION_TRADING_ENABLED\s*=\s*true",
-        r"\b(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?|enable\s+(?:real|live)\s+trading|start\s+(?:real|live)\s+trading)\b",
-        r"\b(?:need|needs|requires?|start|enable|execute|place|submit|perform|allow)\b.{0,60}\b(?:withdrawals?|transfer\s+funds|funds?\s+(?:movement|operation|transfer)|place\s+orders?|real\s+trading|live\s+trading)\b",
-        r"\brm\s+-rf\b",
-        r"\bdrop\s+table\b",
-        r"\btruncate\s+table\b",
-        r"\bforce\s+push\b",
         r"(?:需要|要求|读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,20}(?:密钥|凭证|(?<!stock_)(?<!stock-)(?<!stock )tokens?(?!ized)(?![A-Za-z0-9_])|cookie|私钥|会话)",
-        r"(?:下单|划转|转账|提现|出金|资金操作)",
-        r"(?:需要|要求|启动|启用|执行|进行|允许).{0,20}(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作)",
-        r"(?:真实交易|实盘交易).{0,20}(?:授权|开启|执行)",
     )
 ]
-HARD_REPAIR_RISK_PATTERNS = (
-    HIGH_RISK_PATTERNS[0],  # explicit credential/header assignment
-    HIGH_RISK_PATTERNS[1],  # positive credential access request
-    HIGH_RISK_PATTERNS[2],  # sensitive header assignment
-    HIGH_RISK_PATTERNS[3],  # explicit blocking high-risk finding
-    HIGH_RISK_PATTERNS[4],  # secret scanner rules
-    HIGH_RISK_PATTERNS[12],  # Chinese credential/secret access request
-)
-GUARDED_REPAIR_RISK_PATTERNS = tuple(
-    pattern
-    for index, pattern in enumerate(HIGH_RISK_PATTERNS)
-    if index not in {0, 1, 2, 3, 4, 12}
-)
+HARD_REPAIR_RISK_PATTERNS = tuple(HIGH_RISK_PATTERNS)
+GUARDED_REPAIR_RISK_PATTERNS: tuple[re.Pattern[str], ...] = ()
 SAFE_NEGATED_RISK_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"\b(?:do\s+not|don't|never|without|no)\b.{0,80}\b(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdraw|transfer)\b",
-        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不读取|不泄露|不发现|未发现|不是.{0,20}(?:硬风险|安全硬停)).{0,80}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金|credential|secret|cookie|auth[-_ ]?state|force\s+push)",
-        r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金).{0,30}(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|关闭|false)",
+        r"\b(?:do\s+not|don't|never|without|no)\b.{0,80}\b(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?)\b",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|不读取|不泄露|未发现).{0,80}(?:凭证|密钥|token|cookie|私钥|credential|secret|auth[-_ ]?state)",
+        r"(?:凭证|密钥|token|cookie|私钥).{0,30}(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会)",
     )
 ]
 RISK_CLAUSE_SPLIT_RE = re.compile(
@@ -233,38 +211,29 @@ RISK_CLAUSE_SPLIT_RE = re.compile(
     re.IGNORECASE,
 )
 NEGATED_CLAUSE_RE = re.compile(
-    r"^\s*(?:(?:do\s+not|don't|never|without|no)\b|不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不读取|不泄露)",
+    r"^\s*(?:(?:do\s+not|don't|never|without|no)\b|不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|不读取|不泄露)",
     re.IGNORECASE,
 )
 SAFE_NEGATED_COORDINATE_RE = re.compile(
-    r"\b(?:or|nor)\s+(?:use|read|print|show|dump|export|upload|commit|modify|move|delete|place|start|enable|execute|transfer|withdraw|read/print|read/print/move|read/print/move/modify)?\s*"
-    r"(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b",
+    r"\b(?:or|nor)\s+(?:use|read|print|show|dump|export|upload|commit|modify|move|delete|read/print|read/print/move|read/print/move/modify)?\s*"
+    r"(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?)\b",
     re.IGNORECASE,
 )
-SAFE_NEGATED_CN_COORDINATE_RE = re.compile(r"(?:或|或者|以及|和)(?:读取|泄露|使用|输出|打印|查看|启动|启用|执行|进行|允许|下单|划转|转账|提现|出金)?(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)")
+SAFE_NEGATED_CN_COORDINATE_RE = re.compile(r"(?:或|或者|以及|和)(?:读取|泄露|使用|输出|打印|查看|修改|移动)?(?:凭证|密钥|token|cookie|私钥)")
 SAFE_NEGATED_FRAGMENT_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"\b(?:do\s+not|don't|never|without|no)\b\s+(?:withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?|enable\s+(?:real|live)\s+trading|start\s+(?:real|live)\s+trading)\b",
-        r"\b(?:do\s+not|don't|never|without|no)\b\s+(?:use|read|print|show|dump|export|upload|commit|modify|move|delete|place|start|enable|execute|transfer|withdraw|read/print|read/print/move|read/print/move/modify)?\s*(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?|live\s+trading|real\s+trading|orders?|funds?|withdrawals?|transfer\s+funds)\s*(?:required|needed|used|enabled|disabled)?",
-        r"\bkeep\s+(?:live\s+trading|real\s+trading|orders?|funds?|withdrawals?|transfers?)\s+disabled\b",
-        r"\bno\s+`?PRODUCTION_TRADING_ENABLED\s*=\s*true`?\s+(?:was\s+)?(?:found|detected|present|residual)\b",
-        r"\b(?:found|detected)\s+no\s+`?PRODUCTION_TRADING_ENABLED\s*=\s*true`?\b",
-        r"\bno\s+`?PRODUCTION_TRADING_ENABLED\s*=\s*true`?\s+(?:residual\s+)?(?:was\s+)?(?:found|detected|present)?\b",
-        r"(?:没有|未发现|未检测到|不存在).{0,40}`?PRODUCTION_TRADING_ENABLED\s*=\s*true`?",
-        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未启动|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露)(?:读取|泄露|使用|输出|打印|查看|启动|启用|执行|进行|允许|下单|划转|转账|提现|出金)?(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)?(?:关闭|false)?",
-        r"(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|下单|划转|转账|提现|出金|资金)(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|关闭|false)",
+        r"\b(?:do\s+not|don't|never|without|no)\b\s+(?:use|read|print|show|dump|export|upload|commit|modify|move|delete|read/print|read/print/move|read/print/move/modify)?\s*(?:credentials?|secrets?|passwords?|private\s+keys?|cookies?|sessions?|tokens?|api[_ -]?keys?)\s*(?:required|needed|used)?",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|不读取|不泄露)(?:读取|泄露|使用|输出|打印|查看|修改|移动)?(?:凭证|密钥|token|cookie|私钥)?",
+        r"(?:凭证|密钥|token|cookie|私钥)(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会)",
     )
 ]
 SAFE_NEGATED_LIST_FRAGMENT_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
-        r"\b(?:do\s+not|don't|never|without)\b(?:(?![\r\n.;；。!?！？]).){0,260}\b(?:place\s+orders?|submit\s+orders?|transfer\s+funds|withdraw(?:als?)?|live\s+trading|real\s+trading)\b(?:(?![\r\n.;；。!?！？]).){0,120}",
         r"\b(?:no\s+need(?:ed)?\s+for|do\s+not\s+need|don't\s+need|not\s+(?:required|needed))\b.{0,120}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|authorization|auth\s+state\s+files?)\b\s*(?::|=)?\s*(?:\[[^\]]*REDACTED[^\]]*\])?",
-        r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:use|read|print|show|dump|export|upload|commit|modify|delete|move|place|start|enable|execute|transfer|withdraw|set|configure|turn\s+on|switch\s+on|read/print|read/print/move|read/print/move/modify)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,260}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|auth\s+state\s+files?|live\s+trading|real\s+trading|orders?|funds?|withdraw(?:als?)?|transfer\s+funds|place\s+orders?|submit\s+orders?)\b",
-        r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:set|configure)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|and|then|needs?|requires?|set|configure|turn\s+on|switch\s+on|start|enable|execute|place|submit|perform|allow)\b).){0,160}\bPRODUCTION_TRADING_ENABLED\s*=\s*true\b",
-        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|保持|未在|未启动|未下单|未划转|未转账|未提现|未出金|未读取|未泄露|未打印|未移动|未修改|未保留|不保留|不启动|不下单|不划转|不转账|不提现|不出金|不读取|不泄露|不打印|不移动|不修改|不发现|未发现|不是.{0,20}(?:硬风险|安全硬停))(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许|下单后|划转后|转账后|提现后|出金后|资金操作)).){0,200}(?:凭证|密钥|token|cookie|私钥|真实交易|实盘交易|交易|下单|划转|转账|提现|出金|资金|credential(?:-imports)?|credentials?|secrets?|tokens?|cookies?|oauth|auth[-_ ]?state|force\s+push|api[_ /-]?keys?)",
-        r"(?:不得|不要|不能|禁止|不允许|不应|不会)(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置|打开|开启|启动|启用|执行|进行|允许)).){0,160}PRODUCTION_TRADING_ENABLED\s*=\s*true",
+        r"\b(?:do\s+not|don't|never|without)\b\s*(?:(?:use|read|print|show|dump|export|upload|commit|modify|delete|move|set|configure|read/print|read/print/move|read/print/move/modify)\s+)?(?:(?![\r\n.;；。!?！？]|\b(?:but|however|yet|then|needs?|requires?|set|configure|turn\s+on|switch\s+on)\b).){0,260}\b(?:api[_ /-]?keys?|secrets?|passwords?|credentials?|credential-imports|private\s+keys?|cookies?|sessions?|session(?:id|_id)?|jwt|tokens?|oauth|auth\s+state\s+files?)\b",
+        r"(?:不得|不要|不能|禁止|不允许|不涉及|无需|无须|不会|未读取|未泄露|未打印|未移动|未修改|不读取|不泄露|不打印|不移动|不修改|未发现)(?:(?![\r\n.;；。!?！？]|(?:但|但是|不过|然而|并且|然后|需要|要求|设置|配置)).){0,200}(?:凭证|密钥|token|cookie|私钥|credential(?:-imports)?|credentials?|secrets?|tokens?|cookies?|oauth|auth[-_ ]?state|api[_ /-]?keys?)",
     )
 ]
 SAFE_DOCUMENTATION_HISTORY_PATTERNS = [
@@ -272,22 +241,21 @@ SAFE_DOCUMENTATION_HISTORY_PATTERNS = [
     for pattern in (
         r"(?:按用户要求|已|已经).{0,30}从待办中删除.{0,80}(?:凭证|密钥|token|cookie|安全轮换).{0,80}(?:事项|TODO|任务|跟踪)",
         r"未在.{0,40}(?:文档|输出|日志).{0,40}(?:保留|记录|包含).{0,80}(?:token|key|pat|密钥|凭证|cookie).{0,40}(?:明文)?",
-        r"(?:触发点|触发项|原因|自动修复判断).{0,80}(?:风险规则|high|高风险|文本中仍出现).{0,160}(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作|凭证|密钥|token|cookie)",
+        r"(?:触发点|触发项|原因|自动修复判断).{0,80}(?:风险规则|high|高风险|文本中仍出现).{0,160}(?:凭证|密钥|token|cookie)",
         r"(?:原因|reasons?)\s*[:=：].{0,260}(?:\\[bBsSdDwW]|\(\?:|\{0,\d+\}|\[A-Za-z|\[\\^).{0,260}",
-        r"(?:没有|未|不曾).{0,80}(?:credential|auth|凭证|真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作|force\s+push|破坏性).{0,80}(?:硬风险|硬阻塞|风险|阻塞)",
+        r"(?:没有|未|不曾).{0,80}(?:credential|auth|凭证).{0,80}(?:硬风险|硬阻塞|风险|阻塞)",
         r"(?:没有|未发现|未检测到|不存在).{0,180}(?:凭证|密钥|token|cookie|auth|credential|secret|private\s+key).{0,180}(?:泄露|读取|查看|输出|打印|提交|硬停|硬风险|证据)",
         r"code\s+review\s+found\s+credential/password/secret\s+leakage\s+and\s+must\s+be\s+fixed\s+before\s+publish",
         r"(?:secret\s+scan|credential\s+scan|安全扫描|扫描|commit\s+diff|diff|新增行|added[- ]?lines?).{0,220}(?:no|none|without|not\s+(?:found|detected|present)|clean|passed|pass|无|未发现|没有|未检测到|不存在|不含|不包含).{0,180}(?:structural|结构化|credential|credentials|secret|secrets|token|tokens|api[-_ ]?key|password|private\s+key|cookie|auth|assignment|leak|泄露|赋值|证据|凭证|密钥|密码|私钥)",
         r"(?:no|none|without|not\s+(?:found|detected|present)|无|未发现|没有|未检测到|不存在|不含|不包含).{0,140}(?:structural|结构化).{0,140}(?:credential|credentials|secret|secrets|token|tokens|api[-_ ]?key|password|assignment|赋值|凭证|密钥)",
-        r"(?:fail\s+on|安全扫描|Diff\s+safety\s+scan|新增行扫描).{0,220}(?:PRODUCTION_TRADING_ENABLED\s*=\s*true|place_order|transfer|withdraw|credential|auth|真实交易|下单|划转|提现)",
-        r"(?:forbidden_targets?|forbidden|禁止目标|安全边界).{0,260}(?:real\s+trading|orders?|transfer|withdraw|credential|auth|force\s+push|真实交易|下单|划转|提现|凭证|密钥)",
-        r"(?:new\s+Hyperliquid\s+real\s+stock-token\s+adapter\s+files|real\s+trading/order/transfer/withdrawal/control\s+write\s+paths|真实交易/下单/划转/提现/控制写路径|未发现.{0,260}PRODUCTION_TRADING_ENABLED\s*=\s*true|确认未启用.{0,120}PRODUCTION_TRADING_ENABLED\s*=\s*true|reset/stash/checkout.{0,80}force\s+push|no\s+`?reset`?.{0,160}force\s+push|未发现.{0,160}(?:下单|划转|转账|提现|出金|资金操作)|只做最小安全口径修正)",
-        r"(?:没有|未|不曾).{0,20}(?:启动|执行|进行|发生|完成|要求)?(?:真实交易|实盘交易|下单|划转|转账|提现|出金|资金操作|资金动作|读取凭证)",
+        r"(?:fail\s+on|安全扫描|Diff\s+safety\s+scan|新增行扫描).{0,220}(?:credential|auth|凭证|密钥)",
+        r"(?:forbidden_targets?|forbidden|禁止目标|安全边界).{0,260}(?:credential|auth|凭证|密钥)",
+        r"(?:没有|未|不曾).{0,20}(?:要求)?(?:读取凭证)",
         r"(?:没有|未|不曾).{0,80}(?:要求|需要|允许).{0,160}(?:读取|查看|输出|打印|提交|上传|使用|修改|删除).{0,40}(?:密钥|凭证|token|cookie|私钥|会话)",
-        r"(?:原因|处理|自动修复判断|判断)\s*[:=：].{0,300}(?:\\b|\(\?:|\?<!stock_|\?<!stock-|\?<!stock |withdraw|place\\s\+orders|submit\\s\+orders|tokens?\(\?!ized\)|密钥|凭证|token|cookie).{0,300}",
+        r"(?:原因|处理|自动修复判断|判断)\s*[:=：].{0,300}(?:\\b|\(\?:|\?<!stock_|\?<!stock-|\?<!stock |tokens?\(\?!ized\)|密钥|凭证|token|cookie).{0,300}",
         r"(?s)(?:risk_boundaries|risk[-_ ]?boundaries|安全边界).{0,500}(?:credentials?|secrets?|private\s+keys?|cookies?|auth|凭证|密钥|token)\s*=\s*\[REDACTED\]\s*allowed\s*=\s*false",
         r"(?:credentials?|secrets?|private\s+keys?|cookies?|auth|凭证|密钥|token)\s*=\s*\[REDACTED\]\s*allowed\s*=\s*false",
-        r"(?:不是|并非).{0,80}(?:硬风险|真实交易|凭证|credential).{0,160}(?:plan[-_ ]?quality|方案质量|requires_revision|revise_solution)",
+        r"(?:不是|并非).{0,80}(?:硬风险|凭证|credential).{0,160}(?:plan[-_ ]?quality|方案质量|requires_revision|revise_solution)",
     )
 ]
 SERVICE_CONTROL_DENY_PATTERNS = [
@@ -628,7 +596,7 @@ def read_artifact_excerpt(state: dict | None, key: str, limit: int = 900) -> str
     return read_text_excerpt(path, limit)
 
 
-def risk_gate_summary(state: dict | None) -> dict:
+def pre_execution_summary(state: dict | None) -> dict:
     if not isinstance(state, dict):
         return {}
     artifacts = state.get("artifacts") if isinstance(state.get("artifacts"), dict) else {}
@@ -1058,8 +1026,6 @@ def classify_repair_risk(state: dict | None) -> tuple[str, list[str]]:
         ):
             return "medium", [f"可回流审查返工: {next_action}"]
         return "high", hard_reasons[:4]
-    if guarded_reasons and next_action in REPAIRABLE_NEXT_ACTIONS | {"fix_execution_guard", "await_human_confirmation"}:
-        return "medium", ["高权限动作已降级为执行保护契约，可继续回流"] + guarded_reasons[:3]
     if next_action in REPAIRABLE_NEXT_ACTIONS:
         return "medium", [f"可回流动作: {next_action}"]
     return "high", [f"不在自动修复白名单: {next_action or 'none'}"]
@@ -1099,7 +1065,8 @@ def repair_context_markdown(state: dict, attempt: int, risk: str, reasons: list[
             "## Repair Contract",
             "- Repair through the normal pipeline stages; do not bypass verification, code review, deployment, memory writeback, or git publish.",
             "- Fix the root cause if it is within the repository/runtime permissions.",
-            "- Stop only for secret leakage/credential handling, unclear targets, or failed backup/audit preparation. Trading, fund movement, and destructive operations should continue through the execution guard when protected.",
+            "- Business-operation keywords are not workflow risk gates.",
+            "- Git publish still blocks real password, token, cookie, private-key, or credential material in staged diffs.",
         ]
     )
 
@@ -1264,16 +1231,16 @@ def render_chat_summary(
             )
 
     plan_excerpt = group_publish_excerpt(state, limit=1100)
-    risk_summary = risk_gate_summary(state)
+    pre_execution = pre_execution_summary(state)
     if plan_excerpt:
         lines.append("")
         lines.append("## 群回传执行方案")
-        if risk_summary:
+        if pre_execution:
             lines.append(
-                "- 风险门禁: "
+                "- 执行前记录: "
                 + compact_text(
-                    f"risk={risk_summary.get('risk_level')}; decision={risk_summary.get('execution_decision')}; "
-                    f"human_confirmation_required={risk_summary.get('human_confirmation_required')}",
+                    f"risk={pre_execution.get('risk_level')}; decision={pre_execution.get('execution_decision')}; "
+                    f"human_confirmation_required={pre_execution.get('human_confirmation_required')}",
                     260,
                 )
             )
