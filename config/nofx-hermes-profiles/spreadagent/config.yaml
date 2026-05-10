@@ -36,3 +36,13 @@ model:
 fallback_model:
   provider: kimi-coding
   model: kimi-k2.6
+
+plugins:
+  enabled:
+  - hermes-lcm
+context:
+  engine: lcm
+
+compression:
+  enabled: true
+  threshold: 0.73
