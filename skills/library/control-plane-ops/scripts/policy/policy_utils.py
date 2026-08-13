@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 from dataclass_compat import compat_dataclass as dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from io_write_gateway import write_json_atomic
 
 UTC = timezone.utc
 

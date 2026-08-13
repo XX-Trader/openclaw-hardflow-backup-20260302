@@ -1806,6 +1806,11 @@ REPO_PATH_RESOLVE_SKIP_PARTS = {
     ".git",
     ".hg",
     ".svn",
+    ".agents",
+    ".codex-tmp",
+    ".codex_tmp_openclaw_upgrade",
+    ".pytest_cache",
+    ".tmp",
     ".workflow",
     ".hermes",
     ".openclaw",
@@ -1816,9 +1821,13 @@ REPO_PATH_RESOLVE_SKIP_PARTS = {
     "node_modules",
     "vendor",
     "agent-workspaces",
+    "af39077",
+    "chrome_user_data",
     "command-runs",
+    "foo",
     "pipeline-runs",
     "graphify-out",
+    "tmp",
 }
 
 
@@ -1845,16 +1854,33 @@ def resolve_repo_basename_path(path: str, repo_root: Path | None, context_text: 
     # before solution_review so implementers never receive non-existent pseudo
     # targets.  Absolute/runtime-looking paths are still rejected earlier by
     # plan_path_rejection_reason and are not normalized here.
-    search_pattern = normalized if "/" not in normalized else f"**/{normalized}"
     matches: list[str] = []
+    normalized_suffix = normalized.casefold()
+    target_name = Path(normalized).name.casefold()
+    skip_parts = {part.casefold() for part in REPO_PATH_RESOLVE_SKIP_PARTS}
+
+    def ignore_walk_error(_error: OSError) -> None:
+        # A generated/cache directory may be unreadable on a mixed local
+        # workspace.  It is outside the source-resolution contract, so keep
+        # resolving other candidates instead of aborting the whole plan.
+        return None
+
     try:
-        for candidate in repo.glob(search_pattern):
-            if not candidate.is_file():
-                continue
-            rel_path = candidate.relative_to(repo)
-            if set(rel_path.parts[:-1]) & REPO_PATH_RESOLVE_SKIP_PARTS:
-                continue
-            matches.append(rel_path.as_posix())
+        for current_root, dirnames, filenames in os.walk(repo, topdown=True, onerror=ignore_walk_error):
+            # Prune before descending.  Filtering only after Path.glob() has
+            # already traversed vendor/node_modules defeats the purpose and
+            # can turn a small plan compilation into a multi-minute scan.
+            dirnames[:] = [name for name in dirnames if name.casefold() not in skip_parts]
+            for filename in filenames:
+                if filename.casefold() != target_name:
+                    continue
+                candidate = Path(current_root) / filename
+                rel_path = candidate.relative_to(repo)
+                rel_value = rel_path.as_posix()
+                folded = rel_value.casefold()
+                if "/" in normalized and folded != normalized_suffix and not folded.endswith(f"/{normalized_suffix}"):
+                    continue
+                matches.append(rel_value)
     except OSError:
         return normalized
     if not matches:
@@ -2848,6 +2874,14 @@ def extract_api_contracts(*texts: str, limit: int = 12) -> list[dict[str, str]]:
     contracts: list[dict[str, str]] = []
     seen: set[str] = set()
     joined = "\n".join(str(text or "") for text in texts)
+    excludes_kraken_mexc = bool(
+        re.search(r"kraken\s*(?:/|、|,|and|与)\s*mexc", joined, re.IGNORECASE)
+        or (
+            re.search(r"\bkraken\b", joined, re.IGNORECASE)
+            and re.search(r"\bmexc\b", joined, re.IGNORECASE)
+        )
+    )
+    stock_scope_suffix = " It must exclude kraken/mexc from the default MVP." if excludes_kraken_mexc else ""
     for match in API_ENDPOINT_RE.finditer(joined):
         endpoint = next((group for group in match.groups() if group), "")
         endpoint = endpoint.strip().rstrip(".,;:)")
@@ -2858,11 +2892,11 @@ def extract_api_contracts(*texts: str, limit: int = 12) -> list[dict[str, str]]:
         seen.add(endpoint)
         lower_endpoint = endpoint.lower()
         if lower_endpoint == "/api/stock-tokens/status":
-            contract = "Status response must match the accepted platform scope."
+            contract = "Status response must match the accepted platform scope." + stock_scope_suffix
         elif lower_endpoint == "/api/stock-tokens/markets":
-            contract = "Markets response must match the accepted platform scope."
+            contract = "Markets response must match the accepted platform scope." + stock_scope_suffix
         elif lower_endpoint == "/api/stock-tokens/opportunities":
-            contract = "Opportunities response must match the accepted platform scope."
+            contract = "Opportunities response must match the accepted platform scope." + stock_scope_suffix
         elif lower_endpoint == "/dashboard/spread-funding":
             contract = "Dashboard page must load and must not display Kraken/MEXC MVP wording when driven by the read-only API data."
         elif lower_endpoint == "/health":

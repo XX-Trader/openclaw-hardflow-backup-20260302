@@ -1265,6 +1265,28 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             self.assertTrue(any(item["path"] == "todo.md/done.md" and item["reason"] == "combined_file_paths" for item in findings))
             self.assertTrue(any(item["reason"] in {"negated_context", "workflow_host_basename"} for item in findings))
 
+    def test_repo_basename_resolution_prunes_generated_and_vendor_trees(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            (repo / "src").mkdir(parents=True)
+            (repo / "src" / "target.py").write_text("# source\n", encoding="utf-8")
+            visited: list[str] = []
+
+            def fake_walk(root, *, topdown, onerror):
+                self.assertTrue(topdown)
+                directories = ["vendor", ".codex-tmp", "src"]
+                yield str(root), directories, []
+                for directory in directories:
+                    visited.append(directory)
+                    if directory == "src":
+                        yield str(Path(root) / directory), [], ["target.py"]
+
+            with mock.patch.object(_mod.os, "walk", side_effect=fake_walk):
+                resolved = _mod.resolve_repo_basename_path("target.py", repo, "")
+
+            self.assertEqual("src/target.py", resolved)
+            self.assertEqual(["src"], visited)
+
     def test_delivery_plan_marks_reviewer_paths_as_candidates_and_generates_file_steps(self):
         with tempfile.TemporaryDirectory() as tmp:
             review = Path(tmp) / "requirements_review.md"
@@ -2005,10 +2027,11 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
-            self.assertIsNone(state.get("failed_stage"))
-            self.assertIn("solution_review_soft_gate", state["artifacts"])
-            self.assertIn("code_execution_warning", state["artifacts"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("solution_review", state["failed_stage"])
+            self.assertEqual("revise_solution", state["next_action"])
+            self.assertNotIn("solution_review_soft_gate", state["artifacts"])
+            self.assertNotIn("code_execution_warning", state["artifacts"])
             self.assertIn("command_requirements_review_1", state["artifacts"])
             self.assertNotIn("command_requirements_review_2", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
@@ -2057,10 +2080,11 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
-            self.assertIsNone(state.get("failed_stage"))
-            self.assertIn("solution_review_soft_gate", state["artifacts"])
-            self.assertIn("code_execution_warning", state["artifacts"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("solution_review", state["failed_stage"])
+            self.assertEqual("revise_solution", state["next_action"])
+            self.assertNotIn("solution_review_soft_gate", state["artifacts"])
+            self.assertNotIn("code_execution_warning", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Reviewer roles: reviewer-a, reviewer-a", review)
             self.assertIn("Final verdict: ready_for_solution", review)
@@ -2106,10 +2130,11 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
-            self.assertIsNone(state.get("failed_stage"))
-            self.assertIn("solution_review_soft_gate", state["artifacts"])
-            self.assertIn("code_execution_warning", state["artifacts"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("solution_review", state["failed_stage"])
+            self.assertEqual("revise_solution", state["next_action"])
+            self.assertNotIn("solution_review_soft_gate", state["artifacts"])
+            self.assertNotIn("code_execution_warning", state["artifacts"])
             review = Path(state["artifacts"]["requirements_review"]).read_text(encoding="utf-8")
             self.assertIn("Distinct commands: false", review)
             self.assertIn("Final verdict: ready_for_solution", review)
@@ -2369,9 +2394,10 @@ Verification commands:
                 )
             )
 
-            self.assertEqual("completed", state["status"])
-            self.assertIsNone(state.get("failed_stage"))
-            self.assertIn("code_execution_warning", state["artifacts"])
+            self.assertEqual("blocked", state["status"])
+            self.assertEqual("code_execution", state["failed_stage"])
+            self.assertEqual("return_to_code_execution", state["next_action"])
+            self.assertNotIn("code_execution_warning", state["artifacts"])
             self.assertEqual("user change", (repo / "feature.txt").read_text(encoding="utf-8"))
             report = json.loads(Path(state["artifacts"]["command_code_execution_1"]).read_text(encoding="utf-8"))
             self.assertTrue(report["workspace_patch"]["command_cwd_preflight"]["dirty"])

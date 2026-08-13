@@ -11,7 +11,14 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT_PATH = Path(__file__).resolve().parent.parent.parent / "scripts" / "openclaw-ops" / "workflow_builder.py"
+SCRIPT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "skills"
+    / "library"
+    / "openclaw-workflow-manager"
+    / "scripts"
+    / "workflow_builder.py"
+)
 _spec = importlib.util.spec_from_file_location("workflow_builder", SCRIPT_PATH)
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)

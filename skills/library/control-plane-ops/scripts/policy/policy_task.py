@@ -15,7 +15,7 @@ UTC = timezone.utc
 from policy_defaults import DEFAULT_POLICY
 from policy_utils import PolicyError, parse_bool, merge_missing_keys, now_iso, emit_json
 from io_write_gateway import atomic_write_text, write_json_atomic
-from task_center import TASK_STATUSES, estimate_cost, load_pricing, format_daily_summary_markdown
+from task_center import TaskCenterError, TASK_STATUSES, estimate_cost, load_pricing, format_daily_summary_markdown
 from task_capability_binding import (
     infer_task_capability_constraints,
     resolve_task_capability_binding,

@@ -12,7 +12,14 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT_PATH = Path(__file__).resolve().parent.parent.parent / "scripts" / "openclaw-ops" / "fault_knowledge_base.py"
+SCRIPT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "skills"
+    / "library"
+    / "log-monitor"
+    / "scripts"
+    / "fault_knowledge_base.py"
+)
 _spec = importlib.util.spec_from_file_location("fault_knowledge_base", SCRIPT_PATH)
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)

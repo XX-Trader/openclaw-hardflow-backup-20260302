@@ -21,8 +21,15 @@ from pathlib import Path
 
 import pytest
 
-# 动态导入
-SCRIPT_PATH = Path(__file__).resolve().parent.parent.parent / "scripts" / "openclaw-ops" / "config_watchdog.py"
+# 动态导入技能化后的真实源码。
+SCRIPT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "skills"
+    / "library"
+    / "config-watchdog"
+    / "scripts"
+    / "config_watchdog.py"
+)
 _spec = importlib.util.spec_from_file_location("config_watchdog", SCRIPT_PATH)
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)

@@ -1,12 +1,12 @@
 """Phase 3-5 综合测试：evidence_store, source_adapters, cleaner, classifier, reporter, skill_draft_generator。"""
 
 import json
-import os
 import sqlite3
 import tempfile
 import unittest
 from datetime import datetime
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -450,12 +450,16 @@ class TestSkillDraftGenerator(unittest.TestCase):
 
     def test_discover_from_user_home(self):
         """平台用户目录下的技能也能被发现（Windows: ~/.agents/skills/）。"""
-        found = sdg.discover_existing_skills()
-        # Windows 上 ~/.agents/skills/ 有大量技能
-        if os.name == "nt":
-            self.assertGreater(len(found), 0, "应该能发现用户目录下的技能")
-            # 确认包含已知技能（从 .agents/skills/ 扫到的）
-            self.assertIn("openclaw-hardflow-automation", found)
+        home = Path(self.tmpdir) / "home"
+        skill_dir = home / ".agents" / "skills" / "sample-home-skill"
+        skill_dir.mkdir(parents=True)
+        skill_file = skill_dir / "SKILL.md"
+        skill_file.write_text("# Sample Home Skill\n", encoding="utf-8")
+
+        with mock.patch.object(sdg.Path, "home", return_value=home):
+            found = sdg.discover_existing_skills()
+
+        self.assertEqual(skill_file, found["sample-home-skill"])
 
 
 if __name__ == "__main__":
