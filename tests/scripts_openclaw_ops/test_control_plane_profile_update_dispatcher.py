@@ -34,11 +34,11 @@ class ControlPlaneProfileUpdateDispatcherTests(unittest.TestCase):
     def test_dispatch_creates_profile_update_tasks_only_for_ready_items(self):
         dispatcher_module = load_module(
             "control_plane_profile_update_dispatcher",
-            "scripts/openclaw-ops/control_plane_profile_update_dispatcher.py",
+            "skills/library/control-plane-ops/scripts/control_plane_profile_update_dispatcher.py",
         )
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         review_report = {
@@ -174,11 +174,11 @@ class ControlPlaneProfileUpdateDispatcherTests(unittest.TestCase):
     def test_main_writes_json_and_markdown_outputs(self):
         dispatcher_module = load_module(
             "control_plane_profile_update_dispatcher",
-            "scripts/openclaw-ops/control_plane_profile_update_dispatcher.py",
+            "skills/library/control-plane-ops/scripts/control_plane_profile_update_dispatcher.py",
         )
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         review_report = {

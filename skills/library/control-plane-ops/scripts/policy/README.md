@@ -49,7 +49,7 @@ cp scripts/openclaw-ops/policy/runtime.env.example .workflow/policy.runtime.env
 ## 4. 快速初始化
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py init \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py init \
   --db .workflow/task-center/task_center.db \
   --policy-file scripts/openclaw-ops/policy/policy-config.json \
   --routing-file scripts/openclaw-ops/policy/routing-rules.json \
@@ -61,7 +61,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py init \
 创建任务（硬约束字段）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py create-task \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py create-task \
   --task-id wf-20260302-demo \
   --task-type workflow \
   --reason "修复 cron 超时" \
@@ -81,7 +81,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py create-task \
 记录 token/cost：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py record-token \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py record-token \
   --task-id wf-20260302-demo \
   --agent-id backend-dev \
   --model kimicode/Doubao-Seed-2.0-Code \
@@ -92,7 +92,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py record-token \
 记录模块运行日志（标准化）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py log-module \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py log-module \
   --task-id wf-20260302-demo \
   --module-name planner \
   --phase dispatch \
@@ -105,7 +105,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py log-module \
 记录模块间通信日志（标准化）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py log-communication \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py log-communication \
   --task-id wf-20260302-demo \
   --from-module planner \
   --to-module backend-dev \
@@ -119,7 +119,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py log-communication \
 Agent 完成任务后回报规划者（异常才发聊天）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py report-agent-result \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py report-agent-result \
   --task-id wf-20260302-demo \
   --agent-id backend-dev \
   --planner-id coordinator \
@@ -147,18 +147,18 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py report-agent-result \
 历史状态回填（修复旧数据）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py reconcile-task-status \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py reconcile-task-status \
   --dry-run \
   --limit 2000
 
-python3 scripts/openclaw-ops/policy/policy_enforcer.py reconcile-task-status \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py reconcile-task-status \
   --limit 2000
 ```
 
 规划者统计（任务完成情况/agent完成质量）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py planner-summary \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py planner-summary \
   --planner-id coordinator \
   --since 2026-03-01T00:00:00+00:00 \
   --limit 200
@@ -167,7 +167,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py planner-summary \
 完成任务（评分闭环）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py complete-task \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py complete-task \
   --task-id wf-20260302-demo \
   --result-score 92 \
   --stability-score 88 \
@@ -177,7 +177,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py complete-task \
 任务路由建议：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py route-task \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py route-task \
   --description "产品经理：梳理项目模块边界并给出迭代计划" \
   --source ops
 ```
@@ -189,7 +189,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py route-task \
 TODO 队列按时间 FIFO 拉取（限流）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py next-todo --limit 3
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py next-todo --limit 3
 ```
 
 规则说明：
@@ -199,7 +199,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py next-todo --limit 3
 动态更新风险规则（聊天驱动）：
 
 ```bash
-python3 scripts/openclaw-ops/policy/risk_rule_sync.py \
+python3 skills/library/control-plane-ops/scripts/policy/risk_rule_sync.py \
   --routing-file scripts/openclaw-ops/policy/routing-rules.json \
   batch \
   --apply-default-preset \
@@ -216,7 +216,7 @@ python3 scripts/openclaw-ops/policy/risk_rule_sync.py \
 任务可观测报告：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py task-report \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py task-report \
   --task-id wf-20260302-demo \
   --output .workflow/task-center/wf-20260302-demo.report.json
 ```
@@ -224,7 +224,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py task-report \
 日报：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py daily-summary \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py daily-summary \
   --date 2026-03-02 \
   --output .workflow/task-center/daily-2026-03-02.md
 ```
@@ -232,7 +232,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py daily-summary \
 配置核查清单：
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py check-config \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py check-config \
   --openclaw-config openclaw/openclaw.json \
   --project-registry ~/.openclaw/ops/task-center/project-registry.json \
   --strict
@@ -245,7 +245,7 @@ python3 scripts/openclaw-ops/policy/policy_enforcer.py check-config \
 最小命令：
 
 ```bash
-python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py \
+python3 skills/library/control-plane-ops/scripts/policy/bootstrap_multi_project.py \
   --project-root /srv/project-a \
   --project-root /srv/project-b \
   --openclaw-home ~/.openclaw

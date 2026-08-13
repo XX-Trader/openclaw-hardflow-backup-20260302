@@ -22,6 +22,14 @@ def import_policy_module(name: str):
         sys.path.remove(str(POLICY_DIR))
 
 
+def clear_policy_modules() -> None:
+    for name in (
+        "policy_task",
+        "task_center",
+    ):
+        sys.modules.pop(name, None)
+
+
 def test_read_json_can_atomically_create_default_file(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENCLAW_FILE_WRITE_AUDIT_DISABLED", "1")
     policy_utils = import_policy_module("policy_utils")
@@ -34,6 +42,7 @@ def test_read_json_can_atomically_create_default_file(tmp_path, monkeypatch):
 
 
 def test_policy_task_imports_task_center_error():
+    clear_policy_modules()
     policy_task = import_policy_module("policy_task")
     task_center = import_policy_module("task_center")
 

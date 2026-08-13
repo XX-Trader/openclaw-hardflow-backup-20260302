@@ -8,7 +8,7 @@
 
 - 官方运行时根目录固定为 `vendor/openclaw-official/`。
 - 本仓不是 OpenClaw 主程序仓库，不承载官方核心源码复制、拼装、补丁落地。
-- 上游版本绑定以 `.workflow/openclaw-upstream-binding.json` 和 `python scripts/openclaw-ops/openclaw_upstream_binding.py status` 为准。
+- 上游版本绑定以 `.workflow/openclaw-upstream-binding.json` 和 `python skills/library/openclaw-workflow-manager/scripts/openclaw_upstream_binding.py status` 为准。
 
 ## Overlay 责任
 
@@ -61,7 +61,7 @@
 ## 验证
 
 ```bash
-python scripts/openclaw-ops/openclaw_upstream_binding.py status
+python skills/library/openclaw-workflow-manager/scripts/openclaw_upstream_binding.py status
 ```
 
 期望结果：

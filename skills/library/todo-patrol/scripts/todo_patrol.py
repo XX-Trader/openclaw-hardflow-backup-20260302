@@ -9,7 +9,6 @@ import json
 import os
 import re
 import sys
-from dataclass_compat import compat_dataclass as dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +19,22 @@ POLICY_DIR = ROOT / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
+
+# Source checkouts keep each script under its owning Skill; installed runtimes
+# flatten the same dependencies into the ops directory. Bootstrap only when
+# the repository marker is present so both layouts share one implementation.
+for _candidate_root in Path(__file__).resolve().parents:
+    _shared_dir = _candidate_root / "scripts" / "openclaw-ops" / "shared"
+    if _shared_dir.is_dir():
+        _shared_value = str(_shared_dir)
+        if _shared_value not in sys.path:
+            sys.path.insert(0, _shared_value)
+        from repo_imports import bootstrap_repository_imports
+
+        bootstrap_repository_imports(__file__)
+        break
+
+from dataclass_compat import compat_dataclass as dataclass
 from utf8_runtime import configure_process_utf8_stdio
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic
 from chat_output import build_trace_id, render_chat_notice
@@ -690,7 +705,8 @@ def build_task_payload(
     pool = route["pool"]
     task_type = "todo_dispatch"
     owner = first_non_empty(context_payload.get("owner"), assignee)
-    change_id = to_text(context_payload.get("change_id"))    requirement = f"处理 TODO 任务并完成修复交付：{item.text}"
+    change_id = to_text(context_payload.get("change_id"))
+    requirement = f"处理 TODO 任务并完成修复交付：{item.text}"
     result_output = "输出变更文件、验证命令、验证结果、影响范围和回归结论。"
     acceptance = "关键检查通过，相关接口/流程可用，无新增高风险回归。"
     observable_outputs = "TaskCenter 状态、代码/配置变更、测试或运行日志。"

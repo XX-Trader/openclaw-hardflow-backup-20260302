@@ -29,11 +29,11 @@ class TaskOutputBroadcastRunnerTests(unittest.TestCase):
     def test_build_payload_only_emits_changed_visible_tasks(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         runner_module = load_module(
             "task_output_broadcast_runner",
-            "scripts/openclaw-ops/task_output_broadcast_runner.py",
+            "skills/library/task-cost-analytics/scripts/task_output_broadcast_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -150,11 +150,11 @@ class TaskOutputBroadcastRunnerTests(unittest.TestCase):
     def test_main_emit_json_returns_structured_payload(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         runner_module = load_module(
             "task_output_broadcast_runner",
-            "scripts/openclaw-ops/task_output_broadcast_runner.py",
+            "skills/library/task-cost-analytics/scripts/task_output_broadcast_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

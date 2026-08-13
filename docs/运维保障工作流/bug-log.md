@@ -1,4 +1,4 @@
-# NOFX OpenClaw Bug 记录 (2026-03-30)
+# RUNTIME OpenClaw Bug 记录 (2026-03-30)
 
 ## 已修复 (本次代码提交)
 
@@ -7,8 +7,8 @@
 - **根因**: `control_plane_summary_runner.py` 和 `control_plane_optimization_advisor.py` 创建 `TaskCenter` 实例后未调用 `init_schema()`，直接查询 `benchmark_runs` 表。如果数据库文件是首次创建或被重建，表结构不存在导致崩溃。
 - **修复**: 在两个文件中新增 `task_center.init_schema()` 调用
 - **影响文件**:
-  - `scripts/openclaw-ops/control_plane_summary_runner.py` (第144行)
-  - `scripts/openclaw-ops/control_plane_optimization_advisor.py` (第90行)
+  - `skills/library/control-plane-ops/scripts/control_plane_summary_runner.py` (第144行)
+  - `skills/library/control-plane-ops/scripts/control_plane_optimization_advisor.py` (第90行)
 
 ### BUG-002: 缺失目录警告刷屏 Telegram
 - **严重级**: 🟡 P1
@@ -19,14 +19,14 @@
   - `/root/.openclaw/workspace/memory/` — 同上
 - **修复**: 将 `print(⚠️ 目录不存在)` 改为静默 `continue`
 - **影响文件**:
-  - `scripts/openclaw-ops/unified_exception_logger.py` (第247行)
-  - `scripts/openclaw-ops/memtidy_runner.py` (第337行)
+  - `skills/library/log-monitor/scripts/unified_exception_logger.py` (第247行)
+  - `skills/library/cross-runtime-memory-distiller/scripts/distill_runner.py` (第337行)
 
 ### BUG-003: 配置文件 Windows 路径在 Linux 上无效
 - **严重级**: 🟡 P1
-- **根因**: 部署时 `cron-monitor-config.json` 从 Windows 本地直接复制到 NOFX Linux 服务器，其中所有路径均为 `C:\Users\superma\.openclaw\...`，在 Linux 上无法解析
+- **根因**: 部署时 `cron-monitor-config.json` 从 Windows 本地直接复制到 RUNTIME Linux 服务器，其中所有路径均为 `C:\Users\fixture-user\.openclaw\...`，在 Linux 上无法解析
 - **受影响字段**: `task_center_db`, `routing_file`, `scan_dirs`, `log_patterns` 等
-- **表现**: 日志中出现 `task_center_db_missing:C:\Users\superma.openclaw\ops\task-center\task_center.db`
+- **表现**: 日志中出现 `task_center_db_missing:C:\Users\fixture-user.openclaw\ops\task-center\task_center.db`
 - **修复**: Python 脚本将所有绝对 home 路径（`/root/`、`/home/xxx/`、`C:\Users\xxx\`）统一替换为 `~/`；`disk_paths` 的 `C:/` 改为 `/`
 - **原理**: 代码中已有 `Path.expanduser()` 调用，`~` 会自动解析为当前用户 home 目录（CentOS `/root/`、Ubuntu `/home/user/` 等）
 - **防止复发**: 部署到不同服务器时，配置文件中的路径必须使用 `~/.openclaw/...` 格式，禁止写死绝对路径

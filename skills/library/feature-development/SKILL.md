@@ -4,7 +4,7 @@ displayName: "全栈功能开发"
 version: "1.0.0"
 description: Django + Vue 全栈功能开发标准化流程。支持需求分析、技术方案设计、API设计、数据库设计、UI原型设计的完整开发流程。根据功能复杂度自动选择开发流程：简单功能（直接实施）、中等功能（2个表及以上/前后端联动）、复杂功能（技术可行性评估）。
 description_zh: "feature-development技能，详见 SKILL.md"
-author: "superma"
+author: "maintainers"
 license: "MIT"
 updated_at: "2026-01-25"
 
@@ -63,7 +63,7 @@ permissions:
 
 **示例输入**：
 - "加一个用户导出功能" → 自动识别为简单
-- "做一个交易员分组管理，支持批量操作" → 自动识别为中等
+- "做一个成员分组管理，支持批量操作" → 自动识别为中等
 - "重构整个权限系统，支持RBAC" → 自动识别为复杂
 
 ### 步骤2：等待文档确认
@@ -224,24 +224,24 @@ const data = isDevelopment ? MOCK_DATA : await fetchAPI()
 
 ## 📝 完整流程示例
 
-### 示例：交易员分组管理（中等复杂度）
+### 示例：成员分组管理（中等复杂度）
 
 #### 1. 需求文档
 ```
-功能概述：支持将交易员分组管理，用户可以创建分组、添加交易员到分组、对分组进行批量操作。
+功能概述：支持将成员分组管理，用户可以创建分组、添加成员到分组、对分组进行批量操作。
 
 详细功能点：
 - 创建分组（名称、描述）
-- 将交易员添加到分组（多选）
-- 查看分组下的交易员列表
+- 将成员添加到分组（多选）
+- 查看分组下的成员列表
 - 对分组进行批量启停
 - 删除分组（需确认）
 
 实现思路：
 - 新增分组表，存储分组信息
-- 新增关联表，存储交易员和分组的关系
+- 新增关联表，存储成员和分组的关系
 - 前端使用表格展示，支持多选和批量操作
-- 使用Element Plus的Transfer组件进行交易员选择
+- 使用Element Plus的Transfer组件进行成员选择
 ```
 
 #### 2. 技术方案
@@ -249,18 +249,18 @@ const data = isDevelopment ? MOCK_DATA : await fetchAPI()
 推荐方案：新增分组表和关联表，使用Django ORM管理关联关系
 
 涉及文件：
-- models.py: PMTraderGroup, PMTraderGroupMember
+- models.py: PMMemberGroup, PMMemberGroupMember
 - views.py: 分组CRUD接口
-- urls.py: /api/pm-robot/trader-group/
-- 前端: TraderGroupManage.vue
+- urls.py: /api/pm-robot/member-group/
+- 前端: MemberGroupManage.vue
 
 风险点：
-- 删除分组时需要处理关联的交易员（级联删除 or 移到默认分组）
+- 删除分组时需要处理关联的成员（级联删除 or 移到默认分组）
 ```
 
 #### 3. 数据库设计
 ```
-pm_trader_group (交易员分组表)
+pm_member_group (成员分组表)
 ├── id (BigAutoField, PK)
 ├── user_id (BigInteger, FK→user.id)
 ├── group_name (CharField, 100)
@@ -268,20 +268,20 @@ pm_trader_group (交易员分组表)
 ├── created_at (DateTimeField)
 └── index: user_id
 
-pm_trader_group_member (交易员分组关联表)
+pm_member_group_member (成员分组关联表)
 ├── id (BigAutoField, PK)
-├── group_id (BigInteger, FK→pm_trader_group.id)
-├── trader_id (BigInteger)
+├── group_id (BigInteger, FK→pm_member_group.id)
+├── member_id (BigInteger)
 ├── joined_at (DateTimeField)
-└── unique_together: (group_id, trader_id)
+└── unique_together: (group_id, member_id)
 ```
 
 #### 4. API设计
 ```
-POST /api/pm-robot/trader-group/create
+POST /api/pm-robot/member-group/create
 请求：{
-  "groupName": "高频交易组",
-  "description": "高频策略交易员"
+  "groupName": "核心运营组",
+  "description": "核心业务成员"
 }
 响应：{
   "code": 200,
@@ -293,17 +293,17 @@ POST /api/pm-robot/trader-group/create
 ```
 页面布局：
 - 左侧：分组列表（卡片样式）
-- 右侧：选中分组的交易员列表（表格）
+- 右侧：选中分组的成员列表（表格）
 
 交互流程：
 1. 点击"新建分组"按钮 → 弹出对话框
 2. 输入分组名称、描述 → 确认
-3. 进入分组详情 → 点击"添加交易员"
-4. 使用穿梭框选择交易员 → 确认
+3. 进入分组详情 → 点击"添加成员"
+4. 使用穿梭框选择成员 → 确认
 
 测试数据：
 const MOCK_GROUPS = [
-  { groupId: 1, groupName: "高频交易组", traderCount: 5 }
+  { groupId: 1, groupName: "核心运营组", memberCount: 5 }
 ]
 ```
 
@@ -314,7 +314,7 @@ const MOCK_GROUPS = [
 ### 在 Claude Code 中
 
 ```
-"做一个交易员分组管理功能"
+"做一个成员分组管理功能"
 "加一个用户导出按钮"
 "重构权限系统"
 ```

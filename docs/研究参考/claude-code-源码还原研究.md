@@ -1,7 +1,7 @@
 # Claude Code 源码还原深度研究
 
 > 状态：✅ 研究完成 | 日期：2026-04-01
-> 来源：[XX-Trader/Claude-Code](https://github.com/XX-Trader/Claude-Code)（fork 自 pengchengneo/Claude-Code）
+> 来源：[pengchengneo/Claude-Code](https://github.com/pengchengneo/Claude-Code)
 > 性质：从 `@anthropic-ai/claude-code` npm 包的 source map 中还原的完整 TypeScript 源码
 > 规模：1,987 个 TS/TSX 源文件 | 53 个工具 | 87 个斜杠命令 | 148 个 UI 组件
 
@@ -193,8 +193,8 @@ vendor/                      # 原生绑定源码
 
 ### 核心铁律
 
-> **禁止甩锅式委派** — Coordinator 必须自己做综合分析。  
-> Prompt 必须包含**具体文件路径、行号、要做什么改动**。  
+> **禁止甩锅式委派** — Coordinator 必须自己做综合分析。
+> Prompt 必须包含**具体文件路径、行号、要做什么改动**。
 > **Worker 看不到 Coordinator 的对话**，每个 prompt 必须完全自包含。
 
 ### Scratchpad（跨 Worker 共享知识）

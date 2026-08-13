@@ -18,12 +18,12 @@
 
 | 组件 | 路径 | 规模 |
 |------|------|------|
-| 上游更新器 | `scripts/openclaw-ops/auto_update_install_runner.py` | 15KB |
-| 情报采集器 | `scripts/openclaw-ops/web_intel_collect_runner.py` | 41KB |
-| 情报评审器 | `scripts/openclaw-ops/web_intel_review_runner.py` | 42KB |
-| 开源进化器 | `scripts/openclaw-ops/github_web_evolution_runner.py` | 78KB |
-| 情报源运行时 | `scripts/openclaw-ops/web_sources_runtime.py` | 13KB |
-| 供应商目录 | `scripts/openclaw-ops/vendor_source_catalog.py` | 6KB |
+| 上游更新器 | `skills/library/web-intelligence/scripts/auto_update_install_runner.py` | 15KB |
+| 情报采集器 | `skills/library/web-intelligence/scripts/web_intel_collect_runner.py` | 41KB |
+| 情报评审器 | `skills/library/web-intelligence/scripts/web_intel_review_runner.py` | 42KB |
+| 开源进化器 | `skills/library/web-intelligence/scripts/github_web_evolution_runner.py` | 78KB |
+| 情报源运行时 | `skills/library/web-intelligence/scripts/web_sources_runtime.py` | 13KB |
+| 供应商目录 | `skills/library/openclaw-workflow-manager/scripts/vendor_source_catalog.py` | 6KB |
 
 ## 关联定时任务
 

@@ -22,7 +22,7 @@
               "name": "{{param_name}}",
               "in": "query|path|header|body",
               "type": "string|integer|boolean|object|array",
-              "required": true|false,
+              "required": false,
               "description": "{{param_description}}"
             }
           ],
@@ -41,7 +41,7 @@
       "auth_type": "none|basic|bearer|api_key|oauth2",
       "rate_limit": "{{rate_limit}}",
       "change_policy": "ignore|notify_only|notify_and_update|notify_and_block",
-      "owned_by_project_agent": true|false
+      "owned_by_project_agent": false
     }
   ]
 }

@@ -94,7 +94,7 @@ git commit -m "feat(agents): 新增 <agent-id> Agent - <一句话描述>"
 {
   "id": "<agent-id>",
   "name": "<角色名称>",
-  "workspace": "/home/ubuntu/.openclaw/workspace-<agent-id>",
+  "workspace": "/home/runtime-user/.openclaw/workspace-<agent-id>",
   "model": "<provider>/<model-id>",
   "subagents": {
     "allowAgents": ["<可调度的子agent>"]
@@ -131,5 +131,5 @@ ssh -F F:/ssh_keys/ssh_config <别名> "tmux send-keys -t openclaw C-c; sleep 2;
 ## 注意事项
 - 部署前务必**备份** openclaw.json（脚本应自动做）
 - 新 agent 的 `workspace` 目录会在首次运行时自动创建
-- 如果新 agent 有 `agentDir` 需求（自定义 agent 代码），需要额外创建  
-  `/home/ubuntu/.openclaw/agents/<agent-id>/agent/` 目录
+- 如果新 agent 有 `agentDir` 需求（自定义 agent 代码），需要额外创建
+  `/home/runtime-user/.openclaw/agents/<agent-id>/agent/` 目录

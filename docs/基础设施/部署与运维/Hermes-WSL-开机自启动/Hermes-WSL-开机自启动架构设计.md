@@ -28,8 +28,8 @@
 
 - 触发 A：Windows `AtStartup`
 - 触发 B：Windows `AtLogon`
-- 入口脚本：`/home/ubuntu/hermes-windows-starter.sh`
-- 实际启动脚本：`/home/ubuntu/.hermes/start-hermes.sh`
+- 入口脚本：`/home/runtime-user/hermes-windows-starter.sh`
+- 实际启动脚本：`/home/runtime-user/.hermes/start-hermes.sh`
 - 守护方式：`screen` 单实例拉起 `python -m hermes_cli.main gateway run --replace`
 
 ### 3.2 为什么不用 `SYSTEM`
@@ -42,7 +42,7 @@
 
 因此优先选择：
 
-- 计划任务仍运行在 `Administrator`
+- 计划任务运行账号由 `${WINDOWS_ACCOUNT}` 注入
 - `LogonType` 切换为可非交互运行的模式
 - 同时增加 `AtStartup` 触发器
 
@@ -62,8 +62,8 @@
   - `HermesAgent-AutoStart`
   - 新增或更新开机触发计划任务
 - WSL 启动脚本：
-  - `/home/ubuntu/hermes-windows-starter.sh`
-  - `/home/ubuntu/.hermes/start-hermes.sh`
+  - `/home/runtime-user/hermes-windows-starter.sh`
+  - `/home/runtime-user/.hermes/start-hermes.sh`
 
 ### 4.2 间接影响
 

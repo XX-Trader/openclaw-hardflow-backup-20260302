@@ -1,7 +1,0 @@
-[Unit]
-Description=OpenClaw Config Guard (Healthcheck + Auto Rollback)
-
-[Service]
-Type=oneshot
-ExecStart=/bin/bash -lc '$HOME/.openclaw/workflows/openclaw-ops/openclaw_healthcheck.sh || $HOME/.openclaw/workflows/openclaw-ops/openclaw_config_apply_with_rollback.sh --rollback-latest'
-WorkingDirectory=%h

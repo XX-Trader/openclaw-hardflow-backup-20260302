@@ -38,7 +38,7 @@ Windows/WSL IDE 与运行时证据
 ├── Claude Code: ~/.claude/transcripts/*.jsonl
 ├── Gemini: ~/.gemini/antigravity/brain/**
 ├── OpenClaw: ~/.openclaw/agents/*/sessions/*.jsonl
-├── Hermes: /home/ubuntu/.hermes/sessions + state.db
+├── Hermes: /home/runtime-user/.hermes/sessions + state.db
 ├── Repo Delta Sidecar
 │   ├── git diff / changed files
 │   ├── 验证命令与测试结果
@@ -113,7 +113,7 @@ Host Adapters
 
 ## 3.2 宿主环境探测与路径解析协议
 
-这个问题不能简化成“当前脚本跑在 Windows 还是 Linux”。  
+这个问题不能简化成“当前脚本跑在 Windows 还是 Linux”。
 必须改成：
 
 `对 Hermes 和 OpenClaw 分别做 runtime probe，再各自决定使用哪套路径。`
@@ -152,14 +152,14 @@ Host Adapters
   "runtime_kind": "windows | linux | wsl",
   "transport": "native_fs | wsl_exec | unc_readonly",
   "distro": "Ubuntu",
-  "home": "/home/ubuntu",
-  "session_roots": ["/home/ubuntu/.hermes/sessions"],
+  "home": "/home/runtime-user",
+  "session_roots": ["/home/runtime-user/.hermes/sessions"],
   "hot_memory_paths": {
-    "user": "/home/ubuntu/.hermes/memories/USER.md",
-    "memory": "/home/ubuntu/.hermes/memories/MEMORY.md"
+    "user": "/home/runtime-user/.hermes/memories/USER.md",
+    "memory": "/home/runtime-user/.hermes/memories/MEMORY.md"
   },
   "workspace_roots": [],
-  "state_db": "/home/ubuntu/.hermes/state.db"
+  "state_db": "/home/runtime-user/.hermes/state.db"
 }
 ```
 
@@ -223,7 +223,7 @@ Host Adapters
 {
   "candidate_id": "cand_20260415_001",
   "host": "hermes | openclaw",
-  "project": "openclaw-hardflow-backup-20260302",
+  "project": "workflow-infra",
   "trace_id": "trace_abc123",
   "task_id": "task_xyz789",
   "run_id": "run_456",
@@ -334,7 +334,7 @@ def wsl_file_read(distro: str, posix_path: str) -> str | None:
 
 ### 3.3 端到端数据链路
 
-真正可落地的蒸馏链路不应是“抓到 transcript -> 直接丢给解析 Agent -> 写记忆”。  
+真正可落地的蒸馏链路不应是“抓到 transcript -> 直接丢给解析 Agent -> 写记忆”。
 必须拆成下面 9 层：
 
 ```text
@@ -643,7 +643,7 @@ IDE 经验侧证据对象：
 
 ```json
 {
-  "workspace": "H:/GitHub/openclaw-hardflow-backup-20260302",
+  "workspace": "C:/workspace/workflow-infra",
   "changed_files": [
     "skills/library/openclaw-evolution-upgrader/scripts/upgrade_feedback_runner.py"
   ],
@@ -664,11 +664,11 @@ IDE 经验侧证据对象：
 {
   "source": "claude",
   "host": "windows-user",
-  "project": "openclaw-hardflow-backup-20260302",
+  "project": "workflow-infra",
   "cursor_type": "mtime+offset",
   "cursor_value": {
     "last_mtime": "2026-04-15T10:00:00Z",
-    "last_file": "C:/Users/Administrator/.claude/transcripts/abc.jsonl",
+    "last_file": "<USER_HOME>/.claude/transcripts/sample.jsonl",
     "last_offset": 182331
   },
   "updated_at": "2026-04-15T10:20:00Z"
@@ -690,7 +690,7 @@ IDE 经验侧证据对象：
   "task_id": "task_xyz789",
   "run_id": "run_456",
   "agent_id": "optimization-agent",
-  "workspace": "H:/GitHub/openclaw-hardflow-backup-20260302",
+  "workspace": "C:/workspace/workflow-infra",
   "storage_targets": [
     ".workflow/experience/powershell-utf8.md",
     "session_search_index"
@@ -713,7 +713,7 @@ IDE 经验侧证据对象：
   "run_id": "run_456",
   "benchmark_run_id": "benchmark_run_123",
   "candidate_run_ids": ["cand_run_1", "cand_run_2"],
-  "workspace": "H:/GitHub/openclaw-hardflow-backup-20260302",
+  "workspace": "C:/workspace/workflow-infra",
   "root_cause_hints": ["skill_gap", "memory_pollution"],
   "source_report_paths": [
     "reports/distill/distill-20260415.json",
@@ -732,7 +732,7 @@ IDE 经验侧证据对象：
   "event_id": "claude:ses_abc123:42",
   "source": "claude",
   "host": "openclaw",
-  "project": "openclaw-hardflow-backup-20260302",
+  "project": "workflow-infra",
   "session_id": "claude:ses_abc123",
   "role": "assistant",
   "content": "我把 SSH 端口从 22 改成了 2222，因为 staging 环境有端口冲突...",
@@ -912,7 +912,7 @@ total_bytes: 1234
 
 ## 项目约束
 
-- SSH 凭证目录: D:/ssh_keys/
+- SSH 凭证目录: ~/.ssh/
 - 默认编码: UTF-8 (无 BOM)
 - ...
 ```
@@ -1162,7 +1162,7 @@ trigger_count: {触发次数}
 
 ## 9. 与升级控制面的边界
 
-`openclaw-evolution-upgrader` 不直接读取原始 Hermes/Claude/Gemini transcript。  
+`openclaw-evolution-upgrader` 不直接读取原始 Hermes/Claude/Gemini transcript。
 它只是共享蒸馏技能的一个下游消费者，只消费以下结构化产物：
 
 - `distill-report.json`
@@ -1545,8 +1545,8 @@ END;
 
 ```jsonl
 {"role":"user","content":"执行巡检任务","timestamp":"2026-04-16T03:00:00Z","agent_id":"ops-agent","task_id":"task_patrol_001","trace_id":"trace_xyz"}
-{"role":"assistant","content":"发现磁盘使用超 80%，执行日志轮转","tool_calls":[{"name":"Bash","arguments":{"command":"logrotate -f /etc/logrotate.d/trader"}}],"timestamp":"2026-04-16T03:00:30Z"}
-{"role":"tool","content":"rotated: trader.log.1 (saved 2.1GB)","tool_name":"Bash","exit_code":0,"timestamp":"2026-04-16T03:00:35Z"}
+{"role":"assistant","content":"发现磁盘使用超 80%，执行日志轮转","tool_calls":[{"name":"Bash","arguments":{"command":"logrotate -f ${LOGROTATE_PROFILE}"}}],"timestamp":"2026-04-16T03:00:30Z"}
+{"role":"tool","content":"rotated: service.log.1 (saved 2.1GB)","tool_name":"Bash","exit_code":0,"timestamp":"2026-04-16T03:00:35Z"}
 ```
 
 **提取规则**：
@@ -1566,7 +1566,7 @@ END;
 
 ### E.4 Hermes Session
 
-**路径**：`~/.hermes/sessions`（WSL: `/home/ubuntu/.hermes/sessions/`）
+**路径**：`~/.hermes/sessions`（WSL: `/home/runtime-user/.hermes/sessions/`）
 
 **格式**：可能是 JSONL 或 SQLite `state.db` 中的 session 记录。Adapter 需优先读文件，fallback 读 DB。
 

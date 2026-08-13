@@ -3,7 +3,7 @@
 > 最后更新：2026-04-28
 > 数据源：`cron/jobs.json`
 > 裁剪记录：移除 3 个自进化 job（ops_git_sync_push / reviewer_incremental_daily / reviewer_weekly_structure）
-> 默认投递：`delivery` / `failureAlert` 输出到 spreadagent Discord 群 `1494595527181078578`
+> 投递模板：`delivery` / `failureAlert` 使用 `${HARDFLOW_NOTIFICATION_CHANNEL}` 与 `${HARDFLOW_NOTIFICATION_TARGET}`，安装时由环境或参数注入；未配置时安装器移除投递块。
 
 ## 任务总览
 
@@ -47,7 +47,7 @@
 ### 2.3 到期 TODO 转任务候选
 - **ID**：`f6a7b8c9-...`
 - **频率**：每日 00:05
-- **功能**：将到期 TODO 转为 Task Center 候选任务；低风险任务可进入 `dispatch_pipeline`，高风险、需求不清、凭证/资金/生产破坏类任务进入 `human_inbox.py` 等待确认
+- **功能**：将到期 TODO 转为 Task Center 候选任务；低风险任务可进入 `dispatch_pipeline`，高风险、需求不清、凭证或生产破坏类任务进入 `human_inbox.py` 等待确认
 
 ### 2.4 仓库精简巡检
 - **ID**：`r1h2g3f4-...`
@@ -59,7 +59,7 @@
 - **ID**：`b9c8d7e6-...`
 - **执行 agent**：`coordinator`
 - **频率**：每 30 分钟
-- **功能**：从 Task Center 选择 1 个低风险、无需人工确认、无需澄清的 pending 待办，或允许 `next_action` 的 failed 项，调用 `smart-arb-pipeline` 继续推进；高风险和人工门禁任务继续停在 `human_inbox.py`
+- **功能**：从 Task Center 选择 1 个低风险、无需人工确认、无需澄清的 pending 待办，或允许 `next_action` 的 failed 项，调用 `project-delivery-pipeline` 继续推进；高风险和人工门禁任务继续停在 `human_inbox.py`
 
 ## 三、安全治理任务
 

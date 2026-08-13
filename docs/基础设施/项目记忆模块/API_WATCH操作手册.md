@@ -39,11 +39,11 @@ source_registry_watcher.py \
 ```json
 {
   "timestamp": "2026-04-22T10:00:00Z",
-  "source_id": "freqtrade-official",
+  "source_id": "example-service-official",
   "change_type": "version_update",
   "old_version": "2024.4",
   "new_version": "2024.5",
-  "details": "https://github.com/freqtrade/freqtrade/releases/tag/2024.5",
+  "details": "https://example.com/releases/v2.0.0",
   "change_policy": "notify_and_update",
   "action_required": true
 }

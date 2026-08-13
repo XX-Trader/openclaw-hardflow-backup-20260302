@@ -1,23 +1,10 @@
 {
-  "generated_at": "2026-01-05T14:46:12.903138",
-  "total_agents": 117,
+  "generated_at": "2026-08-13T00:00:00Z",
+  "total_agents": 107,
   "categories": {
-    "blockchain-web3": [
-      "blockchain-developer",
-      "hyperledger-fabric-developer"
-    ],
-    "business-finance": [
+    "business-operations": [
       "business-analyst",
-      "legal-advisor",
-      "payment-integration",
-      "quant-analyst"
-    ],
-    "crypto-trading": [
-      "arbitrage-bot",
-      "crypto-analyst",
-      "crypto-risk-manager",
-      "crypto-trader",
-      "defi-strategist"
+      "legal-advisor"
     ],
     "data-ai": [
       "ai-engineer",
@@ -93,7 +80,6 @@
     "sales-marketing": [
       "content-marketer",
       "customer-support",
-      "risk-manager",
       "sales-automator",
       "social-media-clip-creator",
       "social-media-copywriter"
@@ -186,12 +172,6 @@
       "file": "api-security-audit"
     },
     {
-      "name": "arbitrage-bot",
-      "description": "Identify and execute cryptocurrency arbitrage opportunities across exchanges and DeFi protocols. Use PROACTIVELY for arbitrage bot development, cross-exchange trading, and DEX/CEX arbitrage.",
-      "category": "crypto-trading",
-      "file": "arbitrage-bot"
-    },
-    {
       "name": "architect-review",
       "description": "Reviews code changes for architectural consistency and patterns. Use PROACTIVELY after any structural changes, new services, or API modifications. Ensures SOLID principles, proper layering, and maintainability.",
       "category": "quality-security",
@@ -210,15 +190,9 @@
       "file": "backend-architect"
     },
     {
-      "name": "blockchain-developer",
-      "description": "Develop smart contracts, DeFi protocols, and Web3 applications. Expertise in Solidity, security auditing, and gas optimization. Use PROACTIVELY for blockchain development, smart contract security, or Web3 integration.",
-      "category": "blockchain-web3",
-      "file": "blockchain-developer"
-    },
-    {
       "name": "business-analyst",
       "description": "Analyze metrics, create reports, and track KPIs. Builds dashboards, revenue models, and growth projections. Use PROACTIVELY for business metrics or investor updates.",
-      "category": "business-finance",
+      "category": "business-operations",
       "file": "business-analyst"
     },
     {
@@ -276,24 +250,6 @@
       "file": "cpp-engineer"
     },
     {
-      "name": "crypto-analyst",
-      "description": "Perform cryptocurrency market analysis, on-chain analytics, and sentiment analysis. Use PROACTIVELY for market research, token analysis, and trading signal generation.",
-      "category": "crypto-trading",
-      "file": "crypto-analyst"
-    },
-    {
-      "name": "crypto-risk-manager",
-      "description": "Implement risk management systems for cryptocurrency trading and DeFi positions. Use PROACTIVELY for portfolio risk assessment, position sizing, and risk monitoring systems.",
-      "category": "crypto-trading",
-      "file": "crypto-risk-manager"
-    },
-    {
-      "name": "crypto-trader",
-      "description": "Build cryptocurrency trading systems, implement trading strategies, and integrate with exchange APIs. Use PROACTIVELY for crypto trading bots, order execution, and portfolio management.",
-      "category": "crypto-trading",
-      "file": "crypto-trader"
-    },
-    {
       "name": "customer-support",
       "description": "Handle support tickets, FAQ responses, and customer emails. Creates help docs, troubleshooting guides, and canned responses. Use PROACTIVELY for customer inquiries or support documentation.",
       "category": "sales-marketing",
@@ -340,12 +296,6 @@
       "description": "Debugging specialist for errors, test failures, and unexpected behavior. Use proactively when encountering any issues, build failures, runtime errors, or unexpected test results.",
       "category": "quality-security",
       "file": "debugger"
-    },
-    {
-      "name": "defi-strategist",
-      "description": "Design and implement DeFi yield strategies, liquidity provision, and protocol interactions. Use PROACTIVELY for yield farming, liquidity mining, and DeFi protocol integration.",
-      "category": "crypto-trading",
-      "file": "defi-strategist"
     },
     {
       "name": "deployment-engineer",
@@ -426,12 +376,6 @@
       "file": "hackathon-ai-strategist"
     },
     {
-      "name": "hyperledger-fabric-developer",
-      "description": "Develop enterprise blockchain solutions with Hyperledger Fabric v2.5 LTS and v3.x. Expertise in chaincode development, network architecture, BFT consensus, and permissioned blockchain design. Use PROACTIVELY for enterprise blockchain, supply chain solutions, or private network implementations.",
-      "category": "blockchain-web3",
-      "file": "hyperledger-fabric-developer"
-    },
-    {
       "name": "incident-responder",
       "description": "Handles production incidents with urgency and precision. Use IMMEDIATELY when production issues occur. Coordinates debugging, implements fixes, and documents post-mortems.",
       "category": "quality-security",
@@ -470,7 +414,7 @@
     {
       "name": "legal-advisor",
       "description": "Draft privacy policies, terms of service, disclaimers, and legal notices. Creates GDPR-compliant texts, cookie policies, and data processing agreements. Use PROACTIVELY for legal documentation, compliance texts, or regulatory requirements.",
-      "category": "business-finance",
+      "category": "business-operations",
       "file": "legal-advisor"
     },
     {
@@ -487,7 +431,7 @@
     },
     {
       "name": "market-research-analyst",
-      "description": "Conducts comprehensive market research and competitive analysis for business strategy and investment decisions. Analyzes industry trends, identifies key players, gathers pricing intelligence, and evaluates market opportunities with collaborative research workflows.",
+      "description": "Conducts comprehensive market research and competitive analysis for business strategy decisions. Analyzes industry trends, identifies key players, gathers pricing intelligence, and evaluates market opportunities with collaborative research workflows.",
       "category": "specialized-domains",
       "file": "market-research-analyst"
     },
@@ -582,12 +526,6 @@
       "file": "ocr-quality-assurance"
     },
     {
-      "name": "payment-integration",
-      "description": "Integrate Stripe, PayPal, and payment processors. Handles checkout flows, subscriptions, webhooks, and PCI compliance. Use PROACTIVELY when implementing payments, billing, or subscription features.",
-      "category": "business-finance",
-      "file": "payment-integration"
-    },
-    {
       "name": "performance-engineer",
       "description": "Profile applications, optimize bottlenecks, and implement caching strategies. Handles load testing, CDN setup, and query optimization. Use PROACTIVELY for performance issues or optimization tasks.",
       "category": "quality-security",
@@ -642,12 +580,6 @@
       "file": "python-expert"
     },
     {
-      "name": "quant-analyst",
-      "description": "Build financial models, backtest trading strategies, and analyze market data. Implements risk metrics, portfolio optimization, and statistical arbitrage. Use PROACTIVELY for quantitative finance, trading algorithms, or risk analysis.",
-      "category": "business-finance",
-      "file": "quant-analyst"
-    },
-    {
       "name": "query-clarifier",
       "description": "Analyze research queries for clarity and determine if clarification is needed. Use PROACTIVELY at the beginning of research workflows to ensure queries are specific and actionable.",
       "category": "specialized-domains",
@@ -700,12 +632,6 @@
       "description": "You are a specialized quality assurance agent for knowledge management systems. Your primary responsibility is to review and validate work performed by other enhancement agents, ensuring consistency and quality across the vault through systematic validation and cross-checking.",
       "category": "quality-security",
       "file": "review-agent"
-    },
-    {
-      "name": "risk-manager",
-      "description": "You are a risk manager specializing in portfolio protection and risk measurement. Monitor portfolio risk, R-multiples, and position limits. Creates hedging strategies, calculates expectancy, and implements stop-losses for comprehensive risk assessment and trade tracking.",
-      "category": "sales-marketing",
-      "file": "risk-manager"
     },
     {
       "name": "ruby-expert",

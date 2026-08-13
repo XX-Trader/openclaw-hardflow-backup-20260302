@@ -29,7 +29,7 @@ class RuntimeMonitoringTests(unittest.TestCase):
     def test_collect_runtime_project_health_detects_missing_process_and_running_service(self):
         module = load_module(
             "ops_cron_runner",
-            "scripts/openclaw-ops/ops_cron_runner.py",
+            "skills/library/control-plane-ops/scripts/ops_cron_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -117,7 +117,7 @@ class RuntimeMonitoringTests(unittest.TestCase):
     def test_run_scan_includes_runtime_process_missing_risk_reason(self):
         module = load_module(
             "ops_cron_runner",
-            "scripts/openclaw-ops/ops_cron_runner.py",
+            "skills/library/control-plane-ops/scripts/ops_cron_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -192,7 +192,7 @@ class RuntimeMonitoringTests(unittest.TestCase):
     def test_run_scan_suppresses_same_workflow_failure_across_modes(self):
         module = load_module(
             "ops_cron_runner",
-            "scripts/openclaw-ops/ops_cron_runner.py",
+            "skills/library/control-plane-ops/scripts/ops_cron_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

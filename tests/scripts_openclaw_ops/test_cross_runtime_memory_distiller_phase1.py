@@ -35,18 +35,18 @@ class CrossRuntimeMemoryDistillerPhase1Tests(unittest.TestCase):
         result = module.probe_hosts(
             hosts=("openclaw", "hermes"),
             current_os="windows",
-            user_home=Path(r"C:\Users\Administrator"),
+            user_home=Path(r"C:\Users\RuntimeUser"),
             hermes_wsl_distro="Ubuntu",
-            hermes_wsl_user="ubuntu",
+            hermes_wsl_user="runtime-user",
         )
 
         self.assertEqual(result["openclaw"]["runtime_kind"], "windows")
-        self.assertEqual(result["openclaw"]["home"], r"C:\Users\Administrator\.openclaw")
-        self.assertIn(r"C:\Users\Administrator\.openclaw\workspace*", result["openclaw"]["workspace_roots"][0])
+        self.assertEqual(result["openclaw"]["home"], r"C:\Users\RuntimeUser\.openclaw")
+        self.assertIn(r"C:\Users\RuntimeUser\.openclaw\workspace*", result["openclaw"]["workspace_roots"][0])
         self.assertEqual(result["hermes"]["runtime_kind"], "wsl")
         self.assertEqual(result["hermes"]["distro"], "Ubuntu")
-        self.assertEqual(result["hermes"]["home"], "/home/ubuntu/.hermes")
-        self.assertEqual(result["hermes"]["hot_memory_paths"]["user"], "/home/ubuntu/.hermes/memories/USER.md")
+        self.assertEqual(result["hermes"]["home"], "/home/runtime-user/.hermes")
+        self.assertEqual(result["hermes"]["hot_memory_paths"]["user"], "/home/runtime-user/.hermes/memories/USER.md")
 
     def test_host_adapters_build_shared_parser_packet_shape(self):
         runtime_probe = load_module(
@@ -67,34 +67,34 @@ class CrossRuntimeMemoryDistillerPhase1Tests(unittest.TestCase):
             runtime_kind="wsl",
             transport="wsl_exec",
             distro="Ubuntu",
-            home="/home/ubuntu/.hermes",
-            session_roots=["/home/ubuntu/.hermes/sessions"],
+            home="/home/runtime-user/.hermes",
+            session_roots=["/home/runtime-user/.hermes/sessions"],
             hot_memory_paths={
-                "user": "/home/ubuntu/.hermes/memories/USER.md",
-                "memory": "/home/ubuntu/.hermes/memories/MEMORY.md",
+                "user": "/home/runtime-user/.hermes/memories/USER.md",
+                "memory": "/home/runtime-user/.hermes/memories/MEMORY.md",
             },
             workspace_roots=[],
-            state_db="/home/ubuntu/.hermes/state.db",
+            state_db="/home/runtime-user/.hermes/state.db",
         )
         openclaw_runtime = runtime_probe.RuntimeProbeResult(
             host="openclaw",
             runtime_kind="windows",
             transport="native_fs",
             distro="",
-            home=r"C:\Users\Administrator\.openclaw",
-            session_roots=[r"C:\Users\Administrator\.openclaw\agents\*\sessions\*.jsonl"],
+            home=r"C:\Users\RuntimeUser\.openclaw",
+            session_roots=[r"C:\Users\RuntimeUser\.openclaw\agents\*\sessions\*.jsonl"],
             hot_memory_paths={
-                "user": r"C:\Users\Administrator\.openclaw\workspace*\USER.md",
-                "memory": r"C:\Users\Administrator\.openclaw\workspace*\MEMORY.md",
+                "user": r"C:\Users\RuntimeUser\.openclaw\workspace*\USER.md",
+                "memory": r"C:\Users\RuntimeUser\.openclaw\workspace*\MEMORY.md",
             },
-            workspace_roots=[r"C:\Users\Administrator\.openclaw\workspace*"],
+            workspace_roots=[r"C:\Users\RuntimeUser\.openclaw\workspace*"],
             state_db="",
         )
 
         packet = runtime_probe.ParserCandidatePacket(
             candidate_id="cand_001",
             host="hermes",
-            project="openclaw-hardflow-backup-20260302",
+            project="workflow-infra",
             trace_id="trace_001",
             task_id="task_001",
             run_id="run_001",
@@ -113,7 +113,7 @@ class CrossRuntimeMemoryDistillerPhase1Tests(unittest.TestCase):
         openclaw_packet = runtime_probe.ParserCandidatePacket(
             candidate_id="cand_002",
             host="openclaw",
-            project="openclaw-hardflow-backup-20260302",
+            project="workflow-infra",
             trace_id="trace_002",
             task_id="task_002",
             run_id="run_002",

@@ -38,7 +38,7 @@ export default async function hardflowCommandGuard(event) {
   ];
   const requiredPolicyFallback = [
     {
-      local: "scripts/openclaw-ops/policy/policy_enforcer.py",
+      local: "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
       shared: path.join(sharedPolicyDir, "policy_enforcer.py"),
     },
     {

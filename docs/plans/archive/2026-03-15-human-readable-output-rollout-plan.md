@@ -59,8 +59,8 @@ git commit -m "docs: define human-readable output rollout scope"
 ### Task 2: Build Shared Output Formatter Helpers
 
 **Files:**
-- Modify: `scripts/openclaw-ops/daily_work_report.py`
-- Modify: `scripts/openclaw-ops/chat_output.py`
+- Modify: `skills/library/task-cost-analytics/scripts/daily_work_report.py`
+- Modify: `scripts/openclaw-ops/shared/chat_output.py`
 - Test: `tests/scripts_openclaw_ops/test_daily_work_report_quiet_modes.py`
 - Test: `scripts/openclaw-ops/tests/test_human_output_format.py`
 
@@ -96,17 +96,17 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add scripts/openclaw-ops/daily_work_report.py scripts/openclaw-ops/chat_output.py tests/scripts_openclaw_ops/test_daily_work_report_quiet_modes.py scripts/openclaw-ops/tests/test_human_output_format.py
+git add skills/library/task-cost-analytics/scripts/daily_work_report.py scripts/openclaw-ops/shared/chat_output.py tests/scripts_openclaw_ops/test_daily_work_report_quiet_modes.py scripts/openclaw-ops/tests/test_human_output_format.py
 git commit -m "feat: add shared human-readable task summary helpers"
 ```
 
 ### Task 3: Migrate Core Chat Outputs
 
 **Files:**
-- Modify: `scripts/openclaw-ops/daily_todo_digest.py`
-- Modify: `scripts/openclaw-ops/ops_cron_runner.py`
-- Modify: `scripts/openclaw-ops/system_schedule_snapshot.py`
-- Modify: `scripts/openclaw-ops/api_test_audit.py`
+- Modify: `skills/library/todo-patrol/scripts/daily_todo_digest.py`
+- Modify: `skills/library/control-plane-ops/scripts/ops_cron_runner.py`
+- Modify: `skills/library/control-plane-ops/scripts/system_schedule_snapshot.py`
+- Modify: `skills/library/openclaw-security-audit/scripts/api_test_audit.py`
 - Test: `tests/scripts_openclaw_ops/test_daily_todo_digest_output.py`
 - Test: `tests/scripts_openclaw_ops/test_cron_quiet_modes.py`
 
@@ -134,16 +134,16 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add scripts/openclaw-ops/daily_todo_digest.py scripts/openclaw-ops/ops_cron_runner.py scripts/openclaw-ops/system_schedule_snapshot.py scripts/openclaw-ops/api_test_audit.py tests/scripts_openclaw_ops/test_daily_todo_digest_output.py tests/scripts_openclaw_ops/test_cron_quiet_modes.py
+git add skills/library/todo-patrol/scripts/daily_todo_digest.py skills/library/control-plane-ops/scripts/ops_cron_runner.py skills/library/control-plane-ops/scripts/system_schedule_snapshot.py skills/library/openclaw-security-audit/scripts/api_test_audit.py tests/scripts_openclaw_ops/test_daily_todo_digest_output.py tests/scripts_openclaw_ops/test_cron_quiet_modes.py
 git commit -m "feat: humanize core ops chat outputs"
 ```
 
 ### Task 4: Migrate Executor And Human Views
 
 **Files:**
-- Modify: `scripts/openclaw-ops/policy/task_executor_runner.py`
-- Modify: `scripts/openclaw-ops/workflow_views.py`
-- Modify: `scripts/openclaw-ops/reviewer_cron_runner.py`
+- Modify: `skills/library/control-plane-ops/scripts/policy/task_executor_runner.py`
+- Modify: `skills/library/openclaw-workflow-manager/scripts/workflow_views.py`
+- Modify: `skills/library/receiving-code-review/scripts/reviewer_cron_runner.py`
 - Test: `tests/scripts_openclaw_ops/test_workflow_views.py`
 - Test: `tests/scripts_openclaw_ops/test_task_executor_output_contract.py`
 
@@ -168,20 +168,20 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add scripts/openclaw-ops/policy/task_executor_runner.py scripts/openclaw-ops/workflow_views.py scripts/openclaw-ops/reviewer_cron_runner.py tests/scripts_openclaw_ops/test_workflow_views.py tests/scripts_openclaw_ops/test_task_executor_output_contract.py
+git add skills/library/control-plane-ops/scripts/policy/task_executor_runner.py skills/library/openclaw-workflow-manager/scripts/workflow_views.py skills/library/receiving-code-review/scripts/reviewer_cron_runner.py tests/scripts_openclaw_ops/test_workflow_views.py tests/scripts_openclaw_ops/test_task_executor_output_contract.py
 git commit -m "feat: humanize executor and human-view summaries"
 ```
 
 ### Task 5: Migrate Secondary Human-Facing Runners
 
 **Files:**
-- Modify: `scripts/openclaw-ops/web_intel_collect_runner.py`
-- Modify: `scripts/openclaw-ops/web_intel_review_runner.py`
+- Modify: `skills/library/web-intelligence/scripts/web_intel_collect_runner.py`
+- Modify: `skills/library/web-intelligence/scripts/web_intel_review_runner.py`
 - Modify: `scripts/openclaw-ops/conversation_evolution_runner.py`
 - Modify: `scripts/openclaw-ops/governance_evolution_runner.py`
-- Modify: `scripts/openclaw-ops/github_web_evolution_runner.py`
+- Modify: `skills/library/web-intelligence/scripts/github_web_evolution_runner.py`
 - Modify: `scripts/openclaw-ops/self_evolution_todo.py`
-- Modify: `scripts/openclaw-ops/todo_patrol.py`
+- Modify: `skills/library/todo-patrol/scripts/todo_patrol.py`
 - Relevant tests under `tests/scripts_openclaw_ops/`
 
 **Step 1: Write the failing test**
@@ -205,7 +205,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add scripts/openclaw-ops/web_intel_collect_runner.py scripts/openclaw-ops/web_intel_review_runner.py scripts/openclaw-ops/conversation_evolution_runner.py scripts/openclaw-ops/governance_evolution_runner.py scripts/openclaw-ops/github_web_evolution_runner.py scripts/openclaw-ops/self_evolution_todo.py scripts/openclaw-ops/todo_patrol.py tests/scripts_openclaw_ops/
+git add skills/library/web-intelligence/scripts/web_intel_collect_runner.py skills/library/web-intelligence/scripts/web_intel_review_runner.py scripts/openclaw-ops/conversation_evolution_runner.py scripts/openclaw-ops/governance_evolution_runner.py skills/library/web-intelligence/scripts/github_web_evolution_runner.py scripts/openclaw-ops/self_evolution_todo.py skills/library/todo-patrol/scripts/todo_patrol.py tests/scripts_openclaw_ops/
 git commit -m "feat: humanize secondary runner summaries"
 ```
 
@@ -280,18 +280,18 @@ No commit in this task; push only.
 ### Task 8: Deploy To OpenClaw Servers
 
 **Files:**
-- Modify if needed: `D:/ssh_keys/tmp-*-sync-and-install.sh`
-- Reuse: `scripts/openclaw-ops/sync_openclaw_ops_files.py`
+- Modify if needed: `~/.ssh/tmp-*-sync-and-install.sh`
+- Reuse: `skills/library/fleet-sync/scripts/sync_openclaw_ops_files.py`
 - Reuse: `scripts/openclaw-ops/install_workflow_profile.py`
 
 **Step 1: Write the failing test**
 
 Document exact deployment targets:
-- `pm-website`
-- `大白pm`
-- `nofx`
-- `coingod`
-- `tokyo-claw`
+- `HOST_A`
+- `HOST_B`
+- `runtime-host`
+- `HOST_D`
+- `HOST_E`
 
 **Step 2: Run test to verify it fails**
 
@@ -327,11 +327,11 @@ No commit in this task; deployment only.
 ### Task 9: Verify Every Server After Install
 
 **Files:**
-- Reuse: `D:/ssh_keys/tmp-verify-dabai.sh`
-- Reuse: `D:/ssh_keys/tmp-verify-coingod-post.sh`
-- Reuse: `D:/ssh_keys/tmp-verify-nofx-post.sh`
-- Reuse: `D:/ssh_keys/tmp-verify-tokyo-post.sh`
-- Add/modify missing verification helper for `pm-website`
+- Reuse: `~/.ssh/tmp-verify-dabai.sh`
+- Reuse: `~/.ssh/tmp-verify-HOST_D-post.sh`
+- Reuse: `~/.ssh/tmp-verify-runtime-host-post.sh`
+- Reuse: `~/.ssh/tmp-verify-tokyo-post.sh`
+- Add/modify missing verification helper for `HOST_A`
 
 **Step 1: Write the failing test**
 
@@ -349,7 +349,7 @@ Expected: any mismatch identifies the server and failing condition
 
 **Step 3: Write minimal implementation**
 
-Patch or add verification helper scripts for missing checks, especially `pm-website`.
+Patch or add verification helper scripts for missing checks, especially `HOST_A`.
 
 **Step 4: Run test to verify it passes**
 
@@ -359,7 +359,7 @@ Expected: all target servers PASS
 **Step 5: Commit**
 
 ```bash
-git add D:/ssh_keys/tmp-verify-*.sh
+git add ~/.ssh/tmp-verify-*.sh
 git commit -m "chore: add rollout verification helpers"
 ```
 

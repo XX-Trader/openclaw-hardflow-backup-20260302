@@ -27,7 +27,7 @@ class TaskCenterDisplaySanitizationTests(unittest.TestCase):
     def test_get_task_and_task_report_default_to_trace_labels(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -172,7 +172,7 @@ class TaskCenterDisplaySanitizationTests(unittest.TestCase):
     def test_planner_summary_defaults_to_sanitized_report_view(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -227,7 +227,7 @@ class TaskCenterDisplaySanitizationTests(unittest.TestCase):
     def test_update_clarification_keeps_raw_context_payload_in_storage(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -277,7 +277,7 @@ class TaskCenterDisplaySanitizationTests(unittest.TestCase):
     def test_daily_summary_defaults_to_trace_labels_for_escalated_tasks(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

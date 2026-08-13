@@ -26,8 +26,34 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 POLICY_DIR = ROOT / "policy"
-if str(POLICY_DIR) not in sys.path:
-    sys.path.insert(0, str(POLICY_DIR))
+
+
+def repository_root(start: Path) -> Path | None:
+    return next(
+        (
+            parent
+            for parent in (start, *start.parents)
+            if (parent / "skills" / "library").is_dir() and (parent / "scripts" / "openclaw-ops").is_dir()
+        ),
+        None,
+    )
+
+
+REPOSITORY_ROOT = repository_root(ROOT)
+IMPORT_DIRS = [ROOT, POLICY_DIR]
+if REPOSITORY_ROOT is not None:
+    IMPORT_DIRS.extend(
+        [
+            REPOSITORY_ROOT / "scripts" / "openclaw-ops" / "shared",
+            REPOSITORY_ROOT / "skills" / "library" / "control-plane-ops" / "scripts",
+            REPOSITORY_ROOT / "skills" / "library" / "control-plane-ops" / "scripts" / "policy",
+            REPOSITORY_ROOT / "skills" / "library" / "openclaw-workflow-manager" / "scripts",
+        ]
+    )
+for import_dir in reversed(IMPORT_DIRS):
+    value = str(import_dir)
+    if import_dir.is_dir() and value not in sys.path:
+        sys.path.insert(0, value)
 
 from utf8_runtime import configure_process_utf8_stdio
 from io_write_gateway import FileWriteError, atomic_write_text, write_json_atomic  # type: ignore

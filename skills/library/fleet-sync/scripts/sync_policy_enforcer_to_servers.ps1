@@ -1,17 +1,27 @@
 param(
-    [string[]]$Servers = @("pm-website", "大白pm", "nofx", "coingod", "tokyo-claw"),
-    [string]$SshConfig = "D:\ssh_keys\ssh_config",
+    [string[]]$Servers = @(),
+    [string]$SshConfig = "",
     [switch]$RestartGateway
 )
 
 $ErrorActionPreference = "Stop"
 
+if (-not $Servers -or $Servers.Count -eq 0) {
+    $Servers = @($env:HARDFLOW_FLEET_SERVERS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+if (-not $Servers -or $Servers.Count -eq 0) {
+    throw "provide hosts with -Servers or HARDFLOW_FLEET_SERVERS"
+}
+if ([string]::IsNullOrWhiteSpace($SshConfig)) {
+    $SshConfig = if ($env:SSH_CONFIG) { $env:SSH_CONFIG } else { Join-Path $HOME ".ssh/config" }
+}
+
 if (!(Test-Path $SshConfig)) {
     throw "ssh_config not found: $SshConfig"
 }
 
-$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$localPolicyDir = Join-Path $repoRoot "scripts\openclaw-ops\policy"
+$repoRoot = if ($env:HARDFLOW_WORKFLOW_REPO) { $env:HARDFLOW_WORKFLOW_REPO } else { (& git -C $PSScriptRoot rev-parse --show-toplevel).Trim() }
+$localPolicyDir = Join-Path $repoRoot "skills\library\control-plane-ops\scripts\policy"
 $localHooksDir = Join-Path $repoRoot "hooks"
 $localGatewayServiceManager = Join-Path $localPolicyDir "gateway_service_manager.py"
 if (!(Test-Path $localHooksDir)) {

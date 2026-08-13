@@ -28,7 +28,7 @@ class RuntimeBindingTaskNormalizationTests(unittest.TestCase):
     def test_policy_enforcer_create_task_marks_runtime_binding_as_passed(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -83,11 +83,11 @@ class RuntimeBindingTaskNormalizationTests(unittest.TestCase):
     def test_normalize_runtime_binding_tasks_updates_legacy_backlog_rows(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         normalize_module = load_module(
             "normalize_runtime_binding_tasks",
-            "scripts/openclaw-ops/normalize_runtime_binding_tasks.py",
+            "skills/library/openclaw-workflow-manager/scripts/normalize_runtime_binding_tasks.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -135,11 +135,11 @@ class RuntimeBindingTaskNormalizationTests(unittest.TestCase):
     def test_normalize_runtime_binding_tasks_dry_run_preserves_existing_status(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         normalize_module = load_module(
             "normalize_runtime_binding_tasks",
-            "scripts/openclaw-ops/normalize_runtime_binding_tasks.py",
+            "skills/library/openclaw-workflow-manager/scripts/normalize_runtime_binding_tasks.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

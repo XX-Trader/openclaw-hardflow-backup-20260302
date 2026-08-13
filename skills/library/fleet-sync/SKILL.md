@@ -1,82 +1,52 @@
 ---
 name: fleet-sync
 description: >
-  多服务器同步技能。用于跨服务器配置分发、Skill 部署、
-  Cron Job 同步、状态对比。当需要在多台远程服务器间
-  保持配置一致性时使用。
-metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
+  多主机同步技能。用于跨主机分发配置、安装运行时任务、对比版本与验证结果。
+metadata: {"openclaw": {"requires": {"bins": ["python3", "ssh"]}, "os": ["linux", "windows"]}}
 ---
 
-# 多服务器同步操作手册
+# 多主机同步
 
-## 适用场景
+## 配置
 
-- 将 nofx 验证通过的变更推广到其他服务器
-- 跨服务器 Skill 目录同步
-- Cron Job 配置分发
-- 服务器间状态对比
+主机清单来自命令参数或环境变量，不在仓库中固化真实别名、地址和凭证：
 
-## 服务器清单
-
-| 别名 | 用途 | SSH 配置 |
-|------|------|---------|
-| nofx | 主验证服务器 | `ssh_config` |
-| pm-website | 站点服务器 | `ssh_config` |
-| 大白pm | 项目管理 | `ssh_config` |
-| coingod | 交易服务 | `ssh_config` |
-| tokyo-claw | 东京节点 | `ssh_config` |
-
-## 操作流程
-
-### 1. 状态对比
-
-```bash
-# 对比所有服务器的 manifest 版本
-python3 ~/scripts/openclaw-ops/multi_server_sync.py --diff
-
-# 对比指定服务器
-python3 ~/scripts/openclaw-ops/multi_server_sync.py --diff --target pm-website
+```dotenv
+SSH_CONFIG=~/.ssh/config
+HARDFLOW_FLEET_SERVERS=HOST_A,HOST_B
+HARDFLOW_REMOTE_WORKFLOW_REPO=~/workflow-infra
+HARDFLOW_REMOTE_RUNTIME_HOME=~/.openclaw
 ```
 
-### 2. 配置分发
+## 流程
+
+1. 在单个验证主机执行 dry-run。
+2. 比对代码版本、目标路径和预期变更。
+3. 只向显式主机清单分发。
+4. 在每台主机执行安装器并记录结构化结果。
+5. 任一主机失败时保留已完成结果，只重试失败主机。
+
+## 安装 TODO 巡检任务
 
 ```bash
-# 分发到所有服务器
-python3 ~/scripts/openclaw-ops/multi_server_sync.py --sync --target all
-
-# 分发到指定服务器
-python3 ~/scripts/openclaw-ops/multi_server_sync.py --sync --target pm-website
+DRY_RUN=1 bash skills/library/fleet-sync/scripts/sync_todo_patrol_to_servers.sh HOST_A
+bash skills/library/fleet-sync/scripts/sync_todo_patrol_to_servers.sh HOST_A HOST_B
 ```
 
-### 3. Skill 部署
+PowerShell 7：
+
+```powershell
+pwsh -File skills/library/fleet-sync/scripts/sync_todo_patrol_to_servers.ps1 `
+  -Servers HOST_A,HOST_B `
+  -DryRun
+```
+
+脚本复用仓库根目录 `setup.py`，通过 `--job-name` 安装单项任务；不会复制不存在的旧脚本。
+
+## 安全更新
 
 ```bash
-# 同步 Skill 目录到远程
-scp -r -F D:/ssh_keys/ssh_config ~/.claude/skills/<skill-name> <alias>:~/.claude/skills/
+python3 skills/library/fleet-sync/scripts/remote_safe_update.py   --mode inspect --servers HOST_A --repo-path ~/workflow-infra
 ```
 
-### 4. 验证同步结果
-
-```bash
-# 远程检查
-ssh -F D:/ssh_keys/ssh_config <alias> 'ls ~/.claude/skills/<skill-name>/'
-```
-
-## 同步策略
-
-- **先 nofx 验证 → 再推广**：任何变更先在 nofx 单机验证稳定后再分发
-- **skip-if-exists**：默认不覆盖已有文件，防止丢失本地定制
-- **增量同步**：只同步有差异的文件
-
-## 核心脚本
-
-| 脚本 | 用途 |
-|------|------|
-| `multi_server_sync.py` | 多服务器同步引擎 |
-| `remote_deploy_skills.py` | 远程 Skill 部署 |
-
-## 约束
-
-- 使用 `D:/ssh_keys/ssh_config`（或 `F:/ssh_keys/ssh_config`）配置 SSH
-- 长时间运行任务必须使用 tmux
-- 破坏性操作需要用户二次确认
+同步前先区分运行态文件与人工改动；默认只处理运行态白名单，其他改动会阻断同步。

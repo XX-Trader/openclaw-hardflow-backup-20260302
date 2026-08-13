@@ -5,7 +5,7 @@ No,Product Type,Keywords,Primary (Hex),Secondary (Hex),CTA (Hex),Background (Hex
 4,E-commerce Luxury,"commerce, luxury",#1C1917,#44403C,#CA8A04,#FAFAF9,#0C0A09,#D6D3D1,Premium colors + minimal accent
 5,Service Landing Page,"service, landing, page",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Brand primary + trust colors
 6,B2B Service,"b2b, service",#0F172A,#334155,#0369A1,#F8FAFC,#020617,#E2E8F0,Professional blue + neutral grey
-7,Financial Dashboard,"financial, dashboard",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Dark bg + red/green alerts + trust blue
+7,Operations Dashboard,"operational, dashboard",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Dark bg + red/green alerts + trust blue
 8,Analytics Dashboard,"analytics, dashboard",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Cool→Hot gradients + neutral grey
 9,Healthcare App,"healthcare, app",#0891B2,#22D3EE,#059669,#ECFEFF,#164E63,#A5F3FC,Calm blue + health green + trust
 10,Educational App,"educational, app",#4F46E5,#818CF8,#F97316,#EEF2FF,#1E1B4B,#C7D2FE,Playful colors + clear hierarchy
@@ -13,12 +13,11 @@ No,Product Type,Keywords,Primary (Hex),Secondary (Hex),CTA (Hex),Background (Hex
 12,Portfolio/Personal,"portfolio, personal",#18181B,#3F3F46,#2563EB,#FAFAFA,#09090B,#E4E4E7,Brand primary + artistic interpretation
 13,Gaming,gaming,#7C3AED,#A78BFA,#F43F5E,#0F0F23,#E2E8F0,#4C1D95,Vibrant + neon + immersive colors
 14,Government/Public Service,"government, public, service",#0F172A,#334155,#0369A1,#F8FAFC,#020617,#E2E8F0,Professional blue + high contrast
-15,Fintech/Crypto,"fintech, crypto",#F59E0B,#FBBF24,#8B5CF6,#0F172A,#F8FAFC,#334155,Dark tech colors + trust + vibrant accents
+15,Developer Platform,"developer-tools, distributed-systems",#F59E0B,#FBBF24,#8B5CF6,#0F172A,#F8FAFC,#334155,Dark tech colors + trust + vibrant accents
 16,Social Media App,"social, media, app",#2563EB,#60A5FA,#F43F5E,#F8FAFC,#1E293B,#DBEAFE,Vibrant + engagement colors
 17,Productivity Tool,"productivity, tool",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Clear hierarchy + functional colors
 18,Design System/Component Library,"design, system, component, library",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Clear hierarchy + code-like structure
 19,AI/Chatbot Platform,"chatbot, platform",#7C3AED,#A78BFA,#06B6D4,#FAF5FF,#1E1B4B,#DDD6FE,Neutral + AI Purple (#6366F1)
-20,NFT/Web3 Platform,"nft, web3, platform",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Dark + Neon + Gold (#FFD700)
 21,Creator Economy Platform,"creator, economy, platform",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Vibrant + Brand colors
 22,Sustainability/ESG Platform,"sustainability, esg, platform",#7C3AED,#A78BFA,#06B6D4,#FAF5FF,#1E1B4B,#DDD6FE,Green (#228B22) + Earth tones
 23,Remote Work/Collaboration Tool,"remote, work, collaboration, tool",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Calm Blue + Neutral grey
@@ -42,7 +41,7 @@ No,Product Type,Keywords,Primary (Hex),Secondary (Hex),CTA (Hex),Background (Hex
 41,Wedding/Event Planning,"wedding, event, planning",#7C3AED,#A78BFA,#F97316,#FAF5FF,#4C1D95,#DDD6FE,Soft Pink (#FFD6E0) + Gold + Cream + Sage
 42,Legal Services,"legal, services",#1E3A8A,#1E40AF,#B45309,#F8FAFC,#0F172A,#CBD5E1,Navy Blue (#1E3A5F) + Gold + White
 43,Insurance Platform,"insurance, platform",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Trust Blue (#0066CC) + Green (security) + Neutral
-44,Banking/Traditional Finance,"banking, traditional, finance",#0F766E,#14B8A6,#0369A1,#F0FDFA,#134E4A,#99F6E4,Navy (#0A1628) + Trust Blue + Gold accents
+44,Government/Regulated Services,"government, regulated, public-service",#0F766E,#14B8A6,#0369A1,#F0FDFA,#134E4A,#99F6E4,Navy (#0A1628) + Trust Blue + Gold accents
 45,Online Course/E-learning,"online, course, learning",#0D9488,#2DD4BF,#EA580C,#F0FDFA,#134E4A,#5EEAD4,Vibrant learning colors + Progress green
 46,Non-profit/Charity,"non, profit, charity",#0891B2,#22D3EE,#F97316,#ECFEFF,#164E63,#A5F3FC,Cause-related colors + Trust + Warm
 47,Music Streaming,"music, streaming",#3B82F6,#60A5FA,#F97316,#F8FAFC,#1E293B,#E2E8F0,Dark (#121212) + Vibrant accents + Album art colors

@@ -1,21 +1,21 @@
 {
-  "source_report": "current-nofx-workflow-owner-contract@2026-04-27",
+  "source_report": "generic-workflow-owner-contract@2026-08-13",
   "runtime_truth": {
     "entry_profiles": [
       {
-        "id": "arbitrageagent",
+        "id": "deliveryagent",
         "kind": "Hermes Discord profile",
         "model": "openai-codex/gpt-5.5"
       },
       {
-        "id": "spreadagent",
+        "id": "projectagent",
         "kind": "Hermes Discord profile",
         "model": "openai-codex/gpt-5.5"
       }
     ],
-    "workflow_entry": "/home/arbops/.local/bin/smart-arb-pipeline",
-    "runner": "/home/arbops/.hermes/ops/pipeline_runner.py",
-    "note": "Agent entries below are workflow stage owners or cron responsibility labels, not long-lived server processes."
+    "workflow_entry": "${HARDFLOW_RUNTIME_HOME}/ops/project_pipeline_entry.py",
+    "runner": "${HARDFLOW_RUNTIME_HOME}/ops/pipeline_runner.py",
+    "note": "Entries below are workflow stage owners or schedule responsibility labels, not long-lived machine processes."
   },
   "agents": [
     {
@@ -23,7 +23,7 @@
       "name": "coordinator",
       "default": true,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/coordinator",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "intake",
@@ -52,7 +52,7 @@
       "name": "project-agent",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/project-agent",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "context_snapshot",
@@ -80,7 +80,7 @@
       "name": "web-agent",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-web-agent",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/web-agent",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "external_research"
@@ -97,7 +97,7 @@
       "name": "reviewer",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/reviewer",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "requirements_discussion",
@@ -120,7 +120,7 @@
       "name": "backend-dev",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/backend-dev",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "code_execution"
@@ -140,7 +140,7 @@
       "name": "frontend-dev",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/frontend-dev",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "code_execution"
@@ -161,7 +161,7 @@
       "name": "tester",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-tester",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/tester",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "verification",
@@ -180,7 +180,7 @@
       "name": "deployer",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-deployer",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/deployer",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "deployment"
@@ -197,7 +197,7 @@
       "name": "doc-writer",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/doc-writer",
       "runtime_role": "workflow-stage-owner",
       "stages": [
         "writeback",
@@ -216,7 +216,7 @@
       "name": "ops-agent",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-ops-agent",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/ops-agent",
       "runtime_role": "cron-task-owner",
       "stages": [],
       "cron_scope": [
@@ -242,7 +242,7 @@
       "name": "optimization-agent",
       "default": false,
       "model": "openai-codex/gpt-5.5",
-      "workspace": "/home/ubuntu/.openclaw/workspace-optimization-agent",
+      "workspace": "${HARDFLOW_RUNTIME_HOME}/workspaces/optimization-agent",
       "runtime_role": "cron-task-owner",
       "stages": [],
       "cron_scope": [

@@ -26,7 +26,7 @@
 查看帮助：
 
 ```bash
-python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py --help
+python3 skills/library/control-plane-ops/scripts/policy/bootstrap_multi_project.py --help
 ```
 
 ## 2. 准备项目清单（推荐）
@@ -48,7 +48,7 @@ python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py --help
 方式 A：项目清单文件
 
 ```bash
-python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py \
+python3 skills/library/control-plane-ops/scripts/policy/bootstrap_multi_project.py \
   --projects-file scripts/openclaw-ops/policy/projects.example.json \
   --openclaw-home ~/.openclaw \
   --strict-git-remote
@@ -57,7 +57,7 @@ python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py \
 方式 B：直接传多个项目路径
 
 ```bash
-python3 scripts/openclaw-ops/policy/bootstrap_multi_project.py \
+python3 skills/library/control-plane-ops/scripts/policy/bootstrap_multi_project.py \
   --project-root /srv/project-a \
   --project-root /srv/project-b \
   --openclaw-home ~/.openclaw
@@ -103,7 +103,7 @@ python3 "$PROJECT_INDEX_MAINTAINER_PY" \
 ## 6. 安装后核查（强烈建议）
 
 ```bash
-python3 scripts/openclaw-ops/policy/policy_enforcer.py check-config \
+python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py check-config \
   --openclaw-config "$OPENCLAW_HOME/openclaw.json" \
   --project-registry "$PROJECT_REGISTRY" \
   --strict

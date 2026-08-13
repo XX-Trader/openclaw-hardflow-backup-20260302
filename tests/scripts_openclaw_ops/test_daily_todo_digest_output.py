@@ -31,7 +31,7 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
     def test_build_chat_output_returns_no_reply_when_no_updates_or_exceptions(self):
         module = load_module(
             "daily_todo_digest",
-            "scripts/openclaw-ops/daily_todo_digest.py",
+            "skills/library/todo-patrol/scripts/daily_todo_digest.py",
         )
 
         output = module.build_chat_output(
@@ -51,7 +51,7 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
     def test_build_chat_output_uses_chinese_card_without_paths(self):
         module = load_module(
             "daily_todo_digest",
-            "scripts/openclaw-ops/daily_todo_digest.py",
+            "skills/library/todo-patrol/scripts/daily_todo_digest.py",
         )
 
         output = module.build_chat_output(
@@ -106,7 +106,7 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
     def test_build_chat_output_shows_failure_reason_and_execution_metrics_for_failed_todo(self):
         module = load_module(
             "daily_todo_digest",
-            "scripts/openclaw-ops/daily_todo_digest.py",
+            "skills/library/todo-patrol/scripts/daily_todo_digest.py",
         )
 
         output = module.build_chat_output(
@@ -150,7 +150,7 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
     def test_build_chat_output_emits_exception_card_when_only_exceptions(self):
         module = load_module(
             "daily_todo_digest",
-            "scripts/openclaw-ops/daily_todo_digest.py",
+            "skills/library/todo-patrol/scripts/daily_todo_digest.py",
         )
 
         output = module.build_chat_output(
@@ -175,7 +175,7 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
     def test_main_emits_exception_card_when_only_runtime_errors_exist(self):
         module = load_module(
             "daily_todo_digest",
-            "scripts/openclaw-ops/daily_todo_digest.py",
+            "skills/library/todo-patrol/scripts/daily_todo_digest.py",
         )
         invoked: list[list[str]] = []
 
@@ -233,7 +233,7 @@ class DailyTodoDigestOutputTests(unittest.TestCase):
     def test_main_ignores_runtime_binding_tasks_in_pending_and_done_lists(self):
         module = load_module(
             "daily_todo_digest",
-            "scripts/openclaw-ops/daily_todo_digest.py",
+            "skills/library/todo-patrol/scripts/daily_todo_digest.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

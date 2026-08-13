@@ -83,11 +83,11 @@ class ControlPlaneProfileUpdateApplierTests(unittest.TestCase):
     def test_apply_profile_updates_mutates_candidate_registry_and_skips_duplicates(self):
         applier_module = load_module(
             "control_plane_profile_update_applier",
-            "scripts/openclaw-ops/control_plane_profile_update_applier.py",
+            "skills/library/control-plane-ops/scripts/control_plane_profile_update_applier.py",
         )
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -280,11 +280,11 @@ class ControlPlaneProfileUpdateApplierTests(unittest.TestCase):
     def test_main_writes_json_and_markdown_outputs(self):
         applier_module = load_module(
             "control_plane_profile_update_applier",
-            "scripts/openclaw-ops/control_plane_profile_update_applier.py",
+            "skills/library/control-plane-ops/scripts/control_plane_profile_update_applier.py",
         )
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -359,11 +359,11 @@ class ControlPlaneProfileUpdateApplierTests(unittest.TestCase):
     def test_stage_simplification_requires_profile_update_guard(self):
         applier_module = load_module(
             "control_plane_profile_update_applier",
-            "scripts/openclaw-ops/control_plane_profile_update_applier.py",
+            "skills/library/control-plane-ops/scripts/control_plane_profile_update_applier.py",
         )
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -51,17 +51,17 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
     def test_project_index_doc_knowledge_detects_external_api_urls_and_repo_sources(self):
         module = load_module(
             "project_index_maintainer",
-            "scripts/openclaw-ops/policy/project_index_maintainer.py",
+            "skills/library/control-plane-ops/scripts/policy/project_index_maintainer.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            service_file = tmp / "src" / "binance_client.py"
+            service_file = tmp / "src" / "github_client.py"
             service_file.parent.mkdir(parents=True, exist_ok=True)
             service_file.write_text(
                 "\n".join(
                     [
-                        'BASE_URL = "https://api.binance.com/api/v3"',
-                        'FUTURES_URL = "https://fapi.binance.com/fapi/v1"',
+                        'BASE_URL = "https://api.github.com/repos/example/project"',
+                        'FUTURES_URL = "https://uploads.github.com/repos/example/project/releases"',
                     ]
                 ),
                 encoding="utf-8",
@@ -71,26 +71,26 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
             payload, _changed = module.build_doc_knowledge(
                 root=tmp,
                 index_root=index_root,
-                api_files=["src/binance_client.py"],
-                source_files=["src/binance_client.py"],
+                api_files=["src/github_client.py"],
+                source_files=["src/github_client.py"],
                 enable_checks=False,
                 timeout=5,
                 fetch_content=False,
                 fetch_max_chars=2048,
             )
 
-        self.assertIn("https://api.binance.com/api/v3", payload["external_api_urls"])
-        self.assertIn("api.binance.com", payload["external_api_hosts"])
-        self.assertTrue(any(item.get("vendor") == "binance" for item in payload["repo_sources"]))
-        binance_repo_source = next(item for item in payload["repo_sources"] if item.get("vendor") == "binance")
-        self.assertIn("binance/binance-spot-api-docs", binance_repo_source["official_repos"])
-        self.assertTrue(any("binance" in query.lower() for query in binance_repo_source["repo_queries"]))
-        self.assertTrue(any("developers.binance.com" in item.get("url", "") for item in payload["doc_sources"]))
+        self.assertIn("https://api.github.com/repos/example/project", payload["external_api_urls"])
+        self.assertIn("api.github.com", payload["external_api_hosts"])
+        self.assertTrue(any(item.get("vendor") == "github" for item in payload["repo_sources"]))
+        github_repo_source = next(item for item in payload["repo_sources"] if item.get("vendor") == "github")
+        self.assertIn("github/rest-api-description", github_repo_source["official_repos"])
+        self.assertTrue(any("github" in query.lower() for query in github_repo_source["repo_queries"]))
+        self.assertTrue(any("docs.github.com" in item.get("url", "") for item in payload["doc_sources"]))
 
     def test_project_index_doc_knowledge_builds_host_repo_queries_for_unknown_api_hosts(self):
         module = load_module(
             "project_index_maintainer",
-            "scripts/openclaw-ops/policy/project_index_maintainer.py",
+            "skills/library/control-plane-ops/scripts/policy/project_index_maintainer.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -131,7 +131,7 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
     def test_project_index_maintainer_skips_unchanged_git_projects_after_state_recorded(self):
         module = load_module(
             "project_index_maintainer",
-            "scripts/openclaw-ops/policy/project_index_maintainer.py",
+            "skills/library/control-plane-ops/scripts/policy/project_index_maintainer.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -196,7 +196,7 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
     def test_web_intel_load_sources_merges_project_registry_and_vendor_docs(self):
         module = load_module(
             "web_intel_collect_runner",
-            "scripts/openclaw-ops/web_intel_collect_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_collect_runner.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -243,14 +243,14 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                     {
                         "projects": [
                             {
-                                "id": "trade-bot",
-                                "name": "trade-bot",
+                                "id": "service-bot",
+                                "name": "service-bot",
                                 "path": str(tmp),
-                                "integrations": ["binance"],
+                                "integrations": ["github"],
                                 "doc_sources": [
                                     {
-                                        "id": "trade-bot-api-overview",
-                                        "url": "https://example.com/trade-bot/api",
+                                        "id": "service-bot-api-overview",
+                                        "url": "https://example.com/service-bot/api",
                                         "category": "api-doc",
                                         "tags": ["project", "api"],
                                     }
@@ -274,22 +274,22 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
         urls = {item["url"] for item in sources}
         self.assertIn("fastapi-release-notes", ids)
         self.assertIn("project-doc-base", ids)
-        self.assertIn("trade-bot-api-overview", ids)
-        self.assertIn("https://example.com/trade-bot/api", urls)
+        self.assertIn("service-bot-api-overview", ids)
+        self.assertIn("https://example.com/service-bot/api", urls)
         self.assertIn(
-            "https://developers.binance.com/docs/binance-spot-api-docs/rest-api/general-api-information",
+            "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api",
             urls,
         )
-        self.assertTrue(any(item["id"].startswith("trade-bot-binance-") for item in sources))
+        self.assertTrue(any(item["id"].startswith("service-bot-github-") for item in sources))
 
     def test_web_runtime_sources_reads_project_index_doc_knowledge_automatically(self):
         module = load_module(
             "web_sources_runtime",
-            "scripts/openclaw-ops/web_sources_runtime.py",
+            "skills/library/web-intelligence/scripts/web_sources_runtime.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            project_root = tmp / "trade-bot"
+            project_root = tmp / "service-bot"
             index_root = project_root / ".workflow" / "project-index-local"
             index_root.mkdir(parents=True, exist_ok=True)
             static_sources = tmp / "sources.json"
@@ -301,8 +301,8 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                     {
                         "projects": [
                             {
-                                "id": "trade-bot",
-                                "name": "trade-bot",
+                                "id": "service-bot",
+                                "name": "service-bot",
                                 "path": str(project_root),
                                 "index_dir": ".workflow/project-index-local",
                             }
@@ -318,18 +318,18 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                     {
                         "doc_sources": [
                             {
-                                "tag": "binance",
-                                "name": "Binance Spot API",
-                                "url": "https://developers.binance.com/docs/binance-spot-api-docs/rest-api/general-api-information",
+                                "tag": "github",
+                                "name": "GitHub REST API",
+                                "url": "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api",
                                 "category": "api-doc",
-                                "tags": ["official", "api", "binance"],
+                                "tags": ["official", "api", "github"],
                             }
                         ],
                         "repo_sources": [
                             {
-                                "vendor": "binance",
-                                "official_repos": ["binance/binance-spot-api-docs"],
-                                "repo_queries": ["org:binance binance connector archived:false"],
+                                "vendor": "github",
+                                "official_repos": ["github/rest-api-description"],
+                                "repo_queries": ["org:github rest api archived:false"],
                             }
                         ],
                     },
@@ -342,18 +342,18 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
             sources = module.load_runtime_sources(static_sources, project_registry=project_registry)
             repo_targets = module.load_project_repo_targets(project_registry)
 
-        self.assertTrue(any("developers.binance.com" in item.get("url", "") for item in sources))
-        self.assertIn("binance/binance-spot-api-docs", repo_targets["official_repos"])
-        self.assertTrue(any("binance connector" in query for query in repo_targets["queries"]))
+        self.assertTrue(any("docs.github.com" in item.get("url", "") for item in sources))
+        self.assertIn("github/rest-api-description", repo_targets["official_repos"])
+        self.assertTrue(any("rest api" in query for query in repo_targets["queries"]))
 
     def test_project_repo_targets_fallback_to_external_api_hosts_when_repo_sources_missing(self):
         module = load_module(
             "web_sources_runtime",
-            "scripts/openclaw-ops/web_sources_runtime.py",
+            "skills/library/web-intelligence/scripts/web_sources_runtime.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            project_root = tmp / "trade-bot"
+            project_root = tmp / "service-bot"
             index_root = project_root / ".workflow" / "project-index-local"
             index_root.mkdir(parents=True, exist_ok=True)
             project_registry = tmp / "project-registry.json"
@@ -363,8 +363,8 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                     {
                         "projects": [
                             {
-                                "id": "trade-bot",
-                                "name": "trade-bot",
+                                "id": "service-bot",
+                                "name": "service-bot",
                                 "path": str(project_root),
                                 "index_dir": ".workflow/project-index-local",
                             }
@@ -397,33 +397,35 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
     def test_project_registry_auto_discovers_git_projects(self):
         module = load_module(
             "web_sources_runtime",
-            "scripts/openclaw-ops/web_sources_runtime.py",
+            "skills/library/web-intelligence/scripts/web_sources_runtime.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             explicit = tmp / "explicit-project"
             explicit.mkdir(parents=True, exist_ok=True)
             discovered_root = tmp / "projects"
-            discovered = discovered_root / "auto-found-trader"
+            discovered = discovered_root / "auto-found-project"
             discovered.mkdir(parents=True, exist_ok=True)
             hidden_skill = tmp / ".openclaw" / "skills" / "frontend-design-ultimate"
             hidden_skill.mkdir(parents=True, exist_ok=True)
             hidden_tool = tmp / ".nvm"
             hidden_tool.mkdir(parents=True, exist_ok=True)
-            workflow_repo = tmp / "openclaw-hardflow-backup-20260302"
+            workflow_repo = tmp / "workflow-infra"
             workflow_repo.mkdir(parents=True, exist_ok=True)
             upstream_repo = tmp / "lobster"
             upstream_repo.mkdir(parents=True, exist_ok=True)
 
-            (discovered / "package.json").write_text('{"name":"auto-found-trader"}', encoding="utf-8")
+            (discovered / "package.json").write_text('{"name":"auto-found-project"}', encoding="utf-8")
             (hidden_skill / "package.json").write_text('{"name":"skill-repo"}', encoding="utf-8")
             (hidden_tool / "package.json").write_text('{"name":"nvm"}', encoding="utf-8")
-            (workflow_repo / "package.json").write_text('{"name":"openclaw-hardflow-backup-20260302"}', encoding="utf-8")
+            (workflow_repo / "package.json").write_text('{"name":"workflow-infra"}', encoding="utf-8")
+            (workflow_repo / "setup.py").write_text("# workflow installer\n", encoding="utf-8")
+            (workflow_repo / "skills" / "library" / "project-delivery-pipeline").mkdir(parents=True)
             (upstream_repo / "package.json").write_text('{"name":"lobster"}', encoding="utf-8")
-            self.init_git_repo(discovered, remote="https://github.com/example/auto-found-trader.git")
+            self.init_git_repo(discovered, remote="https://github.com/example/auto-found-project.git")
             self.init_git_repo(hidden_skill, remote="https://github.com/example/skill-repo.git")
             self.init_git_repo(hidden_tool, remote="https://github.com/nvm-sh/nvm.git")
-            self.init_git_repo(workflow_repo, remote="https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git")
+            self.init_git_repo(workflow_repo, remote="https://github.com/ORG/workflow-infra.git")
             self.init_git_repo(upstream_repo, remote="https://github.com/openclaw/lobster.git")
 
             project_registry = tmp / "project-registry.json"
@@ -473,12 +475,12 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
     def test_project_repo_targets_ignore_vendor_monitoring_disabled_projects(self):
         module = load_module(
             "web_sources_runtime",
-            "scripts/openclaw-ops/web_sources_runtime.py",
+            "skills/library/web-intelligence/scripts/web_sources_runtime.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
-            biz_root = tmp / "trade-bot"
-            ops_root = tmp / "openclaw-hardflow-backup-20260302"
+            biz_root = tmp / "service-bot"
+            ops_root = tmp / "workflow-infra"
             for root in (biz_root, ops_root):
                 index_root = root / ".workflow" / "project-index-local"
                 index_root.mkdir(parents=True, exist_ok=True)
@@ -488,14 +490,14 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                     {
                         "projects": [
                             {
-                                "id": "trade-bot",
-                                "name": "trade-bot",
+                                "id": "service-bot",
+                                "name": "service-bot",
                                 "path": str(biz_root),
                                 "vendor_monitoring": {"enabled": True},
                             },
                             {
                                 "id": "workflow-repo",
-                                "name": "openclaw-hardflow-backup-20260302",
+                                "name": "workflow-infra",
                                 "path": str(ops_root),
                                 "vendor_monitoring": {"enabled": False},
                             },
@@ -511,9 +513,9 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                     {
                         "repo_sources": [
                             {
-                                "vendor": "binance",
-                                "official_repos": ["binance/binance-connector-python"],
-                                "repo_queries": ["org:binance binance connector archived:false"],
+                                "vendor": "github",
+                                "official_repos": ["github/docs"],
+                                "repo_queries": ["org:github rest api archived:false"],
                             }
                         ]
                     },
@@ -541,13 +543,13 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
 
             repo_targets = module.load_project_repo_targets(project_registry)
 
-        self.assertIn("binance/binance-connector-python", repo_targets["official_repos"])
+        self.assertIn("github/docs", repo_targets["official_repos"])
         self.assertNotIn("openclaw/openclaw", repo_targets["official_repos"])
 
     def test_skill4agent_query_pack_defaults_to_openclaw_focus(self):
         module = load_module(
             "github_web_evolution_runner",
-            "scripts/openclaw-ops/github_web_evolution_runner.py",
+            "skills/library/web-intelligence/scripts/github_web_evolution_runner.py",
         )
         queries = module.build_skill_query_list([], 5)
         self.assertEqual(len(queries), 5)
@@ -558,26 +560,26 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
     def test_github_query_inputs_merge_project_repo_targets(self):
         module = load_module(
             "github_web_evolution_runner",
-            "scripts/openclaw-ops/github_web_evolution_runner.py",
+            "skills/library/web-intelligence/scripts/github_web_evolution_runner.py",
         )
         payload = module.build_repo_scan_inputs(
             raw_queries=["openclaw hooks plugins skills archived:false"],
             min_stars=80,
             max_queries=5,
             project_repo_targets={
-                "queries": ["org:binance binance connector archived:false"],
-                "official_repos": ["binance/binance-spot-api-docs"],
+                "queries": ["org:github rest api archived:false"],
+                "official_repos": ["github/rest-api-description"],
             },
         )
 
-        self.assertIn("binance/binance-spot-api-docs", payload["official_repos"])
+        self.assertIn("github/rest-api-description", payload["official_repos"])
         self.assertTrue(any("stars:>=80" in query for query in payload["queries"]))
-        self.assertTrue(any("org:binance" in query for query in payload["queries"]))
+        self.assertTrue(any("org:github" in query for query in payload["queries"]))
 
     def test_search_skill4agent_skills_parses_json_payload(self):
         module = load_module(
             "github_web_evolution_runner",
-            "scripts/openclaw-ops/github_web_evolution_runner.py",
+            "skills/library/web-intelligence/scripts/github_web_evolution_runner.py",
         )
 
         class FakeProc:
@@ -586,14 +588,14 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                 {
                     "totalResults": 1,
                     "returnedCount": 1,
-                    "query": "binance",
+                    "query": "github",
                     "skills": [
                         {
-                            "skillId": "binance-auth--ticruz38-skills",
+                            "skillId": "github-auth--ticruz38-skills",
                             "source": "ticruz38/skills",
-                            "skillName": "binance-auth",
-                            "description": "Binance API authentication and key management for trading skills.",
-                            "tags": "binance-api-auth, key-management",
+                            "skillName": "github-auth",
+                            "description": "GitHub API authentication and permission management for automation skills.",
+                            "tags": "github-api-auth, key-management",
                             "categoryName": "工具与效率",
                             "totalInstalls": 1,
                             "relevance": 1,
@@ -603,7 +605,7 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                     ],
                 },
                 ensure_ascii=False,
-            ) + "\n- Searching for \"binance\"..."
+            ) + "\n- Searching for \"github\"..."
             stderr = ""
 
         original_run = module.subprocess.run
@@ -612,7 +614,7 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
             module.shutil.which = lambda value: value
             module.subprocess.run = lambda *args, **kwargs: FakeProc()
             items, log = module.search_skill4agent_skills(
-                query="binance",
+                query="github",
                 skill4agent_bin="skill4agent",
                 limit=5,
                 timeout=20,
@@ -622,34 +624,9 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
             module.shutil.which = original_which
 
         self.assertEqual(len(items), 1)
-        self.assertEqual(items[0]["skillName"], "binance-auth")
+        self.assertEqual(items[0]["skillName"], "github-auth")
         self.assertTrue(log["ok"])
         self.assertEqual(log["returned_count"], 1)
-
-    def test_install_workflow_profile_web_intel_cmd_passes_project_registry(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_install_web_intel_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
-            ops_home="/home/ubuntu/.openclaw/ops",
-            openclaw_home="/home/ubuntu/.openclaw",
-            project_registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
-            collect_every_ms=3600000,
-            opt_review_every_ms=14400000,
-            project_review_every_ms=21600000,
-            collect_min_interval_minutes=60,
-            review_min_interval_minutes=180,
-            channel="telegram",
-            target="-1003333097130",
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("--project-registry", rendered)
-        self.assertIn("/home/ubuntu/.openclaw/ops/task-center/project-registry.json", rendered)
-
 
 if __name__ == "__main__":
     unittest.main()

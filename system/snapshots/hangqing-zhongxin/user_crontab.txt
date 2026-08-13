@@ -1,4 +1,0 @@
-CRON_TZ=Asia/Shanghai
-# BEGIN OPENCLAW TIMEOUT WATCHDOG
-*/5 * * * * WORKSPACE_OPS_ROOT=$HOME/.openclaw/workspace-ops-agent OPENCLAW_OPS_DIR=$HOME/.openclaw/workspace-ops-agent/ops WORKSPACE_LOG_DIR=$HOME/.openclaw/workspace-ops-agent/logs /usr/bin/python3 $HOME/.openclaw/workflows/openclaw-ops/openclaw_timeout_watchdog.py --workspace-ops-root $HOME/.openclaw/workspace-ops-agent --ops-dir $HOME/.openclaw/workspace-ops-agent/ops --logs-dir $HOME/.openclaw/workspace-ops-agent/logs --state-file $HOME/.openclaw/workspace-ops-agent/ops/openclaw-timeout-watchdog.state.json --log-file $HOME/.openclaw/workspace-ops-agent/logs/openclaw-timeout-watchdog.log --restart-log-file $HOME/.openclaw/workspace-ops-agent/logs/openclaw-watchdog-restart.log >> $HOME/.openclaw/workspace-ops-agent/logs/openclaw-timeout-watchdog-cron.log 2>&1
-# END OPENCLAW TIMEOUT WATCHDOG

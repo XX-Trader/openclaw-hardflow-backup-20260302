@@ -238,9 +238,7 @@ graph TD
 - `drupal-developer` - Drupal 开发
 - `wordpress-developer` - WordPress 开发
 - `command-expert` - CLI 专家
-- `blockchain-developer` - 区块链开发
-- `crypto-trader` - 加密货币交易系统
-- `arbitrage-bot` - 套利机器人
+- - - `integration-tester` - 集成测试代理
 - `mcp-expert` - MCP 专家
 - `test-automator` - 测试自动化
 - `deployment-test` - 部署测试

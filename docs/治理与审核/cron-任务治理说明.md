@@ -2,16 +2,16 @@
 
 ## 1. 目标与结论
 
-这份文档用于沉淀当前 `pm-website`、`大白pm`、`nofx`、`coingod`、`tokyo-claw` 5 台服务器上的 OpenClaw workflow job 现状、冗余判断、清理结果，以及整套 workflow 的执行闭环。
+这份文档用于沉淀当前 `HOST_A`、`HOST_B`、`runtime-host`、`HOST_D`、`HOST_E` 5 台服务器上的 OpenClaw workflow job 现状、冗余判断、清理结果，以及整套 workflow 的执行闭环。
 
 本次治理结论：
 
 1. `project_index_maintainer_30m` 的真实运行频率已经是 `4h`，只是名字和 `task-id` 仍然沿用旧标识。
 2. 仓库基线已统一改为 `project_index_maintainer_4h`，并已完成 5 台服务器统一同步安装，远端运行态已经收敛到新名字。
 3. 已从服务器上清理 3 个明确冗余 job：
-   - `大白pm` 的重复 `task_executor_10m`
-   - `tokyo-claw` 的重复 `web_intel_collect_hourly`
-   - `tokyo-claw` 的历史残留 `System Schedule Audit`
+   - `HOST_B` 的重复 `task_executor_10m`
+   - `HOST_E` 的重复 `web_intel_collect_hourly`
+   - `HOST_E` 的历史残留 `System Schedule Audit`
 4. `ops_daily_summary` 和 `ops_daily_work_report_dingtalk` 都属于日报类 job，不属于这次要删除的冗余项。
 
 ## 2. 当前 5 台服务器基线
@@ -49,11 +49,11 @@
 
 | 服务器 | 启用 job 数 | 差异项 | 说明 |
 |---|---:|---|---|
-| `pm-website` | 20 | `ops_governance_evolution_incremental:lobster` | 业务特例，不是冗余 |
-| `大白pm` | 19 | 无 | 已清掉重复 `task_executor_10m` 后回到标准基线 |
-| `nofx` | 20 | `NOFX上游仓库同步检查` | 业务特例，不是冗余 |
-| `coingod` | 19 | 无 | 当前最干净的标准模板机 |
-| `tokyo-claw` | 19 | 无 | 已清掉重复 `web_intel_collect_hourly` 和历史残留 `System Schedule Audit` |
+| `HOST_A` | 20 | `ops_governance_evolution_incremental:lobster` | 业务特例，不是冗余 |
+| `HOST_B` | 19 | 无 | 已清掉重复 `task_executor_10m` 后回到标准基线 |
+| `runtime-host` | 20 | `RUNTIME上游仓库同步检查` | 业务特例，不是冗余 |
+| `HOST_D` | 19 | 无 | 当前最干净的标准模板机 |
+| `HOST_E` | 19 | 无 | 已清掉重复 `web_intel_collect_hourly` 和历史残留 `System Schedule Audit` |
 
 ## 3. `project_index` 的真实状态
 
@@ -156,7 +156,7 @@
 
 ## 5. 本次已清理的冗余 Job
 
-### 5.1 `大白pm`
+### 5.1 `HOST_B`
 
 已删除重复 job：
 
@@ -169,9 +169,9 @@
 
 备份文件：
 
-1. `/home/ubuntu/.openclaw/cron/jobs.json.bak.redundancy-cleanup.20260320_143141`
+1. `/home/runtime-user/.openclaw/cron/jobs.json.bak.redundancy-cleanup.20260320_143141`
 
-### 5.2 `tokyo-claw`
+### 5.2 `HOST_E`
 
 已删除重复/残留 job：
 
@@ -194,7 +194,7 @@
 
 1. 每台都只剩 1 个 `task_executor_10m`
 2. 每台都只剩 1 个 `web_intel_collect_hourly`
-3. `tokyo-claw` 已不再存在 `System Schedule Audit`
+3. `HOST_E` 已不再存在 `System Schedule Audit`
 
 ## 6. 整套 Workflow 的中文梳理
 

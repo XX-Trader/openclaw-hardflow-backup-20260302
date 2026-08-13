@@ -3,32 +3,6 @@
   "description": "web-agent 通用采集源（API/HTTP优先，必要时浏览器兜底）",
   "sources": [
     {
-      "id": "openclaw-workflow-readme",
-      "url": "https://raw.githubusercontent.com/XX-Trader/openclaw-hardflow-backup-20260302/main/README.md",
-      "category": "project-doc",
-      "tags": [
-        "official",
-        "workflow",
-        "doc"
-      ],
-      "enabled": false,
-      "browser_fallback": false,
-      "min_interval_minutes": 60
-    },
-    {
-      "id": "openclaw-workflow-index",
-      "url": "https://raw.githubusercontent.com/XX-Trader/openclaw-hardflow-backup-20260302/main/scripts/openclaw-ops/CRON_TASK_INDEX.md",
-      "category": "project-doc",
-      "tags": [
-        "official",
-        "cron",
-        "doc"
-      ],
-      "enabled": false,
-      "browser_fallback": false,
-      "min_interval_minutes": 60
-    },
-    {
       "id": "fastapi-release-notes",
       "url": "https://fastapi.tiangolo.com/release-notes/",
       "category": "official-doc",

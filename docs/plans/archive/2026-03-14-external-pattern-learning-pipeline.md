@@ -194,9 +194,9 @@ flowchart LR
 
 复用现有：
 
-- `scripts/openclaw-ops/github_web_evolution_runner.py`
-- `scripts/openclaw-ops/web_intel_collect_runner.py`
-- `scripts/openclaw-ops/web_sources_runtime.py`
+- `skills/library/web-intelligence/scripts/github_web_evolution_runner.py`
+- `skills/library/web-intelligence/scripts/web_intel_collect_runner.py`
+- `skills/library/web-intelligence/scripts/web_sources_runtime.py`
 
 这里负责：
 

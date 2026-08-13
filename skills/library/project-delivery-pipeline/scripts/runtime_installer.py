@@ -38,7 +38,7 @@ OPS_SCRIPT_MAP = {
     "deadline_to_task_bridge.py": "skills/library/todo-patrol/scripts/deadline_to_task_bridge.py",
     "unified_exception_logger.py": "skills/library/log-monitor/scripts/unified_exception_logger.py",
     "exception_to_task_bridge.py": "skills/library/log-monitor/scripts/exception_to_task_bridge.py",
-    "multicorerouter_healthcheck.py": "skills/library/log-monitor/scripts/multicorerouter_healthcheck.py",
+    "runtime_profile_healthcheck.py": "skills/library/log-monitor/scripts/runtime_profile_healthcheck.py",
     "claim_verification_auditor.py": "skills/library/openclaw-security-audit/scripts/claim_verification_auditor.py",
     "config_watchdog.py": "skills/library/config-watchdog/scripts/config_watchdog.py",
     "source_registry_watcher.py": "scripts/openclaw-ops/source_registry_watcher.py",
@@ -46,12 +46,13 @@ OPS_SCRIPT_MAP = {
     "backlog_runner.py": "scripts/openclaw-ops/backlog_runner.py",
     "project_memory_writer.py": "scripts/openclaw-ops/project_memory_writer.py",
     "project_memory_injector.py": "scripts/openclaw-ops/project_memory_injector.py",
-    "smart_arb_live_bridge.py": "scripts/openclaw-ops/smart_arb_live_bridge.py",
-    "smart_arb_pipeline_entry.py": "scripts/openclaw-ops/smart_arb_pipeline_entry.py",
+    "live_runtime_bridge.py": "scripts/openclaw-ops/live_runtime_bridge.py",
+    "project_pipeline_entry.py": "scripts/openclaw-ops/project_pipeline_entry.py",
 }
 OPS_SHARED_SCRIPT_MAP = {
     "chat_output.py": "scripts/openclaw-ops/shared/chat_output.py",
     "utf8_runtime.py": "scripts/openclaw-ops/shared/utf8_runtime.py",
+    "repo_imports.py": "scripts/openclaw-ops/shared/repo_imports.py",
     "workflow_views.py": "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
 }
 
@@ -72,6 +73,9 @@ class InstallConfig:
     keep_placeholders: bool = False
     runtime_home_expr: str = ""
     repo_root_expr: str = ""
+    notification_channel: str = ""
+    notification_target: str = ""
+    timezone: str = "UTC"
 
 
 @dataclass
@@ -157,7 +161,9 @@ def copy_file(src: Path, dst: Path, *, dry_run: bool) -> bool:
 
 
 def ensure_executable(path: Path, *, dry_run: bool) -> bool:
-    if dry_run or not path.exists():
+    # Windows does not persist POSIX execute bits; repeatedly chmod-ing there
+    # makes every identical installation look changed.
+    if os.name == "nt" or dry_run or not path.exists():
         return False
     mode = path.stat().st_mode
     wanted = mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
@@ -169,14 +175,38 @@ def ensure_executable(path: Path, *, dry_run: bool) -> bool:
 
 def copy_tree(src: Path, dst: Path, *, dry_run: bool) -> tuple[bool, list[str]]:
     changed = False
-    copied: list[str] = []
+    managed: list[str] = []
     for path in iter_files(src):
         rel = path.relative_to(src)
         target = dst / rel
+        managed.append(str(rel).replace("\\", "/"))
         if copy_file(path, target, dry_run=dry_run):
             changed = True
-            copied.append(str(rel).replace("\\", "/"))
-    return changed, copied
+    return changed, managed
+
+
+def json_payload_changed(path: Path, payload: dict[str, Any]) -> bool:
+    """Compare generated JSON while ignoring its audit timestamp."""
+
+    if not path.exists():
+        return True
+    try:
+        current = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError):
+        return True
+    if not isinstance(current, dict):
+        return True
+    current_without_timestamp = dict(current)
+    current_without_timestamp.pop("generated_at", None)
+    return current_without_timestamp != payload
+
+
+def timestamped_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Insert a fresh timestamp only when a semantic write is needed."""
+
+    out = dict(payload)
+    out["generated_at"] = utc_now()
+    return out
 
 
 def load_jobs(path: Path) -> list[dict[str, Any]]:
@@ -203,16 +233,31 @@ def render_message(text: str, config: InstallConfig) -> str:
     rendered = str(text)
     rendered = rendered.replace("${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}", runtime_expr)
     rendered = rendered.replace("${HARDFLOW_RUNTIME_HOME:-$HOME/.openclaw}", runtime_expr)
-    rendered = rendered.replace("${HARDFLOW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}", repo_expr)
-    rendered = rendered.replace("${OPENCLAW_WORKFLOW_REPO:-$HOME/openclaw-hardflow-backup-20260302}", repo_expr)
+    rendered = rendered.replace("${HARDFLOW_WORKFLOW_REPO:-$HOME/workflow-infra}", repo_expr)
+    rendered = rendered.replace("${OPENCLAW_WORKFLOW_REPO:-$HOME/workflow-infra}", repo_expr)
+    rendered = rendered.replace("${HARDFLOW_NOTIFICATION_CHANNEL}", config.notification_channel)
+    rendered = rendered.replace("${HARDFLOW_NOTIFICATION_TARGET}", config.notification_target)
+    rendered = rendered.replace("${HARDFLOW_TIMEZONE}", config.timezone or "UTC")
     return rendered
 
 
+def render_value(value: Any, config: InstallConfig) -> Any:
+    if isinstance(value, str):
+        return render_message(value, config)
+    if isinstance(value, list):
+        return [render_value(item, config) for item in value]
+    if isinstance(value, dict):
+        return {key: render_value(item, config) for key, item in value.items()}
+    return value
+
+
 def render_job(job: dict[str, Any], config: InstallConfig) -> dict[str, Any]:
-    rendered = json.loads(json.dumps(job, ensure_ascii=False))
-    payload = rendered.get("payload")
-    if isinstance(payload, dict) and isinstance(payload.get("message"), str):
-        payload["message"] = render_message(payload["message"], config)
+    rendered = render_value(json.loads(json.dumps(job, ensure_ascii=False)), config)
+    if not config.keep_placeholders and not (
+        config.notification_channel.strip() and config.notification_target.strip()
+    ):
+        rendered.pop("delivery", None)
+        rendered.pop("failureAlert", None)
     return rendered
 
 
@@ -238,16 +283,16 @@ def merge_cron_jobs(config: InstallConfig, report: InstallReport) -> bool:
     ]
     payload = {
         "version": "project-delivery-runtime",
-        "generated_at": utc_now(),
         "runtime_name": config.runtime_name,
         "jobs": merged_jobs,
     }
-    new_text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-    old_text = config.cron_file.read_text(encoding="utf-8") if config.cron_file.exists() else ""
-    changed = new_text != old_text
+    changed = json_payload_changed(config.cron_file, payload)
     if changed and not config.dry_run:
         config.cron_file.parent.mkdir(parents=True, exist_ok=True)
-        config.cron_file.write_text(new_text, encoding="utf-8")
+        config.cron_file.write_text(
+            json.dumps(timestamped_payload(payload), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     report.installed_cron_jobs = sorted(source_by_key)
     report.preserved_cron_jobs = sorted(set(existing_by_key) - set(source_by_key))
@@ -259,7 +304,6 @@ def write_manifest(config: InstallConfig, report: InstallReport) -> bool:
     report.manifest_file = str(manifest_file)
     payload = {
         "schema_version": MANIFEST_SCHEMA,
-        "generated_at": utc_now(),
         "runtime_name": config.runtime_name,
         "runtime_home": str(config.runtime_home),
         "repo_root": str(config.repo_root),
@@ -275,12 +319,13 @@ def write_manifest(config: InstallConfig, report: InstallReport) -> bool:
         "installed_cron_jobs": report.installed_cron_jobs,
         "missing_sources": report.missing_sources,
     }
-    new_text = json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
-    old_text = manifest_file.read_text(encoding="utf-8") if manifest_file.exists() else ""
-    changed = new_text != old_text
+    changed = json_payload_changed(manifest_file, payload)
     if changed and not config.dry_run:
         manifest_file.parent.mkdir(parents=True, exist_ok=True)
-        manifest_file.write_text(new_text, encoding="utf-8")
+        manifest_file.write_text(
+            json.dumps(timestamped_payload(payload), ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     return changed
 
 
@@ -367,6 +412,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--keep-placeholders", action="store_true")
     parser.add_argument("--runtime-home-expr", default="", help="string used when rendering cron payloads")
     parser.add_argument("--repo-root-expr", default="", help="string used when rendering cron payloads")
+    parser.add_argument("--notification-channel", default=os.environ.get("HARDFLOW_NOTIFICATION_CHANNEL", ""))
+    parser.add_argument("--notification-target", default=os.environ.get("HARDFLOW_NOTIFICATION_TARGET", ""))
+    parser.add_argument("--timezone", default=os.environ.get("HARDFLOW_TIMEZONE", "UTC"))
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--emit-json", action="store_true")
     return parser
@@ -405,6 +453,9 @@ def config_from_args(args: argparse.Namespace) -> InstallConfig:
         keep_placeholders=bool(args.keep_placeholders),
         runtime_home_expr=str(args.runtime_home_expr).strip(),
         repo_root_expr=str(args.repo_root_expr).strip(),
+        notification_channel=str(args.notification_channel).strip(),
+        notification_target=str(args.notification_target).strip(),
+        timezone=str(args.timezone).strip() or "UTC",
     )
 
 

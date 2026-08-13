@@ -236,11 +236,13 @@ def first_clone_metadata(path: Path) -> tuple[str, str]:
 
 def infer_project_role(*, path: Path, name: str, remote_url: str) -> str:
     norm = normalize_repo_path(path)
-    low_name = str(name or "").strip().lower()
     low_remote = str(remote_url or "").strip().lower()
     if norm.endswith("/.openclaw") or "/.openclaw/" in norm:
         return "openclaw-runtime"
-    if "openclaw-hardflow" in low_name or "openclaw-hardflow" in norm:
+    if (
+        (path / "setup.py").is_file()
+        and (path / "skills" / "library" / "project-delivery-pipeline").is_dir()
+    ):
         return "workflow-ops"
     if low_remote.startswith("https://github.com/openclaw/") or low_remote.startswith("git@github.com:openclaw/"):
         return "upstream-reference"

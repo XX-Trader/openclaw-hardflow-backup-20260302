@@ -9,7 +9,7 @@ import {
 test("does not treat cron automation prompts as transcript-like ingest", () => {
   const text = `
 [cron:c2c75adf-5e80-4b50-bf18-40ceadfa6bd6 task_executor_10m] You are ops-agent scheduled runner. Run command only:
-python3 "/home/ubuntu/.openclaw/ops/policy/task_executor_runner.py" --task cron:task-executor --db "/home/ubuntu/.openclaw/ops/task-center/task_center.db"
+python3 "/home/runtime-user/.openclaw/ops/policy/task_executor_runner.py" --task cron:task-executor --db "/home/runtime-user/.openclaw/ops/task-center/task_center.db"
 Your first assistant turn MUST contain exactly one exec tool call for that command and no text.
 Current time: Thursday, March 12th, 2026 - 7:38 PM (Asia/Shanghai) / 2026-03-12 11:38 UTC
 Return your summary as plain text; it will be delivered automatically.

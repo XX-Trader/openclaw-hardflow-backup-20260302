@@ -30,11 +30,11 @@ class ControlPlaneOptimizationReviewRunnerTests(unittest.TestCase):
     def test_build_report_summarizes_ready_blocked_and_pending_tasks(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         review_module = load_module(
             "control_plane_optimization_review_runner",
-            "scripts/openclaw-ops/control_plane_optimization_review_runner.py",
+            "skills/library/control-plane-ops/scripts/control_plane_optimization_review_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -208,11 +208,11 @@ class ControlPlaneOptimizationReviewRunnerTests(unittest.TestCase):
     def test_stage_simplification_requires_evidence_guard_before_profile_update(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         review_module = load_module(
             "control_plane_optimization_review_runner",
-            "scripts/openclaw-ops/control_plane_optimization_review_runner.py",
+            "skills/library/control-plane-ops/scripts/control_plane_optimization_review_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -338,11 +338,11 @@ class ControlPlaneOptimizationReviewRunnerTests(unittest.TestCase):
     def test_main_writes_json_and_markdown_outputs(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         review_module = load_module(
             "control_plane_optimization_review_runner",
-            "scripts/openclaw-ops/control_plane_optimization_review_runner.py",
+            "skills/library/control-plane-ops/scripts/control_plane_optimization_review_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

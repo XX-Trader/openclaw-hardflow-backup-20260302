@@ -22,7 +22,7 @@
 
 - 做法：直接改 `vendor/openclaw-official/src/*`，把本地 cron、hooks、task-center 逻辑塞进官方代码。
 - 优点：运行时入口最少，看起来“一体化”。
-- 缺点：每次升级都要手工对冲，风险最高。
+- 缺点：每次升级都要手工处理冲突，风险最高。
 
 ### Option B: 官方核心 + 本地 Overlay（推荐）
 
@@ -85,7 +85,7 @@
 
 **Step 3: 验证边界**
 
-Run: `python scripts/openclaw-ops/openclaw_upstream_binding.py status`
+Run: `python skills/library/openclaw-workflow-manager/scripts/openclaw_upstream_binding.py status`
 Expected: `vendor_exists=true`, `is_submodule=true`, `vendor_ref_exact_tag=v2026.3.2`
 
 ### Task 2: Converge Cron onto Official Scheduler Surface
@@ -125,7 +125,7 @@ Expected: 指定任务可被官方调度入口触发
 **Files:**
 - Modify: `openclaw/openclaw.json`
 - Modify: `scripts/openclaw-ops/install_workflow_profile.py`
-- Modify: `scripts/openclaw-ops/sync_openclaw_ops_files.py`
+- Modify: `skills/library/fleet-sync/scripts/sync_openclaw_ops_files.py`
 - Create: `integration/openclaw-bridge/hooks-install.md`
 
 **Step 1: 停止“手工散落同步 hook 文件”**
@@ -158,10 +158,10 @@ Expected: 装载状态正常，无缺失 handler
 ### Task 4: Keep Governance in Python, Expose It Through Stable Bridge Points
 
 **Files:**
-- Modify: `scripts/openclaw-ops/policy/policy_enforcer.py`
-- Modify: `scripts/openclaw-ops/policy/task_center.py`
-- Modify: `scripts/openclaw-ops/policy/project_index_maintainer.py`
-- Modify: `scripts/openclaw-ops/policy/task_executor_runner.py`
+- Modify: `skills/library/control-plane-ops/scripts/policy/policy_enforcer.py`
+- Modify: `skills/library/control-plane-ops/scripts/policy/task_center.py`
+- Modify: `skills/library/control-plane-ops/scripts/policy/project_index_maintainer.py`
+- Modify: `skills/library/control-plane-ops/scripts/policy/task_executor_runner.py`
 - Create: `integration/openclaw-bridge/governance-bridge.md`
 
 **Step 1: 明确哪些逻辑不进官方核心**
@@ -186,10 +186,10 @@ Expected: 装载状态正常，无缺失 handler
 
 **Step 4: 验证**
 
-Run: `python scripts/openclaw-ops/policy/policy_enforcer.py next-todo --limit 3`
+Run: `python skills/library/control-plane-ops/scripts/policy/policy_enforcer.py next-todo --limit 3`
 Expected: 仍可独立返回任务
 
-Run: `python scripts/openclaw-ops/policy/policy_enforcer.py report-agent-result --help`
+Run: `python skills/library/control-plane-ops/scripts/policy/policy_enforcer.py report-agent-result --help`
 Expected: CLI 契约保持稳定
 
 ### Task 5: Move Channel and Plugin Capability Back to Official Surfaces
@@ -239,7 +239,7 @@ Expected: Telegram 配置从统一入口可读
 
 **Step 3: 验证**
 
-Run: `python scripts/openclaw-ops/openclaw_upstream_binding.py status`
+Run: `python skills/library/openclaw-workflow-manager/scripts/openclaw_upstream_binding.py status`
 Expected: 上游绑定正常
 
 Run: `openclaw cron status`

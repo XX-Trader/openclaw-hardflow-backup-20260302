@@ -26,7 +26,7 @@
   - skills loader 配置
 - `scripts/openclaw-ops/install_workflow_profile.py`
   - 仓库 `hooks/`、`skills/` 如何注入官方 loader
-- `scripts/openclaw-ops/policy/task_executor_runner.py`
+- `skills/library/control-plane-ops/scripts/policy/task_executor_runner.py`
   - task-center 任务如何调用 agent
 - `cron/jobs_agent_mapping.md`
   - cron job 到 agent 的当前映射
@@ -84,7 +84,7 @@
 
 依据：
 
-- `scripts/openclaw-ops/policy/task_executor_runner.py` 直接把 `task.assignee` 写入 `agentId`
+- `skills/library/control-plane-ops/scripts/policy/task_executor_runner.py` 直接把 `task.assignee` 写入 `agentId`
 - `cron/jobs_agent_mapping.md` 只记录 `agent=...`
 - 当前任务执行路径里没有 `task.skill`、`required_skill`、`required_capability` 这类正式字段
 
@@ -216,7 +216,7 @@
 
 ### 3. `main` 声明了缺失 skill
 
-`skills/README.md` 明确记录缺失 skill 为 `using-superpowers`。  
+`skills/README.md` 明确记录缺失 skill 为 `using-superpowers`。
 这会导致：
 
 - 文档宣称 `main` 有该能力
@@ -241,7 +241,7 @@
 
 ### 5. 运行时补装 skill 与 agent 声明 skill 可能冲突
 
-`runtime-required-skills.json` 会安装 `frontend-design-ultimate`，并声明与 `frontend-design` 冲突。  
+`runtime-required-skills.json` 会安装 `frontend-design-ultimate`，并声明与 `frontend-design` 冲突。
 但 `frontend-dev` 的声明 skill 仍然写的是 `frontend-design`。
 
 这意味着：
@@ -343,7 +343,7 @@
   - `openclaw hooks list --json`
   - `openclaw hooks check --json`
   - `openclaw agents list`
-  - `python scripts/openclaw-ops/ensure_runtime_skills.py --dry-run --emit-json`
+  - `python skills/library/openclaw-workflow-manager/scripts/ensure_runtime_skills.py --dry-run --emit-json`
 
 ## 推荐实施顺序
 
@@ -357,8 +357,8 @@
 openclaw hooks list --json
 openclaw hooks check --json
 openclaw agents list
-python scripts/openclaw-ops/ensure_runtime_skills.py --dry-run --emit-json
-python scripts/openclaw-ops/bootstrap_runtime_agents.py --dry-run
+python skills/library/openclaw-workflow-manager/scripts/ensure_runtime_skills.py --dry-run --emit-json
+python skills/library/openclaw-workflow-manager/scripts/bootstrap_runtime_agents.py --dry-run
 ```
 
 如果上述输出与本文结论不一致，应优先以运行时命令结果和 `openclaw/openclaw.json` 为准，再回头刷新索引文档。

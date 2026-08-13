@@ -31,7 +31,7 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
     def test_daily_work_report_stays_quiet_without_exceptions(self):
         module = load_module(
             "daily_work_report",
-            "scripts/openclaw-ops/daily_work_report.py",
+            "skills/library/task-cost-analytics/scripts/daily_work_report.py",
         )
         output = module.build_chat_output(
             sender_identity="ops-agent/daily-work-report",
@@ -49,7 +49,7 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
     def test_daily_work_report_exception_output_is_human_friendly_chinese(self):
         module = load_module(
             "daily_work_report",
-            "scripts/openclaw-ops/daily_work_report.py",
+            "skills/library/task-cost-analytics/scripts/daily_work_report.py",
         )
         output = module.build_chat_output(
             sender_identity="ops-agent/daily-work-report",
@@ -76,7 +76,7 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
     def test_daily_work_report_uses_human_judgement_when_exception_and_backlog_exist(self):
         module = load_module(
             "daily_work_report",
-            "scripts/openclaw-ops/daily_work_report.py",
+            "skills/library/task-cost-analytics/scripts/daily_work_report.py",
         )
         output = module.build_chat_output(
             sender_identity="ops-agent/daily-work-report",
@@ -118,7 +118,7 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
     def test_daily_work_report_shows_failure_reason_and_execution_metrics_for_failed_task(self):
         module = load_module(
             "daily_work_report",
-            "scripts/openclaw-ops/daily_work_report.py",
+            "skills/library/task-cost-analytics/scripts/daily_work_report.py",
         )
         output = module.build_chat_output(
             sender_identity="ops-agent/daily-work-report",
@@ -166,7 +166,7 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
     def test_daily_work_report_main_uses_digest_notify_without_name_error(self):
         module = load_module(
             "daily_work_report",
-            "scripts/openclaw-ops/daily_work_report.py",
+            "skills/library/task-cost-analytics/scripts/daily_work_report.py",
         )
         invoked: list[list[str]] = []
 
@@ -235,7 +235,7 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
     def test_daily_work_report_main_includes_todo_markdown_backlog_in_digest(self):
         module = load_module(
             "daily_work_report",
-            "scripts/openclaw-ops/daily_work_report.py",
+            "skills/library/task-cost-analytics/scripts/daily_work_report.py",
         )
         invoked: list[list[str]] = []
 
@@ -295,7 +295,7 @@ class DailyWorkReportQuietModeTests(unittest.TestCase):
     def test_daily_work_report_main_ignores_runtime_binding_tasks(self):
         module = load_module(
             "daily_work_report",
-            "scripts/openclaw-ops/daily_work_report.py",
+            "skills/library/task-cost-analytics/scripts/daily_work_report.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

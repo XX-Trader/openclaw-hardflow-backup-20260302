@@ -2,7 +2,7 @@
 """Task Center backlog runner for controlled continuous delivery.
 
 The runner turns eligible Task Center backlog rows into real
-``smart-arb-pipeline`` executions. It deliberately skips high-risk or
+``project-delivery-pipeline`` executions. It deliberately skips high-risk or
 human-gated work unless explicitly allowed, so cron can keep momentum without
 silently bypassing safety gates.
 """
@@ -53,7 +53,7 @@ from policy_route_selection import (  # type: ignore  # noqa: E402
 )
 
 
-DEFAULT_PIPELINE_COMMAND = str(Path.home() / ".local" / "bin" / "smart-arb-pipeline")
+DEFAULT_PIPELINE_COMMAND = str(Path.home() / ".local" / "bin" / "project-delivery-pipeline")
 DEFAULT_ALLOWED_SOURCES = ("todo_patrol", "todo-deadline-bridge", "repo_hygiene_reviewer")
 DEFAULT_FAILED_SOURCES = ("hermes", "todo_patrol")
 DEFAULT_NEXT_ACTIONS = (
@@ -178,8 +178,8 @@ def task_requirement(task: dict[str, Any], *, next_action: str = "") -> str:
         f"- 风险: {task.get('risk_level')} / 优先级: {task.get('priority')}{next_line}\n"
         f"- 需求: {base}\n"
         f"- 验收: {acceptance or '按项目事实源、测试结果、Task Center 证据和安全边界验收。'}\n"
-        "安全边界：不读取、打印、提交或记录任何凭证；不启动真实交易；不下单、不撤单、不划转；"
-        "遇到凭证、资金、生产破坏性操作或需求不清，必须停止并进入 human inbox。"
+        "安全边界：不读取、打印、提交或记录任何凭证；不访问未声明的外部系统；"
+        "遇到凭证、生产数据破坏性操作或需求不清，必须停止并进入 human inbox。"
     )
 
 
@@ -527,7 +527,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Continuously advance eligible Task Center backlog items.")
     parser.add_argument("--task-db", default=str(RUNTIME_HOME / "ops" / "task-center" / "task_center.db"))
     parser.add_argument("--pipeline-command", default=DEFAULT_PIPELINE_COMMAND)
-    parser.add_argument("--profile", default=os.environ.get("SMART_ARB_BACKLOG_PROFILE", "spreadagent"))
+    parser.add_argument("--profile", default=os.environ.get("PROJECT_PIPELINE_BACKLOG_PROFILE", "projectagent"))
     parser.add_argument("--source", default="backlog-runner")
     parser.add_argument("--actor", default="backlog-runner")
     parser.add_argument("--max-items", type=int, default=1)

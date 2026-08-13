@@ -53,7 +53,7 @@ project-agent 必须能直接输出项目画像中的结构化信息，而不是
 **触发条件**：新项目首次进入系统。
 
 **输入**：
-- `project_key`：项目唯一标识（如 `xx-trader`、`openclaw-hardflow`）
+- `project_key`：项目唯一标识（如 `demo-service`、`openclaw-hardflow`）
 - `project_name`：项目显示名
 - `project_type`：项目类型（webapp / api / cli / lib / other）
 - `initial_description`：项目初始描述（由用户提供或从 README 提取）
@@ -66,10 +66,10 @@ project-agent 必须能直接输出项目画像中的结构化信息，而不是
 ```bash
 # 由 coordinator 调用
 project-profile-manager init \
-  --project-key xx-trader \
-  --project-name "XX 量化交易系统" \
+  --project-key demo-service \
+  --project-name "示例任务管理系统" \
   --project-type webapp \
-  --initial-description "基于 freqtrade 的量化交易平台..."
+  --initial-description "面向团队协作的任务管理平台..."
 ```
 
 ### 4.2 update — 更新项目画像
@@ -83,7 +83,7 @@ project-profile-manager init \
 
 **输入**：
 - `project_key`
-- `field`：要更新的字段（支持嵌套路径，如 `modules.trading`）
+- `field`：要更新的字段（支持嵌套路径，如 `modules.notifications`）
 - `value`：新值
 
 **输出**：
@@ -108,7 +108,7 @@ project-profile-manager init \
 
 **示例**：
 ```bash
-project-profile-manager show xx-trader --format summary
+project-profile-manager show demo-service --format summary
 ```
 
 ### 4.4 list — 列出所有项目

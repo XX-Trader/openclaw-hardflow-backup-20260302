@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def load_module(name: str, rel_path: str):
     path = ROOT / rel_path
-    if not path.exists() and rel_path == "scripts/openclaw-ops/policy/policy_enforcer.py":
+    if not path.exists() and rel_path == "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py":
         path = ROOT / "skills" / "library" / "control-plane-ops" / "scripts" / "policy" / "policy_enforcer.py"
     sys.path.insert(0, str(path.parent))
     try:
@@ -39,7 +39,7 @@ class WorkflowSelectorTests(unittest.TestCase):
     def test_select_workflow_defaults_to_coding_default_for_coding_request(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -82,7 +82,7 @@ class WorkflowSelectorTests(unittest.TestCase):
     def test_select_workflow_switches_to_research_default_for_research_request(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -126,7 +126,7 @@ class WorkflowSelectorTests(unittest.TestCase):
     def test_select_workflow_switches_to_docs_default_for_docs_request(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -170,7 +170,7 @@ class WorkflowSelectorTests(unittest.TestCase):
     def test_select_workflow_switches_to_ops_default_for_ops_request(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -214,7 +214,7 @@ class WorkflowSelectorTests(unittest.TestCase):
     def test_select_workflow_skips_runtime_binding_task_type(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -256,7 +256,7 @@ class WorkflowSelectorTests(unittest.TestCase):
     def test_route_task_includes_workflow_selection(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -293,7 +293,7 @@ class WorkflowSelectorTests(unittest.TestCase):
     def test_route_task_flags_requirement_package_gap_for_complex_human_request(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -12,19 +12,19 @@
       "HARDFLOW_OPENCLAW_HOOKS_INSTALL_DOC": "integration/openclaw-bridge/hooks-install.md",
       "HARDFLOW_OPENCLAW_GOVERNANCE_BRIDGE_DOC": "integration/openclaw-bridge/governance-bridge.md",
       "HARDFLOW_OPENCLAW_PLUGIN_POLICY_DOC": "integration/openclaw-bridge/plugin-policy.md",
+      "HARDFLOW_OPENCLAW_OPENVIKING_STACK_DOC": "integration/openclaw-bridge/openviking-stack.md",
       "HARDFLOW_OPENCLAW_ACCEPTANCE_CHECKLIST_DOC": "integration/openclaw-bridge/acceptance-checklist.md",
       "HARDFLOW_OPENCLAW_CRON_SURFACE": "official-cron",
       "HARDFLOW_OPENCLAW_HOOKS_SURFACE": "official-hooks",
       "HARDFLOW_OPENCLAW_PLUGINS_SURFACE": "official-plugins",
-      "HARDFLOW_OPENCLAW_SKILLS_SURFACE": "official-skills",
-      "HARDFLOW_OPENCLAW_HOOKS_SOURCE_DIR": "/root/openclaw-hardflow-backup-20260302/hooks",
-      "HARDFLOW_OPENCLAW_SKILLS_SOURCE_DIR": "/root/openclaw-hardflow-backup-20260302/skills",
-      "HARDFLOW_OPENCLAW_OPENVIKING_STACK_DOC": "integration/openclaw-bridge/openviking-stack.md",
-      "HARDFLOW_OPENCLAW_HOOKS_RUNTIME_DIR": "/root/.openclaw/hooks-runtime"
+      "HARDFLOW_OPENCLAW_SKILLS_SURFACE": "official-skills"
     }
   },
   "auth": {
     "profiles": {}
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
   },
   "models": {
     "providers": {
@@ -48,6 +48,14 @@
         "apiKey": "${KIMI_API_KEY}",
         "api": "openai-completions",
         "models": [
+          {
+            "id": "doubao-seed-2.0-pro",
+            "name": "doubao-seed-2.0-pro"
+          },
+          {
+            "id": "Doubao-Seed-2.0-Code",
+            "name": "Doubao-Seed-2.0-Code"
+          },
           {
             "id": "Doubao-Seed-2.0-pro",
             "name": "Doubao-Seed-2.0-pro"
@@ -108,12 +116,6 @@
             "thinking": "high"
           }
         },
-        "openai-codex/gpt-5.5": {
-          "alias": "codex55",
-          "params": {
-            "thinking": "high"
-          }
-        },
         "glmcode/glm-5": {
           "alias": "glm",
           "params": {
@@ -126,8 +128,26 @@
             "thinking": "high"
           }
         },
+        "openai-codex/gpt-5.5": {
+          "alias": "codex55",
+          "params": {
+            "thinking": "xhigh"
+          }
+        },
         "openai-codex/gpt-5.4": {
           "alias": "codex",
+          "params": {
+            "thinking": "xhigh"
+          }
+        },
+        "openai-codex/gpt-5.4-mini": {
+          "alias": "codex-mini",
+          "params": {
+            "thinking": "high"
+          }
+        },
+        "openai-codex/gpt-5.3-codex": {
+          "alias": "codex53",
           "params": {
             "thinking": "xhigh"
           }
@@ -142,18 +162,6 @@
           "alias": "doubao-2.0-pro",
           "params": {
             "thinking": "high"
-          }
-        },
-        "openai-codex/gpt-5.4-mini": {
-          "alias": "codex-mini",
-          "params": {
-            "thinking": "high"
-          }
-        },
-        "openai-codex/gpt-5.3-codex": {
-          "alias": "codex53",
-          "params": {
-            "thinking": "xhigh"
           }
         }
       },
@@ -174,7 +182,7 @@
         "id": "coordinator",
         "default": true,
         "name": "coordinator",
-        "workspace": "/root/.openclaw/workspace-coordinator",
+        "workspace": "${OPENCLAW_HOME}/workspace-coordinator",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner",
         "subagents": {
@@ -191,67 +199,66 @@
         }
       },
       {
-        "id": "project-agent",
-        "name": "project-agent",
-        "workspace": "/root/.openclaw/workspace-project-agent",
-        "agentDir": "/root/.openclaw/agents/project-agent/agent",
-        "model": "openai-codex/gpt-5.5",
-        "runtimeRole": "workflow-stage-owner",
-        "subagents": {
-          "allowAgents": [
-            "web-agent",
-            "reviewer"
-          ]
-        }
-      },
-      {
-        "id": "web-agent",
-        "name": "web-agent",
-        "workspace": "/root/.openclaw/workspace-web-agent",
-        "agentDir": "/root/.openclaw/agents/web-agent/agent",
-        "model": "openai-codex/gpt-5.5",
-        "runtimeRole": "workflow-stage-owner"
-      },
-      {
-        "id": "reviewer",
-        "name": "reviewer",
-        "workspace": "/root/.openclaw/workspace-reviewer",
-        "model": "openai-codex/gpt-5.5",
-        "runtimeRole": "workflow-stage-owner"
-      },
-      {
-        "id": "backend-dev",
-        "name": "backend-dev",
-        "workspace": "/root/.openclaw/workspace-backend-dev",
+        "id": "doc-writer",
+        "name": "doc-writer",
+        "workspace": "${OPENCLAW_HOME}/workspace-doc-writer",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "frontend-dev",
         "name": "frontend-dev",
-        "workspace": "/root/.openclaw/workspace-frontend-dev",
-        "agentDir": "/root/.openclaw/agents/frontend-dev/agent",
+        "workspace": "${OPENCLAW_HOME}/workspace-frontend-dev",
+        "agentDir": "${OPENCLAW_HOME}/agents/frontend-dev/agent",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
+      },
+      {
+        "id": "backend-dev",
+        "name": "backend-dev",
+        "workspace": "${OPENCLAW_HOME}/workspace-backend-dev",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner"
+      },
+      {
+        "id": "reviewer",
+        "name": "reviewer",
+        "workspace": "${OPENCLAW_HOME}/workspace-reviewer",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "tester",
         "name": "tester",
-        "workspace": "/root/.openclaw/workspace-tester",
+        "workspace": "${OPENCLAW_HOME}/workspace-tester",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "deployer",
         "name": "deployer",
-        "workspace": "/root/.openclaw/workspace-deployer",
+        "workspace": "${OPENCLAW_HOME}/workspace-deployer",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
-        "id": "doc-writer",
-        "name": "doc-writer",
-        "workspace": "/root/.openclaw/workspace-doc-writer",
+        "id": "project-agent",
+        "name": "project-agent",
+        "workspace": "${OPENCLAW_HOME}/workspace-project-agent",
+        "agentDir": "${OPENCLAW_HOME}/agents/project-agent/agent",
+        "model": "openai-codex/gpt-5.5",
+        "runtimeRole": "workflow-stage-owner",
+        "subagents": {
+          "allowAgents": [
+            "web-agent"
+          ]
+        }
+      },
+      {
+        "id": "web-agent",
+        "name": "web-agent",
+        "workspace": "${OPENCLAW_HOME}/workspace-web-agent",
+        "agentDir": "${OPENCLAW_HOME}/agents/web-agent/agent",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       }
@@ -297,9 +304,6 @@
     "restart": true,
     "ownerDisplay": "raw"
   },
-  "session": {
-    "dmScope": "per-channel-peer"
-  },
   "hooks": {
     "internal": {
       "enabled": true,
@@ -324,40 +328,34 @@
         },
         "hardflow-policy-enforcer": {
           "enabled": true
-        },
-        "hardflow-failure-detector": {
-          "enabled": true
         }
-      },
-      "load": {
-        "extraDirs": [
-          "/root/openclaw-hardflow-backup-20260302/hooks",
-          "/root/.openclaw/hooks-runtime"
-        ]
       }
+    }
+  },
+  "skills": {
+    "load": {
+      "watch": true,
+      "watchDebounceMs": 1200
     }
   },
   "channels": {
     "telegram": {
-      "enabled": true,
+      "enabled": false,
       "commands": {
         "native": true,
         "nativeSkills": false
       },
       "dmPolicy": "pairing",
-      "botToken": "8508018970:AAGGT-idIuntcKwvpTf7NkGsG0US8Msmp-M",
       "groups": {
         "*": {
           "requireMention": false
         }
       },
-      "allowFrom": [
-        "1309629117",
-        "1730012345"
-      ],
+      "allowFrom": [],
       "groupAllowFrom": [],
       "groupPolicy": "open",
-      "streaming": "off"
+      "streaming": "off",
+      "botToken": "${TELEGRAM_BOT_TOKEN}"
     }
   },
   "gateway": {
@@ -366,33 +364,21 @@
     "bind": "loopback",
     "auth": {
       "mode": "token",
-      "token": "3fe778da5b51a39780dc4d53add1a1ac"
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
     "tailscale": {
       "mode": "off",
       "resetOnExit": false
     }
   },
-  "skills": {
-    "load": {
-      "watch": true,
-      "watchDebounceMs": 1200,
-      "extraDirs": [
-        "/root/openclaw-hardflow-backup-20260302/skills"
-      ]
-    }
-  },
   "plugins": {
+    "slots": {
+      "memory": "memory-core"
+    },
     "entries": {
       "telegram": {
         "enabled": true
       }
-    },
-    "allow": [
-      "telegram"
-    ],
-    "slots": {
-      "memory": "memory-core"
     }
   }
 }

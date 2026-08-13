@@ -502,7 +502,7 @@ upgrade_feedback_runner.py \
 3. 不把共享技能核心逻辑散落进多个宿主脚本
 4. 不把热记忆写入逻辑散落在多个脚本里，统一走 `memory_write_gateway.py`
 5. 不让 upgrade feedback 直接读取原始多源 transcript
-6. 每完成一个 Phase，都要求可在 `dry-run` 下单独运行
+6. 每个 Phase 完成后均要求可独立执行 `dry-run`
 
 ## 5. 验证计划
 

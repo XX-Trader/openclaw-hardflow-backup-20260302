@@ -18,13 +18,13 @@
 **✅ 需要修改/新增的文件**
 
 ### 后端
-- `pm_robot/models/`: 新增 `PMTraderGroup`, `PMTraderGroupMember`
+- `pm_robot/models/`: 新增 `PMMemberGroup`, `PMMemberGroupMember`
 - `pm_robot/views/`: 新增分组CRUD视图
-- `pm_robot/urls.py`: 新增路由 `/api/pm-robot/trader-group/`
+- `pm_robot/urls.py`: 新增路由 `/api/pm-robot/member-group/`
 
 ### 前端
 - `src/api/pm-robot.js`: 新增分组相关API调用
-- `src/views/pm-robot/`: 新增 `TraderGroupManage.vue`
+- `src/views/pm-robot/`: 新增 `MemberGroupManage.vue`
 - `src/router/index.js`: 新增路由
 
 ---
@@ -39,7 +39,7 @@
 
 2. **级联删除**
    - 删除分组时，关联表记录自动删除
-   - 交易员不受影响
+   - 成员不受影响
 
 3. **批量操作**
    - 使用异步任务（Celery）避免请求超时
@@ -53,7 +53,7 @@
 
 | 风险点 | 影响 | 应对方案 |
 |--------|------|----------|
-| 删除分组时交易员未处理 | 数据不一致 | 删除前检查，或使用级联删除 |
+| 删除分组时成员未处理 | 数据不一致 | 删除前检查，或使用级联删除 |
 | 批量操作超时 | 用户体验差 | 使用异步任务，前端轮询结果 |
 | 关联表数据量过大 | 查询慢 | 添加索引，考虑分表 |
 
@@ -64,8 +64,8 @@
 **🔸 是否需要迁移/初始化数据**
 
 - ✅ 需要创建新表，执行 `makemigrations` 和 `migrate`
-- 🔸 现有交易员数据不需要迁移
-- 🔸 可以考虑创建一个"默认分组"，将未分组交易员自动归入
+- 🔸 现有成员数据不需要迁移
+- 🔸 可以考虑创建一个"默认分组"，将未分组成员自动归入
 
 ---
 

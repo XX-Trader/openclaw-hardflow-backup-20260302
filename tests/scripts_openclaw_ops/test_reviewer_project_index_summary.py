@@ -26,7 +26,7 @@ def load_module(name: str, rel_path: str):
 
 class ReviewerProjectIndexSummaryTests(unittest.TestCase):
     def test_prefers_local_index_summary_when_present(self):
-        module = load_module("reviewer_cron_runner", "scripts/openclaw-ops/reviewer_cron_runner.py")
+        module = load_module("reviewer_cron_runner", "skills/library/receiving-code-review/scripts/reviewer_cron_runner.py")
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             legacy = repo / ".workflow" / "project-index" / "project-index.json"
@@ -50,7 +50,7 @@ class ReviewerProjectIndexSummaryTests(unittest.TestCase):
             self.assertEqual(summary["index_file"], str(local))
 
     def test_falls_back_to_legacy_index_summary(self):
-        module = load_module("reviewer_cron_runner", "scripts/openclaw-ops/reviewer_cron_runner.py")
+        module = load_module("reviewer_cron_runner", "skills/library/receiving-code-review/scripts/reviewer_cron_runner.py")
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
             legacy = repo / ".workflow" / "project-index" / "project-index.json"

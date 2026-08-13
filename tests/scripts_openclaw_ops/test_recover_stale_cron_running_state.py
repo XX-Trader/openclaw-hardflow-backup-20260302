@@ -28,7 +28,7 @@ class RecoverStaleCronRunningStateTests(unittest.TestCase):
     def test_recover_stale_running_state_clears_only_stale_entries_and_writes_backup(self):
         module = load_module(
             "recover_stale_cron_running_state",
-            "scripts/openclaw-ops/recover_stale_cron_running_state.py",
+            "skills/library/control-plane-ops/scripts/recover_stale_cron_running_state.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -79,7 +79,7 @@ class RecoverStaleCronRunningStateTests(unittest.TestCase):
     def test_recover_stale_running_state_dry_run_preserves_jobs_file(self):
         module = load_module(
             "recover_stale_cron_running_state",
-            "scripts/openclaw-ops/recover_stale_cron_running_state.py",
+            "skills/library/control-plane-ops/scripts/recover_stale_cron_running_state.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -2,32 +2,28 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="${HARDFLOW_WORKFLOW_REPO:-$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)}"
 
-if [[ -n "${SSH_CONFIG:-}" && -f "${SSH_CONFIG}" ]]; then
-  SSH_CFG="${SSH_CONFIG}"
-elif [[ -f "/d/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="/d/ssh_keys/ssh_config"
-elif [[ -f "/mnt/d/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="/mnt/d/ssh_keys/ssh_config"
-elif [[ -f "D:/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="D:/ssh_keys/ssh_config"
-else
+SSH_CFG="${SSH_CONFIG:-${HOME}/.ssh/config}"
+if [[ ! -f "${SSH_CFG}" ]]; then
   echo "[sync-policy] ssh_config not found. set SSH_CONFIG first." >&2
   exit 1
 fi
 
 if (( $# > 0 )); then
   SERVERS=("$@")
+elif [[ -n "${HARDFLOW_FLEET_SERVERS:-}" ]]; then
+  IFS=',' read -r -a SERVERS <<< "${HARDFLOW_FLEET_SERVERS}"
 else
-  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw")
+  echo "[sync-policy] provide hosts as arguments or HARDFLOW_FLEET_SERVERS." >&2
+  exit 2
 fi
 
 RESTART_GATEWAY="${RESTART_GATEWAY:-0}"
 SSH_CONNECT_TIMEOUT="${SSH_CONNECT_TIMEOUT:-12}"
 SSH_CMD_TIMEOUT="${SSH_CMD_TIMEOUT:-180}"
 
-LOCAL_POLICY_DIR="${REPO_ROOT}/scripts/openclaw-ops/policy"
+LOCAL_POLICY_DIR="${REPO_ROOT}/skills/library/control-plane-ops/scripts/policy"
 LOCAL_HOOKS_DIR="${REPO_ROOT}/hooks"
 LOCAL_GATEWAY_SERVICE_MANAGER="${LOCAL_POLICY_DIR}/gateway_service_manager.py"
 if [[ ! -d "${LOCAL_HOOKS_DIR}" && -d "${REPO_ROOT}/.claude/hardflow/hooks" ]]; then

@@ -11,41 +11,40 @@ DEFAULT_PROJECT_INDEX_DIR = ".workflow/project-index-local"
 LEGACY_PROJECT_INDEX_DIR = ".workflow/project-index"
 
 VENDOR_CATALOG: dict[str, dict[str, Any]] = {
-    "binance": {
-        "host_keywords": ["binance.com"],
+    "github": {
+        "host_keywords": ["github.com"],
         "doc_sources": [
             {
-                "id": "binance-spot-general",
-                "tag": "binance",
-                "name": "Binance Spot API General Info",
-                "url": "https://developers.binance.com/docs/binance-spot-api-docs/rest-api/general-api-information",
+                "id": "github-rest-getting-started",
+                "tag": "github",
+                "name": "GitHub REST API Getting Started",
+                "url": "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api",
                 "category": "api-doc",
-                "tags": ["official", "api", "reference", "binance", "spot"],
+                "tags": ["official", "api", "reference", "github"],
                 "browser_fallback": True,
                 "min_interval_minutes": 180,
             },
             {
-                "id": "binance-spot-changelog",
-                "tag": "binance",
-                "name": "Binance Spot API Changelog",
-                "url": "https://developers.binance.com/docs/binance-spot-api-docs/changelog",
+                "id": "github-rest-versioning",
+                "tag": "github",
+                "name": "GitHub REST API Versions",
+                "url": "https://docs.github.com/en/rest/about-the-rest-api/api-versions",
                 "category": "official-doc",
-                "tags": ["official", "api", "release", "binance", "spot"],
+                "tags": ["official", "api", "release", "github"],
                 "browser_fallback": True,
                 "min_interval_minutes": 180,
             },
         ],
         "repo_source": {
-            "vendor": "binance",
+            "vendor": "github",
             "official_repos": [
-                "binance/binance-spot-api-docs",
-                "binance/binance-connector-python",
-                "binance/binance-connector-js",
-                "binance/binance-futures-connector-python",
+                "github/rest-api-description",
+                "github/docs",
+                "cli/cli",
             ],
             "repo_queries": [
-                "org:binance binance connector archived:false",
-                "org:binance binance api docs archived:false",
+                "org:github rest api archived:false",
+                "org:github api client archived:false",
             ],
         },
     }

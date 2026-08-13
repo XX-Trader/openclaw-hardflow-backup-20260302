@@ -17,20 +17,20 @@
 
 ```bash
 # 查看可用档位
-python scripts/openclaw-ops/switch_model_tier.py --list-tiers
+python skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py --list-tiers
 
 # 一键切换（支持档位关键字）
-python scripts/openclaw-ops/switch_model_tier.py 顶级
-python scripts/openclaw-ops/switch_model_tier.py 高级
-python scripts/openclaw-ops/switch_model_tier.py high_doubao
+python skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py 顶级
+python skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py 高级
+python skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py high_doubao
 
 # 一句话切换（脚本会自动识别）
-python scripts/openclaw-ops/switch_model_tier.py "切换顶级模型"
-python scripts/openclaw-ops/switch_model_tier.py "切换高级模型"
+python skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py "切换顶级模型"
+python skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py "切换高级模型"
 python scripts/openclaw-ops/switch_gpt54_layer_to_doubao.sh
 
 # 仅预览，不写入
-python scripts/openclaw-ops/switch_model_tier.py 顶级 --dry-run
+python skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py 顶级 --dry-run
 ```
 
 Windows 也可直接使用：

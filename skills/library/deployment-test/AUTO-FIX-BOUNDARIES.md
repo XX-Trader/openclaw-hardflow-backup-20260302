@@ -204,20 +204,20 @@
 - 严重级别: 🔴 严重
 
 ## 问题描述
-用户余额计算逻辑分布在多个模块中：
-- pm_robot/models.py: calculate_balance()
-- accounts/models.py: get_user_balance()
-- pm_robot/services.py: compute_balance()
+用户配额计算逻辑分布在多个模块中：
+- pm_robot/models.py: calculate_quota()
+- accounts/models.py: get_user_quota()
+- pm_robot/services.py: compute_quota()
 
 这些函数的实现不一致，导致结果冲突。
 
 ## 影响范围
 - 涉及模块: pm_robot, accounts
-- 影响功能: 余额查询、充值、提现、交易
-- 数据影响: 可能导致金额显示错误
+- 影响功能: 配额查询、配额分配、配额回收
+- 数据影响: 可能导致配额显示错误
 
 ## 建议的规划方向
-1. 统一余额计算逻辑到一个服务
+1. 统一配额计算逻辑到一个服务
 2. 其他模块调用统一服务
 3. 更新相关文档
 4. 添加单元测试

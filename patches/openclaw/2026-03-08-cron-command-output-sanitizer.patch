@@ -1,5 +1,5 @@
-﻿From 333796d0baa502657097b71e785665fc822b5788 Mon Sep 17 00:00:00 2001
-From: XX-Trader <85067385+XX-Trader@users.noreply.github.com>
+From 333796d0baa502657097b71e785665fc822b5788 Mon Sep 17 00:00:00 2001
+From: Maintainer <maintainer@example.invalid>
 Date: Sun, 8 Mar 2026 12:12:42 +0800
 Subject: [PATCH] Guard cron command-only outputs against chatter
 
@@ -26,11 +26,11 @@ index 365125764..9297ef61c 100644
 +  pickCommandRunnerTextFromPayloads,
    pickSummaryFromPayloads,
  } from "./helpers.js";
- 
+
 @@ -57,6 +59,69 @@ describe("pickLastNonEmptyTextFromPayloads", () => {
    });
  });
- 
+
 +describe("isCommandOnlyAgentTurnMessage", () => {
 +  it("detects hardened command-only cron prompts", () => {
 +    expect(
@@ -104,7 +104,7 @@ index 3792a3a7a..36767fe15 100644
 @@ -10,8 +10,93 @@ type DeliveryPayload = {
    isError?: boolean;
  };
- 
+
 +const COMMAND_ONLY_MESSAGE_MARKERS = [
 +  "run command only:",
 +  "return exactly raw stdout/stderr text from the command",
@@ -273,21 +273,21 @@ index 3236d0b1c..7e77aa996 100644
 +export const resolveCronDeliveryPlanMock = createMock();
 +export const isCommandOnlyAgentTurnMessageMock = createMock();
 +export const pickCommandRunnerTextFromPayloadsMock = createMock();
- 
+
  vi.mock("../../agents/agent-scope.js", () => ({
    resolveAgentConfig: resolveAgentConfigMock,
 @@ -169,7 +172,7 @@ vi.mock("../../security/external-content.js", () => ({
  }));
- 
+
  vi.mock("../delivery.js", () => ({
 -  resolveCronDeliveryPlan: vi.fn().mockReturnValue({ requested: false }),
 +  resolveCronDeliveryPlan: resolveCronDeliveryPlanMock,
  }));
- 
+
  vi.mock("./delivery-target.js", () => ({
 @@ -182,7 +185,9 @@ vi.mock("./delivery-target.js", () => ({
  }));
- 
+
  vi.mock("./helpers.js", () => ({
 +  isCommandOnlyAgentTurnMessage: isCommandOnlyAgentTurnMessageMock,
    isHeartbeatOnlyResponse: vi.fn().mockReturnValue(false),
@@ -296,7 +296,7 @@ index 3236d0b1c..7e77aa996 100644
    pickLastNonEmptyTextFromPayloads: vi.fn().mockReturnValue("test output"),
    pickSummaryFromOutput: vi.fn().mockReturnValue("summary"),
 @@ -271,6 +276,12 @@ export function resetRunCronIsolatedAgentTurnHarness(): void {
- 
+
    resolveCronSessionMock.mockReset();
    resolveCronSessionMock.mockReturnValue(makeCronSession());
 +  resolveCronDeliveryPlanMock.mockReset();
@@ -305,7 +305,7 @@ index 3236d0b1c..7e77aa996 100644
 +  isCommandOnlyAgentTurnMessageMock.mockReturnValue(false);
 +  pickCommandRunnerTextFromPayloadsMock.mockReset();
 +  pickCommandRunnerTextFromPayloadsMock.mockReturnValue(undefined);
- 
+
    logWarnMock.mockReset();
  }
 diff --git a/src/cron/isolated-agent/run.ts b/src/cron/isolated-agent/run.ts
@@ -372,6 +372,6 @@ index 028b2e3ce..e357bc471 100644
          ? { error: embeddedRunError ?? "cron isolated run returned an error payload" }
          : {}),
        summary,
--- 
+--
 2.43.0.windows.1
 

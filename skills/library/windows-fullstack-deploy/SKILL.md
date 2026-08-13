@@ -4,7 +4,7 @@ displayName: "Windows本地部署"
 version: "1.0.0"
 description: Windows 本地开发环境自动化部署技能。支持 Django/FastAPI/Flask 后端、Vue3/React 前端、MySQL 数据库、Redis 缓存的完整本地开发流程。当用户在 Windows 上搭建本地开发环境时使用此技能。支持项目自动检测、配置文件驱动、一键启动所有服务。
 description_zh: "windows-fullstack-deploy技能，详见 SKILL.md"
-author: "superma"
+author: "maintainers"
 license: "MIT"
 updated_at: "2026-01-25"
 

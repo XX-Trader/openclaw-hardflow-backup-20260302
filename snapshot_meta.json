@@ -1,5 +1,5 @@
 {
-  "snapshot_dir": "/home/ubuntu/.openclaw/ops/snapshots/hangqing-zhongxin_openclaw_backup_20260302_164814",
+  "snapshot_dir": "${OPENCLAW_HOME}/ops/snapshots/<snapshot_id>",
   "agent_count": 12,
   "cron_job_count": 13
 }

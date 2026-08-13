@@ -21,19 +21,19 @@ metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ### 1. 执行巡检
 
 ```bash
-python3 ~/scripts/openclaw-ops/todo_patrol.py --scan
+python3 ~/skills/library/todo-patrol/scripts/todo_patrol.py --scan
 ```
 
 ### 2. 查看报告
 
 ```bash
-python3 ~/scripts/openclaw-ops/todo_patrol.py --report
+python3 ~/skills/library/todo-patrol/scripts/todo_patrol.py --report
 ```
 
 ### 3. 自动归档完成项
 
 ```bash
-python3 ~/scripts/openclaw-ops/todo_patrol.py --archive
+python3 ~/skills/library/todo-patrol/scripts/todo_patrol.py --archive
 ```
 
 ## 巡检规则

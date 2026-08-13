@@ -50,7 +50,7 @@ UNCHECKED_PATTERN = re.compile(r"^\s*-\s*\[\s*[ /]\s*\]\s*(?P<text>.+?)\s*$")
 PRIORITY_PATTERN = re.compile(r"\[(?P<tag>P[0-3]|🔴|🟡|🟢)\]", re.IGNORECASE)
 HIGH_RISK_PATTERN = re.compile(
     r"(生产|线上|部署|重启|迁移|删除|drop|truncate|rm\s+-rf|force\s+push|"
-    r"凭证|密钥|token|api[_ -]?key|cookie|资金|提现|划转|下单|撤单|实盘|交易|权限|sudo|root)",
+    r"凭证|密钥|token|api[_ -]?key|cookie|删除|清空|覆盖|生产数据|权限|sudo|root)",
     re.IGNORECASE,
 )
 LOW_RISK_PATTERN = re.compile(
@@ -241,8 +241,13 @@ def create_due_candidates(
     include_upcoming_days: int = 0,
     max_items: int = 20,
     dry_run: bool = False,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    items = scan_due_todos(todo_file, include_upcoming_days=max(0, include_upcoming_days))
+    items = scan_due_todos(
+        todo_file,
+        now=now,
+        include_upcoming_days=max(0, include_upcoming_days),
+    )
     selected = items[: max(1, max_items)]
     summary: dict[str, Any] = {
         "todo_file": str(todo_file),

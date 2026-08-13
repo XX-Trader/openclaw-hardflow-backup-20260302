@@ -1,287 +1,54 @@
-# DEPLOYMENT
+# 部署说明
 
-## 2026-05-10 20:30 - nofx 安装业务动作门禁删除批次
+## 变量
 
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.local/bin/smart-arb-pipeline`
-事实：本机提交 `4b22b6b0` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `182a8c0` fast-forward 到 `4b22b6b`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 已把删除业务动作 workflow 门禁、审核/验证/deployment/git_publish 失败回流、以及 Git 发布 staged diff 密码/密钥扫描保留逻辑安装到 `/home/arbops/.hermes/ops`。本轮只更新 hardflow/Hermes ops 与文档记忆，没有修改 profile SOUL，因此未重启 Discord gateway。
-证据：runtime installer 返回 `ok=true`、`changed=true`、5 个 workflow skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`。远端仓库与安装态三份核心脚本 SHA256 一致：`pipeline_runner.py=00bfe1800073aa62bdd6a0b04a387e7d3a4597b22d4a672470fc49d427abafc2`、`smart_arb_pipeline_entry.py=ae70a1de274baa36d0853d90cbbeaaca66a42b9d1c220588a7688b9eee025050`、`smart_arb_live_bridge.py=b211cbdd5b85f741614b57c29d4cadf60f042543c49e8c636183718bfb851648`。远端 `py_compile` 覆盖仓库与安装态三脚本通过；`compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline`、`git diff --check`、`smart-arb-pipeline --help` 通过；远端 entry/live bridge 97 项 OK，runner 13 个关键回归 OK。内控 API `/health` 返回 `status=ok,strategy_running=false,ipc_connected=false`，`/api/strategy/status` 返回 `running=false,pid=null`。`hermes -p arbitrageagent status` 与 `hermes -p spreadagent status` 均显示 gateway running，Discord configured。
-最后验证：2026-05-10 20:30 CST
-复用建议：以后 nofx 工作流如果仍因真实交易、下单、划转、提现、资金操作等字样卡在 `risk_gate` 或寻找 `execution_guard.json`，优先确认远端仓库和 `/home/arbops/.hermes/ops` 是否已安装 `4b22b6b` 或更新提交。新逻辑应看 `failed_stage`、`next_action`、`failure_summary.md` 与对应 stage artifact；Git 上传仍必须保留 staged diff 密码/Token/Cookie/私钥/凭证材料扫描。
-
-## 2026-05-09 23:10 - nofx Discord profile 迁入智能趋势跟踪
-
-类型：deploy
-范围：nofx `/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、Discord guild `智能趋势跟踪`
-事实：nofx 两个 live Hermes Discord profile 已从旧 guild `智能价差套利` 迁入 `智能趋势跟踪` 的 `套利策略` 分类。`arbitrageagent` 当前 Discord home / allowed / free-response channel 为 `套利策略测试` `1502616919713386647`；`spreadagent` 当前 Discord home / allowed / free-response channel 为 `价差监控测试` `1502616918190854165`。目标分类下同时创建了管理频道 `价差套利` `1502616916907393115` 和 `多agent-修复` `1502616927669850153`。
-证据：变更备份为 `/home/arbops/.hermes/profiles/arbitrageagent/.env.bak-discord-merge-20260509T230846`、`/home/arbops/.hermes/profiles/arbitrageagent/config.yaml.bak-discord-merge-20260509T230846`、`/home/arbops/.hermes/profiles/spreadagent/.env.bak-discord-merge-20260509T230846`、`/home/arbops/.hermes/profiles/spreadagent/config.yaml.bak-discord-merge-20260509T230846`。重启 tmux 会话后，`arbitrageagent` PID `184108`、`spreadagent` PID `184113` 均 `gateway_state=running`，Discord 均 `connected`。
-最后验证：2026-05-09 23:10 CST
-复用建议：后续修改 nofx Discord 频道时直接改两个 profile 的 `.env` 和 `config.yaml`，保持文件属主 `arbops:arbops` 与权限 `0600`，并通过 tmux 重启 `hermes-discord-arbitrage` / `hermes-discord-spread`；当前 nofx 的 user systemd bus 可能 inactive，不能只依赖 `systemctl --user restart`。
-
-## 2026-05-08 21:06 - nofx Hermes 模型路由与辅助任务路由配置
-
-类型：deploy
-范围：nofx `/home/arbops/.hermes`、profiles `arbitrageagent` / `spreadagent`
-事实：nofx live Hermes 已按 WSL 同一模型策略配置。两个 Discord profile 的主模型为 `openai-codex/gpt-5.5`，`agent.reasoning_effort=xhigh`；主回退链为 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`，两级回退均标注 `reasoning_effort=high`。`delegation` 使用 `openai-codex/gpt-5.5/xhigh`；辅助任务默认使用 `zai/glm-4.7`，`compression` / `curator` 使用 `zai/glm-5.1`。`/home/arbops/.hermes/.env` 与两个 profile `.env` 只保留 Codex auth、Kimi k2.6、GLM 5.1/4.7 所需变量，已删除 OpenRouter 与 `ZAI_API_BASE` 残留。
-证据：备份目录 `/home/arbops/.hermes/backups/model-routing-20260508_nofx_20260508_210202`；脱敏检查显示 `.env` 为 `arbops:arbops 0600`，`config.yaml` 未命中 `openrouter`、`OPENROUTER_API_KEY` 或 `ZAI_API_BASE`。已重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread` tmux 会话，`hermes gateway list` 显示 `arbitrageagent` PID `118779`、`spreadagent` PID `118783` running；`gateway_state.json` 显示两者 Discord `connected`。chat smoke：`arbitrageagent` session `20260508_210549_dd9a9e`、`spreadagent` session `20260508_210617_36db94` 均成功返回，`0 tool calls`。
-最后验证：2026-05-08 21:06
-复用建议：nofx profile 配置是运行态真相源，不能只改仓库模板或全局 `.env`。以后改模型路由要同步两个 profile 的 `.env/config.yaml`，用 Git for Windows `ssh.exe -F F:/ssh_keys/ssh_config nofx` 低频连接，远端操作保持 `arbops` 权限和 `.env 0600`。
-
-## 2026-05-08 17:45 - WSL Hermes 模型路由与辅助任务路由配置
-
-类型：deploy
-范围：WSL `/home/ubuntu/.hermes`、profiles `trend-backtest` / `multicore` / `multicorerouter`
-事实：本机 WSL Hermes global config 与三个 profile config 已统一配置为主模型 `openai-codex/gpt-5.5`、主思考强度 `xhigh`、主回退链 `kimi-coding/kimi-k2.6 -> zai/glm-5.1`。文本辅助任务已从 `auto` 改为显式 Z.AI：默认辅助任务走 `zai/glm-4.7`，`compression` 与 `curator` 走 `zai/glm-5.1`。按用户纠正，本机 WSL 只保留 Codex auth、Kimi k2.6 与 GLM 5.1/4.7 两套模型 API；`OPENROUTER_API_KEY` 与全局 `openrouter:` 配置段已删除。三个 profile `start-gateway.sh` 已显式加载 profile `.env` 并设置 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`，随后重启到 screen 会话 `trend-backtest-gw`、`multicore-gw`、`multicorerouter-gw`，进程命令均为 `hermes -p <profile> gateway run --replace`。
-证据：配置备份目录 `/home/ubuntu/.hermes/backups/model-routing-20260508_173733`，启动脚本备份目录 `/home/ubuntu/.hermes/backups/gateway-start-env-20260508_175344`，删除 OpenRouter 与补齐 Kimi/GLM provider 的备份目录 `/home/ubuntu/.hermes/backups/remove-openrouter-20260508_1818`；`gateway list` 显示 `trend-backtest=16901`、`multicore=16904`、`multicorerouter=16907` running；`hermes -p trend-backtest chat -q '只回复 OK，不要调用工具。'` 返回 OK，session `20260508_174244_373cd2`，`0 tool calls`。`config check` 显示 OpenRouter unset，Z.AI/GLM 与 Kimi/Moonshot configured。
-最后验证：2026-05-08 17:45
-复用建议：后续改 WSL Hermes 模型路由必须同时改 global config 与三个 profile override，并重启 profile gateway；只改 `~/.hermes/config.yaml` 不会覆盖 profile 运行态。本机 WSL 不应再写 `OPENROUTER_API_KEY`；Kimi 使用 `KIMI_API_KEY` / `KIMI_CODING_API_KEY` / `KIMI_BASE_URL`，GLM 使用 `GLM_API_KEY` / `ZAI_API_KEY` / `GLM_BASE_URL`。
-
-## 2026-05-08 16:26 - nofx Hermes v0.13.0 验收与 editable metadata 修复
-
-类型：deploy
-范围：nofx `/home/arbops/.hermes`、Hermes source `/home/arbops/.hermes/hermes-agent/src`、profile `arbitrageagent` / `spreadagent`
-事实：nofx SSH 恢复后，Hermes 已确认升级到官方 latest `Hermes Agent v0.13.0 (2026.5.7)`。源码位于 `/home/arbops/.hermes/hermes-agent/src`，Git 为 `faa13e49`，`git describe` 为 `v2026.5.7-26-gfaa13e49`；`pyproject.toml` 与 `hermes_cli/__init__.py` 均为 `0.13.0`。升级后 editable pip metadata 曾残留 `hermes-agent 0.12.0`，已执行 `/home/arbops/.hermes/hermes-agent/venv/bin/python -m pip install -e /home/arbops/.hermes/hermes-agent/src --no-deps` 刷新为 `0.13.0`。本轮没有修改 nofx profile 配置或 hardflow/SmartMulti 业务代码；未重启 gateway，因为 `arbitrageagent` 与 `spreadagent` 已处于新版 running/connected 状态。
-证据：GitHub 官方 release 页面显示 latest 为 `Hermes Agent v0.13.0 (v2026.5.7)`，release date 为 2026-05-07。nofx `hermes --version` 返回 `Hermes Agent v0.13.0 (2026.5.7)`、`OpenAI SDK: 2.24.0`、`Up to date`；pip show 刷新后返回 `Version: 0.13.0` 且 editable project location 为 `/home/arbops/.hermes/hermes-agent/src`。`hermes profile list` 显示 `arbitrageagent` 与 `spreadagent` running；两者 `gateway_state.json` 分别为 `running/connected`，PID 为 `7242` 与 `7237`。在 `/home/arbops/projects/SmartMultiPlatformArbitrage` 内执行 chat smoke：`arbitrageagent` session `20260508_162443_ce4450`、`spreadagent` session `20260508_162458_b977e7` 均返回 OK，`0 tool calls`。
-最后验证：2026-05-08 16:26
-复用建议：nofx Hermes 升级恢复后先用 `hermes --version` 与源码 tag 判断真实 runtime，不要只看 `pip show`；editable metadata 如果残留旧版本，执行 venv 内 `pip install -e <src> --no-deps` 刷新。`hermes chat` smoke 必须在 Git 仓库内执行，例如 `/home/arbops/projects/SmartMultiPlatformArbitrage`，否则 v0.13 会因 worktree 要求直接失败。
-
-## 2026-05-08 16:25 - nofx 拉取 ae795f7 并恢复 hardflow runtime
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、内控 FastAPI、Docker 栈
-事实：nofx SSH 恢复后，已按低频单连接进入服务器，先停掉自动拉起且占用 CPU/overlay/log 的 Docker 栈（`nofx-frontend`、`nofx-trading`、`tiger-trader-api`、`realtime_pub_node`、`realtime_pub_redis`）以及 `docker/containerd`，未删除业务数据。随后 hardflow 仓库从 `2b68e38` fast-forward 到 `ae795f7`，`HEAD...origin/main=0 0`，runtime installer 已把最新 5 个 workflow skills、22 个 ops scripts、12 个 cron jobs 安装到 `/home/arbops/.hermes`。服务器重启后 tmux 为空，已仅恢复必要的 `arbitrageagent`、`spreadagent` 和内控 API；`multicore-repair` 与 Docker 栈保持 stopped。一次误用 `--source cli` 的入口 smoke 触发了完整 pipeline run，已按 run id 停止相关进程，避免继续占 CPU/磁盘。
-证据：远端 `compileall` 覆盖源码与安装态通过；远端 `test_project_delivery_pipeline_runner` 75 项 OK、`test_smart_arb_pipeline_entry` 54 项 OK；`git diff --check` 通过；安装态 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` SHA256 与仓库源码一致；`jobs_count=12`、`memtidy_hits=0`、`backlog_runner_30m=1`；`/health` 返回 `status=ok,strategy_running=false,ipc_connected=false`，`/api/strategy/status` 返回 `running=false,pid=null`；`hermes profile list` 显示 `arbitrageagent` 与 `spreadagent` running，`multicore-repair` stopped；Docker 三个 service 均 inactive。资源复核：根盘 50G 已用 39G（82%），主要占用为 `.hermes/pipeline-runs` 3.4G、`.hermes/backups` 1.2G、`spreadagent/state.db` 与 WAL 约 0.95G、`/var/log` 1.1G、`/var/lib/containerd` 1.6G；停服务只能阻止继续增长，不会释放历史文件。
-最后验证：2026-05-08 16:25
-复用建议：nofx 发生 SSH banner timeout 后，先低频单连接重试；登录后先查 `df -hT`、`du -xhd1 /home/arbops/.hermes`、Docker/tmux/systemd 状态，再停明显自动拉起的非 hardflow Docker 栈。要释放磁盘必须另行清理旧 pipeline artifacts、pre-update zip、日志或 containerd 数据；这属于删除历史证据/缓存，执行前需明确确认保留范围。
-
-## 2026-05-08 16:15 - Tokyo Claw OpenClaw 2026.5.7 复验与 Codex auth-profile 修复
-
-类型：deploy
-范围：Tokyo Claw `/root/.openclaw`、`/root/.config/systemd/user/openclaw-{gateway,node}.service`、`/root/.nvm/versions/node/v22.22.0/bin/openclaw`
-事实：Tokyo Claw OpenClaw 已升级并复验为 `2026.5.7 (eeef486)`。本轮修正了两个升级后容易误导的状态：shell PATH 前面的 nvm `openclaw` shim 曾继续指向旧 `2026.4.14`，已改为指向 `/usr/local/nodejs22/node-v22.22.0-linux-x64/bin/openclaw`；`openclaw-node.service` 的 `Description` 和 `OPENCLAW_SERVICE_VERSION` 已从旧 `2026.4.15` 对齐到 `2026.5.7`，没有覆盖原有 GitHub token drop-in。OpenClaw 2026.5.7 下，旧 `profiles.openai-codex:default` auth-profile 格式会导致 `openai-codex/gpt-5.5` 返回 401 `token invalidated`；已把 Codex CLI 原生 `~/.codex/auth.json` 格式同步到 16 个 agent 的 `auth-profiles.json`，主模型 smoke 恢复为直连 `openai-codex/gpt-5.5`。
-证据：`openclaw --version` 与服务二进制均返回 `OpenClaw 2026.5.7 (eeef486)`；`openclaw update status --json` 显示 stable/latest 无可用 registry update；`systemctl --user is-active openclaw-gateway.service openclaw-node.service` 均为 `active`，两份 service 元数据均显示 `v2026.5.7`；`openclaw config validate --json` 返回 `valid=true`；`openclaw gateway health` 返回 OK；`openclaw channels status --json` 显示 Discord `factor/news/strategy` 均 running/connected；`openclaw plugins list --json` 显示 `@openclaw/discord 2026.5.7` loaded；`strategy_agent` smoke 返回 `UPGRADE_FINAL_OK`，provider/model 为 `openai-codex/gpt-5.5`，`fallbackAttempts=None`。备份目录包括 `/root/.openclaw/backups/upgrade-20260508-155449`、`upgrade-fix-shim-20260508-160431`、`auth-profile-raw-sync-20260508-161413`。
-最后验证：2026-05-08 16:15
-复用建议：Tokyo OpenClaw 升级后必须同时检查服务二进制、shell `command -v openclaw`、systemd unit 元数据、`@openclaw/discord` 插件和 account 级 channel 状态。若 agent smoke 显示 fallback 到 `kimicode/kimi-k2.6` 且 `openai-codex/gpt-5.5` 报 401，但 `codex exec -m gpt-5.5` 可用，优先把 Codex CLI 原生 `auth.json` 格式同步到 agent `auth-profiles.json`，不要继续使用旧 `profiles.openai-codex:default` 格式。
-
-## 2026-05-08 16:03 - WSL Hermes 与 Tokyo OpenClaw 升级，nofx Hermes 升级阻塞
-
-类型：deploy | blocked
-范围：WSL Ubuntu `/home/ubuntu/.hermes`、Tokyo Claw `/root/.openclaw`、nofx `/home/arbops/.hermes`
-事实：WSL Hermes 已升级到 v0.13.0（2026.5.7），三个本机 profile `trend-backtest`、`multicore`、`multicorerouter` 均已重启并 running。Tokyo Claw OpenClaw 已升级到 `2026.5.7`，`@openclaw/discord@2026.5.7` 已安装，gateway 重新启动后 account 级 Discord 状态恢复 connected。nofx Hermes 升级被 SSH banner timeout 阻塞，未完成升级；升级尝试前已做服务器本地配置/auth 快照，失败后最后确认仍为 v0.12.0，之后无法继续登录验证。
-证据：WSL `hermes --version` 为 v0.13.0，`hermes profile list` 三个 profile running，`hermes -p multicorerouter chat -q '只回复 OK，不要调用工具。'` 返回 OK；为适配 v0.13 默认平台连接超时，WSL 三个 profile `.env` 已写入 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`。Tokyo `openclaw --version` 为 `OpenClaw 2026.5.7 (eeef486)`，`npm list -g --depth=0` 显示 `openclaw@2026.5.7` 和 `@openclaw/discord@2026.5.7`，`openclaw gateway status --deep` connectivity probe ok，`channels status --json` 显示 `factor`、`news`、`strategy` connected。nofx 备份路径为 `/home/arbops/.hermes/backups/pre-v013-20260508T071912Z/hermes-config-auth.tar.gz` 和 `/home/arbops/.hermes/backups/pre-update-2026-05-08-151916.zip`；后续 WSL OpenSSH 与 Paramiko 均报 SSH banner 超时。
-最后验证：2026-05-08 16:03
-复用建议：nofx 恢复后不要直接假设已升级；先查 `hermes --version`、`/home/arbops/.hermes/logs/update.log`、`df -h`、`pgrep -af 'hermes update|pip|git|gateway'` 和 profile gateway 状态。若仍是 v0.12.0，先处理 SSH/IO/备份 zip，再重跑 `hermes update --backup --yes`；成功后按 WSL 经验必要时给 profile `.env` 加 `HERMES_GATEWAY_PLATFORM_CONNECT_TIMEOUT=120`。
-
-## 2026-05-07 16:20 - nofx 安装 solution_review 凭证目标文件自动修方案批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、`/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py`
-事实：本机提交 `2df03091` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `a78351f` fast-forward 到 `2df0309`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 返回 `changed=True`，安装 5 个 workflow skills、22 个 ops scripts、12 个 cron jobs。本轮只更新 hardflow/Hermes ops 脚本与项目记忆，没有重启 Discord gateway、内控 API 或策略服务。
-证据：nofx 远端 `py_compile` 覆盖仓库源码与 `/home/arbops/.hermes/ops` 安装态；`compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；定向 unittest 3 项 OK，覆盖 `auth.json` 不进入 `target_files`、`solution_review -> revise_solution` 的凭证目标 blocker 自动回流、真实 secret access 仍 high-risk。安装态命中 `credential_or_auth_target_file` 与 `可回流方案修订`。`smart-arb-pipeline --help` 正常；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
-最后验证：2026-05-07 16:20
-复用建议：以后 `solution_review` 因 `auth.json`、credential、auth-state 目标文件未通过时，应先让 `revise_solution` 修方案合同；只有真实读取、打印、使用或修改凭证时才保持硬阻断。远端 Git 仍用 root SSH 后 `runuser -u arbops` 执行，避免 root 触发 dubious ownership。
-
-## 2026-05-07 15:44 - nofx 设置中文 pretty hostname
-
-类型：deploy
-范围：nofx 服务器 OS 主机显示名；不涉及 `/home/arbops/.hermes` runtime、Discord profile、SSH alias 或 static hostname
-事实：已在 nofx 上把 Linux `Pretty hostname` 设置为 `套利策略 服务器`。为避免影响 SSH、systemd、脚本路径和服务识别，本轮没有修改 static hostname，仍保持 `VM-0-15-centos`；也没有重启 Hermes gateway、内控 API 或策略服务。
-证据：远端执行 `hostnamectl set-hostname --pretty '套利策略 服务器'` 后，`hostnamectl status --pretty` 返回 `套利策略 服务器`，`hostnamectl status --static` 返回 `VM-0-15-centos`，`/etc/machine-info` 包含 `PRETTY_HOSTNAME="套利策略 服务器"`。
-最后验证：2026-05-07 15:44
-复用建议：以后如果用户只要求改“服务器名称/显示名”，优先设置 `hostnamectl --pretty`，不要直接改 static hostname；只有明确要求修改系统主机名、DNS、监控标签或云厂商实例名时，再单独评估重启和服务影响。
-
-## 2026-05-07 15:32 - nofx 安装 solution_review 软门禁批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、`/home/arbops/.hermes/ops/smart_arb_live_bridge.py`、SmartMultiPlatformArbitrage `solution_review` / `code_execution` / `code_review` 链路
-事实：本机提交 `c746cf3a` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `4a0c999` fast-forward 到 `c746cf3`，runtime installer 返回 `ok=true`、`changed=true`、`missing_sources=[]`，`HEAD...origin/main=0 0`。`solution_review` 现在是方案质量软门禁：有 reviewer 输出且未命中凭证/secret/cookie/auth-state、破坏性生产数据、force push 等硬边界时，普通计划 blocker 会写入 `solution_review_soft_gate.md`，以 `soft_continue` 继续进入 `code_execution`；code agent 必须吸收这些 reviewer blocker，后续 `code_review` 仍按硬门禁检查是否按需求和 reviewer 约束修改。无 reviewer 输出仍不软放行。
-证据：远端安装态 `/home/arbops/.hermes/ops/pipeline_runner.py` 命中 `solution_review_can_soft_continue`、`solution_review_soft_gate.md` 与 `soft_continue`；`smart_arb_live_bridge.py` 命中 `solution_review_soft_gate.md`、`absorbed reviewer blockers` 和 `soft planning gate`。nofx 远端 `compileall` 通过；远端 `test_project_delivery_pipeline_runner` 65 项 OK、`test_smart_arb_live_bridge` 41 项 OK、`test_smart_arb_pipeline_entry` 49 项 OK；`git rev-list --left-right --count HEAD...origin/main` 为 `0 0`。测试后复核 `smart-arb-api` tmux 当前目录仍为 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`，`/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
-最后验证：2026-05-07 15:32
-复用建议：以后 `solution_review` 因文件级方案、rationale、验证命令、docs/memory 断言或 acceptance gap 不通过时，不要停在 `revise_solution` 循环；应检查是否生成 `solution_review_soft_gate.md`，让 code_execution 吸收并在 code_review 阶段验证。只有凭证/密钥/cookie/auth-state、破坏性生产数据、force push、无 reviewer 输出或明确绕过安全门禁时才在实现前硬停。
-
-## 2026-05-07 15:02 - nofx 安装 reviewer blocker 合并与方案修订计划批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、`/home/arbops/.hermes/ops/smart_arb_live_bridge.py`、SmartMultiPlatformArbitrage `solution_review` / `revise_solution` 链路
-事实：本机提交 `8602eedc` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `59ca3e3` fast-forward 到 `8602eed`，runtime installer 返回 `ok=true`、`changed=true`、`missing_sources=[]`，`HEAD...origin/main=0 0`。本轮未改 profile SOUL，因此没有重启 Discord gateway。修复后，review 阶段如果返回 `requires_revision`，状态卡和 failure summary 会写出 reviewer-a / reviewer-b 的具体未通过原因，并追加 `Reviewer Discussion And Joint Revision Plan`，把两路 reviewer 的 blocker 合并成下一轮 `delivery_plan.json` 可吸收的完整修订契约。方案生成同时过滤根目录日期文件如 `2026-04-27.md`，为缺失 docs/memory 目标补 `create_if_missing_rationale`，去掉 `Inspect ... define gap` 模板化步骤，补齐 `scripts` compileall、docs/memory/todo/done 内容断言、`origin/main` containment 和 Discord 最终人工验收 gate。
-证据：用失败 run `discord-spreadagent-20260507T061852834760Z` 的 artifact 在 nofx 已安装代码上复盘 `delivery_plan`，结果为 `contains_root_date_file=false`、`bad_root_date_paths=[]`、`missing_without_create_if_missing_rationale=[]`、`template_inspect_steps=[]`，`compileall_commands` 包含 `智能多平台套利 scripts tests`，且 `has_docs_memory_content_assertion=true`、`has_git_containment_count=true`、`has_manual_discord_acceptance_gate=true`。nofx 远端 `compileall` 通过；远端 `test_project_delivery_pipeline_runner` 62 项 OK、`test_smart_arb_live_bridge` 40 项 OK、`test_smart_arb_pipeline_entry` 49 项 OK；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`，`smart-arb-api` tmux 当前目录为 SmartMultiPlatformArbitrage 真实业务目录。
-最后验证：2026-05-07 15:02
-复用建议：以后 `solution_review` 被 reviewer 正确阻断时，不要放松 reviewer 或只让模型“再审一次”。先读 `solution_review.md` 的 `Joint Non-Pass Reasons` 与 `Complete Revision Plan`，再确认下一轮 `delivery_plan.json` 是否消除了 root date 文件、缺失 rationale、模板化实施步骤、验收命令缺口、git publish containment 和 Discord manual acceptance gate 缺口。
-
-## 2026-05-07 14:01 - nofx 安装 external_research 本地证据降级批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/smart_arb_live_bridge.py`、`/home/arbops/.local/bin/smart-arb-pipeline`
-事实：本机提交 `17b3484d` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `410db39` fast-forward 到 `17b3484`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 返回 `ok=true`、`changed=true`、`missing_sources=[]`。本轮未改 profile SOUL，因此没有重启 Discord gateway。修复后 `external_research` 阶段在 Hermes 空输出/无 pass 状态失败时，会先判断 run 是否只有本地来源、需求是否没有显式官方/联网资料要求、上下文证据是否足够；满足条件时由 bridge 合成 `NO_EXTERNAL_LOOKUP_NEEDED` 本地证据并返回 `LIVE_BRIDGE_STATUS: pass`。出现 http/https source URL 或需求明确要求官方/外部/联网资料时仍保持 fail，不做本地降级。
-证据：针对失败 run `discord-spreadagent-20260507T051921542201Z` 的原始 artifact，`command-runs/external_research-1.json` 只有 `LIVE_BRIDGE_STAGE: external_research` 与 `LIVE_BRIDGE_STATUS: fail`，stderr 为空，未生成有效 research evidence。安装后用同一 run 环境重跑 installed bridge，输出 `# synthesized_local_only_research`、`NO_EXTERNAL_LOOKUP_NEEDED`、本地 evidence files 和 `LIVE_BRIDGE_STATUS: pass`，返回码 0。远端 `python3 -B -m compileall -q scripts/openclaw-ops/smart_arb_live_bridge.py tests/scripts_openclaw_ops/test_smart_arb_live_bridge.py` 通过；远端 `python3 -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_live_bridge -q` 39 项 OK；`test_smart_arb_pipeline_entry.SmartArbPipelineEntryTests.test_negated_safety_terms_do_not_block_external_research_repair` OK；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
-最后验证：2026-05-07 14:01
-复用建议：以后 nofx 卡在 `external_research` 且 bridge stdout 只有 stage/status、stderr 为空时，先看 `run_meta.json.source_urls` 和 `requirement.txt`。只有纯本地 workflow/runtime 回归类任务才允许合成本地证据；有外部 URL、官方文档、SDK/API/平台规则或用户明确要求联网时，必须让 `external_research` 真正产出外部资料证据。
-
-## 2026-05-07 12:53 - nofx 安装方案文件级计划与风险误判修复批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.local/bin/smart-arb-pipeline`、SmartMultiPlatformArbitrage pipeline 方案生成链路
-事实：本机提交 `81270011` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `579062e` fast-forward 到 `8127001`，`HEAD...origin/main=0 0` 且工作树无未提交改动。runtime installer 返回 `ok=true`、`changed=true`、`missing_sources=[]`。本轮未改 profile SOUL，因此没有重启 Discord gateway；两个 gateway 仍为 `gateway_state=running` 且 Discord `connected`。
-证据：nofx 远端 `compileall` 覆盖 `pipeline_runner.py`、`smart_arb_pipeline_entry.py` 和对应测试文件；`python3 -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner -q` 62 项 OK；`python3 -B -m unittest tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry -q` 49 项 OK；`smart-arb-pipeline --help` 显示 `--route-choice`、`--reviewer-fallback-models`、`--human-risk-confirmed`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。用已安装代码重放 run `discord-spreadagent-20260507T040201861377Z`：`targets_count=28`、`bad_targets=[]`、`commands_count=14`、包含 `/api/realtime/funding` smoke、compileall 和 git containment，Graphify `scope_status=warning` 但 `graphify_blocks=[]`。
-最后验证：2026-05-07 12:53
-复用建议：以后 nofx workflow/runtime 修复默认按 `fetch -> pull --ff-only -> runtime_installer.py install -> compileall -> 定向 unittest -> help/API/gateway/replay` 验收。若 gateway state 解析为空，读取原始 `gateway_state.json`，当前字段是 `gateway_state` 与 `platforms.discord.state`。
-
-## 2026-05-07 10:58 - nofx 安装方案包范围与风险扫描修复批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.local/bin/smart-arb-pipeline`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、SmartMultiPlatformArbitrage pipeline 运行链路
-事实：本机提交 `5d04f55c` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `dc0aaf4` fast-forward 到 `5d04f55`，`HEAD...origin/main=0 0` 且工作树无未提交改动。runtime installer 已把方案包范围过滤、reviewer fallback 元数据修正、Graphify 范围校验收口和 pre-execution 风险扫描收口安装到 `/home/arbops/.hermes/ops`；本轮未改 profile SOUL，因此没有重启 Discord gateway。
-证据：runtime installer 返回 `ok=true`、`changed=true`、5 个 workflow skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`。远端 `compileall` 覆盖 `pipeline_runner.py`、`smart_arb_pipeline_entry.py` 和相关测试通过；远端 12 项关键回归 unittest OK，覆盖否定式风险状态文本、显式目标路径、workflow 宿主路径过滤、合法 memory 路径保留、Graphify stock token 业务路径放行、正向真实交易仍阻断、具体 reviewer blocker 仍阻断和 fallback 后最终模型记录。`/home/arbops/.local/bin/smart-arb-pipeline --help` 显示 `--reviewer-fallback-models` 与 `--human-risk-confirmed`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。远端 gateway 状态复核：`arbitrageagent gateway_state=running discord_state=connected`、`spreadagent gateway_state=running discord_state=connected`。
-最后验证：2026-05-07 10:58
-复用建议：以后 `solution_review` 卡在“目标文件漂移 / workflow 宿主文件 / todo.md/done.md / Graphify token 路径 / 安全边界关键词”时，先检查 `delivery_plan.json.plan_findings.filtered_target_candidates`、`graphify_scope_validation.json` 和 `pre_execution_risk.json`，不要通过删除 reviewer 或关闭风险扫描绕过。真实 reviewer blocker 仍必须修，运行时模型失败才走 fallback 降级。
-
-## 2026-05-07 01:05 - nofx 安装 reviewer fallback 降级批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.local/bin/smart-arb-pipeline`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`
-事实：本机提交 `8255a65d` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库从 `bd4df03` fast-forward 到 `8255a65`，`HEAD...origin/main=0 0` 且工作树无未提交改动。runtime installer 已把 reviewer fallback 和单有效输出放行逻辑安装到 `/home/arbops/.hermes/ops`；本轮未改 profile SOUL，因此没有重启 Discord gateway。
-证据：runtime installer 返回 `ok=true`、`changed=true`、5 个 workflow skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`。远端 `compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；远端定向 unittest 6 项 OK，覆盖单有效 reviewer 放行、具体 blocker 阻断、同模型降级、Kimi 404 后切 GLM、具体 blocker 不 fallback、entry 默认 fallback 链。`/home/arbops/.local/bin/smart-arb-pipeline --help` 已显示 `--reviewer-fallback-models`。远端 gateway 状态复核：`arbitrageagent gateway_state=running discord_state=connected`、`spreadagent gateway_state=running discord_state=connected`。
-最后验证：2026-05-07 01:05
-复用建议：后续 nofx review 阶段出现 `reviewer-b provider/model ... HTTP 404` 或 `missing_verdict` 时，先确认 wrapper 是否显示 `--reviewer-fallback-models`、command report 是否记录实际 fallback 模型、review 报告是否显示 `degraded_single_valid`。不要因为单个 provider/model 不可用就把需求评审改成人工阻塞；只有有效 reviewer 明确给出 blocker 才回流修订。
-
-## 2026-05-06 23:40 - nofx 安装高风险确认门禁修复批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、`/home/arbops/.local/bin/smart-arb-pipeline`
-事实：本机提交 `68b536a6` 和追加修复 `d236192e` 已推送到 `origin/main` 并安装到 nofx。远端 hardflow 仓库为 `HEAD=d236192`、`HEAD...origin/main=0 0`。本轮完成三项门禁修复：1. `--human-risk-confirmed` 从 backlog/Discord 入口透传到 pipeline risk gate，用户确认后的高风险策略任务不再停在 `await_human_confirmation`；2. reviewer-b 默认切到 `kimi-coding/kimi-k2.6`，避免双 reviewer 同模型伪双审；3. 风险文本清洗改为按子句处理，纯否定安全边界会剥离，但同一句里的正向真实交易/下单仍会触发高风险并在确认后继续。
-证据：runtime installer 返回 `ok=true`、`changed=true`、5 个 workflow skills、22 个 ops scripts、12 个 cron jobs、`missing_sources=[]`；live profile `SOUL.md` SHA256 为 `arbitrageagent=5b2e7466a45c89c88a7950798d8d59209cb877c0e15d3787ffc7b248dd84440f`、`spreadagent=5292b57f196c549541f1def7609b3d0672f222c17586058f01e11e27b2b23d98`。远端 `compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/control-plane-ops/scripts/policy` 通过；远端定向 unittest 62 项 OK。高风险确认 echo smoke `cli-spreadagent-20260506T153935576001Z` 返回 `status=completed`、`next_action=none`、Task Center `passed`，`pre_execution_risk.json` 为 `risk_level=high`、`execution_decision=confirmed_execute`、`human_confirmation_confirmed=true`、`high_risk_reasons=enable_live_trading,place_real_order,graphify_scope_block`。已重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`，两者 `gateway_state=running` 且 Discord `connected`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
-最后验证：2026-05-06 23:40
-复用建议：这是 2026-05-06 历史口径，已被 2026-05-10 门禁收口取代。新 run 中 nofx 策略类真实交易/下单/划转/提现/资金任务不再保留 high-risk workflow 分类，也不再依赖 `--human-risk-confirmed`；应看 `failed_stage`、`next_action` 和对应 artifact，继续跑 reviewer、测试、部署/写回/git publish 闭环。远端命令优先用 `runuser -u arbops -- /bin/sh -c`，不要用 root 直接 Git，也避免 `bash -lc` 触发 `/etc/bashrc` 的 brew 权限噪音。
-
-## 2026-04-29 03:19 - nofx 安装 specified_agent/session-run-id 批次
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py`、`/home/arbops/.hermes/ops/task_executor_runner.py`、`/home/arbops/.hermes/ops/policy_workflow.py`、Task Center、Discord 状态卡
-事实：本机代码批次 `22cecab` 已推送到 `origin/main` 并安装到 nofx runtime，后续文档/记忆提交已拉到 nofx，`HEAD...origin/main=0 0`。runtime installer 返回 `ok=true`、`changed=true`，已安装指定 agent 路线、Hermes fallback、policy 仓库路径解析、降权执行、报告目录权限修复和落库报告状态卡逻辑。`specified_agent` 路线现在会创建 Task Center `specified_agent_dispatch` 任务，分配给用户选择的 agent，调用执行器并回写 executor run id、agent session id、agent run id、session key；`coding_workflow` 路线会把真实 agent session/run id 聚合进 `command-runs`、`pipeline_state.agent_invocations`、Task Center payload 和 Discord 状态卡。
-证据：远端安装态 `smart_arb_pipeline_entry.py`、`pipeline_runner.py`、`task_executor_runner.py`、`policy_workflow.py` `py_compile` 通过；远端定向 unittest：`test_smart_arb_pipeline_entry.py` 42 项 OK、`test_task_executor_output_contract.py` 6 项 OK、`test_project_delivery_runtime_installer.py` 3 项 OK。最终 live smoke 输出 `Task Center=specified-agent:tester:discord-spreadagent-spreadagent-specified-tester-20260428T191858817609Z`、`executor run id=exec-20260428_191859-571b8957`、`agent session id=task-specified-agent-tester-discord-s-aac5760c82`、`agent run id=20260429_031907_b99ea9`、`session key=agent:tester:cron:task-executor:run:task-specified-agent-tester-discord-s-aac5760c82`、`当前阶段=test-loop`、`是否完成=是`、`总状态=task=passed；report=passed`、`失败原因=none`、`回答状态=已回答完毕`。内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`。
-最后验证：2026-04-29 03:19
-复用建议：以后用户选择 `specified_agent` 时，完成标准不是只写 Task Center 责任标签，而是状态卡和 Task Center report 同时出现真实 `executor run id`、`agent session id`、`agent run id/session key`、完成状态和失败原因。远端安装仍按 `git pull --ff-only` -> runtime installer -> 远端定向测试 -> live smoke -> API smoke -> 文档/记忆回写执行。
-
-## 2026-04-29 01:24 - nofx 安装 route-choice 入口硬门禁
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways、内控 API
-事实：本机提交 `8d952c0d` 已推送到 `origin/main`，nofx hardflow 仓库从 `7c7245a` fast-forward 到 `8d952c0`，`HEAD...origin/main=0 0` 且最终工作树 clean。拉取前远端两个 profile 模板存在上一轮手工同步残留，已保存为 `stash@{0}: pre-route-choice-deploy-20260428T172058Z`，没有 reset 或覆盖。runtime installer 返回 `ok=true`、`changed=true`，已把包含 route-choice 硬门禁的 `smart_arb_pipeline_entry.py` 安装到 `/home/arbops/.hermes/ops`。两个 live profile `SOUL.md` 已从仓库模板同步，备份后缀为 `route-choice-20260429T0124`，并重启 `hermes-discord-arbitrage` / `hermes-discord-spread`。
-证据：远端 `git diff --check`、`py_compile`、`compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 均通过；远端定向 `unittest` 41 项 OK；`/home/arbops/.local/bin/smart-arb-pipeline --help` 显示 `--route-choice {coding_workflow,direct_run,requirement_discussion,specified_agent,todo_auto_candidate}`；仓库源码与安装态 `/home/arbops/.hermes/ops/smart_arb_pipeline_entry.py` SHA256 均为 `1f1ddfc728a96c89a25c6732262ee48becba3db6640d004fda48c1233cd0ee01`。两个 gateway 重启后 `arbitrageagent` PID `1374690`、`spreadagent` PID `1374779`，均为 `gateway_state=running` 且 Discord `connected`；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`。缺失 `--route-choice` 的 spreadagent smoke 只返回 `# nofx 执行链路选择` 和 `回答状态: 等待人工选择`；显式 `--route-choice direct_run --emit-json` 返回 `status=skipped`、`next_action=manual_route_not_pipeline:direct_run`；未发现活跃 `smart-arb-pipeline` / `pipeline_runner.py` 进程。
-最后验证：2026-04-29 01:24
-复用建议：以后“做好了没问题就部署”的 nofx hardflow 修复默认按本次闭环执行：本地测试和 staged secret scan 通过 -> commit/push -> nofx 保存远端脏改动 -> `git pull --ff-only origin main` -> runtime installer -> 远端定向测试/help/API -> 如 profile 变更则同步 live SOUL 并重启 gateway -> 缺失 route-choice 或 echo smoke -> 写回 `memory/`、`done.md`、`todo.md`。
-
-## 2026-04-28 23:45 - nofx Discord 全任务路线选择与最高权限入口
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302/config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways、SmartMultiPlatformArbitrage 安全同步
-事实：已把 nofx Discord profile 规则从“普通执行类任务先选择、只读可直接处理”收紧为“所有 Discord 新任务先执行链路选择”。连接 Discord 的 profile 被定义为最高权限调度入口，负责路线选择、推荐理由、执行调度、状态回传和最终口径；只读查询、简单解释、方案讨论、监控查询、“不要走工作流”、安全仓库同步、业务执行、TODO 推进和 workflow/runtime/profile 自修都不能绕过选择。只有用户明确选择 `coding_workflow` / `todo_auto_candidate` 时才启动 `smart-arb-pipeline`；选择 `direct_run` 时由当前 Discord profile 作为最高权限 operator 直接处理，但仍受凭证、生产、资金、真实交易、force push 和删除生产数据等安全边界约束。本轮同时已按用户要求在 nofx 将 SmartMultiPlatformArbitrage 从 `df6f2c7` fast-forward 到 `00f3690a542bd65f2b16b9d8ae07c5df900c8dba`。
-证据：本地 `test_nofx_profile_templates` 增加断言“所有来自 Discord 的新任务”“不要直接做只读查询或普通沟通”“Discord profile 是本入口的最高权限 operator”，并拒绝旧的只读直答口径。已同步两个仓库 profile 模板和 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，live 备份后缀为 `all-route-choice-20260428T1545Z`；live `SOUL.md` 命中“所有来自 Discord 的新任务”“收到任何 Discord 新任务”“最高权限 operator”“回答状态: 等待人工选择”，旧规则 grep 未命中；重启后 arbitrageagent PID `1342103`、spreadagent PID `1342107`，两者 `gateway_state=running` 且 Discord `connected`。SmartMultiPlatformArbitrage 远端同步前 `## main...origin/main [behind 1]` 且工作树 clean，执行 `git fetch origin main` 与 `git pull --ff-only origin main` 后 `HEAD...origin/main=0 0`，`HEAD` 与 `origin/main` 均为 `00f3690a542bd65f2b16b9d8ae07c5df900c8dba`；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`。
-最后验证：2026-04-28 23:54
-复用建议：以后 Discord 里任何新任务都先看 live `SOUL.md` 是否含“收到任何 Discord 新任务”和“最高权限 operator”。若没有询问用户，优先检查 profile 模板是否同步到 `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 并重启 gateway；不要只修 `human_inbox` 或 backlog runner。
-
-## 2026-04-28 23:15 - nofx 安装 d2e530b7 并同步高权限 profile
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways、Task Center smoke
-事实：本机提交 `d2e530b7` 已推送到 `origin/main`，nofx 仓库从 `17d9b36` fast-forward 到 `d2e530b`，`HEAD...origin/main=0 0` 且工作树 clean；本轮未创建 stash。runtime installer 返回 `ok=true`、`changed=true`，已安装 5 个 runtime skill、18 个 ops 脚本、12 个 cron job 和新增 policy 文件 `policy_route_selection.py`。两个 live profile `SOUL.md` 已从仓库模板同步，备份后缀为 `manual-route-20260428T151420Z`，并重启 `hermes-discord-arbitrage` / `hermes-discord-spread`。
-证据：远端 `git diff --check` 通过；7 个改动脚本 `py_compile` 通过；远端 `compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/control-plane-ops/scripts/policy skills/library/todo-patrol/scripts` 通过；远端定向 `unittest` 19 项 OK；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；两个 gateway `gateway_state=running` 且 Discord `connected`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`；echo smoke `install-smoke-arbitrageagent-20260428T151514657470Z` 完成 15/15，Task Center `project-delivery:install-smoke-arbitrageagent-20260428T151514657470Z` 为 `passed`；cron job 数为 12、`memtidy_hits=0`、`backlog_runner_30m=1`。远端单测生成的 `file_write_audit.jsonl` 测试副作用已恢复，最终工作树 clean。
-最后验证：2026-04-28 23:15
-复用建议：以后 profile 模板有变化时，安装 runtime 后还必须同步 live `/home/arbops/.hermes/profiles/<profile>/SOUL.md` 并重启对应 gateway；重启前先查活跃 `smart-arb-pipeline`。复杂远端命令优先用 Paramiko 单连接，避免 PowerShell 对 `$p` 等 shell 变量做本地展开。
-
-## 2026-04-28 19:40 - nofx 安装 17d9b369 workflow runtime
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops`、runtime installer、cron jobs、Discord gateways、内控 API、Task Center smoke
-事实：nofx hardflow 仓库已对齐 `origin/main` 最新提交 `17d9b36`（本地完整提交 `17d9b369`），`git pull --ff-only origin main` 返回 already up to date，`HEAD...origin/main=0 0` 且工作树 clean；本轮无远端脏改动，`STASH_NAME=none`。runtime installer 返回 `ok=true`、`changed=true`，把 `project-delivery-pipeline`、`control-plane-ops`、`todo-patrol`、`log-monitor`、`task-cost-analytics` 和 18 个 ops 脚本安装到 `/home/arbops/.hermes`，cron job 数为 12，`memtidy` 仍为 0。本轮没有 profile SOUL 变更，因此未重启 Discord gateway。
-证据：安装日志 `/tmp/hardflow-runtime-install-20260428T113954Z.json`；远端安装态 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` `py_compile` 通过；远端 `compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；远端定向 `unittest` 76 项 OK；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；仓库源码与 runtime 安装态 SHA256 对齐（`pipeline_runner.py=c481bf4c933a64e6e5cda7845391f2b99a42b57aa56e1136d43ceca31dd5c6cf`，`smart_arb_pipeline_entry.py=f280c5ab0e469517e12fd64bbb1d3367b22b46a92f02aa53d078b3a1e1d680f7`，`smart_arb_live_bridge.py=2443ded9914b5769f4a544d9b802c402dd274aebdb15d5529a7898d33f68ff52`）；两个 profile `gateway_state=running`；内控 API `/health` 返回 `status=ok`，`/api/strategy/status` 返回 `running=false`；echo smoke `install-smoke-arbitrageagent-20260428T114016095602Z` 完成 15/15 阶段，`next_action=none`，日志 `/tmp/hardflow-install-smoke-20260428T113954Z.json`。
-最后验证：2026-04-28 19:40
-复用建议：nofx 已有最新 Git 提交时也要重跑 runtime installer 和 echo smoke，不能只以 `git pull` already up to date 作为安装完成依据。PowerShell 管道会给远端 Bash stdin 带 BOM，复杂远端脚本优先用 Paramiko 或 Git for Windows ssh；仓库/runtime 操作继续通过 `runuser -u arbops` 执行。
-
-## 2026-04-28 19:05 - nofx 安装 353f420d workflow runtime
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes/ops/pipeline_runner.py`、runtime installer、cron jobs、Discord gateways
-事实：本机 workflow 代码批次 `353f420d` 已推送到 `origin/main`，nofx hardflow 仓库已从 `195c513` fast-forward 到 `353f420`，`HEAD...origin/main=0 0` 且工作树 clean。runtime installer 返回 `ok=true`、`changed=true`，已把最新 `pipeline_runner.py` 安装到 `/home/arbops/.hermes/ops`；本轮未修改 nofx profile SOUL，因此未重启 Discord gateway。`memtidy_runner` 旧 cron 继续保持移除，当前 cron job 数为 12。
-证据：远端 `python3 -m py_compile /home/arbops/.hermes/ops/pipeline_runner.py` 通过；远端 `python3 -B -m unittest tests.scripts_openclaw_ops.test_project_delivery_pipeline_runner tests.scripts_openclaw_ops.test_smart_arb_pipeline_entry` 73 项 OK；仓库源码与 runtime 安装态 `pipeline_runner.py` SHA256 均为 `c481bf4c933a64e6e5cda7845391f2b99a42b57aa56e1136d43ceca31dd5c6cf`；`/home/arbops/.local/bin/smart-arb-pipeline --help` 正常；cron 命中 backlog/source/repo 巡检任务且 `memtidy_hits=0`；`arbitrageagent` 与 `spreadagent` tmux 会话存在、gateway_state 均为 `running`、日志近 80 行错误数为 0；runtime dry-run smoke `/tmp/hardflow-install-smoke-20260428T110456Z` 返回 `status=completed`，`E:/repo/src/app.py` 未进入 `target_files`，并以 `external_or_runtime_absolute_path` 出现在 `filtered_target_candidates` 和 `solution.md`。
-最后验证：2026-04-28 19:40
-复用建议：以后远端 smoke 需要验证入口时优先使用绝对路径 `/home/arbops/.local/bin/smart-arb-pipeline`；非登录 shell 里裸 `smart-arb-pipeline` 可能不在 `PATH`，这不是 runtime installer 失败。只改 `/home/arbops/.hermes/ops` 脚本且 profile 模板无变化时，无需重启 Discord gateway。
-
-## 2026-04-28 17:01 - nofx 普通沟通/独立协作边界同步到 live profile
-
-类型：deploy
-范围：nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302/config/nofx-hermes-profiles/{arbitrageagent,spreadagent}/SOUL.md`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}/SOUL.md`、Discord gateways
-事实：两个 nofx Discord profile 的 SOUL 已补齐三分流边界：用户明确说“不要走工作流 / 绕过工作流 / 可以绕过 / 别进 pipeline / 直接沟通 / 先讨论 / 先自己开发 / 这次不用自动流程”时，不启动 `smart-arb-pipeline`，只做直接沟通、澄清、只读查询、状态结论和方案说明；若后续要求实际改代码、安装依赖、重启、部署、提交推送或改生产配置，profile 不直接执行，必须提示外部 operator/Codex 经 SSH 处理，或由用户重新授权进入 coordinator pipeline。正常项目执行类请求仍默认进入 `smart-arb-pipeline`；工作流自身修复例外收窄为“不走工作流”且目标是 pipeline/profile/auto-repair/git_publish 等运行时问题。
-证据：同步前确认 nofx 没有活跃 `smart-arb-pipeline` 进程；SFTP 备份并写入仓库模板和 live profile，备份后缀为 `SOUL.md.bak-ordinary-collab-20260428T170108`；`arbitrageagent` 模板/live SHA256 为 `70a2126b407e1c83bc0524a9a0a5eead9eaf402acad760ebaaf872e994b6c690`，`spreadagent` 为 `ed23e40fea8f8e21e76fb9e69b0b4c274459c32456a7ad023dcf9d249ddfb11f`；已重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`，两者 `gateway_state=running` 且 Discord `connected`，日志尾部未见新的 `error/exception/traceback/approval required`。
-最后验证：2026-04-28 17:01
-复用建议：以后用户在 Discord 里说“不走工作流”时，先判断是普通沟通/只读讨论，还是 pipeline/profile 自身修复；两者都不启动新的 pipeline run。若需要真实改代码或部署，不能由 Discord profile 直接做，必须切到外部 Codex/SSH operator 或重新进入 coordinator pipeline。
-
-## nofx hardflow runtime
-
-类型：deploy
-范围：`/home/arbops/projects/openclaw-hardflow-backup-20260302`、`/home/arbops/.hermes`、`/home/arbops/.hermes/profiles/{arbitrageagent,spreadagent}`、`/home/arbops/.hermes/cron/jobs.json`
-事实：nofx 是当前 hardflow -> SmartMultiPlatformArbitrage 项目交付工作流的先行部署服务器。SSH alias 为 `nofx`，连接配置在本机 `F:\ssh_keys\ssh_config`；SSH 默认进入 root 时，仓库和 runtime 操作必须切到 `arbops` 用户执行，避免 Git dubious ownership 和 profile 文件属主污染。
-标准路径：
-- hardflow 仓库：`/home/arbops/projects/openclaw-hardflow-backup-20260302`
-- SmartMultiPlatformArbitrage 仓库：`/home/arbops/projects/SmartMultiPlatformArbitrage`
-- Hermes runtime：`/home/arbops/.hermes`
-- live 入口：`/home/arbops/.local/bin/smart-arb-pipeline`
-- Task Center DB：`/home/arbops/.hermes/ops/task-center/task_center.db`
-- 内控 API：tmux `smart-arb-api`，cwd `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`，监听 `127.0.0.1:18080`
-标准安装命令：
-```bash
-python3 skills/library/project-delivery-pipeline/scripts/runtime_installer.py install \
-  --runtime-home /home/arbops/.hermes \
-  --runtime-name hermes \
-  --repo-root /home/arbops/projects/openclaw-hardflow-backup-20260302 \
-  --project-memory-dir /home/arbops/projects/SmartMultiPlatformArbitrage/memory \
-  --task-center-db /home/arbops/.hermes/ops/task-center/task_center.db \
-  --emit-json
+```text
+PROJECT_PIPELINE_PROJECT_DIR=<target repository>
+PROJECT_PIPELINE_PROJECT_KEY=<stable project key>
+HARDFLOW_RUNTIME_HOME=<runtime state directory>
+HARDFLOW_WORKFLOW_REPO=<this workflow repository>
+PROJECT_PIPELINE_RUNTIME_HOST=<runtime label>
+PROJECT_PIPELINE_DEPLOYMENT_COMMAND=<project deployment command>
+PROJECT_PIPELINE_SMOKE_COMMANDS=<command 1;;command 2>
 ```
-最后验证：2026-04-28 19:05
-复用建议：安装前先 `git fetch` 和 `git status --short --branch`；如有脏改动先 `git stash push -u -m pre-pull-hardflow-install-<timestamp>`，再 `git pull --ff-only origin main`。安装后至少检查 runtime installer JSON、`compileall`、定向单测、`/home/arbops/.hermes/ops` 文件、cron jobs、gateway state、内控 API smoke 和 echo smoke。
 
-## 2026-04-28 - 安装 runtime 代码批次 3a44f0b0
+模板中只保存变量名，不保存凭证或机器专属值。
 
-类型：deploy
-范围：nofx hardflow runtime、Hermes ops、cron jobs、Discord profile `SOUL.md`、Discord gateways、内控 API
-事实：本机 runtime 代码批次 `3a44f0b0` 已推送到 `origin/main`；nofx `/home/arbops/projects/openclaw-hardflow-backup-20260302` 已安装该代码批次，安装时工作树 clean，`HEAD...origin/main` 为 `0 0`。后续文档/记忆记录提交可继续 fast-forward 到 `origin/main`，不改变本批 runtime artifact。runtime installer 返回 `ok=true`、`changed=true`，已把最新 `pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 安装到 `/home/arbops/.hermes/ops`，且安装态 SHA256 与仓库源码一致。两个 live profile `SOUL.md` 已从仓库模板同步到 `/home/arbops/.hermes/profiles/<profile>/SOUL.md`，同步前备份为 `SOUL.md.bak-20260428T143343`，随后重启 `hermes-discord-arbitrage` 与 `hermes-discord-spread`。
-证据：远端 `python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol` 通过；远端定向 `unittest` 67 项 OK；`smart-arb-pipeline --help` 正常；`arbitrageagent` gateway PID `1137425`、`spreadagent` gateway PID `1137427`，两者 `gateway_state=running` 且 Discord `connected`；内控 API `127.0.0.1:18080/health` 返回 `status=ok`、`127.0.0.1:18080/api/strategy/status` 返回 `running=false`；`cron/jobs.json` 与最新安装器模板同步，profile `SOUL.md` SHA256 与仓库模板一致。
-最后验证：2026-04-28 14:40
-复用建议：若本仓库修改了 `config/nofx-hermes-profiles/<profile>/SOUL.md`，`runtime_installer.py install` 后还必须同步 live profile 文件并重启两个 Discord gateway；只装 `/home/arbops/.hermes/ops` 不足以让 profile 提示词更新生效。
+## 安装演练
 
-## 2026-04-27 - 安装提交 067fbc43
+```powershell
+pwsh -NoProfile -Command 'python .\setup.py --dry-run --runtime-home .\.codex-tmp\runtime-smoke --runtime-name local --emit-json'
+```
 
-类型：deploy
-范围：nofx hardflow runtime、Hermes ops、cron jobs、Discord gateways、Task Center、内控 API
-事实：nofx hardflow 仓库已拉到 `067fbc43`，与 `origin/main` ahead/behind 为 `0 0`，并重装 runtime。安装前已备份 `/home/arbops/.local/bin/smart-arb-pipeline`、`pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 到 `/home/arbops/.hermes/ops/install/backups/pre-hardflow-install-20260427T151242Z`。安装态 `/home/arbops/.hermes/ops/pipeline_runner.py`、`smart_arb_pipeline_entry.py`、`smart_arb_live_bridge.py` 与仓库源码 SHA256 完全一致；`smart-arb-pipeline --help` 正常。
-证据：远端 `python3 -m py_compile /home/arbops/.hermes/ops/{pipeline_runner.py,smart_arb_pipeline_entry.py,smart_arb_live_bridge.py}` 通过；`python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol` 通过；远端定向 `unittest` 98 项 OK；runtime cron 命中 `backlog_runner_30m`、`repo_hygiene_reviewer_2d`、`source_registry_watcher`；`arbitrageagent` 与 `spreadagent` gateway 均为 `running/connected`；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`；echo smoke `install-smoke-arbitrageagent-20260427T151733781612Z` 为 `status=completed`，Task Center `passed`。`smart-arb-api` 进程 cwd 核对为 `/home/arbops/projects/SmartMultiPlatformArbitrage/智能多平台套利`。
-最后验证：2026-04-27 23:17
-复用建议：远端命令优先使用 Git for Windows `ssh.exe` 或 Paramiko；本机 Windows 自带 `C:\Windows\System32\OpenSSH\ssh.exe` 本轮连 `ssh -V` 都返回 255 且无 stderr。通过 PowerShell 管道把多行脚本送入远端 bash 时要警惕 UTF-8 BOM，必要时改用 Paramiko stdin 执行，避免远端出现 `﻿set: command not found`。
+核对输出中的源仓库、Runtime Home、将写入的 Skills、运维脚本、Cron job 和状态目录。
 
-## 2026-04-27 - 安装提交 429ce994
+## 正式安装
 
-类型：deploy
-范围：nofx hardflow runtime、Hermes ops、Discord profile `SOUL.md`、SmartMultiPlatformArbitrage 主工作区、内控 API
-事实：nofx hardflow 仓库已拉到 `429ce994` 并重装 runtime，修复工作流自修循环、失败补丁回滚、requirements/solution artifact 泛化和 Hermes smoke 跨平台夹具问题。两个 live profile `SOUL.md` 已同步“工作流自修例外”，用户明确说“不要走工作流”或目标是修复 pipeline/bridge/profile/dual-review/auto-repair/git_publish 时，不再从 Discord profile 启动新的 `smart-arb-pipeline` 自修 run，而是只读诊断并提示外部 operator/Codex 通过 SSH 修复 hardflow。`arbitrageagent` 与 `spreadagent` gateway 已重启并恢复 connected。
-证据：远端 `runtime_installer.py install --emit-json` 返回 `ok=true`、`changed=true`；远端 `python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline` 通过；远端 75 项定向 unittest OK；`/home/arbops/.hermes/ops/pipeline_runner.py` 命中 `Resolved Requirement`、`overlapping_dirty_paths`、`rollback_cleanup`；live `SOUL.md` 命中 `auto-repair` 与 `git_publish` 自修例外；`arbitrageagent` PID `667702`、`spreadagent` PID `667704`，gateway 均为 `running` / Discord `connected`；SmartMulti 主工作区为 `## main...origin/main` clean；内控 API `/health` 返回 `status=ok`、`/api/strategy/status` 返回 `running=false`。
-最后验证：2026-04-27 16:39
-复用建议：后续修 hardflow runtime / Discord profile / pipeline 自身时，先走本仓库修改、测试、code-reviewer、push、nofx pull/install/smoke，再同步 live profile 并重启 gateway；不要让 nofx profile 自己调用同一个 pipeline 修自身。
+```powershell
+pwsh -NoProfile -Command 'python .\setup.py --runtime-home "$HOME\.hardflow-runtime" --runtime-name local --emit-json'
+```
 
-## 2026-04-27 - 安装提交 578b3f0
+安装后至少验证：
 
-类型：deploy
-范围：nofx hardflow runtime、Hermes ops、cron jobs、Discord gateways、Task Center
-事实：nofx 仓库从 `44b4dae` fast-forward 到 `578b3f0`，本次没有需要保存的本地 stash。runtime installer 返回 `ok=true`、`changed=true`，安装了 `repo_hygiene_reviewer.py`、`backlog_runner.py`、`smart_arb_live_bridge.py`、`smart_arb_pipeline_entry.py` 等 ops 脚本；runtime cron 已包含 `backlog_runner_30m（持续推进待办）`、`repo_hygiene_reviewer_2d（仓库精简巡检）`、`source_registry_watcher（API来源监控）`。
-证据：远端执行 `python3 -m compileall -q scripts/openclaw-ops skills/library/project-delivery-pipeline skills/library/todo-patrol` 通过；定向单测 53 项 OK；`arbitrageagent` 与 `spreadagent` 的 `gateway_state=running`、`discord=connected`；`curl http://127.0.0.1:18080/health` 返回 `status=ok` 且 `strategy_running=false`；echo smoke `install-smoke-arbitrageagent-20260427T065537Z` 写入 Task Center 且状态 `passed`；受控 backlog runner smoke 任务 `todo-hardflow-install-smoke-20260427T070123Z` 被标记 `passed`，且 Task Center 中 `backlog_runner_attempt` 数量为 1。
-最后验证：2026-04-27 15:01
-复用建议：这次目标 TODO “将本仓库最新 runtime installer 同步到 nofx，验证 `backlog_runner_30m` 已安装并能写入 `backlog_runner_attempt`”已完成。后续真实 backlog runner 若没有推进，先查任务来源、风险、人类确认、澄清状态和 `max_attempts_per_task`。
+1. 安装器返回成功且目标文件 SHA 与仓库源一致。
+2. `project_pipeline_entry.py --help` 和 `live_runtime_bridge.py --help` 可运行。
+3. Runtime Profile 配置解析成功。
+4. dry-run 流水线生成完整阶段与结构化产物。
+5. 若启用部署，项目命令和烟测命令均留下真实结果。
 
-## 2026-04-30 - multicorerouter 本机维护入口安装
+## 升级
 
-类型：deploy
-范围：本机 WSL `/home/ubuntu/projects/openclaw-hardflow-backup-20260302`、Hermes runtime `/home/ubuntu/.hermes`、multicorerouter profile `/home/ubuntu/.hermes/profiles/multicorerouter`。
-事实：openclaw hardflow backup 仓库已克隆到 `/home/ubuntu/projects/openclaw-hardflow-backup-20260302`。新增 `multicorerouter_healthcheck.py` 只读健康检查脚本，覆盖 profile 必要路径、Discord 配置摘要、gateway 进程/screen、pipeline-runs、仓库状态和日志 tail 分类。runtime installer 已把该脚本安装到 `/home/ubuntu/.hermes/ops/multicorerouter_healthcheck.py`，并更新 `/home/ubuntu/.hermes/ops/install/project-delivery-runtime-install.json`。
-证据：本地 `py_compile` 通过；`python3 tests/scripts_openclaw_ops/test_multicorerouter_healthcheck.py -v` 3 项 OK；`python3 tests/scripts_openclaw_ops/test_project_delivery_runtime_installer.py -v` 3 项 OK；安装命令 `runtime_installer.py install --runtime-home /home/ubuntu/.hermes --runtime-name hermes --repo-root /home/ubuntu/projects/openclaw-hardflow-backup-20260302 --project-memory-dir /home/ubuntu/.hermes/profiles/multicorerouter/.workflow/project-memory --task-center-db /home/ubuntu/.hermes/profiles/multicorerouter/ops/task-center/task_center.db --emit-json` 返回 `ok=true`。安装态健康检查返回总状态 OK，检查项 required_paths/config/logs/processes/pipeline_runs/repo 均 OK；日志中仅保留历史 Discord DNS warning，`hard_error_count=0`。
-复用建议：以后检查本机 multicorerouter 工作流，优先运行 `/home/ubuntu/.hermes/ops/multicorerouter_healthcheck.py --format markdown --log-tail-lines 120`。如果脚本报 ATTENTION，再按输出定位 profile、日志、pipeline-runs 或 Git 状态。修改 hardflow 代码后先跑定向单测，再安装到 `/home/ubuntu/.hermes`，确认安装态脚本 smoke OK 后再提交推送。
-最后验证：2026-04-30 15:38 +0800
+1. 记录当前提交、Runtime 配置备份位置和回滚命令。
+2. 快进或应用已审查提交。
+3. 重跑安装器，只同步本次 owner 文件。
+4. 运行语法检查、定向测试和安装态 smoke。
+5. 读取目标 Runtime 中的文件 SHA，确认与仓库一致。
+
+## 回滚
+
+- 代码：回到升级前提交或反向应用本次补丁。
+- Runtime 文件：恢复安装前备份，随后重启对应 Runtime。
+- Cron：恢复原 jobs 文件并复核启用状态。
+- 部署：执行目标项目提供的回滚命令；工作流不猜测服务管理方式。
+
+回滚完成后重新验证入口、配置、任务状态和项目烟测，不以命令返回零替代终态检查。

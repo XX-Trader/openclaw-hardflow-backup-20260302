@@ -1,4 +1,4 @@
-﻿
+
 #!/usr/bin/env python3
 """GitHub web evolution runner.
 
@@ -31,10 +31,34 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 POLICY_DIR = ROOT / "policy"
-policy_dir = str(POLICY_DIR)
-if policy_dir in sys.path:
-    sys.path.remove(policy_dir)
-sys.path.insert(0, policy_dir)
+
+
+def repository_root(start: Path) -> Path | None:
+    return next(
+        (
+            parent
+            for parent in (start, *start.parents)
+            if (parent / "skills" / "library").is_dir() and (parent / "scripts" / "openclaw-ops").is_dir()
+        ),
+        None,
+    )
+
+
+REPOSITORY_ROOT = repository_root(ROOT)
+IMPORT_DIRS = [ROOT, POLICY_DIR]
+if REPOSITORY_ROOT is not None:
+    IMPORT_DIRS.extend(
+        [
+            REPOSITORY_ROOT / "scripts" / "openclaw-ops" / "shared",
+            REPOSITORY_ROOT / "skills" / "library" / "control-plane-ops" / "scripts",
+            REPOSITORY_ROOT / "skills" / "library" / "control-plane-ops" / "scripts" / "policy",
+            REPOSITORY_ROOT / "skills" / "library" / "openclaw-workflow-manager" / "scripts",
+        ]
+    )
+for import_dir in reversed(IMPORT_DIRS):
+    value = str(import_dir)
+    if import_dir.is_dir() and value not in sys.path:
+        sys.path.insert(0, value)
 
 from utf8_runtime import configure_process_utf8_stdio
 from task_center import TaskCenter  # type: ignore
@@ -110,8 +134,8 @@ PROJECT_SCOPE_KEYWORDS = {
 SKILL_SCOPE_KEYWORDS = {
     "agent",
     "api",
-    "binance",
-    "exchange",
+    "automation",
+    "integration",
     "hook",
     "hooks",
     "openclaw",
@@ -119,7 +143,7 @@ SKILL_SCOPE_KEYWORDS = {
     "plugins",
     "skill",
     "skills",
-    "trading",
+    "service",
     "workflow",
 }
 INFRA_REPO_FULL_NAMES = {

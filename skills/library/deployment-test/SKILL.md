@@ -4,7 +4,7 @@ displayName: "部署测试"
 version: "1.0.0"
 description: 全栈项目部署后自动化测试技能。支持交互式快速测试、端口检测、API 接口测试、浏览器 UI 自动化测试、测试报告生成。适用于 Django + Vue 全栈项目部署后的验收测试。
 description_zh: "deployment-test技能，详见 SKILL.md"
-author: "superma"
+author: "maintainers"
 license: "MIT"
 updated_at: "2026-01-25"
 

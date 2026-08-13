@@ -1,6 +1,6 @@
 # HardFlow Core（默认编码工作流底座）
 
-HardFlow Core 是 OpenClaw 工作流体系的共享流程内核，不再只表示“一个很强的编码脚本链”。  
+HardFlow Core 是 OpenClaw 工作流体系的共享流程内核，不再只表示“一个很强的编码脚本链”。
 从 2026-03-22 起，推荐统一口径：
 
 - 平台总流程：`需求输入 -> 澄清 -> 拆分 -> 选择 workflow -> 进入执行闭环`
@@ -157,7 +157,7 @@ bash scripts/hardflow/hardflow-run.sh acceptance-test
 3. `openclaw plugins list`
 4. `openclaw hooks check --json`
 5. `openclaw cron status --json`
-6. `python scripts/openclaw-ops/check_openviking_stack.py --workspace-root .`
+6. `python skills/library/openclaw-workflow-manager/scripts/check_openviking_stack.py --workspace-root .`
 
 运行说明：
 

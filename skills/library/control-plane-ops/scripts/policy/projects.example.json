@@ -1,15 +1,15 @@
 {
   "projects": [
     {
-      "name": "dabaipm-website",
+      "name": "example-web-service",
       "path": "/srv/projects/DabaiPMwebsite",
       "remote_name": "origin",
       "expected_remote": "git@github.com:your-org/DabaiPMwebsite.git",
       "check_remote": true
     },
     {
-      "name": "quant-trading-engine",
-      "path": "/srv/projects/quant-trading-engine",
+      "name": "workflow-engine",
+      "path": "/srv/projects/workflow-engine",
       "remote_name": "origin",
       "expected_remote": "",
       "check_remote": true

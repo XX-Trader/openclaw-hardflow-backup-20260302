@@ -377,8 +377,8 @@ Cron 触发（每日）
   │
   ├── Step 2: 分类归档
   │   ├── 事实类 → 更新 MEMORY.md / openclaw-memory
-  │   │   "项目 xx-trader 部署在 大白pm:8080"
-  │   │   "xx-trader 日志路径: /var/log/trader/"
+  │   │   "项目 demo-service 部署在 HOST_B:8080"
+  │   │   "demo-service 日志路径: ${SERVICE_LOG_DIR}/"
   │   │
   │   ├── 经验类 → 写入 .workflow/experience/
   │   │   "PowerShell 的 && 要用 ; 替代"
@@ -399,9 +399,9 @@ Cron 触发（每日）
 
 | 维度 | 示例 |
 |------|------|
-| 项目位置 | `xx-trader: H:\GitHub\xx-trader, 远程: /home/ubuntu/xx-trader` |
+| 项目位置 | `demo-service: C:\workspace\demo-service, 远程: /home/runtime-user/demo-service` |
 | API/服务 | `端口 8080, 入口 /api/v1/, gunicorn + nginx` |
-| 日志路径 | `/var/log/trader/, 本机 logs/` |
+| 日志路径 | `${SERVICE_LOG_DIR}/, 本机 logs/` |
 | 核心功能 | 跟单信号、余额监控、策略执行 |
 | 最佳技能组合 | 部署用 db-deploy + deployment-test |
 | 已知陷阱 | wallet 初始化必须在 unlock 后调用 |

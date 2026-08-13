@@ -30,11 +30,11 @@ class ControlPlaneDashboardTests(unittest.TestCase):
     def test_build_snapshot_includes_summary_tasks_benchmark_trends_and_roi(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         dashboard_module = load_module(
             "control_plane_dashboard",
-            "scripts/openclaw-ops/control_plane_dashboard.py",
+            "skills/library/control-plane-ops/scripts/control_plane_dashboard.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -208,11 +208,11 @@ class ControlPlaneDashboardTests(unittest.TestCase):
     def test_main_writes_json_markdown_and_html_outputs(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         dashboard_module = load_module(
             "control_plane_dashboard",
-            "scripts/openclaw-ops/control_plane_dashboard.py",
+            "skills/library/control-plane-ops/scripts/control_plane_dashboard.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

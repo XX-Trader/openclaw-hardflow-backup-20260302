@@ -67,13 +67,13 @@ metadata:
 **示例**：
 ```bash
 api-registry-manager add \
-  --project-key xx-trader \
+  --project-key demo-service \
   --registry-type api \
   --entry '{
-    "api_id": "freqtrade-rest",
-    "provider_id": "freqtrade",
+    "api_id": "example-service-rest",
+    "provider_id": "example-service",
     "base_url": "http://localhost:8080/api/v1",
-    "docs_url": "https://www.freqtrade.io/en/stable/rest-api/",
+    "docs_url": "https://example.com/api/docs",
     "version": "2024.4",
     "endpoints": [...],
     "auth_type": "bearer",
@@ -129,17 +129,17 @@ api-registry-manager add \
 
 ```json
 {
-  "project_key": "xx-trader",
+  "project_key": "demo-service",
   "version": "1.0.0",
   "last_updated": "2026-04-22T10:00:00Z",
   "apis": [
     {
-      "api_id": "freqtrade-rest",
-      "provider_id": "freqtrade",
+      "api_id": "example-service-rest",
+      "provider_id": "example-service",
       "base_url": "http://localhost:8080/api/v1",
-      "docs_url": "https://www.freqtrade.io/en/stable/rest-api/",
-      "changelog_url": "https://github.com/freqtrade/freqtrade/releases",
-      "repo_url": "https://github.com/freqtrade/freqtrade",
+      "docs_url": "https://example.com/api/docs",
+      "changelog_url": "https://example.com/releases",
+      "repo_url": "https://example.com/repository",
       "version": "2024.4",
       "endpoints": [
         {
@@ -163,18 +163,18 @@ api-registry-manager add \
 
 ```json
 {
-  "project_key": "xx-trader",
+  "project_key": "demo-service",
   "version": "1.0.0",
   "last_updated": "2026-04-22T10:00:00Z",
   "sources": [
     {
-      "source_id": "freqtrade-official",
-      "provider_id": "freqtrade",
+      "source_id": "example-service-official",
+      "provider_id": "example-service",
       "source_type": "github_repo",
       "urls": {
-        "docs": "https://www.freqtrade.io/en/stable/",
-        "changelog": "https://github.com/freqtrade/freqtrade/releases",
-        "repo": "https://github.com/freqtrade/freqtrade",
+        "docs": "https://example.com/docs",
+        "changelog": "https://example.com/releases",
+        "repo": "https://example.com/repository",
         "sdk": ""
       },
       "current_version": "2024.4",

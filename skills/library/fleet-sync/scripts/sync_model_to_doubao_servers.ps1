@@ -1,6 +1,6 @@
-﻿param(
-    [string[]]$Servers = @("pm-website", "大白pm", "nofx", "coingod", "tokyo-claw"),
-    [string]$SshConfig = "D:\ssh_keys\ssh_config",
+param(
+    [string[]]$Servers = @(),
+    [string]$SshConfig = "",
     [string]$PrimaryModel = "kimicode/doubao-seed-2.0-pro",
     [string]$FallbackModel = "openai-codex/gpt-5.3-codex",
     [string]$DoubaoProvider = "kimicode",
@@ -14,6 +14,16 @@
 $ErrorActionPreference = "Stop"
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
+if (-not $Servers -or $Servers.Count -eq 0) {
+    $Servers = @($env:HARDFLOW_FLEET_SERVERS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+if (-not $Servers -or $Servers.Count -eq 0) {
+    throw "provide hosts with -Servers or HARDFLOW_FLEET_SERVERS"
+}
+if ([string]::IsNullOrWhiteSpace($SshConfig)) {
+    $SshConfig = if ($env:SSH_CONFIG) { $env:SSH_CONFIG } else { Join-Path $HOME ".ssh/config" }
+}
+
 if ([string]::IsNullOrWhiteSpace($DoubaoApiKey)) {
     throw "DoubaoApiKey or KIMI_API_KEY must be set; refusing to use a hardcoded model key."
 }
@@ -21,8 +31,8 @@ if ([string]::IsNullOrWhiteSpace($DoubaoApiKey)) {
 if (!(Test-Path $SshConfig)) {
     throw "ssh_config not found: $SshConfig"
 }
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$localGatewayServiceManager = Join-Path $repoRoot "scripts\openclaw-ops\policy\gateway_service_manager.py"
+$repoRoot = if ($env:HARDFLOW_WORKFLOW_REPO) { $env:HARDFLOW_WORKFLOW_REPO } else { (& git -C $PSScriptRoot rev-parse --show-toplevel).Trim() }
+$localGatewayServiceManager = Join-Path $repoRoot "skills\library\control-plane-ops\scripts\policy\gateway_service_manager.py"
 if (!(Test-Path $localGatewayServiceManager)) {
     throw "missing gateway service manager: $localGatewayServiceManager"
 }

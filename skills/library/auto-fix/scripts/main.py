@@ -195,7 +195,7 @@ def run_tests(config):
     if result.returncode != 0:
         print_warning(f"测试未完全通过 (退出码: {result.returncode})")
 
-    # 返回测试结果（由问题分析器解析）
+    # 输出测试结果（由问题分析器解析）
     return {"success": result.returncode == 0, "exit_code": result.returncode}
 
 

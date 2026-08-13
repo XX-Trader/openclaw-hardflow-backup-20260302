@@ -182,7 +182,7 @@
         "id": "coordinator",
         "default": true,
         "name": "coordinator",
-        "workspace": "/home/ubuntu/.openclaw/workspace-coordinator",
+        "workspace": "${OPENCLAW_HOME}/workspace-coordinator",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner",
         "subagents": {
@@ -201,51 +201,51 @@
       {
         "id": "doc-writer",
         "name": "doc-writer",
-        "workspace": "/home/ubuntu/.openclaw/workspace-doc-writer",
+        "workspace": "${OPENCLAW_HOME}/workspace-doc-writer",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "frontend-dev",
         "name": "frontend-dev",
-        "workspace": "/home/ubuntu/.openclaw/workspace-frontend-dev",
-        "agentDir": "/home/ubuntu/.openclaw/agents/frontend-dev/agent",
+        "workspace": "${OPENCLAW_HOME}/workspace-frontend-dev",
+        "agentDir": "${OPENCLAW_HOME}/agents/frontend-dev/agent",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "backend-dev",
         "name": "backend-dev",
-        "workspace": "/home/ubuntu/.openclaw/workspace-backend-dev",
+        "workspace": "${OPENCLAW_HOME}/workspace-backend-dev",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "reviewer",
         "name": "reviewer",
-        "workspace": "/home/ubuntu/.openclaw/workspace-reviewer",
+        "workspace": "${OPENCLAW_HOME}/workspace-reviewer",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "tester",
         "name": "tester",
-        "workspace": "/home/ubuntu/.openclaw/workspace-tester",
+        "workspace": "${OPENCLAW_HOME}/workspace-tester",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "deployer",
         "name": "deployer",
-        "workspace": "/home/ubuntu/.openclaw/workspace-deployer",
+        "workspace": "${OPENCLAW_HOME}/workspace-deployer",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       },
       {
         "id": "project-agent",
         "name": "project-agent",
-        "workspace": "/home/ubuntu/.openclaw/workspace-project-agent",
-        "agentDir": "/home/ubuntu/.openclaw/agents/project-agent/agent",
+        "workspace": "${OPENCLAW_HOME}/workspace-project-agent",
+        "agentDir": "${OPENCLAW_HOME}/agents/project-agent/agent",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner",
         "subagents": {
@@ -257,8 +257,8 @@
       {
         "id": "web-agent",
         "name": "web-agent",
-        "workspace": "/home/ubuntu/.openclaw/workspace-web-agent",
-        "agentDir": "/home/ubuntu/.openclaw/agents/web-agent/agent",
+        "workspace": "${OPENCLAW_HOME}/workspace-web-agent",
+        "agentDir": "${OPENCLAW_HOME}/agents/web-agent/agent",
         "model": "openai-codex/gpt-5.5",
         "runtimeRole": "workflow-stage-owner"
       }
@@ -340,7 +340,7 @@
   },
   "channels": {
     "telegram": {
-      "enabled": true,
+      "enabled": false,
       "commands": {
         "native": true,
         "nativeSkills": false
@@ -351,13 +351,11 @@
           "requireMention": false
         }
       },
-      "allowFrom": [
-        "1309629117",
-        "1730012345"
-      ],
+      "allowFrom": [],
       "groupAllowFrom": [],
       "groupPolicy": "open",
-      "streaming": "off"
+      "streaming": "off",
+      "botToken": "${TELEGRAM_BOT_TOKEN}"
     }
   },
   "gateway": {
@@ -366,7 +364,7 @@
     "bind": "loopback",
     "auth": {
       "mode": "token",
-      "token": "3fe778da5b51a39780dc4d53add1a1ac"
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
     "tailscale": {
       "mode": "off",

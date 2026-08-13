@@ -439,7 +439,7 @@ class GeminiSourceAdapter:
 class HermesSourceAdapter:
     """Hermes session 数据源适配器。
 
-    路径: ~/.hermes/sessions（WSL: /home/ubuntu/.hermes/sessions/）
+    路径: ~/.hermes/sessions（WSL: /home/runtime-user/.hermes/sessions/）
     格式: JSONL 或 SQLite state.db
     游标策略: mtime / session_id_set
     """

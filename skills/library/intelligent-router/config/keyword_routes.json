@@ -443,7 +443,7 @@
         "agent配置"
       ],
       "agent": "coordinator",
-      "description": "按当前 nofx workflow owner 口径评估是否需要调整阶段 owner 或配置；不再自动创建 agent",
+      "description": "按当前 runtime-host workflow owner 口径评估是否需要调整阶段 owner 或配置；不再自动创建 agent",
       "priority": 1
     }
   ]

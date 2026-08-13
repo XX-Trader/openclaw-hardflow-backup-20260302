@@ -1,20 +1,20 @@
 ---
 name: engineering-cybernetics-experience-loop
-description: "Use when any nofx Hermes agent consolidates work experience under Qian Xuesen's Engineering Cybernetics standard: store only bottom-level logic in memory, put reusable procedures in skills, and run an end-of-day skill curation loop."
+description: "Use when any runtime-host Hermes agent consolidates work experience under Qian Xuesen's Engineering Cybernetics standard: store only bottom-level logic in memory, put reusable procedures in skills, and run an end-of-day skill curation loop."
 version: 1.1.0
 author: Hermes Agent
 license: MIT
 metadata:
   hermes:
-    tags: [cybernetics, memory, skills, nofx, writeback, operations]
-    related_skills: [hermes-agent, hermes-agent-skill-authoring, smart-arb-nofx-hermes-ops]
+    tags: [cybernetics, memory, skills, runtime-host, writeback, operations]
+    related_skills: [hermes-agent, hermes-agent-skill-authoring, project-delivery-runtime-host-hermes-ops]
 ---
 
 # Engineering Cybernetics Experience Loop
 
 ## Overview
 
-This skill is the shared experience-writeback rule for nofx Hermes agents. Use Qian Xuesen's 《工程控制论》 as the first standard for learning from SmartMultiPlatformArbitrage, hardflow workflow/runtime/profile, and multi-agent operations.
+This skill is the shared experience-writeback rule for runtime-host Hermes agents. Use Qian Xuesen's 《工程控制论》 as the first standard for learning from TARGET_PROJECT, hardflow workflow/runtime/profile, and multi-agent operations.
 
 Treat every task as a controlled engineering system with goals, boundaries, observations, feedback, control actions, disturbances, safety constraints, verification, and adaptive correction.
 
@@ -27,7 +27,7 @@ The storage split is strict:
 
 Use this after:
 
-- completing a complex nofx / SmartMulti / hardflow / Hermes profile task;
+- completing a complex runtime-host / SmartMulti / hardflow / Hermes profile task;
 - receiving a user correction about workflow, memory, skills, review gates, routing, or operating standards;
 - discovering a repeatable failure mode or recovery pattern;
 - deciding whether knowledge belongs in memory or skills;
@@ -46,7 +46,7 @@ For every lesson, express the control loop before writing it back:
 5. **Controller / decision rule** — which agent/operator/stage decides the next action and under what rule.
 6. **Actuator / action** — code change, config change, runtime install, restart, documentation writeback, skill patch, memory update, pipeline rerun, or manual escalation.
 7. **Disturbance / uncertainty** — dirty worktrees, stale runtime copies, credential boundaries, vague requirements, reviewer drift, artifact mismatch, permission errors, or channel routing ambiguity.
-8. **Safety and stability constraints** — no secret printing, no unsafe reset/force push, no production data deletion, no real trading/order/fund actions without explicit high-risk confirmation, and `PRODUCTION_TRADING_ENABLED=false` by default.
+8. **Safety and stability constraints** — no secret printing, no unsafe reset/force push, no production data deletion, no destructive production actions without an explicit target, verified backup, audit record, and rollback command.
 9. **Verification and acceptance** — targeted tests, `git diff --check`, compileall, smoke, remote containment, status-card evidence, gateway state, or explicit manual acceptance.
 10. **Adaptive correction** — if feedback fails, patch the controller/skill/workflow rather than repeating the same open-loop action.
 
@@ -159,7 +159,7 @@ At the end of a work day, run this closed loop:
 3. **没有控制对象边界。** 不区分业务仓库、hardflow runtime、profile/SOUL、Feishu、Task Center，会导致错误执行链路。
 4. **只总结成功，不总结反馈失败。** 控制论关注反馈误差；失败、误报、延迟、扰动更应该进入 skill 的 pitfall/verification。
 5. **重复创建小 skill。** 先搜索并 patch 现有技能，避免技能库碎片化。
-6. **忽略安全稳定性。** 涉及 secret、git、runtime、交易/资金动作时，安全约束是控制系统稳定性的组成部分，不是附注。
+6. **忽略安全稳定性。** 涉及 secret、git、runtime、生产数据动作时，安全约束是控制系统稳定性的组成部分，不是附注。
 7. **把单个 profile 的规则误当通用规则。** 通用规则必须落到 source SOUL / live SOUL / shared skill，不能只写当前聊天 profile 的 memory。
 
 ## Verification Checklist

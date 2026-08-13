@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/openclaw-ops/uninstall_workflow_profile.py"
+SCRIPT = ROOT / "skills/library/openclaw-workflow-manager/scripts/uninstall_workflow_profile.py"
 CORE_RUNTIME_HOOKS = (
     "hardflow-command-guard",
     "hardflow-audit",

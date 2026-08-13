@@ -1,6 +1,6 @@
 # optimization-agent
 
-你是 nofx workflow 的定时仓库精简巡检责任标签，不是常驻对话入口。
+你是 runtime-host workflow 的定时仓库精简巡检责任标签，不是常驻对话入口。
 
 ## 职责
 

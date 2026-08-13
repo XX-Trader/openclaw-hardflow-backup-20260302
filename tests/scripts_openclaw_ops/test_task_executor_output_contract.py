@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def load_module(name: str, rel_path: str):
     path = ROOT / rel_path
-    if not path.exists() and rel_path == "scripts/openclaw-ops/policy/task_executor_runner.py":
+    if not path.exists() and rel_path == "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py":
         path = ROOT / "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py"
     sys.path.insert(0, str(path.parent))
     try:
@@ -30,7 +30,7 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
     def test_evaluate_stage_contract_builds_evidence_and_validation_summary(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         assessment = module.evaluate_stage_contract(
@@ -70,7 +70,7 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
     def test_evaluate_stage_contract_flags_missing_validation_evidence(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         assessment = module.evaluate_stage_contract(
@@ -109,7 +109,7 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
     def test_gateway_agent_step_uses_chat_history_reply_for_local_runs(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         history_payload = {
@@ -187,7 +187,7 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
     def test_warning_only_stderr_does_not_become_partial_reply(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         contract, agent_json, reply_text, sanitized_stderr = module.contract_from_agent_result(
@@ -209,7 +209,7 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
     def test_payload_json_takes_priority_over_benign_stderr_warning(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         stdout = (
@@ -234,7 +234,7 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
     def test_hermes_bin_wraps_chat_output_with_runtime_refs(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         mocked_result = SimpleNamespace(
@@ -244,7 +244,7 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
         )
         with mock.patch.object(module.subprocess, "run", return_value=mocked_result) as mocked_run:
             rc, out, err, attempts, details = module.call_agent_with_retries(
-                "/home/arbops/.local/bin/hermes",
+                "hermes",
                 "tester",
                 "prompt",
                 "task-1",
@@ -269,7 +269,7 @@ class TaskExecutorOutputContractTests(unittest.TestCase):
         self.assertIn('"status":"passed"', payload["payloads"][0]["text"])
 
         cmd = mocked_run.call_args.args[0]
-        self.assertEqual(cmd[:3], ["/home/arbops/.local/bin/hermes", "--pass-session-id", "chat"])
+        self.assertEqual(cmd[:3], ["hermes", "--pass-session-id", "chat"])
         self.assertIn("--ignore-rules", cmd)
         self.assertEqual("3", cmd[cmd.index("--max-turns") + 1])
 

@@ -1,6 +1,6 @@
 {
   "source_report": "cron/jobs.json",
-  "runtime_note": "Current nofx task layer uses ops-agent, project-agent, and optimization-agent as responsibility labels. These are scheduled task owners, not long-lived server processes.",
+  "runtime_note": "Current runtime-host task layer uses ops-agent, project-agent, and optimization-agent as responsibility labels. These are scheduled task owners, not long-lived server processes.",
   "jobs": [
     {
       "job_id": "16cb8d03-beb9-4697-927d-35952353bf8e",

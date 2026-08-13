@@ -97,7 +97,7 @@ When creating a new PowerPoint presentation from scratch, use the **html2pptx** 
 **Choosing colors creatively**:
 - **Think beyond defaults**: What colors genuinely match this specific topic? Avoid autopilot choices.
 - **Consider multiple angles**: Topic, industry, mood, energy level, target audience, brand identity (if mentioned)
-- **Be adventurous**: Try unexpected combinations - a healthcare presentation doesn't have to be green, finance doesn't have to be navy
+- **Be adventurous**: Try unexpected combinations - a healthcare presentation doesn't have to be green, enterprise content doesn't have to be navy
 - **Build your palette**: Pick 3-5 colors that work together (dominant colors + supporting tones + accent)
 - **Ensure contrast**: Text must be clearly readable on backgrounds
 

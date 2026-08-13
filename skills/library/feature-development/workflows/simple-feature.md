@@ -57,14 +57,14 @@
 
 ### 示例1：添加导出按钮
 
-**用户输入**: "给交易员列表加一个导出按钮"
+**用户输入**: "给成员列表加一个导出按钮"
 
 **我的执行**:
 ```
-1. 直接在 TraderList.vue 中添加导出按钮
+1. 直接在 MemberList.vue 中添加导出按钮
 2. 实现导出函数（使用 xlsx 库）
 3. 交付：
-   - 修改了：src/views/pm-robot/TraderList.vue
+   - 修改了：src/views/pm-robot/MemberList.vue
    - 新增了：exportToExcel() 函数
    - 注意：导出前需要确认导出字段
 ```

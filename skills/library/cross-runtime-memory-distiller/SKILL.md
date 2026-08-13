@@ -27,8 +27,8 @@ description: >
 
 ```bash
 # 1. 克隆仓库（如果还没有）
-git clone https://github.com/XX-Trader/openclaw-hardflow-backup-20260302.git
-cd openclaw-hardflow-backup-20260302
+git clone https://github.com/ORG/workflow-infra.git
+cd workflow-infra
 
 # 2. 验证安装
 python skills/library/cross-runtime-memory-distiller/scripts/distill_runner.py --help
@@ -109,7 +109,7 @@ python skills/library/cross-runtime-memory-distiller/scripts/distill_runner.py `
   --sources claude,docs `
   --since-hours 48 `
   --emit-bridge-report `
-  --workspace "H:/GitHub/openclaw-hardflow-backup-20260302" `
+  --workspace "C:/workspace/workflow-infra" `
   --report-dir "$HOME/.openclaw/ops/distill/reports"
 
 # Linux / macOS / WSL
@@ -118,7 +118,7 @@ python skills/library/cross-runtime-memory-distiller/scripts/distill_runner.py \
   --sources claude,docs \
   --since-hours 48 \
   --emit-bridge-report \
-  --workspace "$HOME/GitHub/openclaw-hardflow-backup-20260302" \
+  --workspace "$HOME/GitHub/workflow-infra" \
   --report-dir ~/.openclaw/ops/distill/reports
 ```
 
@@ -154,7 +154,7 @@ python skills/library/cross-runtime-memory-distiller/scripts/memory_write_gatewa
 ```bash
 # 扫描全平台技能并生成索引
 python skills/library/cross-runtime-memory-distiller/scripts/skill_indexer.py \
-  --workspace "H:/GitHub/openclaw-hardflow-backup-20260302" \
+  --workspace "C:/workspace/workflow-infra" \
   --output skill-index.json
 
 # 搜索技能
@@ -163,7 +163,7 @@ python skills/library/cross-runtime-memory-distiller/scripts/skill_indexer.py --
 
 # 对比差异（新增/删除/变更）
 python skills/library/cross-runtime-memory-distiller/scripts/skill_indexer.py \
-  --workspace "H:/GitHub/openclaw-hardflow-backup-20260302" \
+  --workspace "C:/workspace/workflow-infra" \
   --output skill-index.json --diff
 ```
 
@@ -204,7 +204,7 @@ memory_write_gateway.py:
 | Claude 会话 | `claude` | `~/.claude/projects/` 下的 JSONL 文件 | 自动发现所有项目会话 |
 | Gemini Brain | `gemini` | `~/.gemini/antigravity/brain/` | Markdown 和 JSON 产物 |
 | OpenClaw 会话 | `openclaw` | `~/.openclaw/sessions/` 下的 JSONL | OpenClaw agent 运行记录 |
-| Hermes 会话 | `hermes` | WSL `/home/ubuntu/.hermes/sessions/` | 通过 UNC 路径读取 |
+| Hermes 会话 | `hermes` | WSL `/home/runtime-user/.hermes/sessions/` | 通过 UNC 路径读取 |
 | 仓库文档 | `docs` | `--workspace` 下的 `docs/**/*.md` + `todo.md` + `done.md` | 需指定 `--workspace` |
 
 多数据源可自由组合：`--sources claude,gemini,docs`

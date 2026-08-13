@@ -26,11 +26,11 @@
 
 与本标准相关的唯一事实来源顺序如下：
 
-1. 本文档  
-2. [OpenClaw 基建模板文档](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/templates/openclaw-foundation-contract-templates.md)  
-3. [FIELD_DICTIONARY.md](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/policy/FIELD_DICTIONARY.md)  
-4. [workflow-profile-registry.json](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/policy/workflow-profile-registry.json)  
-5. [benchmark-suite-registry.json](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/policy/benchmark-suite-registry.json)  
+1. 本文档
+2. [OpenClaw 基建模板文档](/docs/templates/openclaw-foundation-contract-templates.md)
+3. [FIELD_DICTIONARY.md](/skills/library/control-plane-ops/scripts/policy/FIELD_DICTIONARY.md)
+4. [workflow-profile-registry.json](/skills/library/control-plane-ops/scripts/policy/workflow-profile-registry.json)
+5. [benchmark-suite-registry.json](/skills/library/control-plane-ops/scripts/policy/benchmark-suite-registry.json)
 6. 运行时代码实现
 
 如果文档与代码冲突：
@@ -198,7 +198,7 @@
 
 ## 11. 关联文档
 
-- [OpenClaw 基建模板文档](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/templates/openclaw-foundation-contract-templates.md)
-- [FIELD_DICTIONARY.md](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/policy/FIELD_DICTIONARY.md)
-- [workflow-profile-registry.json](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/policy/workflow-profile-registry.json)
-- [benchmark-suite-registry.json](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/policy/benchmark-suite-registry.json)
+- [OpenClaw 基建模板文档](/docs/templates/openclaw-foundation-contract-templates.md)
+- [FIELD_DICTIONARY.md](/skills/library/control-plane-ops/scripts/policy/FIELD_DICTIONARY.md)
+- [workflow-profile-registry.json](/skills/library/control-plane-ops/scripts/policy/workflow-profile-registry.json)
+- [benchmark-suite-registry.json](/skills/library/control-plane-ops/scripts/policy/benchmark-suite-registry.json)

@@ -36,7 +36,7 @@ python project_memory_writer.py \
 ```markdown
 ## 项目路由产物
 
-- project_key: xx-trader
+- project_key: demo-service
 - artifact_type: decision
 - priority: high
 
@@ -69,9 +69,9 @@ python project_memory_writer.py \
   "skipped_reason": "missing_project_key",
   "routes": [
     {
-      "project_key": "xx-trader",
+      "project_key": "demo-service",
       "artifact_type": "decision",
-      "target_file": ".workflow/project-memory/xx-trader/DECISIONS.md",
+      "target_file": ".workflow/project-memory/demo-service/DECISIONS.md",
       "status": "written"
     }
   ],

@@ -35,7 +35,7 @@
 
 | 组件 | 路径 | 规模 |
 |------|------|------|
-| MemTidy 执行器 | `scripts/openclaw-ops/memtidy_runner.py` | 518行 / 18KB |
+| MemTidy 执行器 | `skills/library/cross-runtime-memory-distiller/scripts/distill_runner.py` | 518行 / 18KB |
 | 规则配置 | `config/memtidy_rules.json` | 1.4KB |
 
 ## 关联定时任务

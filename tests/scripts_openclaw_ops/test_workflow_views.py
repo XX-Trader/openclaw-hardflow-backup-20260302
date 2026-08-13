@@ -26,7 +26,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_control_plane_summary_event_summarizes_incidents_and_vetoes(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         summary = {
@@ -76,7 +76,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_benchmark_sweep_event_summarizes_failures_and_promotions(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         summary = {
@@ -122,7 +122,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_task_control_plane_event_summarizes_open_incident_and_benchmark(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         report = {
@@ -199,7 +199,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_task_control_plane_event_error_mode_hides_clean_task(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         report = {
@@ -249,7 +249,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_task_executor_human_view_shows_structured_task_details_and_progress(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         summary = {
@@ -314,7 +314,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_task_executor_error_notify_hides_success_run_from_human_view(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         summary = {
@@ -345,7 +345,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_task_executor_human_view_explains_preflight_blocked_reassign(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         summary = {
@@ -385,7 +385,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_task_executor_human_view_uses_compact_problem_cards(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         summary = {
@@ -446,7 +446,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_task_executor_human_view_delta_only_shows_changed_items(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         summary = {
@@ -511,7 +511,7 @@ class WorkflowViewsTests(unittest.TestCase):
     def test_ops_scan_human_view_summarizes_failure_reason_and_repair_progress(self):
         module = load_module(
             "workflow_views",
-            "scripts/openclaw-ops/workflow_views.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         )
 
         record = {

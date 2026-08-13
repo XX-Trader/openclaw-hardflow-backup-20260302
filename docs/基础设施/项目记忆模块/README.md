@@ -32,14 +32,14 @@ def inject_project_memory(project_key: str) -> str:
     profile = load(f".workflow/project-memory/{project_key}/PROJECT_PROFILE.md")
     rules = load(f".workflow/project-memory/{project_key}/DELIVERY_RULES.md")
     decisions_summary = summarize(f".workflow/project-memory/{project_key}/DECISIONS.md")
-    
+
     return f"""
     【项目上下文】
     {profile}
-    
+
     【交付规则】
     {rules}
-    
+
     【关键决策】
     {decisions_summary}
     """
@@ -71,7 +71,7 @@ def inject_project_memory(project_key: str) -> str:
 
 ```json
 {
-  "project_key": "xx-trader",
+  "project_key": "demo-service",
   "session_id": "sess-20260422-001",
   "inject_level": "full|summary|minimal"
 }
@@ -81,7 +81,7 @@ def inject_project_memory(project_key: str) -> str:
 
 ```json
 {
-  "project_key": "xx-trader",
+  "project_key": "demo-service",
   "session_id": "sess-20260422-001",
   "injected_files": ["PROJECT_PROFILE.md", "DELIVERY_RULES.md"],
   "injected_tokens": 2048,

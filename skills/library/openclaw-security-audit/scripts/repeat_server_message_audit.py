@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -15,13 +16,6 @@ from typing import Any
 
 
 UTC = timezone.utc
-DEFAULT_SERVERS = [
-    "pm-website",
-    "大白pm",
-    "nofx",
-    "coingod",
-    "tokyo-claw",
-]
 DEFAULT_TOTAL_ROUNDS = 4
 DEFAULT_INTERVAL_SECONDS = 3 * 60 * 60
 DEFAULT_RECENT_LIMIT = 50
@@ -206,7 +200,7 @@ def run_remote_python(server: str, ssh_config: str, script: str, *, timeout_seco
     return payload
 
 
-def build_remote_probe_script(server: str) -> str:
+def build_remote_probe_script(server: str, remote_repo_path: str = "") -> str:
     return f"""
 from pathlib import Path
 import datetime
@@ -217,13 +211,17 @@ server = {json.dumps(server, ensure_ascii=False)}
 home = Path.home()
 openclaw_home = home / ".openclaw"
 repo_path = ""
-for pattern in ("openclaw-hardflow-backup-*", "openclaw-*"):
-    candidates = sorted((p for p in home.glob(pattern) if p.is_dir()), key=lambda item: item.name, reverse=True)
-    for candidate in candidates:
-        if (candidate / "scripts/openclaw-ops/install_workflow_profile.py").exists():
-            repo_path = str(candidate)
-            break
-    if repo_path:
+configured_repo = {json.dumps(remote_repo_path, ensure_ascii=False)}
+candidates = []
+if configured_repo:
+    candidates.append(Path(configured_repo).expanduser())
+candidates.extend(sorted((p for p in home.iterdir() if p.is_dir()), key=lambda item: item.name))
+for candidate in candidates:
+    if (
+        (candidate / "setup.py").is_file()
+        and (candidate / "skills/library/project-delivery-pipeline").is_dir()
+    ):
+        repo_path = str(candidate.resolve())
         break
 
 jobs_file = openclaw_home / "cron" / "jobs.json"
@@ -315,8 +313,6 @@ import subprocess
 server = {json.dumps(server, ensure_ascii=False)}
 repo_path = Path({json.dumps(repo_path, ensure_ascii=False)})
 openclaw_home = Path({json.dumps(openclaw_home, ensure_ascii=False)})
-ops_target = openclaw_home / "ops"
-
 def clip(text: str, max_lines: int = 20, max_chars: int = 2400) -> str:
     value = str(text or "").strip()
     if not value:
@@ -331,31 +327,13 @@ if (repo_path / ".git").exists():
     commands.append(("git_pull", ["git", "-C", str(repo_path), "pull", "--ff-only", "origin", "main"], 300))
 commands.append(
     (
-        "sync_ops",
+        "install_runtime",
         [
             "python3",
-            str(repo_path / "scripts/openclaw-ops/sync_openclaw_ops_files.py"),
-            "--source-dir",
-            str(repo_path / "scripts/openclaw-ops"),
-            "--target-ops-dir",
-            str(ops_target),
-            "--emit-json",
-        ],
-        1800,
-    )
-)
-commands.append(
-    (
-        "install_profile",
-        [
-            "python3",
-            str(repo_path / "scripts/openclaw-ops/install_workflow_profile.py"),
-            "--profile",
-            "core",
-            "--install-web-intel-jobs",
-            "--openclaw-home",
+            str(repo_path / "setup.py"),
+            "--runtime-home",
             str(openclaw_home),
-            "--workflow-repo-path",
+            "--repo-root",
             str(repo_path),
             "--emit-json",
         ],
@@ -390,8 +368,19 @@ print(json.dumps(payload, ensure_ascii=False))
 """.strip()
 
 
-def inspect_server(server: str, ssh_config: str, *, timeout_seconds: int) -> dict[str, Any]:
-    payload = run_remote_python(server, ssh_config, build_remote_probe_script(server), timeout_seconds=timeout_seconds)
+def inspect_server(
+    server: str,
+    ssh_config: str,
+    *,
+    timeout_seconds: int,
+    remote_repo_path: str = "",
+) -> dict[str, Any]:
+    payload = run_remote_python(
+        server,
+        ssh_config,
+        build_remote_probe_script(server, remote_repo_path),
+        timeout_seconds=timeout_seconds,
+    )
     payload["inspection"] = summarize_entries(list(payload.get("entries") or []))
     return payload
 
@@ -462,6 +451,7 @@ def execute_round(
     inspect_timeout_seconds: int,
     remediate_timeout_seconds: int,
     dry_run: bool,
+    remote_repo_path: str = "",
 ) -> dict[str, Any]:
     round_started_at = now_iso()
     results: list[dict[str, Any]] = []
@@ -471,7 +461,12 @@ def execute_round(
             "started_at": now_iso(),
         }
         try:
-            before = inspect_server(server, ssh_config, timeout_seconds=inspect_timeout_seconds)
+            before = inspect_server(
+                server,
+                ssh_config,
+                timeout_seconds=inspect_timeout_seconds,
+                remote_repo_path=remote_repo_path,
+            )
             remediation = remediate_server(
                 server,
                 ssh_config,
@@ -479,7 +474,12 @@ def execute_round(
                 timeout_seconds=remediate_timeout_seconds,
                 dry_run=dry_run,
             )
-            after = inspect_server(server, ssh_config, timeout_seconds=inspect_timeout_seconds)
+            after = inspect_server(
+                server,
+                ssh_config,
+                timeout_seconds=inspect_timeout_seconds,
+                remote_repo_path=remote_repo_path,
+            )
             item.update(
                 {
                     "ok": bool(remediation.get("ok", False)),
@@ -532,8 +532,13 @@ def aggregate_rounds(rounds: list[dict[str, Any]]) -> dict[str, Any]:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Repeat multi-server cron message inspection and remediation")
-    parser.add_argument("--ssh-config", default="D:/ssh_keys/ssh_config")
-    parser.add_argument("--servers", nargs="*", default=list(DEFAULT_SERVERS))
+    parser.add_argument("--ssh-config", default=os.environ.get("SSH_CONFIG", "~/.ssh/config"))
+    parser.add_argument("--servers", nargs="*", default=None)
+    parser.add_argument(
+        "--remote-repo-path",
+        default=os.environ.get("HARDFLOW_REMOTE_WORKFLOW_REPO", ""),
+        help="repository path on each remote host; auto-discover when omitted",
+    )
     parser.add_argument("--total-rounds", type=int, default=DEFAULT_TOTAL_ROUNDS)
     parser.add_argument("--interval-seconds", type=int, default=DEFAULT_INTERVAL_SECONDS)
     parser.add_argument("--run-dir", default="")
@@ -545,9 +550,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
-    ssh_config = str(Path(args.ssh_config))
+    ssh_config = str(Path(args.ssh_config).expanduser())
     if not Path(ssh_config).exists():
         raise SystemExit(f"ssh_config not found: {ssh_config}")
+
+    servers = list(args.servers or [])
+    if not servers:
+        servers = [
+            item
+            for item in re.split(r"[\s,]+", os.environ.get("HARDFLOW_FLEET_SERVERS", "").strip())
+            if item
+        ]
+    if not servers:
+        raise SystemExit("no servers configured; use --servers or HARDFLOW_FLEET_SERVERS")
 
     run_dir = Path(args.run_dir) if str(args.run_dir).strip() else (
         Path("tmp/server-message-audit-runs") / now_utc().strftime("%Y%m%d_%H%M%S")
@@ -562,7 +577,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     plan_payload = {
         "started_at": started_at.isoformat(),
-        "servers": list(args.servers),
+        "servers": servers,
         "ssh_config": ssh_config,
         "total_rounds": len(schedule),
         "interval_seconds": max(1, int(args.interval_seconds)),
@@ -598,11 +613,12 @@ def main(argv: list[str] | None = None) -> int:
 
         round_payload = execute_round(
             round_index=index,
-            servers=list(args.servers),
+            servers=servers,
             ssh_config=ssh_config,
             inspect_timeout_seconds=max(30, int(args.inspect_timeout_seconds)),
             remediate_timeout_seconds=max(60, int(args.remediate_timeout_seconds)),
             dry_run=bool(args.dry_run),
+            remote_repo_path=str(args.remote_repo_path or ""),
         )
         rounds.append(round_payload)
         write_json(run_dir / f"round_{index:02d}.json", round_payload)

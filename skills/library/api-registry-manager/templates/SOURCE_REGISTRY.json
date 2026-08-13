@@ -18,7 +18,7 @@
       "last_checked": "{{last_checked_timestamp}}",
       "check_frequency": "daily|weekly|monthly",
       "change_policy": "ignore|notify_only|notify_and_update|notify_and_block",
-      "owned_by_project_agent": true|false
+      "owned_by_project_agent": false
     }
   ]
 }

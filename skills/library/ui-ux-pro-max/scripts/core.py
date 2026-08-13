@@ -199,7 +199,7 @@ def detect_domain(query):
         "color": ["color", "palette", "hex", "#", "rgb"],
         "chart": ["chart", "graph", "visualization", "trend", "bar", "pie", "scatter", "heatmap", "funnel"],
         "landing": ["landing", "page", "cta", "conversion", "hero", "testimonial", "pricing", "section"],
-        "product": ["saas", "ecommerce", "e-commerce", "fintech", "healthcare", "gaming", "portfolio", "crypto", "dashboard"],
+        "product": ["saas", "ecommerce", "e-commerce", "healthcare", "gaming", "portfolio", "automation", "dashboard"],
         "prompt": ["prompt", "css", "implementation", "variable", "checklist", "tailwind"],
         "style": ["style", "design", "ui", "minimalism", "glassmorphism", "neumorphism", "brutalism", "dark mode", "flat", "aurora"],
         "ux": ["ux", "usability", "accessibility", "wcag", "touch", "scroll", "animation", "keyboard", "navigation", "mobile"],

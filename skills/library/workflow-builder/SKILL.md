@@ -22,7 +22,7 @@ description: 自然语言描述 → 标准工作流模板生成。将口语化�
 ```bash
 python3 $HOME/.openclaw/ops/workflow_builder.py \
   --title "部署前端到生产环境" \
-  --description "Vue3 前端构建并部署到 nofx 服务器" \
+  --description "Vue3 前端构建并部署到 runtime-host 服务器" \
   --steps "1.npm run build 2.SCP上传dist到服务器 3.SSH重启nginx 4.验证页面可访问" \
   --output .agents/workflows/deploy-frontend.md
 ```

@@ -465,6 +465,8 @@ show_help() {
   --status           检查服务状态
   --logs             查看日志
   --backup           备份数据
+  --check-ports      检查端口和防火墙
+  --generate-docs    生成部署文档
   --help             显示帮助
 
 示例:
@@ -497,14 +499,7 @@ main() {
                 config_file="$2"
                 shift 2
                 ;;
-            --interactive|--init|--full|--backend|--frontend|--update|--status|--logs|--backup|--help)
-            ;;
-        --check-ports)
-            check_ports
-            ;;
-        --generate-docs)
-            generate_docs
-            ;;
+            --interactive|--init|--full|--backend|--frontend|--update|--status|--logs|--backup|--check-ports|--generate-docs|--help)
                 command="$1"
                 shift
                 ;;
@@ -516,6 +511,19 @@ main() {
         esac
     done
 
+    # 帮助和交互式配置不依赖已经存在的部署配置。
+    case "$command" in
+        --help|"")
+            show_help
+            return 0
+            ;;
+        --interactive)
+            log_info "启动交互式配置向导..."
+            bash "$(dirname "$0")/init-config.sh"
+            return $?
+            ;;
+    esac
+
     # 如果指定了配置文件，加载它
     if [ -n "$config_file" ]; then
         load_config "$config_file"
@@ -526,10 +534,6 @@ main() {
 
     # 执行命令
     case "$command" in
-        --interactive)
-            log_info "启动交互式配置向导..."
-            bash "$(dirname "$0")/init-config.sh"
-            ;;
         --init)
             init_deploy
             ;;
@@ -564,8 +568,11 @@ main() {
         --backup)
             backup_data
             ;;
-        --help|"")
-            show_help
+        --check-ports)
+            check_ports
+            ;;
+        --generate-docs)
+            generate_docs
             ;;
         *)
             log_error "未知命令: $command"
@@ -574,9 +581,6 @@ main() {
             ;;
     esac
 }
-
-# 运行主函数
-main "$@"
 
 # ==============================================================================
 # 检查端口
@@ -601,3 +605,6 @@ generate_docs() {
         log_warn "文档生成脚本不存在"
     fi
 }
+
+# 所有命令函数定义完成后再运行入口，避免直接调用时找不到函数。
+main "$@"

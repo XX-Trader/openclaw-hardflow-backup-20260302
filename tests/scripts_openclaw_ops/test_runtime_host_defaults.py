@@ -35,12 +35,12 @@ class RuntimeHostDefaultTests(unittest.TestCase):
             ["hermes"],
             {
                 "hermes": {
-                    "home": "/home/ubuntu/.hermes",
+                    "home": "/home/runtime-user/.hermes",
                 }
             },
         )
 
-        self.assertEqual(path, "/home/ubuntu/.hermes/ops/distill/distill.db")
+        self.assertEqual(path, "/home/runtime-user/.hermes/ops/distill/distill.db")
 
 
 if __name__ == "__main__":

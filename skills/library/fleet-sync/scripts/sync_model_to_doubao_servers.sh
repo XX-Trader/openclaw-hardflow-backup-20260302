@@ -2,31 +2,27 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="${HARDFLOW_WORKFLOW_REPO:-$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)}"
 cd "${REPO_ROOT}"
 
-if [[ -n "${SSH_CONFIG:-}" && -f "${SSH_CONFIG}" ]]; then
-  SSH_CFG="${SSH_CONFIG}"
-elif [[ -f "/d/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="/d/ssh_keys/ssh_config"
-elif [[ -f "/mnt/d/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="/mnt/d/ssh_keys/ssh_config"
-elif [[ -f "D:/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="D:/ssh_keys/ssh_config"
-else
+SSH_CFG="${SSH_CONFIG:-${HOME}/.ssh/config}"
+if [[ ! -f "${SSH_CFG}" ]]; then
   echo "[sync-model] ssh_config not found. set SSH_CONFIG first." >&2
   exit 1
 fi
 
 if (( $# > 0 )); then
   SERVERS=("$@")
+elif [[ -n "${HARDFLOW_FLEET_SERVERS:-}" ]]; then
+  IFS=',' read -r -a SERVERS <<< "${HARDFLOW_FLEET_SERVERS}"
 else
-  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw")
+  echo "[sync-model] provide hosts as arguments or HARDFLOW_FLEET_SERVERS." >&2
+  exit 2
 fi
 
 DRY_RUN="${DRY_RUN:-0}"
 RESTART_GATEWAY="${RESTART_GATEWAY:-1}"
-LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/scripts/openclaw-ops/policy/gateway_service_manager.py"
+LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/skills/library/control-plane-ops/scripts/policy/gateway_service_manager.py"
 
 PRIMARY_MODEL="${PRIMARY_MODEL:-kimicode/doubao-seed-2.0-pro}"
 FALLBACK_MODEL="${FALLBACK_MODEL:-openai-codex/gpt-5.3-codex}"

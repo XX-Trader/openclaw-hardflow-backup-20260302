@@ -161,7 +161,7 @@ Smoke modes:
 | `hybrid` | One real `hermes chat` call creates a research/code/review bundle; deterministic local verification remains a repeatable command. This is the recommended native profile smoke. |
 | `hermes-chat` | Real `hermes chat` for every stage; useful for provider debugging, but intentionally not the default because each stage cold-starts Hermes. |
 
-Latest local evidence: WSL Hermes profile `/home/ubuntu/.hermes`, run
+Latest local evidence: WSL Hermes profile `/home/runtime-user/.hermes`, run
 `hermes-profile-smoke-20260424T135014Z`, `agent_mode=hybrid`,
 `ai_bundle_mode=hybrid-single-chat`, status `completed`, Task Center task
 `project-delivery:hermes-profile-smoke-20260424T135014Z`.

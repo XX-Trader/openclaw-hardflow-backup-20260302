@@ -28,7 +28,7 @@ class TaskExecutorPreflightTests(unittest.TestCase):
     def test_preflight_warn_only_detects_skill_and_agent_mismatch(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -78,7 +78,7 @@ class TaskExecutorPreflightTests(unittest.TestCase):
     def test_preflight_passes_when_constraints_match(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         capability_index = {
@@ -189,7 +189,7 @@ class TaskExecutorPreflightTests(unittest.TestCase):
     def test_preflight_warns_when_runtime_or_tools_missing(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         capability_index = {
@@ -228,7 +228,7 @@ class TaskExecutorPreflightTests(unittest.TestCase):
     def test_preflight_exposes_stage_context_gate_and_execution_hints(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         capability_index = {
@@ -289,7 +289,7 @@ class TaskExecutorPreflightTests(unittest.TestCase):
     def test_preflight_exposes_requirement_package_gate(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         capability_index = {
@@ -329,7 +329,7 @@ class TaskExecutorPreflightTests(unittest.TestCase):
     def test_preflight_warns_when_assignee_outside_planner_allowlist(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         capability_index = {
@@ -364,7 +364,7 @@ class TaskExecutorPreflightTests(unittest.TestCase):
     def test_preflight_rollup_tracks_warning_and_block_counts(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         summary = {
@@ -403,7 +403,7 @@ class TaskExecutorPreflightTests(unittest.TestCase):
     def test_preflight_reassign_payload_prefers_allowed_agents(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         payload = module.build_preflight_reassign_payload(

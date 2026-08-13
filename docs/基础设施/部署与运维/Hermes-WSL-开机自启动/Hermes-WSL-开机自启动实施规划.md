@@ -16,8 +16,8 @@
 
 ## P2. 启动入口收敛
 
-- 将 `/home/ubuntu/hermes-windows-starter.sh` 改为 Windows 调度专用入口
-- 让该脚本统一委派给 `/home/ubuntu/.hermes/start-hermes.sh`
+- 将 `/home/runtime-user/hermes-windows-starter.sh` 改为 Windows 调度专用入口
+- 让该脚本统一委派给 `/home/runtime-user/.hermes/start-hermes.sh`
 - 在入口脚本中补齐任务级日志
 
 ## P3. 开机触发落地

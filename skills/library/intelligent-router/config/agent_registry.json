@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-03-01",
+  "last_updated": "2026-08-13",
   "description": "所有可用 Agent 的注册表",
   "agents": [
     {
@@ -614,48 +614,9 @@
       "available": true
     },
     {
-      "name": "blockchain-developer",
-      "description": "开发智能合约、DeFi 协议、Web3 应用",
-      "category": "Blockchain & Web3",
-      "capabilities": [
-        "智能合约",
-        "Solidity",
-        "DeFi",
-        "Web3"
-      ],
-      "priority": 2,
-      "available": true
-    },
-    {
-      "name": "hyperledger-fabric-developer",
-      "description": "企业级区块链解决方案（Hyperledger Fabric）",
-      "category": "Blockchain & Web3",
-      "capabilities": [
-        "联盟链",
-        "Hyperledger",
-        "链码开发",
-        "企业区块链"
-      ],
-      "priority": 2,
-      "available": true
-    },
-    {
-      "name": "quant-analyst",
-      "description": "金融建模、回测、市场数据分析",
-      "category": "Business & Finance",
-      "capabilities": [
-        "量化分析",
-        "金融建模",
-        "回测",
-        "风险管理"
-      ],
-      "priority": 2,
-      "available": true
-    },
-    {
       "name": "business-analyst",
       "description": "指标分析、报告、KPI 追踪",
-      "category": "Business & Finance",
+      "category": "Business & Operations",
       "capabilities": [
         "业务分析",
         "KPI 分析",

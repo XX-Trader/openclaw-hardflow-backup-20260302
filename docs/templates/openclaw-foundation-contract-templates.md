@@ -20,13 +20,13 @@
   "request_id": "request-20260323120000-001",
   "source": "human",
   "sender_identity": "user/direct",
-  "goal": "修复策略回测页面的时间区间错误",
+  "goal": "修复用户列表页面的筛选状态错误",
   "constraints": [
     "不能引入新依赖",
     "必须兼容现有 API"
   ],
   "success_criteria": [
-    "回测页面时间区间正确展示",
+    "用户列表筛选状态正确展示",
     "现有测试全部通过"
   ],
   "scope": {
@@ -35,12 +35,12 @@
       "相关接口验证"
     ],
     "out_of_scope": [
-      "重做整个回测模块"
+      "重做整个用户管理模块"
     ]
   },
   "context_payload": {
     "project_id": "openclaw",
-    "repo_path": "D:/学习资料/量化交易/openclaw-hardflow-backup-20260302"
+    "repo_path": "TARGET_REPOSITORY"
   }
 }
 ```
@@ -76,7 +76,7 @@
     ]
   },
   "reason": "修复时间区间错误",
-  "requirement": "修复回测页面时间区间显示异常",
+  "requirement": "修复用户列表页面筛选状态异常",
   "acceptance": "页面展示正确，相关验证通过",
   "observable_outputs": [
     "diff summary",
@@ -127,7 +127,7 @@
   },
   "task": {
     "reason": "修复时间区间错误",
-    "requirement": "修复回测页面时间区间显示异常",
+    "requirement": "修复用户列表页面筛选状态异常",
     "acceptance": "页面展示正确，相关验证通过"
   },
   "contracts": {
@@ -465,5 +465,5 @@
 
 ## 12. 关联文档
 
-- [OpenClaw 基建设施输入输出与通信标准](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/adr/2026-03-23-openclaw-foundation-contract-standard.md)
-- [FIELD_DICTIONARY.md](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/scripts/openclaw-ops/policy/FIELD_DICTIONARY.md)
+- [OpenClaw 基建设施输入输出与通信标准](/docs/adr/2026-03-23-openclaw-foundation-contract-standard.md)
+- [FIELD_DICTIONARY.md](/skills/library/control-plane-ops/scripts/policy/FIELD_DICTIONARY.md)

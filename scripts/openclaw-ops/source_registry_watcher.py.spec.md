@@ -41,20 +41,20 @@ for source in SOURCE_REGISTRY.sources:
     head_response = http_head(source.urls.docs)
     if head_response.last_modified > source.last_checked:
         record_change(source, "docs_updated")
-    
+
     # 2. 检查 changelog_url
     head_response = http_head(source.urls.changelog)
     if head_response.last_modified > source.last_checked:
         record_change(source, "changelog_updated")
-    
+
     # 3. 检查 repo_url 的 release
     if source.urls.repo and is_github_repo(source.urls.repo):
         latest_release = github_api_latest_release(source.urls.repo)
         if latest_release.tag_name > source.current_version:
-            record_change(source, "version_update", 
-                         old=source.current_version, 
+            record_change(source, "version_update",
+                         old=source.current_version,
                          new=latest_release.tag_name)
-    
+
     # 4. 更新 last_checked
     source.last_checked = now()
 ```
@@ -64,12 +64,12 @@ for source in SOURCE_REGISTRY.sources:
 ```json
 {
   "timestamp": "2026-04-22T10:00:00Z",
-  "project_key": "xx-trader",
-  "source_id": "freqtrade-official",
+  "project_key": "demo-service",
+  "source_id": "example-service-official",
   "change_type": "version_update|docs_updated|changelog_updated|unavailable",
   "old_version": "2024.4",
   "new_version": "2024.5",
-  "details": "https://github.com/freqtrade/freqtrade/releases/tag/2024.5",
+  "details": "https://example.com/releases/v2.0.0",
   "change_policy": "notify_and_update",
   "action_required": true
 }
@@ -79,12 +79,12 @@ for source in SOURCE_REGISTRY.sources:
 
 ```json
 {
-  "project_key": "xx-trader",
+  "project_key": "demo-service",
   "checked_sources": 5,
   "changes_found": 2,
   "changes": [
     {
-      "source_id": "freqtrade-official",
+      "source_id": "example-service-official",
       "change_type": "version_update",
       "new_version": "2024.5"
     }
@@ -118,7 +118,7 @@ for source in SOURCE_REGISTRY.sources:
 ## 7. 测试用例
 
 ### TC-1: 发现版本更新
-- 设置：SOURCE_REGISTRY 中 freqtrade 当前版本 2024.4，GitHub 最新是 2024.5
+- 设置：SOURCE_REGISTRY 中 示例服务当前版本 v1.9.0，发布源最新是 v2.0.0
 - 输入：watcher 检查
 - 期望：记录 version_update 变更
 

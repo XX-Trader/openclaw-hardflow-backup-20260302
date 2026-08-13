@@ -28,7 +28,7 @@ class ScheduleRegistryTests(unittest.TestCase):
     def test_build_schedule_registry_covers_openclaw_and_external_surfaces(self):
         module = load_module(
             "export_schedule_registry",
-            "scripts/openclaw-ops/export_schedule_registry.py",
+            "skills/library/control-plane-ops/scripts/export_schedule_registry.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -91,7 +91,7 @@ class ScheduleRegistryTests(unittest.TestCase):
     def test_schedule_registry_describes_governance_auto_pr_and_reviewer_pr_gate(self):
         module = load_module(
             "export_schedule_registry",
-            "scripts/openclaw-ops/export_schedule_registry.py",
+            "skills/library/control-plane-ops/scripts/export_schedule_registry.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -149,7 +149,7 @@ class ScheduleRegistryTests(unittest.TestCase):
     def test_schedule_registry_describes_upgrade_feedback_job(self):
         module = load_module(
             "export_schedule_registry",
-            "scripts/openclaw-ops/export_schedule_registry.py",
+            "skills/library/control-plane-ops/scripts/export_schedule_registry.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -1,96 +1,73 @@
 param(
-    [string[]]$Servers = @("pm-website", "大白pm", "nofx", "coingod", "tokyo-claw"),
-    [string]$SshConfig = "D:\ssh_keys\ssh_config",
-    [int]$EveryMs = 900000,
-    [string]$DeliveryTo = "",
+    [string[]]$Servers = @(),
+    [string]$SshConfig = "",
+    [string]$RemoteRepo = "",
+    [string]$RemoteRuntimeHome = "",
+    [string]$NotificationChannel = "",
+    [string]$NotificationTarget = "",
+    [string]$Timezone = "",
     [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
 
-function Invoke-Remote {
-    param(
-        [string]$Server,
-        [string]$Command,
-        [string]$ConfigPath
-    )
-    & ssh -F $ConfigPath -o BatchMode=yes -o ConnectTimeout=12 -o StrictHostKeyChecking=accept-new $Server $Command
+if (-not $Servers -or $Servers.Count -eq 0) {
+    $Servers = @($env:HARDFLOW_FLEET_SERVERS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 }
-
-function Upload-File {
-    param(
-        [string]$Server,
-        [string]$LocalPath,
-        [string]$RemotePath,
-        [string]$ConfigPath
-    )
-    & scp -F $ConfigPath -o BatchMode=yes -o ConnectTimeout=12 $LocalPath "${Server}:${RemotePath}" | Out-Null
+if (-not $Servers -or $Servers.Count -eq 0) {
+    throw "provide hosts with -Servers or HARDFLOW_FLEET_SERVERS"
 }
-
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$localPatrol = Join-Path $scriptDir "todo_patrol.py"
-$localInstaller = Join-Path $scriptDir "install_todo_patrol_job.py"
-
-if (!(Test-Path $SshConfig)) {
+if ([string]::IsNullOrWhiteSpace($SshConfig)) {
+    $SshConfig = if ($env:SSH_CONFIG) { $env:SSH_CONFIG } else { Join-Path $HOME ".ssh/config" }
+}
+if (!(Test-Path -LiteralPath $SshConfig)) {
     throw "ssh_config not found: $SshConfig"
 }
-if (!(Test-Path $localPatrol)) {
-    throw "missing file: $localPatrol"
-}
-if (!(Test-Path $localInstaller)) {
-    throw "missing file: $localInstaller"
+if ([string]::IsNullOrWhiteSpace($RemoteRepo)) { $RemoteRepo = $env:HARDFLOW_REMOTE_WORKFLOW_REPO }
+if ([string]::IsNullOrWhiteSpace($RemoteRuntimeHome)) { $RemoteRuntimeHome = $env:HARDFLOW_REMOTE_RUNTIME_HOME }
+if ([string]::IsNullOrWhiteSpace($NotificationChannel)) { $NotificationChannel = $env:HARDFLOW_NOTIFICATION_CHANNEL }
+if ([string]::IsNullOrWhiteSpace($NotificationTarget)) { $NotificationTarget = $env:HARDFLOW_NOTIFICATION_TARGET }
+if ([string]::IsNullOrWhiteSpace($Timezone)) { $Timezone = $env:HARDFLOW_TIMEZONE }
+
+function Quote-Sh([string]$Value) {
+    $quote = [string][char]39
+    $doubleQuote = [string][char]34
+    $escapedQuote = $quote + $doubleQuote + $quote + $doubleQuote + $quote
+    return $quote + $Value.Replace($quote, $escapedQuote) + $quote
 }
 
 $ok = 0
 $failed = @()
-
 foreach ($server in $Servers) {
-    Write-Host "=========="
-    Write-Host "[sync] server=$server"
     try {
-        $remoteHome = (Invoke-Remote -Server $server -ConfigPath $SshConfig -Command 'printf "%s" "$HOME"' | Out-String).Trim()
-        if ([string]::IsNullOrWhiteSpace($remoteHome)) {
-            throw "cannot detect remote home"
-        }
+        $remoteHome = (& ssh -F $SshConfig -o BatchMode=yes -o ConnectTimeout=12 $server 'printf "%s" "$HOME"' | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($remoteHome)) { throw "remote home is empty" }
 
-        $remoteOpsRoot = "$remoteHome/.openclaw/workspace-ops-agent"
-        $remoteOpsDir = "$remoteOpsRoot/ops"
-        $remotePatrol = "$remoteOpsDir/todo_patrol.py"
-        $remoteInstaller = "$remoteOpsDir/install_todo_patrol_job.py"
-
-        Write-Host "[sync] remoteHome=$remoteHome"
-        Write-Host "[sync] remoteOpsDir=$remoteOpsDir"
-
-        if ($DryRun) {
-            Write-Host "[sync] DRY_RUN only"
-            $ok++
-            continue
-        }
-
-        Invoke-Remote -Server $server -ConfigPath $SshConfig -Command "mkdir -p '$remoteOpsDir' '$remoteHome/.openclaw/cron' '$remoteOpsRoot/logs'"
-        Upload-File -Server $server -ConfigPath $SshConfig -LocalPath $localPatrol -RemotePath $remotePatrol
-        Upload-File -Server $server -ConfigPath $SshConfig -LocalPath $localInstaller -RemotePath $remoteInstaller
-
-        $installCmd = "chmod 755 '$remotePatrol' '$remoteInstaller' && python3 '$remoteInstaller' --ops-script '$remotePatrol' --every-ms $EveryMs"
-        if ($DeliveryTo) {
-            $installCmd += " --to '$DeliveryTo'"
-        }
-        Invoke-Remote -Server $server -ConfigPath $SshConfig -Command $installCmd
-
-        Write-Host "[sync] smoke test --dry-run"
-        Invoke-Remote -Server $server -ConfigPath $SshConfig -Command "python3 '$remotePatrol' --dry-run --task sync-smoke | sed -n '1,24p'"
-
+        $repo = if ($RemoteRepo) { $RemoteRepo } else { "$remoteHome/workflow-infra" }
+        $runtime = if ($RemoteRuntimeHome) { $RemoteRuntimeHome } else { "$remoteHome/.openclaw" }
+        $parts = @(
+            "python3", "$repo/setup.py",
+            "--runtime-home", $runtime,
+            "--repo-root", $repo,
+            "--job-name", "TODO 巡检（15分钟）",
+            "--emit-json"
+        )
+        if ($NotificationChannel) { $parts += @("--notification-channel", $NotificationChannel) }
+        if ($NotificationTarget) { $parts += @("--notification-target", $NotificationTarget) }
+        if ($Timezone) { $parts += @("--timezone", $Timezone) }
+        if ($DryRun) { $parts += "--dry-run" }
+        $quoted = (($parts | ForEach-Object { Quote-Sh ([string]$_) }) -join ' ')
+        $setupPath = Quote-Sh "$repo/setup.py"
+        $command = "test -f $setupPath && $quoted"
+        & ssh -F $SshConfig -o BatchMode=yes $server $command
+        if ($LASTEXITCODE -ne 0) { throw "remote installer exit=$LASTEXITCODE" }
         $ok++
     }
     catch {
-        Write-Host "[sync] FAILED server=$server error=$($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "[sync] failed host=$server error=$($_.Exception.Message)" -ForegroundColor Red
         $failed += $server
     }
 }
 
-Write-Host "=========="
 Write-Host "[sync] done ok=$ok fail=$($failed.Count)"
-if ($failed.Count -gt 0) {
-    Write-Host "[sync] failed servers: $($failed -join ', ')" -ForegroundColor Yellow
-    exit 2
-}
+if ($failed.Count -gt 0) { exit 2 }

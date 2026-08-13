@@ -4,7 +4,7 @@ displayName: "自动修复"
 version: "1.0.0"
 description: 全自动测试-修复循环系统。自动运行测试、分析问题、修复代码、验证修复、Git 提交，直到所有测试通过。适用于 Django + Vue 全栈项目。
 description_zh: "auto-fix技能，详见 SKILL.md"
-author: "superma"
+author: "maintainers"
 license: "MIT"
 updated_at: "2026-01-25"
 

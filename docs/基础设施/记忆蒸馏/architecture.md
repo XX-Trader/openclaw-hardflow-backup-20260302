@@ -85,7 +85,7 @@
   "source": "ops-agent/sessions/2026-04-02_patrol.md",
   "agent": "ops-agent",
   "timestamp": "2026-04-02T03:00:00Z",
-  "content": "发现 /var/log/trader/ 磁盘使用超 80%，执行了日志轮转...",
+  "content": "发现 ${SERVICE_LOG_DIR}/ 磁盘使用超 80%，执行了日志轮转...",
   "context": "定时巡检任务 todo_patrol"
 }
 ```

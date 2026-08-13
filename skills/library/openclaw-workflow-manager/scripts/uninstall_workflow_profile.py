@@ -409,7 +409,7 @@ def main() -> int:
     parser.add_argument("--openclaw-home", default=str(home / ".openclaw"))
     parser.add_argument("--jobs-file", default="")
     parser.add_argument("--runtime-config", default="")
-    parser.add_argument("--workflow-repo-path", default=str(home / "openclaw-hardflow-backup-20260302"))
+    parser.add_argument("--workflow-repo-path", default=str(home / "workflow-infra"))
     parser.add_argument("--target-ops-dir", default="")
     parser.add_argument("--manifest-file", default="")
     parser.add_argument("--workflow-registry-file", default="")

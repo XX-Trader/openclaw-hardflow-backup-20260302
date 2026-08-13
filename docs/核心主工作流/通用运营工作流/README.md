@@ -26,12 +26,12 @@ OpenClaw 的日常运营中枢，负责任务调度、监控巡检、需求对�
 
 | 组件 | 路径 | 说明 |
 |------|------|------|
-| Policy Enforcer | `scripts/openclaw-ops/policy/policy_enforcer.py` | 硬约束策略执行器（28+ CLI 子命令） |
-| Task Center | `scripts/openclaw-ops/policy/task_center.py` | SQLite 任务中心（188KB，任务/事件/阶段/token） |
-| Task Executor | `scripts/openclaw-ops/policy/task_executor_runner.py` | 任务分发执行器（91KB） |
-| TODO Patrol | `scripts/openclaw-ops/todo_patrol.py` | TODO 巡检器（57KB） |
-| Daily Digest | `scripts/openclaw-ops/daily_todo_digest.py` | 每日摘要生成（39KB） |
-| Daily Report | `scripts/openclaw-ops/daily_work_report.py` | 工作日报生成（56KB） |
+| Policy Enforcer | `skills/library/control-plane-ops/scripts/policy/policy_enforcer.py` | 硬约束策略执行器（28+ CLI 子命令） |
+| Task Center | `skills/library/control-plane-ops/scripts/policy/task_center.py` | SQLite 任务中心（188KB，任务/事件/阶段/token） |
+| Task Executor | `skills/library/control-plane-ops/scripts/policy/task_executor_runner.py` | 任务分发执行器（91KB） |
+| TODO Patrol | `skills/library/todo-patrol/scripts/todo_patrol.py` | TODO 巡检器（57KB） |
+| Daily Digest | `skills/library/todo-patrol/scripts/daily_todo_digest.py` | 每日摘要生成（39KB） |
+| Daily Report | `skills/library/task-cost-analytics/scripts/daily_work_report.py` | 工作日报生成（56KB） |
 | Routing Rules | `scripts/openclaw-ops/policy/routing-rules.json` | 任务路由规则（14KB） |
 | Policy Config | `scripts/openclaw-ops/policy/policy-config.json` | 硬约束策略配置 |
 

@@ -32,7 +32,7 @@ class WorkflowPromotionControllerTests(unittest.TestCase):
     def test_apply_workflow_promotion_copies_candidate_runtime_fields_into_stable(self):
         module = load_module(
             "workflow_promotion_controller",
-            "scripts/openclaw-ops/workflow_promotion_controller.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_promotion_controller.py",
         )
 
         registry_payload = {
@@ -112,7 +112,7 @@ class WorkflowPromotionControllerTests(unittest.TestCase):
     def test_rollback_workflow_promotion_restores_previous_stable_snapshot(self):
         module = load_module(
             "workflow_promotion_controller",
-            "scripts/openclaw-ops/workflow_promotion_controller.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_promotion_controller.py",
         )
 
         registry_payload = {

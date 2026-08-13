@@ -8,7 +8,7 @@ backup repository so that ops_git_sync_push can later commit and push them.
 Usage:
     python3 local_snapshot_runner.py \
         --openclaw-home ~/.openclaw \
-        --repo-path ~/openclaw-hardflow-backup-20260302 \
+        --repo-path ~/workflow-infra \
         --task-id cron:local-snapshot \
         --notify-on error
 """
@@ -121,7 +121,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Sync core config from .openclaw/ to backup repo")
     parser.add_argument("--openclaw-home", default=os.path.expanduser("~/.openclaw"),
                         help="OpenClaw runtime directory (C layer)")
-    parser.add_argument("--repo-path", default=os.path.expanduser("~/openclaw-hardflow-backup-20260302"),
+    parser.add_argument("--repo-path", default=os.path.expanduser("~/workflow-infra"),
                         help="Backup git repo (B layer)")
     parser.add_argument("--task-id", default="cron:local-snapshot")
     parser.add_argument("--notify-on", default="error", choices=["error", "all"])

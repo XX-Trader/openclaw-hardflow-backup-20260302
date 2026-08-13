@@ -1,6 +1,6 @@
 /**
  * Site Configuration
- * 
+ *
  * All editable content in one place. Update this file to change
  * text, links, and content throughout the site.
  */
@@ -11,7 +11,7 @@ export const siteConfig = {
   tagline: "Write better, faster",
   description: "AI-powered writing assistant that adapts to your style",
   url: "https://acme.ai",
-  
+
   // === Navigation ===
   nav: {
     links: [
@@ -22,7 +22,7 @@ export const siteConfig = {
     ],
     cta: { label: "Get Started", href: "/signup" },
   },
-  
+
   // === Hero Section ===
   hero: {
     badge: "Now in public beta",
@@ -39,7 +39,7 @@ export const siteConfig = {
       { value: "4.9", label: "App Store rating" },
     ],
   },
-  
+
   // === Social Proof ===
   socialProof: {
     title: "Trusted by teams at",
@@ -51,7 +51,7 @@ export const siteConfig = {
       { name: "Figma", src: "/logos/figma.svg" },
     ],
   },
-  
+
   // === Features Section ===
   features: {
     title: "Everything you need to write better",
@@ -89,7 +89,7 @@ export const siteConfig = {
       },
     ],
   },
-  
+
   // === Pricing Section ===
   pricing: {
     title: "Simple, transparent pricing",
@@ -138,7 +138,7 @@ export const siteConfig = {
       },
     ],
   },
-  
+
   // === FAQ Section ===
   faq: {
     title: "Frequently asked questions",
@@ -166,7 +166,7 @@ export const siteConfig = {
       },
     ],
   },
-  
+
   // === Testimonials ===
   testimonials: {
     title: "Loved by writers everywhere",
@@ -186,7 +186,7 @@ export const siteConfig = {
         avatar: "/avatars/marcus.jpg",
       },
       {
-        quote: "The best investment I've made for my writing workflow.",
+        quote: "The best improvement I've made to my writing workflow.",
         author: "Emily Park",
         role: "Freelance Writer",
         company: "",
@@ -194,7 +194,7 @@ export const siteConfig = {
       },
     ],
   },
-  
+
   // === CTA Section ===
   cta: {
     title: "Ready to write better?",
@@ -202,7 +202,7 @@ export const siteConfig = {
     button: { label: "Start Free Trial", href: "/signup" },
     note: "No credit card required · Cancel anytime",
   },
-  
+
   // === Footer ===
   footer: {
     links: [

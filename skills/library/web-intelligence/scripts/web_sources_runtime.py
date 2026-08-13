@@ -5,8 +5,38 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
+
+
+ROOT = Path(__file__).resolve().parent
+
+
+def repository_root(start: Path) -> Path | None:
+    return next(
+        (
+            parent
+            for parent in (start, *start.parents)
+            if (parent / "skills" / "library").is_dir() and (parent / "scripts" / "openclaw-ops").is_dir()
+        ),
+        None,
+    )
+
+
+REPOSITORY_ROOT = repository_root(ROOT)
+IMPORT_DIRS = [ROOT, ROOT / "policy"]
+if REPOSITORY_ROOT is not None:
+    IMPORT_DIRS.extend(
+        [
+            REPOSITORY_ROOT / "skills" / "library" / "control-plane-ops" / "scripts",
+            REPOSITORY_ROOT / "skills" / "library" / "openclaw-workflow-manager" / "scripts",
+        ]
+    )
+for import_dir in reversed(IMPORT_DIRS):
+    value = str(import_dir)
+    if import_dir.is_dir() and value not in sys.path:
+        sys.path.insert(0, value)
 
 from project_registry_discovery import load_project_registry as load_project_registry_runtime
 from vendor_source_catalog import (

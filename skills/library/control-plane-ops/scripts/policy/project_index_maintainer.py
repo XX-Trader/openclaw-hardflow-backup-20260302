@@ -16,17 +16,39 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclass_compat import compat_dataclass as dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-root_dir = str(ROOT_DIR)
-if root_dir in sys.path:
-    sys.path.remove(root_dir)
-sys.path.insert(0, root_dir)
 
+
+def repository_root(start: Path) -> Path | None:
+    return next(
+        (
+            parent
+            for parent in (start, *start.parents)
+            if (parent / "skills" / "library").is_dir() and (parent / "scripts" / "openclaw-ops").is_dir()
+        ),
+        None,
+    )
+
+
+REPOSITORY_ROOT = repository_root(ROOT_DIR)
+IMPORT_DIRS = [Path(__file__).resolve().parent, ROOT_DIR]
+if REPOSITORY_ROOT is not None:
+    IMPORT_DIRS.extend(
+        [
+            REPOSITORY_ROOT / "scripts" / "openclaw-ops" / "shared",
+            REPOSITORY_ROOT / "skills" / "library" / "openclaw-workflow-manager" / "scripts",
+        ]
+    )
+for import_dir in reversed(IMPORT_DIRS):
+    value = str(import_dir)
+    if import_dir.is_dir() and value not in sys.path:
+        sys.path.insert(0, value)
+
+from dataclass_compat import compat_dataclass as dataclass
 from utf8_runtime import configure_process_utf8_stdio
 from vendor_source_catalog import (
     build_host_repo_sources,

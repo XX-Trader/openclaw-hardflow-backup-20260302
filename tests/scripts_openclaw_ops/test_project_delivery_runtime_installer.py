@@ -69,6 +69,9 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
                     "todo_deadline_to_task_bridge_daily",
                     "backlog_runner_30m（持续推进待办）",
                 ),
+                notification_channel="test-channel",
+                notification_target="test-target",
+                timezone="Etc/UTC",
             )
             report = module.install_runtime(config)
 
@@ -83,12 +86,12 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertTrue((runtime_home / "ops" / "repo_hygiene_reviewer.py").exists())
             self.assertTrue((runtime_home / "ops" / "backlog_runner.py").exists())
             self.assertTrue((runtime_home / "ops" / "project_memory_writer.py").exists())
-            self.assertTrue((runtime_home / "ops" / "smart_arb_live_bridge.py").exists())
-            self.assertTrue((runtime_home / "ops" / "smart_arb_pipeline_entry.py").exists())
+            self.assertTrue((runtime_home / "ops" / "live_runtime_bridge.py").exists())
+            self.assertTrue((runtime_home / "ops" / "project_pipeline_entry.py").exists())
             self.assertTrue((runtime_home / "ops" / "chat_output.py").exists())
             self.assertTrue((runtime_home / "ops" / "utf8_runtime.py").exists())
             self.assertTrue((runtime_home / "ops" / "workflow_views.py").exists())
-            self.assertTrue(os.access(runtime_home / "ops" / "smart_arb_pipeline_entry.py", os.X_OK))
+            self.assertTrue(os.access(runtime_home / "ops" / "project_pipeline_entry.py", os.X_OK))
             self.assertTrue((runtime_home / "ops" / "policy" / "human_inbox.py").exists())
 
             jobs = json.loads(cron_file.read_text(encoding="utf-8"))["jobs"]
@@ -109,20 +112,31 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             ]
             self.assertEqual(3, len(installed_jobs))
             for job in installed_jobs:
-                self.assertEqual("discord", job.get("delivery", {}).get("channel"))
-                self.assertEqual("1494595527181078578", job.get("delivery", {}).get("to"))
-                self.assertEqual("discord", job.get("failureAlert", {}).get("channel"))
-                self.assertEqual("1494595527181078578", job.get("failureAlert", {}).get("to"))
+                self.assertEqual("test-channel", job.get("delivery", {}).get("channel"))
+                self.assertEqual("test-target", job.get("delivery", {}).get("to"))
+                self.assertEqual("test-channel", job.get("failureAlert", {}).get("channel"))
+                self.assertEqual("test-target", job.get("failureAlert", {}).get("to"))
+            cron_jobs = [job for job in installed_jobs if (job.get("schedule") or {}).get("kind") == "cron"]
+            self.assertTrue(cron_jobs)
+            self.assertTrue(all(job["schedule"]["tz"] == "Etc/UTC" for job in cron_jobs))
             rendered = "\n".join(str((job.get("payload") or {}).get("message", "")) for job in jobs)
             runtime_text = str(runtime_home).replace("\\", "/")
             self.assertIn(runtime_text, rendered)
             self.assertNotIn("$HOME/.openclaw", rendered)
-            self.assertNotIn("../.local/bin/smart-arb-pipeline", rendered)
+            self.assertNotIn("../.local/bin/project-delivery-pipeline", rendered)
             self.assertIn(
-                f'--pipeline-command "python3 {runtime_text}/ops/smart_arb_pipeline_entry.py"',
+                f'--pipeline-command "python3 {runtime_text}/ops/project_pipeline_entry.py"',
                 rendered,
             )
             self.assertIn("--allow-confirmed-high-risk", rendered)
+
+            first_manifest = Path(report.manifest_file).read_text(encoding="utf-8")
+            second_report = module.install_runtime(config)
+            second_manifest = Path(second_report.manifest_file).read_text(encoding="utf-8")
+            self.assertTrue(second_report.ok)
+            self.assertFalse(second_report.changed)
+            self.assertEqual(first_manifest, second_manifest)
+            self.assertIn("task_center.py", second_report.installed_policy_files)
 
     def test_installed_ops_smoke_resolves_ops_policy_dir(self):
         module = load_module()
@@ -153,6 +167,9 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             )
             report = module.install_runtime(config)
             self.assertTrue(report.ok)
+            installed_jobs = json.loads(config.cron_file.read_text(encoding="utf-8"))["jobs"]
+            self.assertTrue(installed_jobs)
+            self.assertTrue(all("delivery" not in job and "failureAlert" not in job for job in installed_jobs))
 
             for module_name in (
                 "task_executor_runner",

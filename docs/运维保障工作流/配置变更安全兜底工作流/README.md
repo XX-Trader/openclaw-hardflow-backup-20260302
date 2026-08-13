@@ -24,10 +24,10 @@
 
 | 组件 | 路径 | 规模 |
 |------|------|------|
-| 配置看门狗 | `scripts/openclaw-ops/config_watchdog.py` | 530行 / 19KB |
-| 本地快照同步 | `scripts/openclaw-ops/local_snapshot_runner.py` | 6KB |
-| 配置修复重启 | `scripts/openclaw-ops/policy/_fix_config_restart.py` | 4KB |
-| Gateway 验证 | `scripts/openclaw-ops/policy/_verify_gateway.py` | 1.7KB |
+| 配置看门狗 | `skills/library/config-watchdog/scripts/config_watchdog.py` | 530行 / 19KB |
+| 本地快照同步 | `skills/library/git-sync/scripts/local_snapshot_runner.py` | 6KB |
+| 配置修复重启 | `skills/library/config-watchdog/scripts/config_watchdog.py` | 4KB |
+| Gateway 验证 | `skills/library/config-watchdog/scripts/config_watchdog.py` | 1.7KB |
 
 ## 监控文件清单
 

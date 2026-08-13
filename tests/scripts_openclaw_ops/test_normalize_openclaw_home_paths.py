@@ -26,17 +26,17 @@ class NormalizeOpenClawHomePathsTests(unittest.TestCase):
     def test_normalize_string_supports_windows_home_paths(self):
         module = load_module(
             "normalize_openclaw_home_paths",
-            "scripts/openclaw-ops/normalize_openclaw_home_paths.py",
+            "skills/library/openclaw-workflow-manager/scripts/normalize_openclaw_home_paths.py",
         )
 
         updated, changed = module.normalize_string(
-            "python /home/ubuntu/.openclaw/ops/todo_patrol.py",
-            openclaw_home=r"C:\Users\superma\.openclaw",
-            claude_home=r"C:\Users\superma\.claude",
+            "python /home/runtime-user/.openclaw/ops/todo_patrol.py",
+            openclaw_home=r"C:\Users\fixture-user\.openclaw",
+            claude_home=r"C:\Users\fixture-user\.claude",
         )
 
         self.assertTrue(changed)
-        self.assertEqual(updated, r"python C:\Users\superma\.openclaw/ops/todo_patrol.py")
+        self.assertEqual(updated, r"python C:\Users\fixture-user\.openclaw/ops/todo_patrol.py")
 
 
 if __name__ == "__main__":

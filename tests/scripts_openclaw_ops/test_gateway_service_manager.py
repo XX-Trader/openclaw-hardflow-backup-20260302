@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/openclaw-ops/policy/gateway_service_manager.py"
+SCRIPT = ROOT / "skills/library/control-plane-ops/scripts/policy/gateway_service_manager.py"
 
 
 def load_module(name: str):
@@ -131,14 +131,13 @@ class GatewayServiceManagerTests(unittest.TestCase):
 class GatewayRestartScriptUsageTests(unittest.TestCase):
     def test_target_scripts_use_gateway_service_manager_helper(self):
         targets = [
-            ROOT / "scripts/openclaw-ops/sync_policy_enforcer_to_servers.sh",
-            ROOT / "scripts/openclaw-ops/sync_policy_enforcer_to_servers.ps1",
-            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.sh",
-            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.ps1",
-            ROOT / "scripts/openclaw-ops/sync_model_to_doubao_servers.sh",
-            ROOT / "scripts/openclaw-ops/sync_model_to_doubao_servers.ps1",
-            ROOT / "scripts/openclaw-ops/sync_agents_12_to_servers.sh",
-            ROOT / "scripts/hardflow/deploy-evolution-hooks.sh",
+            ROOT / "skills/library/fleet-sync/scripts/sync_policy_enforcer_to_servers.sh",
+            ROOT / "skills/library/fleet-sync/scripts/sync_policy_enforcer_to_servers.ps1",
+            ROOT / "skills/library/fleet-sync/scripts/sync_gpt54_to_servers.sh",
+            ROOT / "skills/library/fleet-sync/scripts/sync_gpt54_to_servers.ps1",
+            ROOT / "skills/library/fleet-sync/scripts/sync_model_to_doubao_servers.sh",
+            ROOT / "skills/library/fleet-sync/scripts/sync_model_to_doubao_servers.ps1",
+            ROOT / "skills/library/fleet-sync/scripts/sync_agents_12_to_servers.sh",
         ]
         for path in targets:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -146,17 +145,17 @@ class GatewayRestartScriptUsageTests(unittest.TestCase):
 
     def test_sync_gpt54_scripts_sync_runtime_dependencies(self):
         required_entries = [
-            "scripts/openclaw-ops/chat_output.py",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
-            "scripts/openclaw-ops/policy/alert_dedupe.py",
-            "scripts/openclaw-ops/policy/task_capability_binding.py",
-            "scripts/openclaw-ops/policy/dataclass_compat.py",
-            "scripts/openclaw-ops/utf8_runtime.py",
-            "scripts/openclaw-ops/workflow_views.py",
+            "scripts/openclaw-ops/shared/chat_output.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/alert_dedupe.py",
+            "skills/library/control-plane-ops/scripts/policy/task_capability_binding.py",
+            "skills/library/control-plane-ops/scripts/policy/dataclass_compat.py",
+            "scripts/openclaw-ops/shared/utf8_runtime.py",
+            "skills/library/openclaw-workflow-manager/scripts/workflow_views.py",
         ]
         targets = [
-            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.sh",
-            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.ps1",
+            ROOT / "skills/library/fleet-sync/scripts/sync_gpt54_to_servers.sh",
+            ROOT / "skills/library/fleet-sync/scripts/sync_gpt54_to_servers.ps1",
         ]
         for path in targets:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -166,11 +165,11 @@ class GatewayRestartScriptUsageTests(unittest.TestCase):
 
     def test_sync_gpt54_scripts_validate_real_runtime_policy_dir(self):
         expectations = {
-            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.sh": [
+            ROOT / "skills/library/fleet-sync/scripts/sync_gpt54_to_servers.sh": [
                 "${remote_ops_policy_dir}/policy_enforcer.py",
                 "${remote_workspace_ops_policy_dir}/policy_enforcer.py",
             ],
-            ROOT / "scripts/openclaw-ops/sync_gpt54_to_servers.ps1": [
+            ROOT / "skills/library/fleet-sync/scripts/sync_gpt54_to_servers.ps1": [
                 "$remoteOpsPolicyDir/policy_enforcer.py",
                 "$remoteWorkspaceOpsPolicyDir/policy_enforcer.py",
             ],

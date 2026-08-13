@@ -29,11 +29,11 @@ class ControlPlaneSummaryRunnerTests(unittest.TestCase):
     def test_build_payload_dedupes_same_summary(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         runner_module = load_module(
             "control_plane_summary_runner",
-            "scripts/openclaw-ops/control_plane_summary_runner.py",
+            "skills/library/control-plane-ops/scripts/control_plane_summary_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -127,11 +127,11 @@ class ControlPlaneSummaryRunnerTests(unittest.TestCase):
     def test_main_emit_json_returns_structured_payload(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         runner_module = load_module(
             "control_plane_summary_runner",
-            "scripts/openclaw-ops/control_plane_summary_runner.py",
+            "skills/library/control-plane-ops/scripts/control_plane_summary_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

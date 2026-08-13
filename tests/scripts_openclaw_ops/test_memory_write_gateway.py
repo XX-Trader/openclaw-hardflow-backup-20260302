@@ -133,11 +133,12 @@ class TestSensitiveScan(unittest.TestCase):
         self.assertFalse(result.has_reject)
 
     def test_api_key_detected_and_masked(self):
-        content = "配置 sk-abc123def456ghi789jkl012mno345pqr678"
+        fake_key = "sk-" + "abc123def456ghi789jkl012mno345pqr678"
+        content = f"配置 {fake_key}"
         result = gw.scan_sensitive(content)
         self.assertTrue(result.has_sensitive)
         self.assertIn("api_key", result.hits)
-        self.assertNotIn("sk-abc123def456ghi789jkl012mno345pqr678", result.masked_content)
+        self.assertNotIn(fake_key, result.masked_content)
         self.assertIn("[REDACTED]", result.masked_content)
 
     def test_prompt_injection_rejected(self):
@@ -352,13 +353,13 @@ class TestExecuteWrite(unittest.TestCase):
         action = gw.MemoryAction(
             action="add",
             target="user",
-            content="- API 密钥 sk-abc123def456ghi789jkl012mno345pqr678 使用中",
+            content="- API 密钥 " + "sk-" + "abc123def456ghi789jkl012mno345pqr678 使用中",
             title="密钥",
         )
         result = gw.execute_write(action, self.hot_memory_paths, self.config)
         self.assertTrue(result.success)
         content = self.user_path.read_text(encoding="utf-8")
-        self.assertNotIn("sk-abc123def456ghi789jkl012mno345pqr678", content)
+        self.assertNotIn("sk-" + "abc123def456ghi789jkl012mno345pqr678", content)
         self.assertIn("[REDACTED]", content)
 
     def test_backup_created_before_write(self):

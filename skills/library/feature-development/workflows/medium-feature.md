@@ -121,8 +121,8 @@ const MOCK_GROUP_LIST = {
     list: [
       {
         groupId: 1,
-        groupName: "高频交易组",
-        traderCount: 5,
+        groupName: "核心运营组",
+        memberCount: 5,
         createdAt: "2025-01-05 10:00:00"
       }
     ],
@@ -168,7 +168,7 @@ async function fetchGroupList() {
 **示例**：
 ```javascript
 // UI测试数据定义了：
-{ groupId, groupName, traderCount, createdAt }
+{ groupId, groupName, memberCount, createdAt }
 
 // API响应必须完全一致：
 {
@@ -178,7 +178,7 @@ async function fetchGroupList() {
       {
         "groupId": 1,        // 与测试数据一致
         "groupName": "...",   // 与测试数据一致
-        "traderCount": 5,     // 与测试数据一致
+        "memberCount": 5,     // 与测试数据一致
         "createdAt": "..."    // 与测试数据一致
       }
     ]
@@ -202,12 +202,12 @@ async function fetchGroupList() {
 |---------|-----------|------|------|
 | groupId | id | BIGINT | API用驼峰，DB用下划线 |
 | groupName | group_name | VARCHAR(100) | 命名转换 |
-| traderCount | (关联查询) | - | 虚拟字段，需计算 |
+| memberCount | (关联查询) | - | 虚拟字段，需计算 |
 | createdAt | created_at | DATETIME | 命名转换 |
 
 **关键点**：
 - ✅ API字段与数据库字段的映射关系清晰
-- ✅ 复杂字段（如 traderCount）说明如何计算
+- ✅ 复杂字段（如 memberCount）说明如何计算
 - ✅ 命名转换规则明确（camelCase ↔ snake_case）
 
 ---
@@ -250,28 +250,28 @@ async function fetchGroupList() {
 // ✅ 正确：测试数据与API一致
 const MOCK_DATA = {
   groupId: 1,           // API也返回 groupId
-  groupName: "高频交易组" // API也返回 groupName
+  groupName: "核心运营组" // API也返回 groupName
 }
 
 // ❌ 错误：测试数据与API不一致
 const MOCK_DATA = {
   group_id: 1,          // API返回的是 groupId（前端要改代码）
-  group_name: "高频交易组"
+  group_name: "核心运营组"
 }
 ```
 
 ---
 
-## 示例：交易员分组管理（前端先行版）
+## 示例：成员分组管理（前端先行版）
 
 ### 第1步：需求文档
 ```
-功能概述：支持将交易员分组管理...
+功能概述：支持将成员分组管理...
 
 详细功能点：
 - 创建分组（名称、描述）
-- 将交易员添加到分组（多选）
-- 查看分组下的交易员列表
+- 将成员添加到分组（多选）
+- 查看分组下的成员列表
 - 对分组进行批量启停
 ```
 
@@ -286,8 +286,8 @@ const MOCK_GROUP_LIST = {
     list: [
       {
         groupId: 1,           // ⭐ 注意：用驼峰命名
-        groupName: "高频交易组",
-        traderCount: 5,
+        groupName: "核心运营组",
+        memberCount: 5,
         createdAt: "2025-01-05 10:00:00"
       }
     ],
@@ -300,7 +300,7 @@ const MOCK_GROUP_LIST = {
 
 ### 第3步：API设计⭐
 ```
-GET /api/pm-robot/trader-group/list
+GET /api/pm-robot/member-group/list
 
 响应（与测试数据完全一致）：
 {
@@ -309,8 +309,8 @@ GET /api/pm-robot/trader-group/list
     "list": [
       {
         "groupId": 1,        // ⭐ 与测试数据一致
-        "groupName": "高频交易组",
-        "traderCount": 5,
+        "groupName": "核心运营组",
+        "memberCount": 5,
         "createdAt": "2025-01-05 10:00:00"
       }
     ],
@@ -321,7 +321,7 @@ GET /api/pm-robot/trader-group/list
 字段映射：
 groupId → id (数据库字段)
 groupName → group_name
-traderCount → (关联查询计算)
+memberCount → (关联查询计算)
 createdAt → created_at
 ```
 
@@ -329,13 +329,13 @@ createdAt → created_at
 
 ### 第4步：数据库设计⭐
 ```
-pm_trader_group 表：
+pm_member_group 表：
 - id (对应API的groupId)
 - group_name (对应API的groupName)
 - created_at (对应API的createdAt)
 
 说明：
-- traderCount是虚拟字段，需要通过关联查询计算
+- memberCount是虚拟字段，需要通过关联查询计算
 - 命名转换：API用驼峰，DB用下划线
 ```
 
@@ -346,12 +346,12 @@ pm_trader_group 表：
 推荐方案：新增分组表和关联表
 
 涉及文件：
-- pm_robot/models/: PMTraderGroup, PMTraderGroupMember
+- pm_robot/models/: PMMemberGroup, PMMemberGroupMember
 - pm_robot/views/: 分组CRUD视图
-- 前端: TraderGroupManage.vue
+- 前端: MemberGroupManage.vue
 
 关键点：
-- traderCount通过annotate计算
+- memberCount通过annotate计算
 - API响应序列化时转换字段名
 ```
 

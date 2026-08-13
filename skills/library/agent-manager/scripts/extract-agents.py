@@ -1,158 +1,132 @@
 #!/usr/bin/env python3
-"""
-提取 agents 目录下的所有 agent 元数据
-生成分类索引
-"""
+"""Extract Agent frontmatter into deterministic Markdown and JSON indexes."""
 
+from __future__ import annotations
+
+import argparse
+import json
 import os
 import re
-from pathlib import Path
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Sequence
 
 
-def extract_frontmatter(file_path):
-    """提取 Markdown 文件的 YAML frontmatter"""
+FRONTMATTER_PATTERN = re.compile(r"^---\s*\n(.*?)\n---", re.DOTALL)
+
+
+def extract_frontmatter(file_path: Path) -> dict[str, str] | None:
+    """Parse the simple scalar fields used by Agent Markdown files."""
+
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-
-        # 提取 --- 之间的内容
-        match = re.search(r'^---\n(.*?)\n---', content, re.DOTALL)
-        if not match:
-            return None
-
-        frontmatter = match.group(1)
-        metadata = {}
-
-        # 解析 YAML 格式
-        for line in frontmatter.split('\n'):
-            if ':' in line:
-                key, value = line.split(':', 1)
-                metadata[key.strip()] = value.strip()
-
-        return metadata
-    except Exception as e:
-        print(f"Error reading {file_path}: {e}")
+        content = file_path.read_text(encoding="utf-8-sig")
+    except OSError:
         return None
+    match = FRONTMATTER_PATTERN.search(content)
+    if not match:
+        return None
+    metadata: dict[str, str] = {}
+    for line in match.group(1).splitlines():
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        metadata[key.strip()] = value.strip().strip('"\'')
+    return metadata
 
 
-def main():
-    agents_dir = Path("C:/Users/superma/.claude/agents")
-    output_dir = Path("C:/Users/superma/.claude/skills/agent-manager/data")
+def build_indexes(agents_dir: Path) -> tuple[str, dict[str, Any]]:
+    """Build index payloads without reading machine-specific paths."""
 
-    # 创建输出目录
-    output_dir.mkdir(parents=True, exist_ok=True)
+    agents: list[dict[str, str]] = []
+    categories: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for markdown_file in sorted(agents_dir.rglob("*.md")):
+        metadata = extract_frontmatter(markdown_file)
+        if not metadata or not metadata.get("name"):
+            continue
+        relative = markdown_file.relative_to(agents_dir).with_suffix("").as_posix()
+        agent = {
+            "name": metadata.get("name", ""),
+            "description": metadata.get("description", ""),
+            "category": metadata.get("category", "uncategorized"),
+            "file": relative,
+        }
+        agents.append(agent)
+        categories[agent["category"]].append(agent)
 
-    # 存储所有 agent 数据
-    agents = []
-    categories = defaultdict(list)
+    agents.sort(key=lambda item: (item["name"], item["file"]))
+    generated_at = datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat()
+    lines = [
+        "# Agent 索引",
+        "",
+        f"> 自动生成时间: {generated_at}",
+        f"> Agent 总数: {len(agents)}",
+        f"> 类别数: {len(categories)}",
+        "",
+        "## 分类",
+    ]
+    for category in sorted(categories):
+        lines.extend(["", f"### {category}", "", "| Agent | 描述 |", "| --- | --- |"])
+        for agent in sorted(categories[category], key=lambda item: item["name"]):
+            description = agent["description"]
+            if len(description) > 80:
+                description = description[:77] + "..."
+            lines.append(f"| [{agent['name']}]({agent['file']}.md) | {description} |")
 
-    # 遍历所有 .md 文件
-    for md_file in agents_dir.glob("*.md"):
-        metadata = extract_frontmatter(md_file)
-        if metadata and 'name' in metadata:
-            agent_data = {
-                'name': metadata.get('name', ''),
-                'description': metadata.get('description', ''),
-                'category': metadata.get('category', 'uncategorized'),
-                'file': md_file.stem
-            }
-            agents.append(agent_data)
-            categories[agent_data['category']].append(agent_data)
-
-    # 按类别排序
-    sorted_categories = sorted(categories.items())
-
-    # 生成索引文档
-    index_md = """# Agent 索引
-
-> 自动生成时间: {date}
-> Agent 总数: {total}
-> 类别数: {categories_count}
-
----
-
-## 📖 使用说明
-
-### 如何调用 Agent
-
-在对话中直接说明需求，我会自动匹配合适的 agent：
-
-**示例**:
-- "帮我审查这段代码" → code-reviewer
-- "优化这个Python函数" → python-expert
-- "调试这个错误" → debugger
-
-### 手动指定 Agent
-
-你也可以明确指定使用某个 agent：
-
-```
-"请使用 python-expert 代理帮我优化代码"
-"使用 debugger 代理分析这个错误"
-```
-
----
-
-## 📋 Agent 分类索引
-
-""".format(
-        date=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        total=len(agents),
-        categories_count=len(sorted_categories)
-    )
-
-    # 为每个类别生成索引
-    for category, agents_list in sorted_categories:
-        index_md += f"\n### {category.replace('-', ' ').title()}\n\n"
-        index_md += f"| Agent | 描述 |\n"
-        index_md += f"|-------|------|\n"
-
-        for agent in sorted(agents_list, key=lambda x: x['name']):
-            name = agent['name']
-            desc = agent['description'][:80] + '...' if len(agent['description']) > 80 else agent['description']
-            index_md += f"| [{name}]({agent['file']}.md) | {desc} |\n"
-
-        index_md += "\n"
-
-    # 添加快速查找表
-    index_md += "\n---\n\n## 🔍 快速查找（按字母顺序）\n\n"
-    index_md += "| Agent | Category | 描述 |\n"
-    index_md += f"|-------|----------|------|\n"
-
-    for agent in sorted(agents, key=lambda x: x['name']):
-        name = agent['name']
-        category = agent['category']
-        desc = agent['description'][:60] + '...' if len(agent['description']) > 60 else agent['description']
-        index_md += f"| {name} | {category} | {desc} |\n"
-
-    # 写入索引文件
-    index_file = output_dir / "AGENTS_INDEX.md"
-    with open(index_file, 'w', encoding='utf-8') as f:
-        f.write(index_md)
-
-    # 生成 JSON 数据
-    import json
-    json_data = {
-        'generated_at': datetime.now().isoformat(),
-        'total_agents': len(agents),
-        'categories': {
-            cat: [a['name'] for a in agents_list]
-            for cat, agents_list in sorted_categories
+    payload: dict[str, Any] = {
+        "generated_at": generated_at,
+        "total_agents": len(agents),
+        "categories": {
+            category: [item["name"] for item in sorted(items, key=lambda value: value["name"])]
+            for category, items in sorted(categories.items())
         },
-        'agents': agents
+        "agents": agents,
     }
+    return "\n".join(lines).rstrip() + "\n", payload
 
+
+def default_agents_dir() -> Path:
+    configured = os.environ.get("AGENTS_DIR", "").strip()
+    if configured:
+        return Path(configured).expanduser()
+    return Path.cwd() / "agents"
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--agents-dir", type=Path, default=default_agents_dir())
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent / "data",
+    )
+    parser.add_argument("--emit-json", action="store_true")
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    agents_dir = args.agents_dir.expanduser().resolve()
+    output_dir = args.output_dir.expanduser().resolve()
+    if not agents_dir.is_dir():
+        raise FileNotFoundError(f"agents directory does not exist: {agents_dir}")
+
+    markdown, payload = build_indexes(agents_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    markdown_file = output_dir / "AGENTS_INDEX.md"
     json_file = output_dir / "agents.json"
-    with open(json_file, 'w', encoding='utf-8') as f:
-        json.dump(json_data, f, ensure_ascii=False, indent=2)
-
-    print(f"[OK] Index generation complete!")
-    print(f"[MD] Markdown: {index_file}")
-    print(f"[JSON] Data: {json_file}")
-    print(f"[STAT] Total {len(agents)} agents, {len(sorted_categories)} categories")
+    markdown_file.write_text(markdown, encoding="utf-8", newline="")
+    json_file.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="",
+    )
+    if args.emit_json:
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(f"[OK] agents={payload['total_agents']} output={output_dir}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

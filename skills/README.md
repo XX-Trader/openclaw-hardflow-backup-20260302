@@ -99,9 +99,9 @@
 
 ---
 
-## nofx 当前 owner → Skill 绑定速查
+## runtime-host 当前 owner → Skill 绑定速查
 
-> 当前 nofx 入口是 `arbitrageagent` / `spreadagent` 两个 Hermes Discord profile；下表是工作流阶段 owner 与 cron 责任标签，不表示独立常驻 agent 数量。
+> 当前 runtime-host 入口是 `deliveryagent` / `projectagent` 两个 Hermes Discord profile；下表是工作流阶段 owner 与 cron 责任标签，不表示独立常驻 agent 数量。
 
 | Owner 标签 | 绑定的 Skill |
 |-----------|-------------|

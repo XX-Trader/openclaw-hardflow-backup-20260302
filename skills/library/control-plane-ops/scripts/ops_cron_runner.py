@@ -25,7 +25,6 @@ import subprocess
 import sys
 import time
 import uuid
-from dataclass_compat import compat_dataclass as dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -34,6 +33,22 @@ POLICY_DIR = Path(__file__).resolve().parent / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
+
+# Source checkouts keep each script under its owning Skill; installed runtimes
+# flatten the same dependencies into the ops directory. Bootstrap only when
+# the repository marker is present so both layouts share one implementation.
+for _candidate_root in Path(__file__).resolve().parents:
+    _shared_dir = _candidate_root / "scripts" / "openclaw-ops" / "shared"
+    if _shared_dir.is_dir():
+        _shared_value = str(_shared_dir)
+        if _shared_value not in sys.path:
+            sys.path.insert(0, _shared_value)
+        from repo_imports import bootstrap_repository_imports
+
+        bootstrap_repository_imports(__file__)
+        break
+
+from dataclass_compat import compat_dataclass as dataclass
 from utf8_runtime import configure_process_utf8_stdio
 from io_write_gateway import FileWriteError, append_text_atomic, write_json_atomic
 from alert_dedupe import (
@@ -223,8 +238,8 @@ def save_json(path: Path, payload: Any) -> None:
 def _normalize_config_paths(cfg: dict[str, Any], home: Path) -> dict[str, Any]:
     """Recursively replace foreign-OS home directory paths with the current $HOME.
 
-    When config files are synced across Windows/Linux via git, paths like
-    ``C:\\Users\\superma\\.openclaw\\...`` end up on Linux where they are invalid.
+    When config files are synced across Windows/Linux via git, paths from a
+    different user's home directory can be invalid on the current machine.
     This function detects such cross-platform path fragments and rewrites them
     to ``$HOME/.openclaw/...`` for the current system.
 
@@ -238,7 +253,7 @@ def _normalize_config_paths(cfg: dict[str, Any], home: Path) -> dict[str, Any]:
     home_str = str(home).replace("\\", "/")
     # Patterns that indicate a foreign home directory followed by .openclaw
     _FOREIGN_HOME_RE = re.compile(
-        r"(?:[A-Z]:[/\\]+(?:Users|Documents and Settings)[/\\]+[^/\\]+|/(?:home|root)/[^/\\]+)"
+        r"(?:[A-Z]:[/\\]+(?:Users|Documents and Settings)[/\\]+[^/\\]+|/home/[^/\\]+|/root)"
     )
 
     def _rewrite(value: str) -> str:
@@ -327,20 +342,7 @@ def default_config() -> dict[str, Any]:
         },
         "app_usage_monitor": {
             "enabled": True,
-            "paths": [
-                {"name": "openclaw_home", "path": str(home / ".openclaw"), "warn_gb": 8.0},
-                {
-                    "name": "openclaw_workflow_repo",
-                    "path": str(home / "openclaw-hardflow-backup-20260302"),
-                    "warn_gb": 5.0,
-                },
-                {"name": "market_center", "path": str(home / "DabaiMarketCenter"), "warn_gb": 20.0},
-                {
-                    "name": "subscription_website",
-                    "path": str(home / "Dabai-Polymarket-Subscription-Website"),
-                    "warn_gb": 10.0,
-                },
-            ],
+            "paths": _default_app_usage_items(),
             "top_n": 5,
             "warn_total_gb": 60.0,
             "collect_timeout_seconds": 15,
@@ -1102,12 +1104,19 @@ def update_issues(state: dict[str, Any], findings: list[dict[str, Any]], resolve
 
 def _default_app_usage_items() -> list[dict[str, Any]]:
     home = Path.home()
-    return [
+    items = [
         {"name": "openclaw_home", "path": str(home / ".openclaw"), "warn_gb": 8.0},
-        {"name": "openclaw_workflow_repo", "path": str(home / "openclaw-hardflow-backup-20260302"), "warn_gb": 5.0},
-        {"name": "market_center", "path": str(home / "DabaiMarketCenter"), "warn_gb": 20.0},
-        {"name": "subscription_website", "path": str(home / "Dabai-Polymarket-Subscription-Website"), "warn_gb": 10.0},
     ]
+    workflow_repo = os.environ.get("HARDFLOW_WORKFLOW_REPO", "").strip()
+    if workflow_repo:
+        items.append(
+            {
+                "name": "workflow_repo",
+                "path": str(Path(workflow_repo).expanduser()),
+                "warn_gb": 5.0,
+            }
+        )
+    return items
 
 
 def _parse_app_usage_items(value: Any) -> list[dict[str, Any]]:

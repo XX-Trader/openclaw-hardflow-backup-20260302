@@ -28,7 +28,7 @@ class EnsureRuntimeSkillsTests(unittest.TestCase):
     def test_ensure_skill_entry_installs_local_skill_and_removes_conflicts(self):
         module = load_module(
             "ensure_runtime_skills",
-            "scripts/openclaw-ops/ensure_runtime_skills.py",
+            "skills/library/openclaw-workflow-manager/scripts/ensure_runtime_skills.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -67,7 +67,7 @@ class EnsureRuntimeSkillsTests(unittest.TestCase):
     def test_ensure_command_entry_dry_run_reports_missing_binary_install(self):
         module = load_module(
             "ensure_runtime_skills",
-            "scripts/openclaw-ops/ensure_runtime_skills.py",
+            "skills/library/openclaw-workflow-manager/scripts/ensure_runtime_skills.py",
         )
         result = module.ensure_command_entry(
             {
@@ -88,7 +88,10 @@ class EnsureRuntimeSkillsTests(unittest.TestCase):
 
     def test_runtime_required_skills_manifest_includes_frontend_and_summarize(self):
         manifest = json.loads(
-            (ROOT / "scripts/openclaw-ops/runtime-required-skills.json").read_text(encoding="utf-8")
+            (
+                ROOT
+                / "skills/library/openclaw-workflow-manager/scripts/runtime-required-skills.json"
+            ).read_text(encoding="utf-8")
         )
         skills = manifest.get("skills") or []
         commands = manifest.get("commands") or []

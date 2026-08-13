@@ -20,9 +20,9 @@
 
 | 组件 | 路径 | 规模 |
 |------|------|------|
-| 异常巡检器 | `scripts/openclaw-ops/unified_exception_logger.py` | 18KB |
-| 故障知识库 | `scripts/openclaw-ops/fault_knowledge_base.py` | 13KB |
-| 诚信审计器 | `scripts/openclaw-ops/claim_verification_auditor.py` | 20KB |
+| 异常巡检器 | `skills/library/log-monitor/scripts/unified_exception_logger.py` | 18KB |
+| 故障知识库 | `skills/library/log-monitor/scripts/fault_knowledge_base.py` | 13KB |
+| 诚信审计器 | `skills/library/openclaw-security-audit/scripts/claim_verification_auditor.py` | 20KB |
 | 错误驱动进化协议 | `docs/协议与规范/错误驱动进化协议.md` | 协议定义 |
 
 ## 关联定时任务

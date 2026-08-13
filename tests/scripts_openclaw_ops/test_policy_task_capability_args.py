@@ -29,7 +29,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_cmd_init_writes_capability_registry_file(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -52,7 +52,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_cmd_init_writes_workflow_profile_registry_file(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -115,7 +115,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_cmd_init_writes_benchmark_suite_registry_file(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -148,7 +148,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_persists_capability_constraints(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -188,7 +188,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
                     context_json=json.dumps(
                         {
                             "problem": "Need to persist CLI capability fields.",
-                            "location": "scripts/openclaw-ops/policy/policy_enforcer.py",
+                            "location": "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
                             "first_seen_at": "2026-03-22T12:00:00+08:00",
                             "impact": "create-task constraints would be lost",
                             "evidence": "unit-test",
@@ -276,7 +276,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_routes_research_request_to_research_workflow(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -322,7 +322,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
                         {
                             "problem": "Need a research-oriented workflow route.",
                             "scope": "workflow runtime",
-                            "location": "scripts/openclaw-ops/policy/policy_enforcer.py",
+                            "location": "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
                             "constraints": "keep coding workflow default unchanged",
                             "acceptance_criteria": "research requests select research-default",
                         },
@@ -364,7 +364,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_routes_docs_request_to_docs_workflow(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -441,7 +441,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_routes_ops_request_to_ops_workflow(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -521,7 +521,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_reroutes_when_stage_clarification_fields_are_missing(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -582,7 +582,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
                     context_json=json.dumps(
                         {
                             "problem": "Need stage-aware clarification gate.",
-                            "location": "scripts/openclaw-ops/policy/policy_enforcer.py",
+                            "location": "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
                             "first_seen_at": "2026-03-23T10:00:00+08:00",
                             "impact": "optimization-applied profile updates would never affect intake",
                             "evidence": "unit-test",
@@ -610,7 +610,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
 
         self.assertEqual(created["task_type"], "clarification_required")
         self.assertTrue(created["needs_clarification"])
-        self.assertEqual(created["assignee"], "project-agent")
+        self.assertEqual(created["assignee"], "human-inbox")
         self.assertEqual(created["stage_id"], "clarify")
         self.assertEqual(created["stage_score_gate"], "requirements")
         self.assertIn("objective", created["context_fields_missing"])
@@ -635,7 +635,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_requires_requirement_package_for_complex_human_workflow(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -698,7 +698,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
 
         self.assertEqual(created["task_type"], "clarification_required")
         self.assertTrue(created["needs_clarification"])
-        self.assertEqual(created["assignee"], "project-agent")
+        self.assertEqual(created["assignee"], "human-inbox")
         self.assertIn("requirement_package_incomplete", created["clarification_reason"])
         self.assertEqual(
             created["selection_inputs"]["requirement_package_gate"]["missing_fields"],
@@ -713,7 +713,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_persists_stage_execution_hints(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -787,7 +787,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
                     context_json=json.dumps(
                         {
                             "problem": "Need runtime to see optimization hints.",
-                            "location": "scripts/openclaw-ops/policy/policy_enforcer.py",
+                            "location": "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
                             "first_seen_at": "2026-03-23T10:05:00+08:00",
                             "impact": "candidate profile hints stay trapped in registry",
                             "evidence": "unit-test",
@@ -847,7 +847,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_task_capability_coverage_reports_upgrade_ratio(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -910,7 +910,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_accepts_explicit_candidate_workflow(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -970,7 +970,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_post_stage_merges_stage_contract_details_into_stage_run(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1052,7 +1052,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_report_agent_result_downgrades_failed_stage_contract_to_partial_retry(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1164,7 +1164,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_rejects_unknown_workflow_profile(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1221,7 +1221,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_complete_task_escalates_when_open_critical_incident_requires_human_help(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1318,7 +1318,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_can_update_task_incident_status(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1385,7 +1385,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_auto_assigns_backend_dev_from_stage_capabilities(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1433,7 +1433,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
                             {
                                 "problem": "Need implement-stage capability binding.",
                                 "scope": "workflow runtime",
-                                "location": "scripts/openclaw-ops/policy/policy_enforcer.py",
+                                "location": "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
                                 "constraints": "auto-select execution assignee from capability registry",
                                 "acceptance_criteria": "implement stage binds to backend-dev",
                                 "first_seen_at": "2026-03-23T00:00:00+08:00",
@@ -1465,7 +1465,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_auto_assigns_reviewer_from_review_stage_skills(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1513,7 +1513,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
                             {
                                 "problem": "Need review-stage capability binding.",
                                 "scope": "workflow runtime",
-                                "location": "scripts/openclaw-ops/policy/policy_enforcer.py",
+                                "location": "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
                                 "constraints": "auto-select reviewer from required review skill",
                                 "acceptance_criteria": "review stage binds to reviewer",
                                 "first_seen_at": "2026-03-23T00:00:00+08:00",
@@ -1544,7 +1544,7 @@ class PolicyTaskCapabilityArgsTests(unittest.TestCase):
     def test_policy_enforcer_create_task_rejects_unknown_required_capability(self):
         module = load_module(
             "policy_enforcer",
-            "scripts/openclaw-ops/policy/policy_enforcer.py",
+            "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -3,8 +3,8 @@
     "enabled": true,
     "scan_roots": [
       "/srv",
-      "/home/ubuntu/projects",
-      "/home/ubuntu"
+      "/home/runtime-user/projects",
+      "/home/runtime-user"
     ],
     "max_depth": 4,
     "max_projects": 40,
@@ -24,7 +24,7 @@
       "git_remote": "origin",
       "git_branch": "main",
       "integrations": [
-        "binance"
+        "github"
       ],
       "module_globs": [
         "src/**/*.py",
@@ -71,13 +71,13 @@
       "doc_sources": [
         {
           "id": "project-a-api-reference",
-          "url": "https://developers.binance.com/docs/binance-spot-api-docs/rest-api/general-api-information",
+          "url": "https://docs.github.com/en/rest/using-the-rest-api/getting-started-with-the-rest-api",
           "category": "api-doc",
           "tags": [
             "project",
             "api",
             "official",
-            "binance"
+            "github"
           ],
           "enabled": true,
           "browser_fallback": true,
@@ -112,7 +112,8 @@
         "enabled": true,
         "commit_prefix": "chore(project-b): sync automation updates"
       },
-      "auto_update_install_cmd": "bash scripts/deploy/install.sh"
+      "auto_update_install_cmd": "bash scripts/deploy/install.sh",
+      "integrations": []
     },
     {
       "id": "lobster",
@@ -134,7 +135,8 @@
           "test/"
         ],
         "auto_pr_enabled": false
-      }
+      },
+      "integrations": []
     }
   ]
 }

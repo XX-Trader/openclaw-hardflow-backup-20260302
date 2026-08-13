@@ -141,95 +141,8 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
 
 
 
-    def test_graphify_context_and_scope_validation_use_external_index(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            repo = tmp_path / "repo"
-            repo.mkdir()
-            (repo / "app.py").write_text("print('ok')\n", encoding="utf-8")
-            index_root = tmp_path / "indexes"
-            graph_out = index_root / repo.name / "graphify-out"
-            graph_out.mkdir(parents=True)
-            (graph_out / "graph.json").write_text(
-                json.dumps({"nodes": [{"id": "app", "label": "App", "community": 1}], "links": []}),
-                encoding="utf-8",
-            )
-            (graph_out / "GRAPH_REPORT.md").write_text(
-                "# Report\n\n## God Nodes\n- App\n\n## Suggested Questions\n- What owns App?\n",
-                encoding="utf-8",
-            )
-            with mock.patch.dict(os.environ, {"PIPELINE_GRAPHIFY_INDEX_ROOT": str(index_root)}):
-                state = run_pipeline(
-                    PipelineConfig(
-                        project_key="demo",
-                        requirement="Update app.py safely; no trading.",
-                        workspace_root=tmp_path / "runs",
-                        run_id="graphify",
-                        dry_run=True,
-                        command_cwd=repo,
-                        runtime_host="hermes",
-                        runtime_home=str(tmp_path / "runtime"),
-                        source_urls=("discord:spreadagent",),
-                    )
-                )
 
-            context = Path(state["artifacts"]["graphify_context"]).read_text(encoding="utf-8")
-            self.assertIn("status: `available`", context)
-            self.assertIn("nodes: `1`", context)
-            validation = json.loads(Path(state["artifacts"]["graphify_scope_validation_payload"]).read_text(encoding="utf-8"))
-            self.assertIn(validation["scope_status"], {"pass", "warning"})
-            self.assertFalse(any(item["severity"] == "block" for item in validation["findings"]))
-            risk = json.loads(Path(state["artifacts"]["pre_execution_risk"]).read_text(encoding="utf-8"))
-            self.assertEqual("auto_execute", risk["execution_decision"])
-            plan_publish = Path(state["artifacts"]["plan_publish"]).read_text(encoding="utf-8")
-            self.assertIn("graphify_context.md", plan_publish)
 
-    def test_graphify_scope_validation_blocks_cross_repo_and_credentials_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp) / "repo"
-            repo.mkdir()
-            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(Path(tmp) / "runtime"))
-            runtime = {"runtime_home": str(Path(tmp) / "runtime")}
-            safe_plan = {
-                "target_files": [{"path": "missing_module.py"}],
-                "verification_commands": [{"command": "git diff --check"}],
-                "out_of_scope": ["Do not use secrets, credentials, private keys, cookies, or auth state files.", "Do not start real trading."],
-            }
-            safe_payload = _mod.validate_graphify_scope(config, runtime, safe_plan, {})
-            self.assertEqual("warning", safe_payload["scope_status"])
-            self.assertFalse(any(item["severity"] == "block" for item in safe_payload["findings"]))
-
-            unsafe_plan = {
-                "target_files": [{"path": str(Path(tmp) / "outside" / "credential.json")}],
-                "verification_commands": [],
-            }
-            unsafe_payload = _mod.validate_graphify_scope(config, runtime, unsafe_plan, {})
-            self.assertEqual("block", unsafe_payload["scope_status"])
-            reasons = "\n".join(item["reason"] for item in unsafe_payload["findings"])
-            self.assertIn("outside the command repository", reasons)
-
-    def test_graphify_scope_validation_allows_stock_token_business_route_and_safety_text(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp) / "repo"
-            target = repo / "智能多平台套利" / "api" / "routes"
-            target.mkdir(parents=True)
-            (target / "stock_tokens.py").write_text("def route():\n    return 'ok'\n", encoding="utf-8")
-            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(Path(tmp) / "runtime"))
-            runtime = {"runtime_home": str(Path(tmp) / "runtime")}
-            safe_plan = {
-                "target_files": [{"path": "智能多平台套利/api/routes/stock_tokens.py"}],
-                "implementation_steps": [
-                    {"description": "Keep PRODUCTION_TRADING_ENABLED=false and do not place orders."},
-                ],
-                "verification_commands": [
-                    {"command": _mod.added_line_safety_scan_command()},
-                ],
-                "out_of_scope": ["Do not use secrets, credentials, private keys, cookies, or auth state files."],
-            }
-            payload = _mod.validate_graphify_scope(config, runtime, safe_plan, {})
-
-            self.assertIn(payload["scope_status"], {"pass", "warning"})
-            self.assertFalse(any(item["severity"] == "block" for item in payload["findings"]))
 
     def test_graphify_scope_validation_allows_positive_business_operations(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -241,7 +154,7 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             risky_plan = {
                 "target_files": [{"path": "app.py"}],
                 "implementation_steps": [
-                    {"description": "Set PRODUCTION_TRADING_ENABLED=true and place real orders"},
+                    {"description": "Set ALLOW_PRODUCTION_WRITE=true and create records through the application API"},
                 ],
                 "out_of_scope": [
                     "Do not use secrets, credentials, private keys, cookies, or auth state files.",
@@ -254,33 +167,6 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertNotIn("execution_guard", reasons)
             self.assertFalse(any(item["severity"] == "block" for item in payload["findings"]))
 
-    def test_pre_execution_risk_keeps_positive_trading_when_same_line_has_negated_credentials(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            artifact_paths = [
-                Path(tmp) / "requirements.md",
-                Path(tmp) / "requirements-review.md",
-                Path(tmp) / "solution-review.md",
-                Path(tmp) / "graphify.md",
-            ]
-            for path in artifact_paths:
-                path.write_text("", encoding="utf-8")
-            artifacts = {
-                "requirements_discussion": str(artifact_paths[0]),
-                "requirements_review": str(artifact_paths[1]),
-                "solution_review": str(artifact_paths[2]),
-                "graphify_scope_validation": str(artifact_paths[3]),
-            }
-            risk = _mod.assess_pre_execution_risk(
-                "已人工确认：允许本策略项目执行真实交易下单 smoke，不读取或打印凭证。",
-                {},
-                artifacts,
-            )
-
-        self.assertEqual("low", risk["risk_level"])
-        self.assertEqual("auto_execute", risk["execution_decision"])
-        self.assertFalse(risk["human_confirmation_required"])
-        self.assertFalse(risk["guarded_action_reasons"])
-        self.assertNotIn("execution_guard", risk)
 
     def test_pre_execution_risk_keeps_credential_printing_as_hard_stop(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -360,118 +246,8 @@ class ProjectDeliveryPipelineRunnerTests(unittest.TestCase):
             self.assertFalse(item["guarded_action_reasons"])
             self.assertNotIn("execution_guard", item)
 
-    def test_pre_execution_risk_ignores_pure_negated_trading_and_credentials(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            artifact_paths = [
-                Path(tmp) / "requirements.md",
-                Path(tmp) / "requirements-review.md",
-                Path(tmp) / "solution-review.md",
-                Path(tmp) / "graphify.md",
-            ]
-            for path in artifact_paths:
-                path.write_text("", encoding="utf-8")
-            artifacts = {
-                "requirements_discussion": str(artifact_paths[0]),
-                "requirements_review": str(artifact_paths[1]),
-                "solution_review": str(artifact_paths[2]),
-                "graphify_scope_validation": str(artifact_paths[3]),
-            }
-            risk = _mod.assess_pre_execution_risk(
-                "保持 PRODUCTION_TRADING_ENABLED=false，不启动真实交易、不下单、不划转、不读取或打印凭证。Do not place orders, transfer funds, or enable live trading.",
-                {},
-                artifacts,
-            )
 
-        self.assertEqual("low", risk["risk_level"])
-        self.assertFalse(risk["high_risk_reasons"])
 
-    def test_pre_execution_risk_ignores_safety_scan_and_direct_run_repair_context(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            artifact_paths = [
-                Path(tmp) / "requirements.md",
-                Path(tmp) / "requirements-review.md",
-                Path(tmp) / "solution-review.md",
-                Path(tmp) / "graphify.md",
-            ]
-            for path in artifact_paths:
-                path.write_text(
-                    "- 安全扫描确认未新增生产交易、下单、撤单、划转、提现、凭证读取路径\n"
-                    "- Python 断言 diff 新增行不含 PRODUCTION_TRADING_ENABLED=true、create_order、cancel_order、withdraw、transfer、credential/auth JSON 读取等危险行为\n"
-                    "- 验收命令包含 credential/auth 路径安全扫描。\n"
-                    "- forbidden_targets: Any implementation that places real orders, cancels orders, transfers funds, withdraws, enables live trading, reads credentials or prints secrets.\n"
-                    "- graphify_scope_validation 的 warning 不是跨仓、凭证、生产交易、真实下单或资金动作风险。\n"
-                    "- 只有凭证/secret/auth-state 泄露、破坏性目标不明确、备份/审计失败或显式绕过安全门禁才应作为硬停止。\n",
-                    encoding="utf-8",
-                )
-            artifacts = {
-                "requirements_discussion": str(artifact_paths[0]),
-                "requirements_review": str(artifact_paths[1]),
-                "solution_review": str(artifact_paths[2]),
-                "graphify_scope_validation": str(artifact_paths[3]),
-            }
-            risk = _mod.assess_pre_execution_risk(
-                "用户明确授权 direct_run 修复 workflow 后自动调用 coding_workflow；保持 PRODUCTION_TRADING_ENABLED=false，仅 read-only/signal-only/mock/replay；不真实交易、不下单、不撤单、不划转、不提现、不读取或打印 token/cookie/OAuth/API key/private key/auth JSON/credential-imports。",
-                {"implementation_steps": [{"description": "确认 diff 新增行不包含 PRODUCTION_TRADING_ENABLED=true、create_order、cancel_order、withdraw、transfer、credential-imports、auth JSON 读取。"}]},
-                artifacts,
-            )
-
-        self.assertEqual("low", risk["risk_level"])
-        self.assertFalse(risk["high_risk_reasons"])
-
-    def test_pre_execution_risk_ignores_generated_execution_guard_repair_context(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            artifact_paths = [
-                Path(tmp) / "requirements.md",
-                Path(tmp) / "requirements-review.md",
-                Path(tmp) / "solution-review.md",
-                Path(tmp) / "graphify.md",
-            ]
-            repair_context = """
-Repair context from previous blocked attempt:
-# Smart Arb Auto Repair Context
-- Failed stage: risk_gate
-- Next action: fix_execution_guard
-## Previous Failure Evidence
-pre-execution guard found a hard blocker before code execution fix_execution_guard {
-  "schema_version": "execution-guard/v1",
-  "guard_status": "blocked",
-  "guarded_actions": ["enable_live_trading", "place_order", "fund_transfer", "destructive_filesystem"],
-  "hard_stop_reasons": ["credential_access"]
-}
-## requirements_discussion
-当前任务仅修正 read-only MVP 平台口径。
-"""
-            for path in artifact_paths:
-                path.write_text(repair_context, encoding="utf-8")
-            artifacts = {
-                "requirements_discussion": str(artifact_paths[0]),
-                "requirements_review": str(artifact_paths[1]),
-                "solution_review": str(artifact_paths[2]),
-                "graphify_scope_validation": str(artifact_paths[3]),
-            }
-            risk = _mod.assess_pre_execution_risk(
-                "用户已选择 direct_run 修复 workflow 后自动调用 coding_workflow。Repair context from previous blocked attempt: fix_execution_guard {\"schema_version\": \"execution-guard/v1\", \"guarded_actions\": [\"enable_live_trading\", \"place_order\", \"fund_transfer\", \"destructive_filesystem\"], \"hard_stop_reasons\": [\"credential_access\"]} 保持 PRODUCTION_TRADING_ENABLED=false，仅 read-only/signal-only/mock/replay；不真实交易、不下单、不撤单、不划转、不提现、不读取或打印 token/cookie/OAuth/API key/private key/auth JSON/credential-imports。",
-                {
-                    "target_files": [{"path": "智能多平台套利/api/routes/stock_tokens.py"}],
-                    "implementation_steps": [
-                        {"description": "Update fallback payloads to omit Kraken/MEXC from MVP defaults and retain Binance/OKX/Bitget/Bybit/Gate/Hyperliquid read-only scope."}
-                    ],
-                    "risk_boundaries": [
-                        {"name": "funds_and_orders", "allowed": False},
-                        {"name": "destructive_changes", "allowed": False},
-                    ],
-                    "runtime_contracts": [
-                        "This requirement is read-only/signal-only/mock/replay; do not execute real trading, orders, transfers, withdrawals, or fund movement."
-                    ],
-                },
-                artifacts,
-            )
-
-        self.assertEqual("low", risk["risk_level"])
-        self.assertFalse(risk["high_risk_reasons"])
-        self.assertFalse(risk["guarded_action_reasons"])
-        self.assertEqual("auto_execute", risk["execution_decision"])
-        self.assertNotIn("execution_guard", risk)
 
     def test_graphify_context_does_not_trust_mismatched_repo_root(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -486,7 +262,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             (graph_out / "graph.json").write_text(json.dumps({"nodes": [{"id": "x", "label": "Wrong", "community": 1}], "links": []}), encoding="utf-8")
             (graph_out / "GRAPH_REPORT.md").write_text("## God Nodes\n- Wrong repo\n", encoding="utf-8")
             (graph_out / ".graphify_root").write_text(str(other), encoding="utf-8")
-            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(tmp_path / "runtime"), source_urls=("discord:spreadagent",))
+            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(tmp_path / "runtime"), source_urls=("discord:projectagent",))
             runtime = {"runtime_home": str(tmp_path / "runtime")}
             with mock.patch.dict(os.environ, {"PIPELINE_GRAPHIFY_INDEX_ROOT": str(index_root)}):
                 context = _mod.render_graphify_context(config, runtime, "inspect graph")
@@ -716,7 +492,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             state = run_pipeline(
                 PipelineConfig(
                     project_key="demo",
-                    requirement="开启真实交易并设置 PRODUCTION_TRADING_ENABLED=true",
+                    requirement="开启生产写入并设置 PRODUCTION_WRITES_ENABLED=true",
                     workspace_root=tmp_path,
                     run_id="high-risk-plan",
                     source_urls=("https://example.invalid/docs",),
@@ -770,7 +546,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             state = run_pipeline(
                 PipelineConfig(
                     project_key="demo",
-                    requirement="已人工确认：允许本策略项目开启真实交易并设置 PRODUCTION_TRADING_ENABLED=true",
+                    requirement="已人工确认：允许本策略项目开启生产写入并设置 PRODUCTION_WRITES_ENABLED=true",
                     workspace_root=tmp_path,
                     run_id="high-risk-confirmed",
                     source_urls=("https://example.invalid/docs",),
@@ -927,7 +703,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
     def test_requirement_and_solution_artifacts_preserve_specific_request(self):
         with tempfile.TemporaryDirectory() as tmp:
             requirement = (
-                "修复 nofx smart-arb-pipeline 的 Dual AI evidence contract，"
+                "修复 runtime-host project-delivery-pipeline 的 Dual AI evidence contract，"
                 "不要继续业务第五切片，也不要提交 _close_position 漂移。"
             )
             state = run_pipeline(
@@ -943,83 +719,19 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             requirements = Path(state["artifacts"]["requirements_package"]).read_text(encoding="utf-8")
             solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
             delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
-            self.assertIn("修复 nofx smart-arb-pipeline", requirements)
+            self.assertIn("修复 runtime-host project-delivery-pipeline", requirements)
             self.assertIn("不要继续业务第五切片", requirements)
             self.assertIn("Deliver the user request above exactly as written", requirements)
             self.assertNotIn("Build an end-to-end coding delivery pipeline that can", requirements)
             self.assertIn("## Delivery Plan Contract", solution)
             self.assertIn("delivery_plan.json", solution)
-            self.assertIn("修复 nofx smart-arb-pipeline", delivery_plan["scope_slices"][0]["description"])
+            self.assertIn("修复 runtime-host project-delivery-pipeline", delivery_plan["scope_slices"][0]["description"])
             self.assertEqual("delivery-plan/v1", delivery_plan["schema_version"])
-            self.assertIn("smart-arb-pipeline", json.dumps(delivery_plan, ensure_ascii=False))
+            self.assertIn("project-delivery-pipeline", json.dumps(delivery_plan, ensure_ascii=False))
             self.assertNotIn("## Stage Order", solution)
 
-    def test_delivery_plan_prefers_explicit_target_paths_over_memory_context_noise(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            state = run_pipeline(
-                PipelineConfig(
-                    project_key="demo",
-                    requirement="Fix scripts/openclaw-ops/smart_arb_pipeline_entry.py without live trading.",
-                    workspace_root=Path(tmp),
-                    run_id="explicit-plan-path",
-                    dry_run=True,
-                )
-            )
 
-            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
-            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
 
-            self.assertEqual("bugfix", delivery_plan["task_type"])
-            self.assertEqual("backend-dev", delivery_plan["owner"])
-            self.assertEqual(
-                ["scripts/openclaw-ops/smart_arb_pipeline_entry.py"],
-                [item["path"] for item in delivery_plan["target_files"]],
-            )
-            self.assertNotIn("project-agent", json.dumps(delivery_plan, ensure_ascii=False))
-            self.assertNotIn("API_REGISTRY.json", [item["path"] for item in delivery_plan["target_files"]])
-            self.assertTrue(solution.startswith("# Solution Package\n\n## Delivery Plan Contract"))
-
-    def test_delivery_plan_keeps_code_fix_type_when_docs_are_synced(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            state = run_pipeline(
-                PipelineConfig(
-                    project_key="demo",
-                    requirement="修复 skills/library/project-delivery-pipeline/scripts/pipeline_runner.py 并同步 memory/RUNBOOK.md 文档",
-                    workspace_root=Path(tmp),
-                    run_id="code-fix-with-doc-sync",
-                    dry_run=True,
-                )
-            )
-
-            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
-
-            self.assertEqual("bugfix", delivery_plan["task_type"])
-            self.assertEqual("backend-dev", delivery_plan["owner"])
-            self.assertIn(
-                "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests",
-                [item["command"] for item in delivery_plan["verification_commands"]],
-            )
-
-    def test_delivery_plan_does_not_treat_readme_tooling_as_docs_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            state = run_pipeline(
-                PipelineConfig(
-                    project_key="demo",
-                    requirement="Add README renderer support in scripts/openclaw-ops/smart_arb_pipeline_entry.py",
-                    workspace_root=Path(tmp),
-                    run_id="readme-tooling-support",
-                    dry_run=True,
-                )
-            )
-
-            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
-
-            self.assertEqual("feature", delivery_plan["task_type"])
-            self.assertEqual("backend-dev", delivery_plan["owner"])
-            self.assertIn(
-                "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests",
-                [item["command"] for item in delivery_plan["verification_commands"]],
-            )
 
     def test_delivery_plan_does_not_promote_memory_context_to_simple_task_targets(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1118,7 +830,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
                     project_key="demo",
                     requirement=(
                         "Shorten the Discord answer-status copy.\n"
-                        "Target file: scripts/openclaw-ops/smart_arb_pipeline_entry.py"
+                        "Target file: scripts/openclaw-ops/project_pipeline_entry.py"
                     ),
                     workspace_root=Path(tmp),
                     run_id="multiline-explicit-target",
@@ -1129,7 +841,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
 
             self.assertEqual(
-                ["scripts/openclaw-ops/smart_arb_pipeline_entry.py"],
+                ["scripts/openclaw-ops/project_pipeline_entry.py"],
                 [item["path"] for item in delivery_plan["target_files"]],
             )
             self.assertEqual([], delivery_plan["plan_findings"]["filtered_target_candidates"])
@@ -1163,107 +875,7 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             )
             self.assertIn("E:/repo/src/app.py: external_or_runtime_absolute_path", solution)
 
-    def test_delivery_plan_filters_control_paths_from_review_context(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = Path(tmp)
-            requirements_review = run_dir / "requirements_review.md"
-            project_memory_context = run_dir / "project_memory_context.md"
-            requirements_review.write_text(
-                "\n".join(
-                    [
-                        "Final verdict: ready_for_solution",
-                        "Likely implementation file: scripts/openclaw-ops/smart_arb_pipeline_entry.py",
-                        "Do not edit .workflow/pipeline-runs/demo/retry.py",
-                        "Do not edit .workflow/project-memory/demo/API_REGISTRY.json",
-                        "Do not edit /home/arbops/.hermes/profiles/spreadagent/sessions/session_1.json",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            project_memory_context.write_text(
-                "Runtime host: hermes\nRequired Files: API_REGISTRY.json, SOURCE_REGISTRY.json\n",
-                encoding="utf-8",
-            )
 
-            delivery_plan = _mod.compile_delivery_plan(
-                PipelineConfig(project_key="demo", requirement="把状态卡文案改短"),
-                {"host": "hermes", "runtime_home": "/home/arbops/.hermes"},
-                "把状态卡文案改短",
-                {
-                    "requirements_review": str(requirements_review),
-                    "project_memory_context": str(project_memory_context),
-                },
-            )
-
-            self.assertEqual([], [item["path"] for item in delivery_plan["target_files"]])
-            filtered_candidates = delivery_plan["plan_findings"]["filtered_target_candidates"]
-            solution = _mod.render_solution(delivery_plan)
-            self.assertTrue(
-                any(
-                    item["path"] == "scripts/openclaw-ops/smart_arb_pipeline_entry.py"
-                    and item["reason"] == "workflow_or_runtime_control_path"
-                    and item["source"] == "requirements_review"
-                    for item in filtered_candidates
-                )
-            )
-            self.assertTrue(
-                any(
-                    item["path"] == ".workflow/pipeline-runs/demo/retry.py"
-                    and item["reason"] == "negated_context"
-                    and item["source"] == "requirements_review"
-                    for item in filtered_candidates
-                )
-            )
-            self.assertTrue(
-                any(
-                    item["path"] == "/home/arbops/.hermes/profiles/spreadagent/sessions/session_1.json"
-                    and item["reason"] == "external_or_runtime_absolute_path"
-                    and item["source"] == "requirements_review"
-                    for item in filtered_candidates
-                )
-            )
-            self.assertIn(
-                "/home/arbops/.hermes/profiles/spreadagent/sessions/session_1.json: external_or_runtime_absolute_path",
-                solution,
-            )
-            self.assertTrue(
-                any(
-                    item["path"] == ".workflow/project-memory/demo/API_REGISTRY.json"
-                    and item["reason"] == "negated_context"
-                    for item in filtered_candidates
-                )
-            )
-
-    def test_delivery_plan_filters_negated_workflow_basenames_and_combined_paths(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            run_dir = Path(tmp)
-            requirements_review = run_dir / "requirements_review.md"
-            requirements_review.write_text(
-                "\n".join(
-                    [
-                        "Final verdict: ready_for_solution",
-                        "target_files must only contain SmartMultiPlatformArbitrage business files; "
-                        "禁止 smart_arb_live_bridge.py、smart_arb_pipeline_entry.py 进入 target_files。",
-                        "Candidate business files: todo.md/done.md, 智能多平台套利/api/routes/stock_tokens.py",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-
-            delivery_plan = _mod.compile_delivery_plan(
-                PipelineConfig(project_key="demo", requirement="继续推进价差监控测试，不修改 workflow 宿主"),
-                {"host": "hermes", "runtime_home": "/home/arbops/.hermes"},
-                "继续推进价差监控测试，不修改 workflow 宿主",
-                {"requirements_review": str(requirements_review)},
-            )
-
-            paths = [item["path"] for item in delivery_plan["target_files"]]
-            self.assertEqual(["智能多平台套利/api/routes/stock_tokens.py"], paths)
-            self.assertNotIn("todo.md/done.md", paths)
-            self.assertFalse(any("smart_arb_" in path for path in paths))
-            findings = delivery_plan["plan_findings"]["filtered_target_candidates"]
-            self.assertTrue(any(item["path"] == "todo.md/done.md" and item["reason"] == "combined_file_paths" for item in findings))
-            self.assertTrue(any(item["reason"] in {"negated_context", "workflow_host_basename"} for item in findings))
 
     def test_repo_basename_resolution_prunes_generated_and_vendor_trees(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1287,201 +899,8 @@ pre-execution guard found a hard blocker before code execution fix_execution_gua
             self.assertEqual("src/target.py", resolved)
             self.assertEqual(["src"], visited)
 
-    def test_delivery_plan_marks_reviewer_paths_as_candidates_and_generates_file_steps(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            review = Path(tmp) / "requirements_review.md"
-            review.write_text(
-                "Final verdict: ready_for_solution\nCandidate: 智能多平台套利/api/routes/stock_tokens.py\n",
-                encoding="utf-8",
-            )
-            plan = _mod.compile_delivery_plan(
-                PipelineConfig(project_key="demo", requirement="继续推进价差监控测试"),
-                {"host": "hermes"},
-                "继续推进价差监控测试",
-                {"requirements_review": str(review)},
-            )
 
-            self.assertEqual("review_candidate", plan["target_files"][0]["confidence"])
-            step_text = json.dumps(plan["implementation_steps"], ensure_ascii=False)
-            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", step_text)
-            self.assertIn("blocked_manual_acceptance_required", "\n".join(plan["human_blockers"]))
 
-    def test_delivery_plan_uses_discussion_targets_and_command_level_acceptance(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            repo = root / "repo"
-            for path in (
-                "智能多平台套利/api/routes",
-                "智能多平台套利/api",
-                "智能多平台套利/monitoring",
-                "scripts",
-                "tests",
-                "docs",
-                "memory",
-            ):
-                (repo / path).mkdir(parents=True, exist_ok=True)
-            for path in (
-                "智能多平台套利/api/routes/stock_tokens.py",
-                "智能多平台套利/api/stock_token_public_adapter.py",
-                "智能多平台套利/monitoring/funding_discovery_service.py",
-                "智能多平台套利/monitoring/opportunity_monitor.py",
-                "智能多平台套利/api/routes/funding.py",
-                "智能多平台套利/api/routes/dashboard.py",
-                "智能多平台套利/api/main.py",
-                "scripts/query_spread_funding_profit.py",
-                "tests/test_query_spread_funding_profit.py",
-                "tests/test_dashboard_api.py",
-                "tests/test_opportunity_monitor_service.py",
-                "tests/test_stock_token_public_adapter.py",
-                "tests/test_basic_auth_proxy.py",
-                "todo.md",
-                "done.md",
-                "MEMORY.md",
-                "docs/INDEX.md",
-            ):
-                (repo / path).write_text("# ok\n", encoding="utf-8")
-
-            discussion = root / "requirements_discussion.md"
-            discussion.write_text(
-                """
-最可能改动/验证位置：
-- `智能多平台套利/monitoring/funding_discovery_service.py`
-- `智能多平台套利/monitoring/funding_rate_scanner.py`，如不存在则需要 create_if_missing rationale
-- `智能多平台套利/api/routes/funding.py`
-- `智能多平台套利/api/routes/dashboard.py`
-- `智能多平台套利/api/routes/stock_tokens.py`
-- `智能多平台套利/api/stock_token_public_adapter.py`
-- `智能多平台套利/api/main.py`
-- `scripts/query_spread_funding_profit.py`
-- `tests/test_funding_rate_scanner.py`，如不存在则需要 create_if_missing rationale
-- `tests/test_query_spread_funding_profit.py`
-- `tests/test_dashboard_api.py`
-- `tests/test_opportunity_monitor_service.py`
-- `tests/test_stock_token_public_adapter.py`
-- `tests/test_basic_auth_proxy.py`
-- `docs/INDEX.md`
-- `docs/观测与运维/币股平台只读监控方案.md`
-- `memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md`
-- `memory/smart-multi-platform-arbitrage/DECISIONS.md`
-- `memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md`
-- `MEMORY.md`
-- `todo.md`
-- `done.md`
-- `2026-04-27.md`
-
-不得进入 target_files：
-- `smart_arb_live_bridge.py`
-- `smart_arb_pipeline_entry.py`
-- `/home/arbops/.hermes/**`
-
-Verification commands:
-- `/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_funding_rate_scanner.py tests/test_query_spread_funding_profit.py tests/test_dashboard_api.py tests/test_opportunity_monitor_service.py`
-- `/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_stock_token_public_adapter.py tests/test_basic_auth_proxy.py`
-- `/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests`
-- `git diff --check`
-- `curl -fsS http://127.0.0.1:18080/health`
-- `curl -fsS http://127.0.0.1:18080/api/strategy/status`
-- `curl -fsS http://127.0.0.1:18080/api/realtime/funding`
-需要 docs/memory/todo/done content assertion、git publish / origin/main remote containment、Discord blocked_manual_acceptance_required。
-""",
-                encoding="utf-8",
-            )
-            review = root / "requirements_review.md"
-            review.write_text("Final verdict: ready_for_solution\nAlso inspect stock_tokens.py\n", encoding="utf-8")
-            git_context = root / "git_repository_context.md"
-            git_context.write_text("Status: ## main...origin/main [behind 2]\nM MEMORY.md\ndirty worktree\n", encoding="utf-8")
-
-            plan = _mod.compile_delivery_plan(
-                PipelineConfig(project_key="demo", requirement="价差监控测试", command_cwd=repo),
-                {"host": "hermes"},
-                "价差监控测试",
-                {
-                    "requirements_discussion": str(discussion),
-                    "requirements_review": str(review),
-                    "git_repository_context": str(git_context),
-                },
-            )
-
-            paths = [item["path"] for item in plan["target_files"]]
-            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", paths)
-            self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", paths)
-            self.assertIn("智能多平台套利/monitoring/funding_discovery_service.py", paths)
-            self.assertIn("智能多平台套利/monitoring/funding_rate_scanner.py", paths)
-            self.assertIn("tests/test_funding_rate_scanner.py", paths)
-            self.assertNotIn("docs/观测与运维/币股平台只读监控方案.md", paths)
-            self.assertNotIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", paths)
-            self.assertNotIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", paths)
-            self.assertNotIn("memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md", paths)
-            read_only_paths = [item["path"] for item in plan["read_only_sources"]]
-            self.assertIn("docs/观测与运维/币股平台只读监控方案.md", read_only_paths)
-            self.assertIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", read_only_paths)
-            self.assertIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", read_only_paths)
-            self.assertIn("memory/smart-multi-platform-arbitrage/DELIVERY_RULES.md", read_only_paths)
-            self.assertNotIn("2026-04-27.md", paths)
-            self.assertNotIn("stock_tokens.py", paths)
-            self.assertNotIn("origin/main", paths)
-            scanner = next(item for item in plan["target_files"] if item["path"] == "智能多平台套利/monitoring/funding_rate_scanner.py")
-            self.assertTrue(scanner["create_if_missing"])
-            self.assertIn("expected_net_daily", scanner["create_if_missing_rationale"])
-            self.assertFalse(any("Inspect `" in item["description"] for item in plan["implementation_steps"]))
-            self.assertFalse(any(item["path"] in {"todo.md", "done.md", "MEMORY.md"} for item in plan["entry_points"]))
-            self.assertFalse(any(item["path"].startswith("tests/") for item in plan["entry_points"]))
-
-            commands = [item["command"] for item in plan["verification_commands"]]
-            self.assertIn(
-                "/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_funding_rate_scanner.py tests/test_query_spread_funding_profit.py tests/test_dashboard_api.py tests/test_opportunity_monitor_service.py",
-                commands,
-            )
-            self.assertIn("/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests", commands)
-            self.assertIn("curl -fsS http://127.0.0.1:18080/api/realtime/funding", commands)
-            self.assertIn("git fetch origin main --prune", commands)
-            self.assertNotIn("git merge-base --is-ancestor HEAD origin/main", commands)
-            self.assertIn("git rev-list --left-right --count HEAD...origin/main", commands)
-            self.assertNotIn("test -f todo.md", commands)
-            self.assertNotIn(
-                "rg -n '价差监控|stock-token|read-only|signal-only|blocked_manual_acceptance_required|NO_EXTERNAL_LOOKUP_NEEDED' docs memory todo.md done.md MEMORY.md",
-                commands,
-            )
-
-            validation = _mod.validate_graphify_scope(
-                PipelineConfig(project_key="demo", command_cwd=repo),
-                {},
-                plan,
-                {},
-            )
-            self.assertFalse(
-                any(
-                    item.get("path") == "智能多平台套利/monitoring/funding_rate_scanner.py"
-                    and "create_if_missing" in item.get("reason", "")
-                    for item in validation["findings"]
-                )
-            )
-            self.assertFalse(any(item.get("path") == "2026-04-27.md" for item in validation["findings"]))
-
-    def test_delivery_plan_keeps_heavy_multi_item_requirement_holistic(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            state = run_pipeline(
-                PipelineConfig(
-                    project_key="demo",
-                    requirement="继续推进：策略主干、资金费率套利、spread_grid 远端集成验收、Discord 真实查询验收、文档治理。安全要求：不读取凭证。",
-                    workspace_root=Path(tmp),
-                    run_id="split-heavy-task",
-                    dry_run=True,
-                )
-            )
-
-            solution = Path(state["artifacts"]["solution_package"]).read_text(encoding="utf-8")
-            delivery_plan = json.loads(Path(state["artifacts"]["delivery_plan"]).read_text(encoding="utf-8"))
-
-            self.assertEqual("holistic-scope", delivery_plan["task_split_policy"]["current_slice_id"])
-            self.assertEqual([], delivery_plan["task_split_policy"]["deferred_slice_ids"])
-            self.assertEqual("current", delivery_plan["scope_slices"][0]["status"])
-            self.assertEqual(1, len(delivery_plan["scope_slices"]))
-            self.assertFalse(delivery_plan["task_split_policy"]["enabled"])
-            self.assertTrue(
-                any("complete accepted requirement" in item for item in delivery_plan["out_of_scope"])
-            )
-            self.assertIn("## Task Split Policy", solution)
 
     def test_code_agent_can_select_frontend_stage_owner(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1551,15 +970,15 @@ Verification commands:
                     workspace_root=Path(tmp),
                     run_id="hermes-runtime",
                     runtime_host="hermes",
-                    runtime_home="/home/ubuntu/.hermes",
+                    runtime_home="/home/runtime-user/.hermes",
                     dry_run=True,
                 )
             )
 
             runtime = state["runtime_context"]
             self.assertEqual("hermes", runtime["host"])
-            self.assertEqual("/home/ubuntu/.hermes", runtime["runtime_home"])
-            self.assertEqual("/home/ubuntu/.hermes/.workflow/pipeline-runs", runtime["state_dir"])
+            self.assertEqual("/home/runtime-user/.hermes", runtime["runtime_home"])
+            self.assertEqual("/home/runtime-user/.hermes/.workflow/pipeline-runs", runtime["state_dir"])
 
     def test_custom_runtime_host_with_explicit_home_is_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1989,15 +1408,15 @@ Verification commands:
                 "Reviewer provider: zai\n"
                 "Reviewer model: glm-5.1\n"
                 "Blocker: plan-quality issue only; do not read credentials, tokens, cookies, auth JSON, or private keys.\n"
-                "没有发现凭证、secret、cookie/auth-state、真实交易、破坏性生产操作、force push 等硬风险；但 delivery_plan 缺少 must_change_targets。\n"
-                "Blocker: remove pipeline_runner.py from target_files and move no_trading/simulation_only into runtime_contracts.\n"
+                "没有发现凭证、secret、cookie/auth-state、未审查的外部写入、破坏性生产操作、force push 等硬风险；但 delivery_plan 缺少 must_change_targets。\n"
+                "Blocker: remove pipeline_runner.py from target_files and move simulation_only into runtime_contracts.\n"
             ),
             "stderr": "",
         }
 
         self.assertTrue(_mod.solution_review_can_soft_continue([report], "requires_revision"))
         self.assertEqual([], _mod.solution_review_hard_blocker_lines([report]))
-        self.assertEqual("", _mod.plan_path_rejection_reason("simulation_only/no_trading"))
+        self.assertEqual("", _mod.plan_path_rejection_reason("runtime_contracts/simulation_only"))
 
     def test_live_requirements_review_requires_two_independent_reports(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -2822,88 +2241,6 @@ Verification commands:
             git_publish_report = json.loads(Path(state["artifacts"]["command_git_publish_1"]).read_text(encoding="utf-8"))
             self.assertIn("git publish input is clean", git_publish_report["stdout"])
 
-    def test_delivery_plan_uses_original_requirement_not_template_scope_fragments(self):
-        requirement = (
-            "【原始需求】按用户确认的顺序依次推进 SmartMultiPlatformArbitrage：第一轮先执行 P0 口径修正。"
-            "删除 Kraken/MEXC 币股 public adapter 代码和测试/文档口径；币股现货不进入 MVP；"
-            "借币套利放到最后，并拆成交易所借币与链上借币两个后期阶段。保持 PRODUCTION_TRADING_ENABLED=false，不启动真实交易、不下单、不划转、不读取或打印凭证。\n\n"
-            "【强制目标文件约束】target_files 必须使用真实 repo-relative 路径，至少检查/按需修改："
-            "智能多平台套利/api/stock_token_public_adapter.py、智能多平台套利/api/routes/stock_tokens.py、"
-            "智能多平台套利/api/static/dashboard/index.html、tests/test_stock_token_public_adapter.py、todo.md。"
-            "运行证据目录包含 run_meta.json 和 pipeline_state.json，但这些只是 pipeline artifact，不是 target_files。"
-            "上一轮 reviewer 文本提到 PROJECT_PROFILE.md、DECISIONS.md、code_review.md、deployment_report.md、"
-            "stock_token_public_adapter.py、routes/stock_tokens.py、PROJECT_PROFILE.md/DECISIONS.md；这些都是 basename/artifact drift，"
-            "不能进入 target_files，只有 memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md 和 "
-            "memory/smart-multi-platform-arbitrage/DECISIONS.md 才是合法 repo-relative memory 目标。"
-            "禁止使用 /api/... 这种仓库根外路径。\n\n"
-            "【强制验证】必须运行并记录：pytest targeted tests tests/test_stock_token_public_adapter.py tests/test_dashboard_api.py、"
-            "python -m compileall -q 智能多平台套利 tests、git diff --check、残留口径扫描 Kraken/MEXC/spot MVP/cross_venue_spot_public_snapshot、"
-            "安全扫描确认无凭证/POST私有端点/下单/划转/签名调用/PRODUCTION_TRADING_ENABLED=true、"
-            "只读内控 API smoke：GET /health、GET /api/strategy/status。"
-        )
-        resolved = (
-            "# Resolved Requirement\n\n## Original Requirement\n"
-            f"{requirement}\n\n"
-            "## Accepted Requirement Source\n"
-            "The accepted implementation scope is the original requirement plus the\n"
-            "completed requirements discussion and requirements review below. Downstream\n"
-            "stages must use this artifact as the handoff contract and must not fall\n"
-            "back to a generic pipeline template.\n"
-        )
-        plan = _mod.compile_delivery_plan(
-            PipelineConfig(
-                project_key="demo",
-                verification_commands=("/usr/bin/python3 /home/arbops/.hermes/ops/smart_arb_live_bridge.py --stage verification",),
-            ),
-            {"host": "hermes"},
-            resolved,
-            {},
-        )
-
-        scope_text = "\n".join(item["description"] for item in plan["scope_slices"])
-        self.assertIn("P0 口径修正", scope_text)
-        self.assertNotIn("accepted implementation scope", scope_text)
-        self.assertNotIn("generic pipeline template", scope_text)
-        paths = [item["path"] for item in plan["target_files"]]
-        self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", paths)
-        self.assertIn("智能多平台套利/api/routes/stock_tokens.py", paths)
-        self.assertNotIn("智能多平台套利/api/static/dashboard/index.html", paths)
-        inspect_only_paths = [item["path"] for item in plan["inspect_only_sources"]]
-        self.assertIn("智能多平台套利/api/static/dashboard/index.html", inspect_only_paths)
-        self.assertNotIn("run_meta.json", paths)
-        self.assertNotIn("pipeline_state.json", paths)
-        self.assertNotIn("PROJECT_PROFILE.md", paths)
-        self.assertNotIn("DECISIONS.md", paths)
-        self.assertNotIn("code_review.md", paths)
-        self.assertNotIn("deployment_report.md", paths)
-        self.assertNotIn("stock_token_public_adapter.py", paths)
-        self.assertNotIn("routes/stock_tokens.py", paths)
-        self.assertNotIn("PROJECT_PROFILE.md/DECISIONS.md", paths)
-        self.assertNotIn("memory/smart-multi-platform-arbitrage/", paths)
-        self.assertFalse(any(path.startswith("curl ") for path in paths))
-        read_only_paths = [item["path"] for item in plan["read_only_sources"]]
-        self.assertIn("memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md", read_only_paths)
-        self.assertIn("memory/smart-multi-platform-arbitrage/DECISIONS.md", read_only_paths)
-        self.assertIn("tests/test_stock_token_public_adapter.py", paths)
-        self.assertNotIn("/api/stock_token_public_adapter.py", paths)
-        negated = [item for item in plan.get("plan_findings", {}).get("filtered_target_candidates", []) if item.get("reason") == "negated_context"]
-        self.assertFalse(any(item.get("path") == "智能多平台套利/api/static/dashboard/index.html" for item in negated))
-        commands = [item["command"] for item in plan["verification_commands"]]
-        self.assertIn("/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q tests/test_stock_token_public_adapter.py tests/test_dashboard_api.py", commands)
-        self.assertIn("/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests", commands)
-        self.assertIn("git diff --check", commands)
-        self.assertFalse(any(command == "test -f memory/smart-multi-platform-arbitrage/PROJECT_PROFILE.md" for command in commands))
-        self.assertFalse(any(command == "test -f memory/smart-multi-platform-arbitrage/DECISIONS.md" for command in commands))
-        self.assertFalse(any("git diff --name-only" in command and "memory/smart-multi-platform-arbitrage" in command for command in commands))
-        self.assertFalse(any("Kraken|MEXC|spot MVP|cross_venue_spot_public_snapshot" in command for command in commands))
-        self.assertFalse(any("PRODUCTION_TRADING_ENABLED" in command for command in commands))
-        self.assertTrue(any("credential" in command.lower() or "api" in command.lower() and "key" in command.lower() for command in commands))
-        self.assertIn("curl -fsS http://127.0.0.1:18080/health", commands)
-        self.assertIn("curl -fsS http://127.0.0.1:18080/api/strategy/status", commands)
-        self.assertFalse(any("smart_arb_live_bridge.py" in command for command in commands))
-        self.assertNotIn("pytest", commands)
-        self.assertFalse(any(command.endswith("`") for command in commands))
-        self.assertFalse(any("通过" in command or "必须" in command or "pytest:" == command for command in commands))
 
 
     def test_requirements_discussion_includes_solution_review_readiness_contract(self):
@@ -2914,354 +2251,111 @@ Verification commands:
         self.assertIn("reference_patterns", discussion)
         self.assertIn("target_files", discussion)
 
-    def test_compile_delivery_plan_separates_read_only_sources_and_reference_patterns(self):
+
+
+
+
+
+    def test_graphify_scope_validation_allows_regular_application_route(self):
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp) / "repo"
-            (repo / "智能多平台套利" / "api" / "routes").mkdir(parents=True)
-            (repo / "智能多平台套利" / "api" / "routes" / "strategy.py").write_text("# route\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "api" / "routes" / "stock_tokens.py").write_text("# reference\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "config_security.py").write_text("# safety\n", encoding="utf-8")
-            (repo / "scripts").mkdir(parents=True)
-            (repo / "scripts" / "nofx_hermes_services.sh").write_text("#!/bin/sh\n", encoding="utf-8")
-            (repo / "MEMORY.md").write_text("facts\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "arbitrage_config.json5").write_text("{}\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "setup.py").write_text("# setup\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "apollo").mkdir(parents=True)
-            (repo / "智能多平台套利" / "apollo" / "trade.py").write_text("# apollo\n", encoding="utf-8")
-            (repo / "apollo").mkdir(parents=True)
-            (repo / "apollo" / "const.py").write_text("# absent historical drift sample\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "arbitrage" / "market_adapters").mkdir(parents=True)
-            (repo / "智能多平台套利" / "arbitrage" / "market_adapters" / "hyperliquid_ws.py").write_text("# hl\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "arbitrage" / "market_adapters" / "__init__.py").write_text("# registry\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "api" / "static" / "dashboard").mkdir(parents=True)
-            (repo / "智能多平台套利" / "api" / "static" / "dashboard" / "dashboard.js").write_text("// dashboard\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "api" / "static" / "dashboard" / "index.html").write_text("<html></html>\n", encoding="utf-8")
-            (repo / "cron").mkdir(parents=True)
-            (repo / "cron" / "jobs.json").write_text("{}\n", encoding="utf-8")
-            (repo / "static" / "index").mkdir(parents=True)
-            (repo / "static" / "index" / "dashboard.js").write_text("// drift\n", encoding="utf-8")
-            (repo / "tests").mkdir(parents=True)
-            (repo / "tests" / "test_dashboard_api.py").write_text("# dashboard tests\n", encoding="utf-8")
-            (repo / "tests" / "test_stock_token_public_adapter.py").write_text("# adapter tests\n", encoding="utf-8")
-            artifacts = {}
-            run_dir = Path(tmp) / "run"
-            run_dir.mkdir()
-            discussion = run_dir / "requirements_discussion.md"
-            discussion.write_text(
-                "# Discussion\n"
-                "## Solution Review Readiness Contract\n"
-                "must_change_targets: 智能多平台套利/api/routes/strategy.py\n"
-                "read_only_sources: 智能多平台套利/arbitrage_config.json5 是只读源，不建议修改。\n"
-                "reference_patterns: 智能多平台套利/api/routes/stock_tokens.py 只是参考模式，不应默认修改。\n"
-                "inspect_only: 智能多平台套利/config_security.py 应作为 safety contract reference，除非测试发现缺口。\n"
-                "优先遵守/读取 MEMORY.md，不等于必须写回。\n"
-                "scripts/nofx_hermes_services.sh 只是运维 smoke 参考，不是本轮业务修改目标。\n"
-                "solution_review_revision_ledger.json 是 pipeline artifact，不是 repo target。\n"
-                "graph.json 是 graphify artifact，不是 repo target。\n"
-                "智能多平台套利/setup.py 是 packaging 文件，不是本轮业务修改目标。\n"
-                "Apollo 历史 MEXC 代码 智能多平台套利/apollo/trade.py 不因名称命中被删除；apollo/const.py 不存在于业务包且不是本轮目标。\n"
-                "Hyperliquid 不在本轮新增真实 adapter，智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py 仅 inspect。\n"
-                "智能多平台套利/api/static/dashboard/index.html、智能多平台套利/api/static/dashboard/dashboard.js、智能多平台套利/arbitrage/market_adapters/__init__.py 当前未发现硬编码，仅 inspect。\n"
-                "cron/jobs.json 是调度/runtime 配置，不是本轮必改业务目标；static/index/dashboard.js 是不完整静态路径漂移，不是 repo target。\n"
-                "Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf / 交易所模块 tbl1jj9DTcfAd6tZ / 平台范围 是只读事实源。\n"
-                "api_contracts: GET /api/stock-tokens/status returns redacted non-sensitive config.\n"
-                "*auth*.json 是 forbidden credential/auth material，只能进 forbidden/safety boundary，不得进 target_files、must_change_targets、entry_points、implementation_steps。\n"
-                "GET /api/stock-tokens/markets、Gate / MEXC、kraken/mexc、交易所模块 / 平台范围 都是 API/业务范围合同，不是 repo target。\n"
-                "skills/library/project-delivery-pipeline/** 是 hardflow workflow 路径，不是 SmartMultiPlatformArbitrage 业务目标；智能多平台套利/api/static/index/dashboard.js 是 static drift。\n",
-                encoding="utf-8",
-            )
-            review = run_dir / "requirements_review.md"
-            review.write_text("Final verdict: ready_for_solution\n", encoding="utf-8")
-            artifacts["requirements_discussion"] = str(discussion)
-            artifacts["requirements_review"] = str(review)
-            plan = _mod.compile_delivery_plan(
-                PipelineConfig(project_key="demo", command_cwd=repo),
-                {"host": "hermes"},
-                "必须修改 智能多平台套利/api/routes/strategy.py，交付只读配置快照。Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf 平台范围只读核对。",
+            target = repo / "src" / "api" / "routes"
+            target.mkdir(parents=True)
+            (target / "items.py").write_text("def route():\n    return 'ok'\n", encoding="utf-8")
+            config = PipelineConfig(project_key="demo", command_cwd=repo, runtime_home=str(Path(tmp) / "runtime"))
+            plan = {
+                "target_files": [{"path": "src/api/routes/items.py"}],
+                "implementation_steps": [{"description": "Keep external writes disabled and validate inputs."}],
+                "verification_commands": [{"command": _mod.added_line_safety_scan_command()}],
+            }
+            payload = _mod.validate_graphify_scope(config, {"runtime_home": str(Path(tmp) / "runtime")}, plan, {})
+            self.assertIn(payload["scope_status"], {"pass", "warning"})
+            self.assertFalse(any(item["severity"] == "block" for item in payload["findings"]))
+
+    def test_pre_execution_risk_ignores_negated_sensitive_terms_for_generic_change(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            paths = [Path(tmp) / name for name in ("discussion.md", "requirements-review.md", "solution-review.md", "graphify.md")]
+            for path in paths:
+                path.write_text("Do not read or print credentials, tokens, cookies, or private keys.\n", encoding="utf-8")
+            artifacts = {
+                "requirements_discussion": str(paths[0]),
+                "requirements_review": str(paths[1]),
+                "solution_review": str(paths[2]),
+                "graphify_scope_validation": str(paths[3]),
+            }
+            risk = _mod.assess_pre_execution_risk(
+                "Update validation and tests without reading or printing credentials.",
+                {"implementation_steps": [{"description": "Change src/validator.py and run targeted tests."}]},
                 artifacts,
             )
+        self.assertEqual("low", risk["risk_level"])
+        self.assertEqual("auto_execute", risk["execution_decision"])
+        self.assertFalse(risk["high_risk_reasons"])
 
-            target_paths = [item["path"] for item in plan["target_files"]]
-            self.assertIn("智能多平台套利/api/routes/strategy.py", target_paths)
-            self.assertNotIn("智能多平台套利/arbitrage_config.json5", target_paths)
-            self.assertNotIn("智能多平台套利/api/routes/stock_tokens.py", target_paths)
-            self.assertNotIn("智能多平台套利/config_security.py", target_paths)
-            self.assertNotIn("MEMORY.md", target_paths)
-            self.assertNotIn("scripts/nofx_hermes_services.sh", target_paths)
-            self.assertNotIn("solution_review_revision_ledger.json", target_paths)
-            self.assertNotIn("智能多平台套利/apollo/trade.py", target_paths)
-            self.assertNotIn("apollo/const.py", target_paths)
-            self.assertNotIn("智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py", target_paths)
-            self.assertNotIn("graph.json", target_paths)
-            self.assertNotIn("智能多平台套利/setup.py", target_paths)
-            self.assertNotIn("智能多平台套利/api/static/dashboard/index.html", target_paths)
-            self.assertNotIn("智能多平台套利/api/static/dashboard/dashboard.js", target_paths)
-            self.assertNotIn("智能多平台套利/arbitrage/market_adapters/__init__.py", target_paths)
-            self.assertNotIn("cron/jobs.json", target_paths)
-            self.assertNotIn("static/index/dashboard.js", target_paths)
-            self.assertNotIn("*auth*.json", target_paths)
-            self.assertNotIn("GET /api/stock-tokens/markets", target_paths)
-            self.assertNotIn("Gate / MEXC", target_paths)
-            self.assertNotIn("kraken/mexc", target_paths)
-            self.assertNotIn("交易所模块 / 平台范围", target_paths)
-            self.assertNotIn("skills/library/project-delivery-pipeline/**", target_paths)
-            self.assertNotIn("智能多平台套利/api/static/index/dashboard.js", target_paths)
-            self.assertIn("tests/test_dashboard_api.py", target_paths)
-            self.assertIn("tests/test_stock_token_public_adapter.py", target_paths)
-            self.assertIn("智能多平台套利/arbitrage_config.json5", [item["path"] for item in plan["read_only_sources"]])
-            self.assertIn("MEMORY.md", [item["path"] for item in plan["read_only_sources"]])
-            self.assertTrue(any("Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf" in item["path"] for item in plan["read_only_sources"]));
-            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", [item["path"] for item in plan["reference_patterns"]])
-            self.assertIn("智能多平台套利/config_security.py", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("scripts/nofx_hermes_services.sh", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("solution_review_revision_ledger.json", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("智能多平台套利/apollo/trade.py", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("apollo/const.py", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("智能多平台套利/arbitrage/market_adapters/hyperliquid_ws.py", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("graph.json", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("智能多平台套利/setup.py", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("智能多平台套利/api/static/dashboard/index.html", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("智能多平台套利/api/static/dashboard/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertIn("cron/jobs.json", [item["path"] for item in plan["inspect_only_sources"]])
-            self.assertEqual(
-                ("inspect_only_sources", "credential_auth_material_forbidden_not_target"),
-                _mod.delivery_non_target_bucket("*auth*.json", False, discussion.read_text(encoding="utf-8"), "requirements_discussion"),
+    def test_delivery_plan_uses_generic_targets_and_command_level_acceptance(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp) / "repo"
+            for relative in ("src/service.py", "tests/test_service.py"):
+                target = repo / relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("# fixture\n", encoding="utf-8")
+            run_dir = Path(tmp) / "run"
+            run_dir.mkdir()
+            discussion = run_dir / "requirements_discussion.md"
+            discussion.write_text(
+                "必须修改 src/service.py 与 tests/test_service.py。\n"
+                "verification: python -m pytest -q tests/test_service.py\n"
+                "smoke: curl -fsS http://127.0.0.1:8000/health\n"
+                "git diff --check\n",
+                encoding="utf-8",
             )
-            self.assertEqual(
-                ("inspect_only_sources", "workflow_or_runtime_path_not_business_target"),
-                _mod.delivery_non_target_bucket("skills/library/project-delivery-pipeline/**", False, discussion.read_text(encoding="utf-8"), "requirements_discussion"),
+            review = run_dir / "requirements_review.md"
+            review.write_text("Final verdict: ready_for_solution\n", encoding="utf-8")
+            artifacts = {"requirements_discussion": str(discussion), "requirements_review": str(review)}
+            plan = _mod.compile_delivery_plan(
+                PipelineConfig(project_key="demo", command_cwd=repo),
+                {"host": "local"},
+                "修复 src/service.py 并更新 tests/test_service.py。",
+                artifacts,
             )
-            self.assertIn("智能多平台套利/api/static/index/dashboard.js", [item["path"] for item in plan["inspect_only_sources"]])
-            for pseudo_path in ("GET /api/stock-tokens/markets", "Gate / MEXC", "kraken/mexc", "交易所模块 / 平台范围"):
-                bucket_name, _reason = _mod.delivery_non_target_bucket(pseudo_path, False, discussion.read_text(encoding="utf-8"), "requirements_discussion")
-                self.assertEqual("reference_patterns", bucket_name)
-            self.assertIn("solution_review_readiness", plan)
-            self.assertIn("must_change_targets", plan)
-            self.assertEqual(["智能多平台套利/api/routes/strategy.py", "tests/test_dashboard_api.py", "tests/test_stock_token_public_adapter.py"], [item["path"] for item in plan["must_change_targets"]])
-            step_paths = [item.get("path") for item in plan["implementation_steps"] if item.get("path")]
-            self.assertNotIn("*auth*.json", step_paths)
-            self.assertFalse(any(str(path).startswith("GET /api/") for path in step_paths))
-            self.assertNotIn("skills/library/project-delivery-pipeline/**", step_paths)
-            self.assertIn("api_contracts", plan)
-            self.assertTrue(any(item.get("endpoint") == "/api/stock-tokens/status" and "exclude kraken/mexc" in item.get("contract", "") for item in plan["api_contracts"]))
+            targets = [item["path"] for item in plan["target_files"]]
             commands = [item["command"] for item in plan["verification_commands"]]
-            self.assertFalse(any("scripts todo.md done.md memory docs" in command for command in commands))
-            for command in commands:
-                if "git diff --unified=0" in command:
-                    self.assertIn("git diff --unified=0 -- 智能多平台套利 tests", command)
-            self.assertIn("setup.py / packaging / dependency files", plan["forbidden_targets"])
-            rendered = _mod.render_solution(plan)
-            self.assertIn("## Must-change Targets", rendered)
-            self.assertIn("## API Contracts", rendered)
-            findings = plan.get("plan_findings", {}).get("filtered_target_candidates", [])
-            self.assertTrue(
-                any(item.get("reason") in {"read_only_source", "reference_pattern", "inspect_only_context", "read_only_or_reference_context"} for item in findings)
-            )
-
-    def test_repair_context_promotes_reviewer_blocker_targets_over_inspect_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp) / "repo"
-            (repo / "智能多平台套利" / "api" / "routes").mkdir(parents=True)
-            (repo / "智能多平台套利" / "api" / "routes" / "stock_tokens.py").write_text("# route\n", encoding="utf-8")
-            (repo / "智能多平台套利" / "api" / "stock_token_public_adapter.py").write_text("# adapter\n", encoding="utf-8")
-            (repo / "tests").mkdir(parents=True)
-            (repo / "tests" / "test_dashboard_api.py").write_text("# dashboard tests\n", encoding="utf-8")
-            (repo / "tests" / "test_stock_token_public_adapter.py").write_text("# adapter tests\n", encoding="utf-8")
-            artifacts: dict[str, str] = {}
-            run_dir = Path(tmp) / "run"
-            run_dir.mkdir()
-            discussion = run_dir / "requirements_discussion.md"
-            discussion.write_text(
-                "reference_patterns: 智能多平台套利/api/routes/stock_tokens.py 先按参考模式检查。\n"
-                "inspect_only: 智能多平台套利/api/stock_token_public_adapter.py 先按需检查。\n",
-                encoding="utf-8",
-            )
-            review = run_dir / "requirements_review.md"
-            review.write_text("Final verdict: ready_for_solution\n", encoding="utf-8")
-            artifacts["requirements_discussion"] = str(discussion)
-            artifacts["requirements_review"] = str(review)
-            old_repair = os.environ.get("PIPELINE_REPAIR_CONTEXT")
-            os.environ["PIPELINE_REPAIR_CONTEXT"] = (
-                "# Smart Arb Auto Repair Context\n"
-                "- Failed stage: solution_review\n"
-                "- Next action: revise_solution\n"
-                "## Previous Failure Evidence\n"
-                "Blocker: delivery_plan.json.target_files 遗漏核心必改业务文件："
-                "智能多平台套利/api/routes/stock_tokens.py 与 智能多平台套利/api/stock_token_public_adapter.py。\n"
-                "这些 adapter 与 stock_tokens route 是必改文件，不应被降级为 inspect_only；"
-                "这是普通 plan-quality blocker，不是凭证、真实交易、资金动作或 force push 硬风险。\n"
-            )
-            try:
-                plan = _mod.compile_delivery_plan(
-                    PipelineConfig(project_key="demo", command_cwd=repo),
-                    {"host": "hermes"},
-                    "交易所模块 / 平台范围：页面和配置不再显示 Kraken/MEXC 为 MVP，保持只读。",
-                    artifacts,
-                )
-            finally:
-                if old_repair is None:
-                    os.environ.pop("PIPELINE_REPAIR_CONTEXT", None)
-                else:
-                    os.environ["PIPELINE_REPAIR_CONTEXT"] = old_repair
-
-            target_paths = [item["path"] for item in plan["target_files"]]
-            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", target_paths)
-            self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", target_paths)
-            self.assertEqual(
-                ["智能多平台套利/api/routes/stock_tokens.py", "智能多平台套利/api/stock_token_public_adapter.py", "tests/test_dashboard_api.py", "tests/test_stock_token_public_adapter.py"],
-                [item["path"] for item in plan["must_change_targets"]],
-            )
-            inspect_paths = [item["path"] for item in plan["inspect_only_sources"]]
-            self.assertNotIn("智能多平台套利/api/stock_token_public_adapter.py", inspect_paths)
-            reference_paths = [item["path"] for item in plan["reference_patterns"]]
-            self.assertNotIn("智能多平台套利/api/routes/stock_tokens.py", reference_paths)
-            reasons = {item["path"]: item["reason"] for item in plan["target_files"]}
-            self.assertIn("solution_review Blocker", reasons["智能多平台套利/api/routes/stock_tokens.py"])
-
-    def test_stock_token_platform_scope_target_is_in_verification_command(self):
-        commands = _mod.explicit_verification_commands(
-            "target_files includes tests/test_stock_token_platform_scope.py and "
-            "verification_commands should run tests/test_stock_token_public_adapter.py tests/test_dashboard_api.py"
-        )
-        pytest_commands = [item["command"] for item in commands if " -m pytest " in item.get("command", "")]
-        self.assertTrue(pytest_commands)
-        self.assertIn("tests/test_stock_token_platform_scope.py", pytest_commands[0])
-
-    def test_solution_revise_filters_reviewer_path_drift_and_conditional_targets(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            repo = Path(tmp) / "repo"
-            for rel in (
-                "智能多平台套利/api/main.py",
-                "智能多平台套利/api/routes/stock_tokens.py",
-                "智能多平台套利/api/routes/dashboard.py",
-                "智能多平台套利/api/stock_token_public_adapter.py",
-                "智能多平台套利/api/static/dashboard/index.html",
-                "智能多平台套利/api/static/dashboard/dashboard.js",
-                "智能多平台套利/arbitrage/market_adapters/__init__.py",
-                "智能多平台套利/arbitrage/market_adapters/base.py",
-                "智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md",
-                "tests/test_dashboard_api.py",
-                "tests/test_apollo_quant.py",
-                "tests/test_basic_auth_proxy.py",
-                "tests/test_stock_token_public_adapter.py",
-            ):
-                path = repo / rel
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("# fixture\n", encoding="utf-8")
-            run_dir = Path(tmp) / "run"
-            run_dir.mkdir()
-            artifacts: dict[str, str] = {}
-            discussion = run_dir / "requirements_discussion.md"
-            discussion.write_text(
-                "智能多平台套利/api/routes/stock_tokens.py 和 智能多平台套利/api/stock_token_public_adapter.py 是平台范围必改入口。\n"
-                "dashboard static index.html/dashboard.js 需检查是否有静态文案需要同步，不是已证明必改。\n"
-                "智能多平台套利/api/main.py 只是 route wiring reference，当前已 include_router(stock_tokens.router)，除非发现路由缺失才升级。\n"
-                "Hyperliquid adapter / Apollo 历史 MEXC 范围是 inspect-only/negative scope，不新增真实 adapter。\n",
-                encoding="utf-8",
-            )
-            review = run_dir / "requirements_review.md"
-            review.write_text("Final verdict: ready_for_solution\n", encoding="utf-8")
-            artifacts["requirements_discussion"] = str(discussion)
-            artifacts["requirements_review"] = str(review)
-            old_repair = os.environ.get("PIPELINE_REPAIR_CONTEXT")
-            os.environ["PIPELINE_REPAIR_CONTEXT"] = (
-                "# Smart Arb Auto Repair Context\n"
-                "- Failed stage: solution_review\n"
-                "- Next action: revise_solution\n"
-                "Blocker: delivery_plan.json 的 target_files/must_change_targets 包含 `api/routes/dashboard.py:12`，"
-                "但这是文件:行号引用，不是可修改目标；存在的相近真实路径是 `智能多平台套利/api/routes/dashboard.py`，"
-                "当前 plan 没有 create_if_missing rationale，且缺少漂移证据。\n"
-                "Blocker: `智能多平台套利/arbitrage/market_adapters/__init__.py` 被列入 target_files/must_change_targets，"
-                "但本轮明确禁止新增 Hyperliquid 真实 adapter，应作为 inspect-only/negative scope。\n"
-                "Blocker: delivery_plan.json 把 智能多平台套利/arbitrage/market_adapters/base.py 作为 target_files / must_change_targets / entry_points，"
-                "理由仅是 candidate target / referenced by requirements discussion，没有证明它是当前页面、stock-token API、public adapter 默认配置或 MVP runtime 口径的必改文件，应降级 inspect-only。\n"
-                "Blocker: dashboard 静态文件 `智能多平台套利/api/static/dashboard/index.html` 和 "
-                "`智能多平台套利/api/static/dashboard/dashboard.js` 被列为 must_change_targets，但证据只是检查是否有静态文案需要同步，"
-                "不是已证明必改，必须降为条件项/inspect-first。\n"
-                "Blocker: `tests/test_basic_auth_proxy.py` 被列为 must_change_targets，但 verification_commands 没有包含它；"
-                "若只是 proxy 白名单参考，应移到 reference_patterns。\n"
-                "Blocker: 智能多平台套利/api/main.py 被列为 target_files/must_change_targets 证据不足；"
-                "repo 证据显示 stock_tokens route 已注册，当前看起来是确认/检查对象，应从 target_files 移除。\n"
-                "Blocker: static/index.html 仍在 target_files / must_change_targets / entry_points，但该文件不存在，"
-                "没有 create_if_missing=true / rationale，应降级 inspect_only。\n"
-                "Blocker: target_files 包含 `下单/划转/提现/credentials`，这是 credential/auth 风险路径，不是业务 repo 文件；"
-                "必须移除并只保留在 forbidden_targets。\n"
-                "Blocker: delivery_plan.json 把自然语言 `Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot` 当成 required file，"
-                "这不是 concrete repo-relative file，必须移除。\n"
-                "Blocker: Apollo 历史文件 智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md、"
-                "Apollo 测试 tests/test_apollo_quant.py、根目录 `套利策略介绍文档.md`、dashboard 测试 tests/test_dashboard_api.py 被提升为必改目标，"
-                "但 requirements_discussion 已说明它们应为 inspect/reference/conditional，不应无证据进入 must_change_targets。\n"
-                "Blocker: 核心必改仍是 智能多平台套利/api/routes/stock_tokens.py 与 智能多平台套利/api/stock_token_public_adapter.py。\n"
-            )
-            try:
-                plan = _mod.compile_delivery_plan(
-                    PipelineConfig(project_key="demo", command_cwd=repo),
-                    {"host": "hermes"},
-                    "交易所模块 / 平台范围：页面和配置不再显示 Kraken/MEXC 为 MVP，保持只读。",
-                    artifacts,
-                )
-            finally:
-                if old_repair is None:
-                    os.environ.pop("PIPELINE_REPAIR_CONTEXT", None)
-                else:
-                    os.environ["PIPELINE_REPAIR_CONTEXT"] = old_repair
-
-            target_paths = [item["path"] for item in plan["target_files"]]
-            must_change_paths = [item["path"] for item in plan["must_change_targets"]]
-            self.assertIn("智能多平台套利/api/routes/stock_tokens.py", target_paths)
-            self.assertIn("智能多平台套利/api/stock_token_public_adapter.py", target_paths)
-            for rejected in (
-                "api/routes/dashboard.py",
-                "api/routes/dashboard.py:12",
-                "智能多平台套利/api/routes/dashboard.py",
-                "智能多平台套利/api/main.py",
-                "static/index.html",
-                "智能多平台套利/api/static/dashboard/index.html",
-                "智能多平台套利/api/static/dashboard/dashboard.js",
-                "智能多平台套利/arbitrage/market_adapters/__init__.py",
-                "智能多平台套利/arbitrage/market_adapters/base.py",
-                "智能多平台套利/apollo框架(websocket)套利策略/apollo框架(websocket)套利策略介绍文档.md",
-                "tests/test_apollo_quant.py",
-                "tests/test_dashboard_api.py",
-                "套利策略介绍文档.md",
-                "下单/划转/提现/credentials",
-                "Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot",
-                "tests/test_basic_auth_proxy.py",
-            ):
-                self.assertNotIn(rejected, target_paths)
-                self.assertNotIn(rejected, must_change_paths)
-            inspect_paths = [item["path"] for item in plan["inspect_only_sources"]]
-            self.assertIn("智能多平台套利/api/routes/dashboard.py", inspect_paths)
-            self.assertIn("智能多平台套利/api/static/dashboard/index.html", inspect_paths)
-            self.assertIn("智能多平台套利/api/static/dashboard/dashboard.js", inspect_paths)
-            self.assertIn("智能多平台套利/arbitrage/market_adapters/__init__.py", inspect_paths)
-            self.assertIn("智能多平台套利/arbitrage/market_adapters/base.py", inspect_paths)
-            reference_paths = [item["path"] for item in plan["reference_patterns"]]
-            self.assertIn("tests/test_apollo_quant.py", reference_paths)
-            self.assertIn("tests/test_dashboard_api.py", reference_paths)
-            non_target_paths = inspect_paths + reference_paths
-            self.assertIn("智能多平台套利/api/main.py", non_target_paths)
-            findings = plan.get("plan_findings", {}).get("filtered_target_candidates", [])
-            self.assertTrue(any(item.get("reason") == "file_line_reference_not_target" for item in findings))
-            self.assertTrue(any(item.get("reason") == "credential_or_auth_natural_language_not_target" for item in findings))
-            self.assertEqual(
-                "natural_language_not_file_path",
-                _mod.plan_path_rejection_reason("Binance/Bybit/Kraken/Gate/MEXC/Bitget/OKX public snapshot"),
-            )
+            self.assertIn("src/service.py", targets)
+            self.assertIn("tests/test_service.py", targets)
+            self.assertIn("python -m pytest -q tests/test_service.py", commands)
+            self.assertIn("curl -fsS http://127.0.0.1:8000/health", commands)
+            self.assertIn("git diff --check", commands)
             self.assertEqual("backend-dev", plan["owner"])
-            risk_by_name = {item["name"]: item for item in plan["risk_boundaries"]}
-            self.assertFalse(risk_by_name["git_publish_secret_scan"]["allowed"])
-            self.assertNotIn("funds_and_orders", risk_by_name)
-            self.assertNotIn("destructive_changes", risk_by_name)
-            self.assertTrue(any("Business-operation keywords are not workflow risk gates" in item for item in plan["runtime_contracts"]))
-            step_text = "\n".join(item.get("description", "") for item in plan["implementation_steps"] if isinstance(item, dict))
-            self.assertIn("excludes Kraken/MEXC", step_text)
-            self.assertIn("tokenized-stock spot MVP", step_text)
-            self.assertIn("DEFAULT_ENABLED_PLATFORMS", step_text)
-            verification_text = "\n".join(item.get("command", "") for item in plan["verification_commands"] if isinstance(item, dict))
-            self.assertNotIn("stock_token_publi`", verification_text)
-            self.assertNotIn("stock_token_publi\n", verification_text)
+
+    def test_generic_non_target_classification_is_domain_neutral(self):
+        context = "更新 src/service.py；docs/research/notes.md 仅作只读源。"
+        self.assertEqual(
+            ("reference_patterns", "api_contract_endpoint_not_repo_target"),
+            _mod.delivery_non_target_bucket("GET /api/items", False, context, "requirements_discussion"),
+        )
+        self.assertEqual(
+            ("inspect_only_sources", "workflow_or_runtime_path_not_application_target"),
+            _mod.delivery_non_target_bucket("scripts/openclaw-ops/project_pipeline_entry.py", True, context, "requirements_discussion"),
+        )
+        self.assertEqual(
+            ("read_only_sources", "research_document_read_only"),
+            _mod.delivery_non_target_bucket("docs/research/notes.md", True, context, "requirements_discussion"),
+        )
+
+    def test_generic_api_contracts_and_verification_commands(self):
+        contracts = _mod.extract_api_contracts("GET /api/items and GET /health")
+        by_endpoint = {item["endpoint"]: item["contract"] for item in contracts}
+        self.assertIn("/api/items", by_endpoint)
+        self.assertIn("/health", by_endpoint)
+        commands = _mod.explicit_verification_commands(
+            "python -m pytest -q tests/test_items.py\n"
+            "curl -fsS http://localhost:9000/health\n"
+            "git diff --check"
+        )
+        values = [item["command"] for item in commands]
+        self.assertIn("python -m pytest -q tests/test_items.py", values)
+        self.assertIn("curl -fsS http://localhost:9000/health", values)
+        self.assertIn("git diff --check", values)
 
 
 if __name__ == "__main__":

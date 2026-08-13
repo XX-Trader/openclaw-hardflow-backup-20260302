@@ -228,7 +228,7 @@ When adding content, update these files:
 </w:hyperlink>
 
 <!-- In word/_rels/document.xml.rels -->
-<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" 
+<Relationship Id="rId5" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink"
               Target="https://www.example.com/" TargetMode="External"/>
 ```
 
@@ -342,13 +342,13 @@ node = doc["word/document.xml"].get_node(tag="w:r", contains="existing text")
 doc["word/document.xml"].insert_after(node, '<w:ins><w:r><w:t>new text</w:t></w:r></w:ins>')
 
 # Partially delete another author's insertion
-# Original: <w:ins w:author="Jane Smith" w:date="..."><w:r><w:t>quarterly financial report</w:t></w:r></w:ins>
-# Goal: Delete only "financial" to make it "quarterly report"
+# Original: <w:ins w:author="Jane Smith" w:date="..."><w:r><w:t>quarterly operational report</w:t></w:r></w:ins>
+# Goal: Delete only "operational" to make it "quarterly report"
 node = doc["word/document.xml"].get_node(tag="w:ins", attrs={"w:id": "5"})
 # IMPORTANT: Preserve w:author="Jane Smith" on the outer <w:ins> to maintain authorship
 replacement = '''<w:ins w:author="Jane Smith" w:date="2025-01-15T10:00:00Z">
   <w:r><w:t>quarterly </w:t></w:r>
-  <w:del><w:r><w:delText>financial </w:delText></w:r></w:del>
+  <w:del><w:r><w:delText>operational </w:delText></w:r></w:del>
   <w:r><w:t>report</w:t></w:r>
 </w:ins>'''
 doc["word/document.xml"].replace_node(node, replacement)

@@ -115,8 +115,8 @@ class BacklogRunnerTests(unittest.TestCase):
                     scan_limit=20,
                     max_items=3,
                     dry_run=True,
-                    pipeline_command="smart-arb-pipeline",
-                    profile="spreadagent",
+                    pipeline_command="project-delivery-pipeline",
+                    profile="projectagent",
                     source="backlog-runner",
                     pipeline_timeout_seconds=30,
                     actor="test",
@@ -151,7 +151,7 @@ class BacklogRunnerTests(unittest.TestCase):
 
             pipeline_state = {"run_id": "backlog-run-1", "status": "completed", "next_action": "none"}
             completed = runner.subprocess.CompletedProcess(
-                args=["smart-arb-pipeline"],
+                args=["project-delivery-pipeline"],
                 returncode=0,
                 stdout=json.dumps(pipeline_state, ensure_ascii=False),
                 stderr="",
@@ -169,8 +169,8 @@ class BacklogRunnerTests(unittest.TestCase):
                         scan_limit=20,
                         max_items=1,
                         dry_run=False,
-                        pipeline_command="smart-arb-pipeline",
-                        profile="spreadagent",
+                        pipeline_command="project-delivery-pipeline",
+                        profile="projectagent",
                         source="backlog-runner",
                         pipeline_timeout_seconds=30,
                         actor="test",
@@ -194,7 +194,7 @@ class BacklogRunnerTests(unittest.TestCase):
         cmd = run_mock.call_args.args[0]
         self.assertIn("--emit-json", cmd)
         self.assertIn("--requirement", cmd)
-        self.assertIn("spreadagent", cmd)
+        self.assertIn("projectagent", cmd)
 
     def test_confirmed_high_risk_task_passes_human_risk_flag_to_pipeline(self):
         runner = load_module("backlog_runner_test_high_risk_confirmed", RUNNER_PATH)
@@ -218,7 +218,7 @@ class BacklogRunnerTests(unittest.TestCase):
 
             pipeline_state = {"run_id": "backlog-run-risky", "status": "completed", "next_action": "none"}
             completed = runner.subprocess.CompletedProcess(
-                args=["smart-arb-pipeline"],
+                args=["project-delivery-pipeline"],
                 returncode=0,
                 stdout=json.dumps(pipeline_state, ensure_ascii=False),
                 stderr="",
@@ -236,8 +236,8 @@ class BacklogRunnerTests(unittest.TestCase):
                         scan_limit=20,
                         max_items=1,
                         dry_run=False,
-                        pipeline_command="smart-arb-pipeline",
-                        profile="spreadagent",
+                        pipeline_command="project-delivery-pipeline",
+                        profile="projectagent",
                         source="backlog-runner",
                         pipeline_timeout_seconds=30,
                         actor="test",
@@ -289,8 +289,8 @@ class BacklogRunnerTests(unittest.TestCase):
                         scan_limit=20,
                         max_items=1,
                         dry_run=False,
-                        pipeline_command="missing-smart-arb-pipeline",
-                        profile="spreadagent",
+                        pipeline_command="missing-project-delivery-pipeline",
+                        profile="projectagent",
                         source="backlog-runner",
                         pipeline_timeout_seconds=30,
                         actor="test",

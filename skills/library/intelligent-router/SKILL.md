@@ -18,7 +18,7 @@ triggers:
 
 > **版本**: 1.0.0
 > **更新时间**: 2026-01-07
-> **作者**: superma
+> **作者**: maintainers
 > **类型**: 自动化技能
 
 ## 📖 技能概述
@@ -107,7 +107,7 @@ triggers:
 **示例**：
 - `[调用 Subagent: smart-flow:python-expert] 优化这段代码性能`
 - `[调用 Subagent: smart-flow:backend-developer] 创建用户认证 API`
-- `[调用 Subagent: smart-flow:database-architect] 设计交易系统的数据库`
+- `[调用 Subagent: smart-flow:database-architect] 设计订单管理系统的数据库`
 
 #### 3. 组合调用
 ```
@@ -115,7 +115,7 @@ triggers:
 ```
 
 **示例**：
-- `[调用组合: 量化交易组合] 分析这个策略的风险和收益`
+- `[调用组合: 数据分析组合] 分析这个数据管道的质量和性能`
 - `[调用组合: 全栈开发组合] 从零开发一个待办事项应用`
 - `[调用组合: 代码审查组合] 审查这个 PR 的代码质量和安全性`
 
@@ -316,6 +316,6 @@ Agent 完成后，整合关键信息，避免冗长输出。
 
 ---
 
-**维护者**: superma
+**维护者**: maintainers
 **许可证**: MIT
 **仓库**: 本地技能库

@@ -68,10 +68,10 @@ export HARDFLOW_PROCESS_CMD_TIMEOUT_SEC='900'
 bash scripts/hardflow/deploy-evolution-hooks.sh
 ```
 
-仅下发到单台（例如行情中心）：
+仅下发到单台（例如内部服务节点）：
 
 ```bash
-bash scripts/hardflow/deploy-evolution-hooks.sh hangqing-zhongxin
+bash scripts/hardflow/deploy-evolution-hooks.sh HOST_G
 ```
 
 该部署会自动：

@@ -54,7 +54,7 @@
 
 ## 五、约束与边界
 
-- **不新增 Agent**：技能化不改变 2026-03 OpenClaw 历史注册表，只改 Skill 内容；nofx 当前运行态不按 14 个常驻 Agent 管理，而是两个 Hermes profile 承载 workflow owner / cron 责任标签
+- **不新增 Agent**：技能化不改变 2026-03 OpenClaw 历史注册表，只改 Skill 内容；runtime-host 当前运行态不按 14 个常驻 Agent 管理，而是两个 Hermes profile 承载 workflow owner / cron 责任标签
 - **不改评分管道**：三步流水线（证据→评价→确定性聚合）保持不变
 - **渐进式迁移**：新旧并行，逐步替换，不一次性切换
 - **向下兼容**：旧的 `python3 xxx.py` 命令仍可直接执行

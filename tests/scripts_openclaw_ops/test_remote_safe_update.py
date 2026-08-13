@@ -24,22 +24,22 @@ def load_module(name: str, rel_path: str):
 
 class RemoteSafeUpdateTests(unittest.TestCase):
     def test_parse_ssh_hosts_keeps_order_and_skips_patterns(self):
-        module = load_module("remote_safe_update", "scripts/openclaw-ops/remote_safe_update.py")
+        module = load_module("remote_safe_update", "skills/library/fleet-sync/scripts/remote_safe_update.py")
         text = "\n".join(
             [
-                "Host pm-website",
-                "Host *.internal google-us",
-                "Host 大白pm tokyo-claw",
+                "Host HOST_A",
+                "Host *.internal HOST_F",
+                "Host HOST_B HOST_E",
                 "Host ?invalid",
             ]
         )
         self.assertEqual(
             module.parse_ssh_hosts(text),
-            ["pm-website", "google-us", "大白pm", "tokyo-claw"],
+            ["HOST_A", "HOST_F", "HOST_B", "HOST_E"],
         )
 
     def test_parse_porcelain_entries_handles_untracked_and_rename(self):
-        module = load_module("remote_safe_update", "scripts/openclaw-ops/remote_safe_update.py")
+        module = load_module("remote_safe_update", "skills/library/fleet-sync/scripts/remote_safe_update.py")
         text = "\n".join(
             [
                 " M .workflow/project-index-local/PROJECT_INDEX.md",
@@ -57,7 +57,7 @@ class RemoteSafeUpdateTests(unittest.TestCase):
         )
 
     def test_split_dirty_paths_separates_volatile_and_blocking(self):
-        module = load_module("remote_safe_update", "scripts/openclaw-ops/remote_safe_update.py")
+        module = load_module("remote_safe_update", "skills/library/fleet-sync/scripts/remote_safe_update.py")
         entries = [
             {"status": " M", "path": ".workflow/project-index-local/PROJECT_INDEX.md"},
             {"status": " M", "path": "memory/cache.json"},

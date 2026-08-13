@@ -29,7 +29,7 @@ class ReviewerContextGateObservabilityTests(unittest.TestCase):
     def test_emit_policy_observability_does_not_report_context_gate_task_ids(self):
         module = load_module(
             "reviewer_cron_runner",
-            "scripts/openclaw-ops/reviewer_cron_runner.py",
+            "skills/library/receiving-code-review/scripts/reviewer_cron_runner.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

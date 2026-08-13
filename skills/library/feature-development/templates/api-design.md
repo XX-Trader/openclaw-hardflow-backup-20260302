@@ -11,14 +11,14 @@
 
 | 接口 | 方法 | 功能 | 认证 |
 |------|------|------|------|
-| /api/pm-robot/trader-group/create | POST | 创建分组 | ✅ |
-| /api/pm-robot/trader-group/list | GET | 获取分组列表 | ✅ |
-| /api/pm-robot/trader-group/update | POST | 更新分组 | ✅ |
-| /api/pm-robot/trader-group/delete | POST | 删除分组 | ✅ |
-| /api/pm-robot/trader-group/add-traders | POST | 添加交易员到分组 | ✅ |
-| /api/pm-robot/trader-group/remove-traders | POST | 从分组移除交易员 | ✅ |
-| /api/pm-robot/trader-group/batch-start | POST | 批量启动 | ✅ |
-| /api/pm-robot/trader-group/batch-stop | POST | 批量停止 | ✅ |
+| /api/pm-robot/member-group/create | POST | 创建分组 | ✅ |
+| /api/pm-robot/member-group/list | GET | 获取分组列表 | ✅ |
+| /api/pm-robot/member-group/update | POST | 更新分组 | ✅ |
+| /api/pm-robot/member-group/delete | POST | 删除分组 | ✅ |
+| /api/pm-robot/member-group/add-members | POST | 添加成员到分组 | ✅ |
+| /api/pm-robot/member-group/remove-members | POST | 从分组移除成员 | ✅ |
+| /api/pm-robot/member-group/batch-start | POST | 批量启动 | ✅ |
+| /api/pm-robot/member-group/batch-stop | POST | 批量停止 | ✅ |
 
 ---
 
@@ -26,22 +26,22 @@
 
 ### 2.1 创建分组
 
-**接口**: `POST /api/pm-robot/trader-group/create`
+**接口**: `POST /api/pm-robot/member-group/create`
 
-**功能描述**: 创建一个新的交易员分组
+**功能描述**: 创建一个新的成员分组
 
 **请求参数**:
 
 | 字段名 | 类型 | 必填 | 说明 | 示例 |
 |--------|------|------|------|------|
-| groupName | String | ✅ | 分组名称，最长100字符 | "高频交易组" |
-| description | String | ❌ | 分组描述，最长500字符 | "高频策略交易员" |
+| groupName | String | ✅ | 分组名称，最长100字符 | "核心运营组" |
+| description | String | ❌ | 分组描述，最长500字符 | "核心业务成员" |
 
 **请求示例**:
 ```json
 {
-  "groupName": "高频交易组",
-  "description": "高频策略交易员"
+  "groupName": "核心运营组",
+  "description": "核心业务成员"
 }
 ```
 
@@ -76,7 +76,7 @@
 
 ### 2.2 获取分组列表
 
-**接口**: `GET /api/pm-robot/trader-group/list`
+**接口**: `GET /api/pm-robot/member-group/list`
 
 **功能描述**: 获取当前用户的所有分组
 
@@ -90,7 +90,7 @@
 
 **请求示例**:
 ```
-GET /api/pm-robot/trader-group/list?page=1&pageSize=20
+GET /api/pm-robot/member-group/list?page=1&pageSize=20
 ```
 
 **响应数据**:
@@ -103,7 +103,7 @@ GET /api/pm-robot/trader-group/list?page=1&pageSize=20
 | data.list[i].groupId | Integer | 分组ID |
 | data.list[i].groupName | String | 分组名称 |
 | data.list[i].description | String | 分组描述 |
-| data.list[i].traderCount | Integer | 交易员数量 |
+| data.list[i].memberCount | Integer | 成员数量 |
 | data.list[i].createdAt | String | 创建时间 |
 | data.total | Integer | 总数量 |
 
@@ -116,9 +116,9 @@ GET /api/pm-robot/trader-group/list?page=1&pageSize=20
     "list": [
       {
         "groupId": 123,
-        "groupName": "高频交易组",
-        "description": "高频策略交易员",
-        "traderCount": 5,
+        "groupName": "核心运营组",
+        "description": "核心业务成员",
+        "memberCount": 5,
         "createdAt": "2025-01-05 10:00:00"
       }
     ],
@@ -129,24 +129,24 @@ GET /api/pm-robot/trader-group/list?page=1&pageSize=20
 
 ---
 
-### 2.3 添加交易员到分组
+### 2.3 添加成员到分组
 
-**接口**: `POST /api/pm-robot/trader-group/add-traders`
+**接口**: `POST /api/pm-robot/member-group/add-members`
 
-**功能描述**: 将一个或多个交易员添加到分组
+**功能描述**: 将一个或多个成员添加到分组
 
 **请求参数**:
 
 | 字段名 | 类型 | 必填 | 说明 | 示例 |
 |--------|------|------|------|------|
 | groupId | Integer | ✅ | 分组ID | 123 |
-| traderIds | Array<Integer> | ✅ | 交易员ID列表 | [1, 2, 3] |
+| memberIds | Array<Integer> | ✅ | 成员ID列表 | [1, 2, 3] |
 
 **请求示例**:
 ```json
 {
   "groupId": 123,
-  "traderIds": [1, 2, 3]
+  "memberIds": [1, 2, 3]
 }
 ```
 
@@ -157,7 +157,7 @@ GET /api/pm-robot/trader-group/list?page=1&pageSize=20
 | code | Integer | 状态码 |
 | msg | String | 提示信息 |
 | data.successCount | Integer | 成功添加数量 |
-| data.failedList | Array | 添加失败的交易员ID |
+| data.failedList | Array | 添加失败的成员ID |
 
 **响应示例**:
 ```json
@@ -168,8 +168,8 @@ GET /api/pm-robot/trader-group/list?page=1&pageSize=20
     "successCount": 2,
     "failedList": [
       {
-        "traderId": 3,
-        "reason": "该交易员已在其他分组"
+        "memberId": 3,
+        "reason": "该成员已在其他分组"
       }
     ]
   }
@@ -184,7 +184,7 @@ GET /api/pm-robot/trader-group/list?page=1&pageSize=20
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
-| id / groupId / traderId | Integer | 主键ID |
+| id / groupId / memberId | Integer | 主键ID |
 | createdAt / updatedAt | String | 时间戳，格式：YYYY-MM-DD HH:mm:ss |
 | isDeleted | Boolean | 是否删除，true表示已删除 |
 
@@ -213,16 +213,16 @@ const MOCK_GROUP_LIST = {
     list: [
       {
         groupId: 1,
-        groupName: "高频交易组",
-        description: "高频策略交易员",
-        traderCount: 5,
+        groupName: "核心运营组",
+        description: "核心业务成员",
+        memberCount: 5,
         createdAt: "2025-01-05 10:00:00"
       },
       {
         groupId: 2,
         groupName: "趋势跟踪组",
-        description: "趋势策略交易员",
-        traderCount: 3,
+        description: "质量保障成员",
+        memberCount: 3,
         createdAt: "2025-01-04 15:30:00"
       }
     ],
@@ -239,8 +239,8 @@ const MOCK_CREATE_GROUP = {
   }
 }
 
-// 添加交易员响应
-const MOCK_ADD_TRADERS = {
+// 添加成员响应
+const MOCK_ADD_MEMBERS = {
   code: 200,
   msg: "添加成功",
   data: {

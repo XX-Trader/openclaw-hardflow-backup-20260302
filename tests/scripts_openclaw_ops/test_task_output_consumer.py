@@ -30,11 +30,11 @@ class TaskOutputConsumerTests(unittest.TestCase):
     def test_build_task_output_consumer_payload_returns_human_event(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         consumer_module = load_module(
             "task_output_consumer",
-            "scripts/openclaw-ops/task_output_consumer.py",
+            "skills/library/task-cost-analytics/scripts/task_output_consumer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -126,11 +126,11 @@ class TaskOutputConsumerTests(unittest.TestCase):
     def test_main_emit_json_returns_structured_payload(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         consumer_module = load_module(
             "task_output_consumer",
-            "scripts/openclaw-ops/task_output_consumer.py",
+            "skills/library/task-cost-analytics/scripts/task_output_consumer.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

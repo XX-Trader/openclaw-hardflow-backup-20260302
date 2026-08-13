@@ -2,6 +2,7 @@ import importlib.util
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -56,6 +57,7 @@ class DeadlineToTaskBridgeTests(unittest.TestCase):
                 assignee="human-inbox",
                 include_upcoming_days=0,
                 dry_run=False,
+                now=datetime(2026, 4, 23, tzinfo=timezone.utc),
             )
             second = bridge.create_due_candidates(
                 todo_file=todo_file,
@@ -64,6 +66,7 @@ class DeadlineToTaskBridgeTests(unittest.TestCase):
                 assignee="human-inbox",
                 include_upcoming_days=0,
                 dry_run=False,
+                now=datetime(2026, 4, 23, tzinfo=timezone.utc),
             )
 
             self.assertEqual(len(summary["created"]), 1)

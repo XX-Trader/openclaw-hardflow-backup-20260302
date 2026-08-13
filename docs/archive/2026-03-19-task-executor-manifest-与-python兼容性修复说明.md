@@ -26,8 +26,8 @@ TypeError: dataclass() got an unexpected keyword argument 'slots'
 
 新增兼容模块：
 
-- `scripts/openclaw-ops/dataclass_compat.py`
-- `scripts/openclaw-ops/policy/dataclass_compat.py`
+- `scripts/openclaw-ops/shared/dataclass_compat.py`
+- `skills/library/control-plane-ops/scripts/policy/dataclass_compat.py`
 
 兼容策略：
 
@@ -36,13 +36,13 @@ TypeError: dataclass() got an unexpected keyword argument 'slots'
 
 已覆盖当前使用 `@dataclass(slots=True)` 的运行时脚本：
 
-- `scripts/openclaw-ops/ops_cron_runner.py`
-- `scripts/openclaw-ops/reviewer_cron_runner.py`
-- `scripts/openclaw-ops/todo_patrol.py`
-- `scripts/openclaw-ops/policy/bootstrap_multi_project.py`
-- `scripts/openclaw-ops/policy/policy_enforcer.py`
-- `scripts/openclaw-ops/policy/project_index_maintainer.py`
-- `scripts/openclaw-ops/policy/task_center.py`
+- `skills/library/control-plane-ops/scripts/ops_cron_runner.py`
+- `skills/library/receiving-code-review/scripts/reviewer_cron_runner.py`
+- `skills/library/todo-patrol/scripts/todo_patrol.py`
+- `skills/library/control-plane-ops/scripts/policy/bootstrap_multi_project.py`
+- `skills/library/control-plane-ops/scripts/policy/policy_enforcer.py`
+- `skills/library/control-plane-ops/scripts/policy/project_index_maintainer.py`
+- `skills/library/control-plane-ops/scripts/policy/task_center.py`
 - `scripts/openclaw-ops/policy/workflow_setup.py`
 
 ## 预期效果

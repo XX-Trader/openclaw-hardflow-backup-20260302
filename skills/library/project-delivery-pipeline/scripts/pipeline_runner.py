@@ -200,8 +200,8 @@ CONTROL_PLANE_PATH_PREFIXES = (
 )
 WORKFLOW_HOST_BASENAMES = {
     "pipeline_runner.py",
-    "smart_arb_live_bridge.py",
-    "smart_arb_pipeline_entry.py",
+    "live_runtime_bridge.py",
+    "project_pipeline_entry.py",
     "backlog_runner.py",
     "runtime_installer.py",
     "hermes_profile_smoke.py",
@@ -1752,7 +1752,7 @@ def allows_control_plane_targets(text: str) -> bool:
     value = str(text or "")
     # A business rerun may mention that workflow/runtime was already fixed as
     # history or as a forbidden target.  Do not let that prose reopen workflow
-    # host files as SmartMultiPlatformArbitrage delivery targets.
+    # host files as application delivery targets.
     if re.search(
         r"(?:已修复|已验证|stale\s+runner\s+(?:已)?(?:fixed|修复)|重新(?:执行|跑).{0,40}业务|本轮.{0,40}业务|不应作为.{0,40}(?:业务|target_files|target)|不得.{0,40}(?:workflow|runtime).{0,20}(?:target|目标))",
         value,
@@ -1850,7 +1850,7 @@ def resolve_repo_basename_path(path: str, repo_root: Path | None, context_text: 
         return normalized
     # Reviewers sometimes quote a valid repo suffix without the project package
     # prefix (for example `api/routes/dashboard.py` instead of
-    # `智能多平台套利/api/routes/dashboard.py`).  Resolve unique suffix drift
+    # `src/product/api/routes/dashboard.py`). Resolve unique suffix drift
     # before solution_review so implementers never receive non-existent pseudo
     # targets.  Absolute/runtime-looking paths are still rejected earlier by
     # plan_path_rejection_reason and are not normalized here.
@@ -2015,16 +2015,16 @@ def merge_plan_paths(*path_groups: list[str], limit: int = 24) -> list[str]:
 def delivery_target_priority(path: str) -> tuple[int, int, str]:
     value = str(path or "").replace("\\", "/")
     priority = 50
-    if value.startswith("智能多平台套利/") and not value.startswith("智能多平台套利/tests/"):
+    if value.startswith(("src/", "app/", "lib/", "services/")):
         priority = 0
-    if value.startswith("scripts/"):
-        priority = min(priority, 1)
-    if value.startswith("tests/"):
-        priority = min(priority, 5)
-    if value.startswith("docs/"):
-        priority = min(priority, 8)
-    if value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
-        priority = min(priority, 9)
+    elif value.startswith("scripts/"):
+        priority = 1
+    elif value.startswith("tests/"):
+        priority = 5
+    elif value.startswith("docs/"):
+        priority = 8
+    elif value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
+        priority = 9
     return (priority, len(value), value)
 
 
@@ -2092,11 +2092,7 @@ def infer_task_type(text: str) -> str:
 
 def infer_code_agent(text: str, config: PipelineConfig) -> str:
     lowered = str(text or "").lower()
-    if config.code_agent == "frontend-dev" and not re.search(r"(?:stock[-_ ]?tokens?|/api/stock-tokens|api/routes/stock_tokens|stock_token_public_adapter|平台范围|币股)", lowered, re.IGNORECASE):
-        return "frontend-dev"
-    if re.search(r"(?:stock[-_ ]?tokens?|/api/stock-tokens|api/routes/stock_tokens|stock_token_public_adapter|平台范围|币股)", lowered, re.IGNORECASE):
-        return "backend-dev"
-    if any(token in lowered for token in ("frontend", "dashboard", "页面", "前端", "交互")) or re.search(r"\bui\b", lowered):
+    if any(token in lowered for token in ("frontend", "front-end", "dashboard", "page", "component", "页面", "前端", "交互", "样式")) or re.search(r"\bui\b", lowered):
         return "frontend-dev"
     if infer_task_type(text) == "docs":
         return "doc-writer"
@@ -2213,55 +2209,43 @@ def verification_command_rejection_reason(command: str) -> str:
     lowered = value.lower()
     if not value:
         return "empty_command"
-    if "smart_arb_live_bridge.py" in lowered or "--stage verification" in lowered:
+    if "live_runtime_bridge.py" in lowered or "--stage verification" in lowered:
         return "pipeline_runner_orchestration_command"
     if re.search(r"(?:通过|必须|进入 diff|验收|运行并记录|建议|例如|应|需要|不能|不要|缺少|包含上述)", value):
         return "natural_language_not_command"
-    if lowered in {"pytest", "pytest:", "python", "python3", "git"}:
+    if lowered in {"pytest", "pytest:", "python", "python3", "py", "git"}:
         return "too_broad_or_incomplete_command"
     if value.endswith("`"):
         return "malformed_backtick_command"
     if re.match(r"^pytest\b", value):
-        if "tests/" not in value or re.search(r"[\u4e00-\u9fff]", value):
+        if not re.search(r"(?:^|\s)(?:tests?/|[^\s]+test[^\s]*\.py)", value) or re.search(r"[\u4e00-\u9fff]", value):
             return "malformed_pytest_command"
         return ""
-    if re.match(r"^(?:/home/arbops/\.venvs/[^\s]+/bin/python|python|python3|/usr/bin/python3)\s+", value):
-        if " -m compileall" in value and re.search(r"stock_token_publi(?:\s|$)", value) and "stock_token_public_adapter.py" not in value:
-            return "malformed_truncated_compileall_target"
-        if " -m compileall" in value:
-            tokens = value.split()
-            if "-q" in tokens:
-                targets = tokens[tokens.index("-q") + 1 :]
-                for target in targets:
-                    normalized_target = target.strip("'\"")
-                    if normalized_target.startswith("智能多平台套利/") and not (normalized_target.endswith(".py") or normalized_target in {"智能多平台套利", "智能多平台套利/"}):
-                        return "malformed_compileall_target"
-        if " -m pytest" in value or " -B -m compileall" in value or " -m compileall" in value:
+    python_prefix = r'(?:(?:"[^"]*python(?:3(?:\.\d+)?)?(?:\.exe)?"|[^\s]*python(?:3(?:\.\d+)?)?(?:\.exe)?|py(?:\.exe)?(?:\s+-3)?))'
+    if re.match(rf"^{python_prefix}\s+", value, re.IGNORECASE):
+        if re.search(r"\s-m\s+(?:pytest|compileall)\b", value) or re.search(r"\s-B\s+-m\s+compileall\b", value):
             return ""
         return "unsupported_python_verification_command"
-    if value == "git diff --check":
-        return ""
-    if value == "git status --short --branch":
-        return ""
-    if value == "git fetch origin main --prune":
-        return ""
-    if value == "git rev-parse --verify HEAD":
-        return ""
-    if value == "git rev-list --left-right --count HEAD...origin/main":
-        return ""
-    if value == "git branch -r --contains HEAD":
+    if value in {
+        "git diff --check",
+        "git status --short --branch",
+        "git fetch origin main --prune",
+        "git rev-parse --verify HEAD",
+        "git rev-list --left-right --count HEAD...origin/main",
+        "git branch -r --contains HEAD",
+    }:
         return ""
     if re.match(r"^test\s+-f\s+[^\s]+$", value):
         return ""
     if re.match(r"^git\s+diff\s+--name-only\b", value):
         return ""
-    if re.match(r"^/bin/sh\s+-c\s+\"git\s+diff\s+--unified=0\b", value):
+    if re.match(r'^/bin/sh\s+-c\s+"git\s+diff\s+--unified=0\b', value):
         return ""
-    if re.match(r"^curl\s+-fsS\s+http://127\.0\.0\.1:18080/", value):
+    if re.match(r"^curl\s+-fsS\s+https?://(?:127\.0\.0\.1|localhost):\d+/", value):
         return ""
     if re.match(r"^(?:grep|rg)\b", value):
         return ""
-    if lowered.startswith("run ") or lowered.startswith("read-only internal api smoke"):
+    if lowered.startswith("run ") or lowered.startswith("read-only api smoke"):
         return "natural_language_not_command"
     return "unsupported_verification_command"
 
@@ -2276,8 +2260,8 @@ def add_verification_command(commands: list[dict[str, Any]], command: str, sourc
 
 def added_line_safety_scan_command() -> str:
     return (
-        "/bin/sh -c \"git diff --unified=0 -- 智能多平台套利 tests "
-        "| rg -n '^\\+.*(credential\\s*[:=]|credentials\\s*[:=]|api[_ -]?key\\s*[:=]|secret\\s*[:=]|password\\s*[:=]|private[_ -]?key\\s*[:=]|Authorization\\s*[:=]|Cookie\\s*[:=])' "
+        "/bin/sh -c \"git diff --unified=0 -- . ':!pipeline-runs/**' ':!command-runs/**' ':!agent-workspaces/**' "
+        r"| rg -n '^\+.*(credential\s*[:=]|credentials\s*[:=]|api[_ -]?key\s*[:=]|secret\s*[:=]|password\s*[:=]|private[_ -]?key\s*[:=]|Authorization\s*[:=]|Cookie\s*[:=])' "
         "&& exit 1 || test $? -eq 1\""
     )
 
@@ -2285,30 +2269,13 @@ def added_line_safety_scan_command() -> str:
 def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
     value = str(text or "")
     commands: list[dict[str, Any]] = []
-
-    # Prefer canonical executable gates over prose fragments extracted from
-    # reviewer text.  Only concrete commands enter delivery_plan; descriptions
-    # such as "pytest 测试必须通过" are intentionally ignored.
-    if re.search(r"tests/test_stock_token_public_adapter\.py", value) and re.search(r"tests/test_dashboard_api\.py", value):
-        stock_token_tests = ["tests/test_stock_token_public_adapter.py", "tests/test_dashboard_api.py"]
-        if re.search(r"tests/test_stock_token_platform_scope\.py", value):
-            stock_token_tests.append("tests/test_stock_token_platform_scope.py")
-        add_verification_command(
-            commands,
-            "/home/arbops/.venvs/smart-arbitrage/bin/python -m pytest -q " + " ".join(stock_token_tests),
-        )
-    for match in re.finditer(r"(?:/home/arbops/\.venvs/[^\s]+/bin/python|python|python3|/usr/bin/python3)\s+(?:-B\s+)?-m\s+(?:pytest|compileall)[^\r\n；;。、`]*", value, re.IGNORECASE):
+    python_prefix = r'(?:(?:"[^"]*python(?:3(?:\.\d+)?)?(?:\.exe)?"|[^\s]*python(?:3(?:\.\d+)?)?(?:\.exe)?|py(?:\.exe)?(?:\s+-3)?))'
+    for match in re.finditer(rf"{python_prefix}\s+(?:-B\s+)?-m\s+(?:pytest|compileall)[^\r\n；;。、`]*", value, re.IGNORECASE):
         add_verification_command(commands, match.group(0).strip())
-    for match in re.finditer(r"(?m)^\s*pytest\s+-q\s+tests/[^\r\n；;。、`]*", value, re.IGNORECASE):
+    for match in re.finditer(r"(?m)^\s*pytest\s+-q\s+[^\r\n；;。、`]+", value, re.IGNORECASE):
         add_verification_command(commands, match.group(0).strip())
-    compileall_targets_scripts = bool(re.search(r"(?:compileall.{0,120}scripts|scripts/.+\.py)", value, re.IGNORECASE))
-    if re.search(r"compileall.{0,120}(智能多平台套利|tests|scripts)", value, re.IGNORECASE):
-        add_verification_command(
-            commands,
-            "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests"
-            if compileall_targets_scripts
-            else "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 tests",
-        )
+    for match in re.finditer(r"curl\s+-fsS\s+https?://(?:127\.0\.0\.1|localhost):\d+/[^\s`]*", value, re.IGNORECASE):
+        add_verification_command(commands, match.group(0).strip())
     if "git diff --check" in value:
         add_verification_command(commands, "git diff --check")
     if re.search(r"credential|credentials|secret|password|private key|密钥|凭证", value, re.IGNORECASE):
@@ -2319,9 +2286,6 @@ def explicit_verification_commands(text: str) -> list[dict[str, Any]]:
         add_verification_command(commands, "git rev-parse --verify HEAD")
         add_verification_command(commands, "git diff --name-only --cached -- . ':!command-runs/**' ':!agent-workspaces/**' ':!pipeline_state.json' ':!run_meta.json'")
         add_verification_command(commands, "git rev-list --left-right --count HEAD...origin/main")
-    for endpoint in ("/health", "/api/strategy/status", "/api/realtime/funding", "/api/stock-tokens/status", "/api/stock-tokens/markets", "/api/stock-tokens/opportunities"):
-        if endpoint in value:
-            add_verification_command(commands, f"curl -fsS http://127.0.0.1:18080{endpoint}")
     return commands
 
 
@@ -2332,34 +2296,20 @@ def configured_verification_commands(config: PipelineConfig, task_type: str, evi
         for command in config.verification_commands
         if not verification_command_rejection_reason(str(command or ""))
     ]
-    if explicit:
-        merged: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for item in [*explicit, *commands]:
-            command = normalize_verification_command(str(item.get("command") or ""))
-            if command and command not in seen and not verification_command_rejection_reason(command):
-                seen.add(command)
-                merged.append({**item, "command": command})
-        if "git diff --check" not in seen:
-            seen.add("git diff --check")
-            merged.append({"command": "git diff --check", "required": True, "source": "default_baseline"})
-        default_compileall = "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests"
-        if task_type != "docs" and not any(" -m compileall " in command or command.endswith(" -m compileall") for command in seen):
-            seen.add(default_compileall)
-            merged.append({"command": default_compileall, "required": True, "source": "default_baseline"})
-        return merged
-    if commands:
-        return commands
-    fallback = [{"command": "git diff --check", "required": True, "source": "default"}]
-    if task_type != "docs":
-        fallback.append(
-            {
-                "command": "/home/arbops/.venvs/smart-arbitrage/bin/python -B -m compileall -q 智能多平台套利 scripts tests",
-                "required": True,
-                "source": "agent_selected",
-            }
-        )
-    return fallback
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in [*explicit, *commands]:
+        command = normalize_verification_command(str(item.get("command") or ""))
+        if command and command not in seen and not verification_command_rejection_reason(command):
+            seen.add(command)
+            merged.append({**item, "command": command})
+    if "git diff --check" not in seen:
+        seen.add("git diff --check")
+        merged.append({"command": "git diff --check", "required": True, "source": "default_baseline"})
+    default_compileall = "python -m compileall -q ."
+    if task_type != "docs" and not any(" -m compileall " in command or command.endswith(" -m compileall") for command in seen):
+        merged.append({"command": default_compileall, "required": True, "source": "default_baseline"})
+    return merged
 
 
 def render_markdown_items(items: list[str]) -> str:
@@ -2378,7 +2328,7 @@ def artifact_text(artifacts: dict[str, str], key: str) -> str:
 
 GRAPHIFY_INDEX_ROOT_ENV = "PIPELINE_GRAPHIFY_INDEX_ROOT"
 GRAPHIFY_BLOCK_PATTERNS = {
-    "credential_path": re.compile(r"(?i)(credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|auth[-_ ]?state|credential-imports|private/|(?:^|[/_.-])(?<!stock[-_/])token(?:s)?(?:[/_.-]|$))"),
+    "credential_path": re.compile(r"(?i)(credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|auth[-_ ]?state|credential-imports|private/|(?:^|[/_.-])token(?:s)?(?:[/_.-]|$))"),
 }
 
 
@@ -2389,7 +2339,7 @@ def profile_from_source_urls(source_urls: tuple[str, ...]) -> str:
             value = text.split(":", 1)[1].strip()
             if value:
                 return value
-    return os.environ.get("SMART_ARB_LIVE_BRIDGE_PROFILE", "spreadagent").strip() or "spreadagent"
+    return os.environ.get("PROJECT_PIPELINE_LIVE_BRIDGE_PROFILE", "projectagent").strip() or "projectagent"
 
 
 def graphify_index_root(config: PipelineConfig, runtime: dict[str, Any]) -> Path:
@@ -2517,9 +2467,11 @@ def scope_scan_text_from_plan(delivery_plan: dict[str, Any]) -> str:
     return scrub_negated_risk_lines(json.dumps(actionable, ensure_ascii=False, indent=2))
 
 
-def is_business_token_path(path: str) -> bool:
+def is_noncredential_token_path(path: str) -> bool:
+    """Return true only for source-code tokenizer modules, not credential stores."""
+
     value = str(path or "").replace("\\", "/").lower()
-    return any(token in value for token in ("stock_token", "stock-tokens", "tokenized_stock", "tokenized-stock"))
+    return bool(re.search(r"(?:^|/)(?:tokenizer|tokenizers|lexer|parser)(?:[._/-]|$)", value))
 
 
 def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], delivery_plan: dict[str, Any], artifacts: dict[str, str]) -> dict[str, Any]:
@@ -2557,7 +2509,7 @@ def validate_graphify_scope(config: PipelineConfig, runtime: dict[str, Any], del
         elif raw_path.startswith("../") or "/../" in raw_path:
             severity = "block"
             reason = "target path escapes the command repository boundary"
-        elif GRAPHIFY_BLOCK_PATTERNS["credential_path"].search(raw_path) and not is_business_token_path(raw_path):
+        elif GRAPHIFY_BLOCK_PATTERNS["credential_path"].search(raw_path) and not is_noncredential_token_path(raw_path):
             severity = "block"
             reason = "target path appears to reference credential/auth/secret material"
         else:
@@ -2618,35 +2570,24 @@ def render_graphify_scope_validation(payload: dict[str, Any]) -> str:
 def create_if_missing_rationale(path: str, evidence_text: str = "") -> str:
     value = str(path or "").replace("\\", "/")
     text = str(evidence_text or "")
-    if value.endswith("智能多平台套利/monitoring/funding_rate_scanner.py") or value.endswith("/funding_rate_scanner.py"):
-        return (
-            "Create only if the repository has no equivalent scanner module; it owns the funding-rate Top N, "
-            "expected_net_daily, reserve_watchlist, offline/degraded reason, and read-only ranking contract described by requirements discussion."
-        )
-    if value.endswith("tests/test_funding_rate_scanner.py"):
-        return (
-            "Create only with the scanner contract; cover Top N ordering, expected_net_daily, reserve_watchlist, "
-            "offline/degraded/reject reasons, and signal-only/no-fund-action safety boundaries."
-        )
     if value.startswith("tests/"):
         return "Create only when no existing targeted test covers this accepted requirement; keep it deterministic and repository-local."
     if value.startswith("docs/"):
         return (
             "Create only when no existing documentation page records this accepted requirement; "
-            "initial content must state the verified read-only/signal-only scope, evidence commands, "
-            "manual Discord acceptance boundary, and links back to docs/INDEX.md."
+            "state the verified behavior, evidence commands, ownership, rollback boundary, and index linkage."
         )
-    if value.startswith("memory/smart-multi-platform-arbitrage/"):
+    if value.startswith("memory/"):
         name = Path(value).name
         if name == "PROJECT_PROFILE.md":
-            return "Create only if the project memory module is missing; record SmartMultiPlatformArbitrage module boundaries, owners, and read-only monitoring surfaces."
+            return "Create only if the project memory module is missing; record module boundaries, owners, supported entry points, and explicit exclusions."
         if name == "DECISIONS.md":
-            return "Create only if the project memory module is missing; record durable decisions about read-only signal mode, no credential access, and manual Discord acceptance."
+            return "Create only if the project memory module is missing; record durable decisions and their verification evidence."
         if name == "DELIVERY_RULES.md":
-            return "Create only if the project memory module is missing; record delivery gates for targeted pytest, compileall including scripts, API smoke, docs/memory assertions, and git containment."
+            return "Create only if the project memory module is missing; record test, review, publish, rollback, and evidence gates."
         return "Create only if the project memory module is missing; seed it with verified facts from this run and deterministic content assertions."
-    if "如不存在则需要 create_if_missing rationale" in text and Path(value).suffix:
-        return "Create only after confirming no existing module implements the accepted requirement, and document the import/wiring path in implementation steps."
+    if "create_if_missing" in text and Path(value).suffix:
+        return "Create only after confirming no existing module implements the accepted requirement, and document the import or wiring path in implementation steps."
     return ""
 
 
@@ -2657,15 +2598,9 @@ def target_file_reason(path: str, confidence: str, exists: bool, evidence_text: 
         if rationale:
             return f"Create if missing: {rationale}"
     if confidence == "solution_review_blocker_required_target":
-        return "Promoted from non-hard solution_review Blocker: reviewer identified this concrete business file as missing from target_files/must_change_targets; revise_solution must preserve it unless a true forbidden target rule applies."
-    if value.endswith("api/routes/stock_tokens.py"):
-        return "Stock-token read-only API route referenced by requirements discussion; use the concrete repo-relative path instead of basename drift."
-    if value.endswith("api/stock_token_public_adapter.py"):
-        return "Stock-token public data adapter referenced by requirements discussion for read-only smoke and simulation-only validation."
-    if "/monitoring/" in value or value.endswith("query_spread_funding_profit.py"):
-        return "Funding-rate monitoring business surface referenced by requirements discussion and Graphify context."
+        return "Promoted from a concrete solution-review blocker; preserve it unless an explicit forbidden-target rule applies."
     if value.startswith("tests/"):
-        return "Targeted regression test referenced by requirements discussion for command-level acceptance."
+        return "Targeted regression test referenced by the accepted requirement or review evidence."
     if value.startswith("docs/") or value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
         return "Documentation, memory, or task-board writeback target required for closure evidence."
     return {
@@ -2682,33 +2617,17 @@ def implementation_step_description(path: str, item: dict[str, Any]) -> str:
     if item.get("create_if_missing_rationale"):
         return (
             f"Confirm whether `{value}` already has an equivalent implementation; if not, create it for: "
-            f"{item['create_if_missing_rationale']} Wire it into the smallest existing business entry point and cover it with targeted tests."
+            f"{item['create_if_missing_rationale']} Wire it into the smallest existing entry point and cover it with targeted tests."
         )
-    if value.endswith("api/routes/stock_tokens.py"):
-        return "Update the stock-token route fallback/status/markets/opportunities payloads so default MVP/public_adapter_snapshot/next_backend_steps match the accepted platform scope."
-    if value.endswith("api/stock_token_public_adapter.py"):
-        return "Update the public stock-token adapter defaults so DEFAULT_ENABLED_PLATFORMS and backend hints match the accepted platform scope."
-    if value.endswith("tests/test_stock_token_public_adapter.py"):
-        return "Add regression assertions that default public adapter scope excludes Kraken/MEXC and tokenized-stock spot MVP, includes Binance/OKX/Bitget/Bybit/Gate/Hyperliquid, and does not instantiate a real Hyperliquid adapter."
-    if value.endswith("tests/test_dashboard_api.py"):
-        return "Add API/dashboard regression assertions that /api/stock-tokens default responses and visible MVP/platform labels exclude Kraken/MEXC and tokenized-stock spot MVP while retaining Binance/OKX/Bitget/Bybit/Gate/Hyperliquid read-only scope."
-    if value.endswith("api/routes/funding.py") or value.endswith("api/routes/dashboard.py"):
-        return "Inspect the API route and ensure funding/dashboard responses expose deterministic state for the accepted requirement."
-    if "/monitoring/" in value:
-        return "Inspect the monitoring module, define the funding-rate scanner/snapshot contract, and preserve offline/degraded reason reporting."
     if value.startswith("tests/"):
-        return "Add or update this targeted test to prove the exact behavior, safety boundary, and regression acceptance for the related business file."
-    if value.endswith("api/main.py"):
-        return "Confirm the FastAPI app already wires the accepted read-only routes; only adjust route registration if a concrete monitoring endpoint is missing, and preserve startup behavior."
-    if value.endswith("scripts/basic_auth_proxy.py"):
-        return "Verify the proxy remains authentication-boundary-only, has no hardcoded credentials, and supports the read-only dashboard smoke without exposing private auth material."
-    if value.endswith("scripts/nofx_hermes_services.sh") or value.endswith("scripts/restart_dashboard_services.sh"):
-        return "Treat this as deployment-support evidence only: document or smoke service control commands without restarting production services unless the runner explicitly enters deployment."
+        return "Add or update this targeted test to prove the exact behavior, boundary conditions, and regression acceptance for the related implementation."
+    if value.endswith(("api/main.py", "app.py", "server.py")):
+        return "Confirm the application entry point wires the accepted route or service; change registration only when repository evidence proves it is missing."
     if value.startswith("scripts/"):
-        return "Update this operational script only if it is part of the accepted workflow; prove deterministic output and no credential leakage."
+        return "Update this operational script only when it is part of the accepted workflow; prove deterministic output, idempotence where applicable, and credential hygiene."
     if value.startswith("docs/") or value.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"}:
-        return "Update this writeback target with concrete verified content: changed behavior, commands run, git containment, and blocked_manual_acceptance_required when Discord cannot be proven internally."
-    return f"Map `{value}` to the accepted requirement, state the intended behavior change before editing, then apply the smallest code/test/docs change with a matching verification command."
+        return "Update this writeback target with verified behavior, commands run, ownership, rollback, and any remaining acceptance boundary."
+    return f"Map `{value}` to the accepted requirement, state the intended behavior before editing, then apply the smallest code, test, or documentation change with a matching verification command."
 
 
 def is_delivery_entry_point(path: str) -> bool:
@@ -2777,81 +2696,34 @@ def delivery_non_target_bucket(path: str, exists: bool, planning_context: str, c
         return None
     if re.search(r"(?:auth|credential|credentials|secret|cookie|oauth|api[-_ ]?key|private[-_ ]?key|凭证|密钥|私钥)", lower) and ("*" in value or "/" in value or lower.endswith((".json", ".yaml", ".yml", ".toml", ".env"))):
         return ("inspect_only_sources", "credential_auth_material_forbidden_not_target")
-    if re.match(r"(?i)^(?:GET|POST|PUT|PATCH|DELETE)\s+/", value) or lower.startswith("/api/") or lower in {"/health", "/api/strategy/status"}:
+    if re.match(r"(?i)^(?:GET|POST|PUT|PATCH|DELETE)\s+/", value) or lower.startswith("/api/") or lower == "/health":
         return ("reference_patterns", "api_contract_endpoint_not_repo_target")
-    if lower.startswith(("skills/library/", "scripts/openclaw-ops/", "config/nofx-hermes-profiles/", "cron/")) and confidence != "explicit":
-        return ("inspect_only_sources", "workflow_or_runtime_path_not_business_target")
-    if lower.startswith("/home/arbops/projects/openclaw-hardflow-backup-20260302/") and confidence != "explicit":
-        return ("inspect_only_sources", "workflow_or_runtime_path_not_business_target")
-    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower in {"graph.json", "graphify.json", "external_research.md", "research_report.md", "graphify_scope_validation.md"} or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/")):
+    if Path(value).is_absolute():
+        return ("inspect_only_sources", "absolute_or_external_path_not_repo_target")
+    if lower.startswith(("skills/library/", "scripts/openclaw-ops/", "config/runtime-profiles/", "cron/")) and confidence != "explicit":
+        return ("inspect_only_sources", "workflow_or_runtime_path_not_application_target")
+    if value in PIPELINE_ARTIFACT_TARGET_NAMES or lower in {"graph.json", "graphify.json", "external_research.md", "research_report.md", "graphify_scope_validation.md"} or lower.startswith(("pipeline-runs/", ".hermes/", "command-runs/", "agent-workspaces/")):
         return ("inspect_only_sources", "pipeline_artifact_not_repo_target")
     if value in FACT_SOURCE_PATHS:
         return ("read_only_sources", "project_fact_source_read_only")
     if value == "GRAPH_REPORT.md" or lower.endswith("/graph_report.md"):
-        return ("inspect_only_sources", "external_graph_context_not_business_target")
-    if lower.startswith("scripts/") and ("service" in lower or "hermes" in lower or "restart" in lower):
-        return ("inspect_only_sources", "ops_script_reference_not_business_target")
+        return ("inspect_only_sources", "external_graph_context_not_application_target")
+    if lower.startswith("scripts/") and confidence != "explicit" and any(token in lower for token in ("service", "restart", "deploy", "runtime")):
+        return ("inspect_only_sources", "operations_script_reference_not_application_target")
     if lower.startswith("cron/") or lower in {"cron/jobs.json", "jobs.json"}:
-        return ("inspect_only_sources", "cron_runtime_schedule_not_business_target")
-    if lower.startswith("static/index/") or lower in {"static/index.html", "static/index/dashboard.js", "static/index/index.html"} or "/api/static/index/" in lower:
-        return ("inspect_only_sources", "basename_or_static_drift_not_repo_business_target")
-    if lower == "智能多平台套利/api/main.py" and (
-        re.search(r"(?:route\s+wiring\s+reference|路由\s*wiring\s*参考|作为\s*reference|reference_patterns?|参考|确认/检查对象|确认对象|检查对象|检查入口|只支持.{0,40}检查|只支持.{0,40}确认).{0,180}(?:api/main\.py|main\.py)|(?:api/main\.py|main\.py).{0,180}(?:route\s+wiring\s+reference|路由\s*wiring\s*参考|作为\s*reference|reference_patterns?|参考|证据不足|必须从.{0,80}移除|应从.{0,80}移除|确认/检查对象|确认对象|检查对象|检查入口|已注册|route 已注册|route.*已注册|已\s*include_router|stock_tokens route 已注册)", context, re.IGNORECASE)
-        or (re.search(r"(?:api/main\.py|main\.py).{0,160}(?:已\s*import|include_router|已包含|已接入|路由已存在|已注册|route 已注册|stock_tokens route 已注册|只支持.{0,40}检查|检查入口)", context, re.IGNORECASE) and not re.search(r"(?:api/main\.py|main\.py).{0,160}(?:必须修改|必改|缺失|未\s*include_router|没有\s*include_router|concrete monitoring endpoint is missing)", context, re.IGNORECASE))
-    ):
-        return ("reference_patterns", "api_main_route_wiring_reference_not_target")
-    if lower in {"智能多平台套利/market_adapters/__init__.py", "market_adapters/__init__.py"}:
-        return ("inspect_only_sources", "adapter_registry_path_drift_not_business_target")
-    if lower == "智能多平台套利/arbitrage/market_adapters/base.py" and (
-        re.search(r"(?:market_adapters/base\.py|market adapter base|adapter base|base\.py).{0,220}(?:candidate target|referenced by requirements discussion|候选|上下文|没有证明|未证明|缺少证据|不是.*必改|不应.*target|应.*inspect|容易把|除非.*直接引用)|(?:candidate target|referenced by requirements discussion|候选|上下文|没有证明|未证明|缺少证据|不是.*必改|不应.*target|应.*inspect|容易把|除非.*直接引用).{0,220}(?:market_adapters/base\.py|market adapter base|adapter base|base\.py)", context, re.IGNORECASE)
-        or not re.search(r"(?:market_adapters/base\.py|market adapter base|adapter base|base\.py).{0,180}(?:必须修改|必改|直接引用|当前页面|stock-token API|public adapter 默认配置|runtime 口径|MVP runtime)|(?:必须修改|必改|直接引用|当前页面|stock-token API|public adapter 默认配置|runtime 口径|MVP runtime).{0,180}(?:market_adapters/base\.py|market adapter base|adapter base|base\.py)", context, re.IGNORECASE)
-    ):
-        return ("inspect_only_sources", "adapter_base_reference_without_mvp_runtime_evidence")
-    if re.search(r"\s/\s", value) or value in {"Gate / MEXC", "交易所模块 / 平台范围"}:
+        return ("inspect_only_sources", "schedule_runtime_not_application_target")
+    if re.search(r"\s/\s", value):
         return ("reference_patterns", "natural_language_scope_not_repo_target")
-    if lower in {"kraken/mexc", "gate/mexc", "gate / mexc"}:
-        return ("reference_patterns", "venue_pair_scope_not_repo_target")
-    if lower.startswith("apollo/") or lower.startswith("智能多平台套利/apollo") or "/apollo" in lower:
-        return ("inspect_only_sources", "apollo_historical_or_absent_not_current_mvp_target")
-    if lower in {"智能多平台套利/arbitrage_config.json5", "智能多平台套利/api/routes/dashboard.py", "智能多平台套利/api/static/dashboard/dashboard.css"} and (
-        re.search(r"(?:未发现|没有发现|无|不存在|无漂移证据|未证明|未检出).{0,160}(?:arbitrage_config\.json5|api/routes/dashboard\.py|dashboard\.css|kraken|mexc|mvp|漂移)|(?:api/routes/dashboard\.py|dashboard\.css|arbitrage_config\.json5).{0,160}(?:路径错误|不存在|没有\s*create_if_missing|无漂移证据|未证明)", context, re.IGNORECASE)
-        or not re.search(r"(?:kraken|mexc|stock[-_ ]?token|mvp|必须修改|必改).{0,80}(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改)|(?:硬编码|hard[-_ ]?coded|当前存在|直接生成|直接引用|需要修改).{0,80}(?:kraken|mexc|stock[-_ ]?token|mvp)", context, re.IGNORECASE)
-    ):
-        return ("inspect_only_sources", "conditional_config_dashboard_css_without_drift_evidence")
-    if lower == "智能多平台套利/setup.py" and (
-        re.search(r"(?:不让|不得|禁止|不能|不应|forbidden|exclude|out\s+of\s+scope).{0,80}(?:setup\.py|packag|dependency|依赖|安装包)|(?:setup\.py|packag|dependency|依赖|安装包).{0,80}(?:不让|不得|禁止|不能|不应|非目标|forbidden|exclude|out\s+of\s+scope)", context, re.IGNORECASE)
-        or not (confidence == "explicit" and re.search(r"(?:packag|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE))
-    ):
-        return ("inspect_only_sources", "packaging_file_not_business_scope")
-    if lower in {"智能多平台套利/api/static/dashboard/index.html", "智能多平台套利/api/static/dashboard/dashboard.js", "智能多平台套利/arbitrage/market_adapters/__init__.py"} and (
-        re.search(r"(?:不是|非|未证明|没有证明|缺少证据|仅|只是|条件项|inspect[-_ ]?first|按需检查|检查是否).{0,180}(?:必改|must[-_ ]?change|必须修改|硬编码|static|dashboard|market_adapters|adapter)|(?:static|dashboard|market_adapters|adapter|index\.html|dashboard\.js).{0,180}(?:不是|非|未证明|没有证明|缺少证据|条件项|inspect[-_ ]?first|按需检查|检查是否).{0,80}(?:必改|must[-_ ]?change|必须修改)?", context, re.IGNORECASE)
-        or re.search(r"(?:Hyperliquid|adapter|适配器).{0,160}(?:不新增|禁止新增|inspect[-_ ]?only|negative\s+scope|非目标)|(?:不新增|禁止新增|inspect[-_ ]?only|negative\s+scope|非目标).{0,160}(?:Hyperliquid|adapter|适配器)", context, re.IGNORECASE)
-        or re.search(r"(?:未发现|没有发现|无).{0,20}(?:硬编码|hard[-_ ]?coded|hardcoded)", context, re.IGNORECASE)
-        or not re.search(r"(?:硬编码|hard[-_ ]?coded|hardcoded|必须修改|必改)", context, re.IGNORECASE)
-    ):
-        return ("inspect_only_sources", "conditional_ui_or_adapter_registry_reference")
-    if lower == "tests/test_basic_auth_proxy.py" and (
-        re.search(r"tests/test_basic_auth_proxy\.py.{0,180}(?:没有包含|未包含|若只是|只是|参考|reference)|(?:没有包含|未包含|若只是|只是|参考|reference).{0,180}tests/test_basic_auth_proxy\.py", context, re.IGNORECASE)
-        or not re.search(r"(?:tests/test_basic_auth_proxy\.py).{0,160}(?:必须修改|必改|pytest\s+.*tests/test_basic_auth_proxy\.py|验证命令.*tests/test_basic_auth_proxy\.py|verification.*tests/test_basic_auth_proxy\.py)|(?:必须修改|必改|pytest\s+.*tests/test_basic_auth_proxy\.py|验证命令.*tests/test_basic_auth_proxy\.py|verification.*tests/test_basic_auth_proxy\.py).{0,160}(?:tests/test_basic_auth_proxy\.py)", context, re.IGNORECASE)
-    ):
-        return ("reference_patterns", "auth_proxy_test_reference_without_verification_contract")
-    if lower in {"tests/test_apollo_quant.py", "tests/test_dashboard_api.py"} and (
-        re.search(rf"{re.escape(value)}.{{0,180}}(?:条件|conditional|reference|参考|inspect|证据不足|不应无证据|被提升为必改|应为)|(?:条件|conditional|reference|参考|inspect|证据不足|不应无证据|被提升为必改|应为).{{0,180}}{re.escape(value)}", context, re.IGNORECASE)
-        or ("apollo" in lower and nearby_negative_scope(context, value, r"Apollo|MEXC|历史"))
-    ):
-        return ("reference_patterns", "conditional_test_reference_without_must_change_evidence")
-    if "/apollo/" in lower and nearby_negative_scope(context, value, r"Apollo|MEXC|历史"):
-        return ("inspect_only_sources", "apollo_history_negative_scope")
-    if "hyperliquid" in lower and nearby_negative_scope(context, value, r"Hyperliquid|adapter|适配器"):
-        return ("inspect_only_sources", "hyperliquid_adapter_negative_scope")
+    if lower in {"setup.py", "pyproject.toml", "package.json", "package-lock.json", "pnpm-lock.yaml", "yarn.lock"}:
+        packaging_requested = confidence == "explicit" and re.search(r"(?:packag|dependency|dependencies|安装包|依赖|entrypoint|console_scripts)", context, re.IGNORECASE)
+        if not packaging_requested:
+            return ("inspect_only_sources", "packaging_file_outside_current_scope")
     if lower.startswith("docs/research/"):
         return ("read_only_sources", "research_document_read_only")
-    if lower.startswith("docs/") or lower.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"} or (value.endswith(".md") and "/" not in value and value not in {"README.md"}):
+    if lower.startswith("docs/") or lower.startswith("memory/") or value in {"MEMORY.md", "todo.md", "done.md"} or (value.endswith(".md") and "/" not in value and value != "README.md"):
         if confidence == "explicit" and has_explicit_writeback_intent(context, value) and re.search(r"(?:文档|memory|docs|writeback|写回|记录)", context, re.IGNORECASE):
             return None
         return ("read_only_sources", "documentation_or_memory_read_only_unless_explicit_writeback")
-    if lower.startswith("docs/") and not exists and not re.search(r"(?:创建|新增|create|create_if_missing)", context, re.IGNORECASE):
-        return ("inspect_only_sources", "missing_doc_without_create_if_missing_rationale")
     return None
 
 
@@ -2874,14 +2746,6 @@ def extract_api_contracts(*texts: str, limit: int = 12) -> list[dict[str, str]]:
     contracts: list[dict[str, str]] = []
     seen: set[str] = set()
     joined = "\n".join(str(text or "") for text in texts)
-    excludes_kraken_mexc = bool(
-        re.search(r"kraken\s*(?:/|、|,|and|与)\s*mexc", joined, re.IGNORECASE)
-        or (
-            re.search(r"\bkraken\b", joined, re.IGNORECASE)
-            and re.search(r"\bmexc\b", joined, re.IGNORECASE)
-        )
-    )
-    stock_scope_suffix = " It must exclude kraken/mexc from the default MVP." if excludes_kraken_mexc else ""
     for match in API_ENDPOINT_RE.finditer(joined):
         endpoint = next((group for group in match.groups() if group), "")
         endpoint = endpoint.strip().rstrip(".,;:)")
@@ -2890,26 +2754,15 @@ def extract_api_contracts(*texts: str, limit: int = 12) -> list[dict[str, str]]:
         if endpoint.startswith(("/home/", "/tmp/", "/var/", "/root/", "/Users/")) or "/pipeline-runs/" in endpoint or "/agent-workspaces/" in endpoint:
             continue
         seen.add(endpoint)
-        lower_endpoint = endpoint.lower()
-        if lower_endpoint == "/api/stock-tokens/status":
-            contract = "Status response must match the accepted platform scope." + stock_scope_suffix
-        elif lower_endpoint == "/api/stock-tokens/markets":
-            contract = "Markets response must match the accepted platform scope." + stock_scope_suffix
-        elif lower_endpoint == "/api/stock-tokens/opportunities":
-            contract = "Opportunities response must match the accepted platform scope." + stock_scope_suffix
-        elif lower_endpoint == "/dashboard/spread-funding":
-            contract = "Dashboard page must load and must not display Kraken/MEXC MVP wording when driven by the read-only API data."
-        elif lower_endpoint == "/health":
+        if endpoint.lower() == "/health":
             contract = "Health smoke must satisfy the accepted service contract."
-        elif lower_endpoint == "/api/strategy/status":
-            contract = "Strategy status smoke remains read-only; running must stay false unless separately authorized."
         else:
-            contract = "Read-only/safe API behavior must satisfy the accepted requirement without exposing secrets."
+            contract = "Request, response, authentication, error, and data-exposure behavior must satisfy the accepted requirement."
         contracts.append({"endpoint": endpoint, "contract": contract})
         if len(contracts) >= limit:
             break
     if not contracts and re.search(r"(?:页面|API|接口|dashboard|配置|显示|验收)", joined, re.IGNORECASE):
-        contracts.append({"endpoint": "accepted requirement API/UI surface", "contract": "Pages and read-only APIs must expose only non-sensitive accepted-scope data and pass deterministic assertions."})
+        contracts.append({"endpoint": "accepted requirement API/UI surface", "contract": "The accepted UI or API surface must expose only intended data and pass deterministic assertions."})
     return contracts
 
 
@@ -3052,12 +2905,6 @@ def compile_delivery_plan(
             continue
         filtered_actionable_paths.append(path)
     target_paths = filtered_actionable_paths
-    if re.search(r"(?:stock[-_ ]?token|/api/stock-tokens|Kraken|MEXC|Hyperliquid|平台范围)", planning_context, re.IGNORECASE):
-        for required_test in ("tests/test_dashboard_api.py", "tests/test_stock_token_public_adapter.py"):
-            if (repo / required_test).exists() and required_test not in target_paths:
-                target_paths.append(required_test)
-                source_by_path[required_test] = "required_regression_test"
-                remove_classified_context_path(classified_context_paths, required_test)
     if not target_paths:
         target_paths = low_trust_plan_paths(
             research,
@@ -3121,8 +2968,8 @@ def compile_delivery_plan(
                 "required": True,
             },
             {
-                "id": "manual-discord-acceptance-boundary",
-                "description": "If real Discord channel send/read proof cannot be safely completed inside the pipeline, stop final acceptance with blocked_manual_acceptance_required instead of claiming Discord acceptance passed.",
+                "id": "manual-channel-acceptance-boundary",
+                "description": "If real communication-channel send/read proof is required but absent, stop final acceptance with blocked_manual_acceptance_required instead of claiming channel acceptance passed.",
                 "required": True,
             },
         ]
@@ -3131,32 +2978,12 @@ def compile_delivery_plan(
     deferred_slices: list[dict[str, Any]] = []
     must_change_targets = build_must_change_targets(target_files)
     api_contracts = extract_api_contracts(original_requirement_full, requirements_discussion, requirements_review, repair_context, research)
-    if re.search(r"Izh8bWlF5aFKmYsvUBMcYKbonQf|Feishu|飞书|平台范围|tbl1jj9DTcfAd6tZ", planning_context, re.IGNORECASE):
-        append_classified_context_path(classified_context_paths, "read_only_sources", "Feishu Base Izh8bWlF5aFKmYsvUBMcYKbonQf / 交易所模块 tbl1jj9DTcfAd6tZ / 平台范围")
-        append_classified_context_path(classified_context_paths, "read_only_sources", "Feishu fact: 保留 Binance/OKX/Bitget/Bybit/Gate/Hyperliquid；Kraken/MEXC 非 MVP；币股现货不进 MVP")
-    if re.search(r"stock[-_ ]?token|/api/stock-tokens|Kraken|MEXC|Hyperliquid|平台范围", planning_context, re.IGNORECASE):
-        implementation_steps.append(
-            {
-                "id": "platform-scope-mvp-contract",
-                "description": "Encode the accepted platform scope as executable code and tests: default API/page/MVP口径 excludes Kraken/MEXC and tokenized-stock spot MVP, includes Binance/OKX/Bitget/Bybit/Gate/Hyperliquid, keeps Hyperliquid read-only without creating a real adapter, and updates fallback/research matrix/next_backend_steps/public_adapter_snapshot accordingly.",
-                "required": True,
-            }
-        )
-        for pattern in (
-            "accepted platform scope contract",
-            "/api/stock-tokens/status / markets / opportunities response shape",
-            "StockTokenPublicAdapterConfig.from_env environment override pattern",
-            "tests/test_dashboard_api.py TestClient pattern",
-            "tests/test_stock_token_public_adapter.py fake adapter pattern",
-        ):
-            append_classified_context_path(classified_context_paths, "reference_patterns", pattern)
     forbidden_targets = [
         ".env",
         "auth.json",
         "credential-imports",
         "OAuth/cookie/token/API key/private key files",
-        "/home/arbops/.hermes/**",
-        "/home/arbops/projects/openclaw-hardflow-backup-20260302/**",
+        "runtime homes outside the command repository",
         "pipeline-runs/**",
         "command-runs/**",
         "agent-workspaces/**",
@@ -3164,7 +2991,7 @@ def compile_delivery_plan(
         "setup.py / packaging / dependency files",
         "docs/research/** as target_files/must_change_targets",
         "MEMORY.md / memory/** / docs/INDEX.md / todo.md / done.md as target_files/must_change_targets",
-        "Apollo historical MEXC files unless proven directly referenced by current MVP runtime",
+        "unrelated legacy modules and generated caches",
         "credential-bearing private account/auth files",
     ]
     runtime_contracts = [

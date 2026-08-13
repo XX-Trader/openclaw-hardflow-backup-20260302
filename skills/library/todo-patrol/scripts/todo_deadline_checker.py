@@ -11,7 +11,7 @@
 - [due:2026-04-15]
 
 用法:
-    python todo_deadline_checker.py --todo-file ~/openclaw-hardflow-backup-20260302/todo.md
+    python todo_deadline_checker.py --todo-file ~/workflow-infra/todo.md
     python todo_deadline_checker.py --todo-file ~/todo.md --dry-run
 """
 

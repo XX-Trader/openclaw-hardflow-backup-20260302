@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="${HARDFLOW_WORKFLOW_REPO:-$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)}"
 
 SSH_BIN="${SSH_BIN:-}"
 SCP_BIN="${SCP_BIN:-}"
@@ -26,31 +26,19 @@ if [[ "${SSH_BIN}" == *".exe" || "${SCP_BIN}" == *".exe" ]]; then
   USE_WINDOWS_OPENSSH=1
 fi
 
-if [[ -n "${SSH_CONFIG:-}" ]]; then
-  SSH_CFG="${SSH_CONFIG}"
-elif [[ -f "/d/ssh_keys/ssh_config" ]]; then
-  if [[ "${USE_WINDOWS_OPENSSH}" == "1" ]]; then
-    SSH_CFG="D:/ssh_keys/ssh_config"
-  else
-    SSH_CFG="/d/ssh_keys/ssh_config"
-  fi
-elif [[ -f "/mnt/d/ssh_keys/ssh_config" ]]; then
-  if [[ "${USE_WINDOWS_OPENSSH}" == "1" ]]; then
-    SSH_CFG="D:/ssh_keys/ssh_config"
-  else
-    SSH_CFG="/mnt/d/ssh_keys/ssh_config"
-  fi
-elif [[ -f "D:/ssh_keys/ssh_config" ]]; then
-  SSH_CFG="D:/ssh_keys/ssh_config"
-else
+SSH_CFG="${SSH_CONFIG:-${HOME}/.ssh/config}"
+if [[ ! -f "${SSH_CFG}" ]]; then
   echo "[sync-gpt54] ssh_config not found. set SSH_CONFIG first." >&2
   exit 1
 fi
 
 if (( $# > 0 )); then
   SERVERS=("$@")
+elif [[ -n "${HARDFLOW_FLEET_SERVERS:-}" ]]; then
+  IFS=',' read -r -a SERVERS <<< "${HARDFLOW_FLEET_SERVERS}"
 else
-  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw")
+  echo "[sync-gpt54] provide hosts as arguments or HARDFLOW_FLEET_SERVERS." >&2
+  exit 2
 fi
 
 DRY_RUN="${DRY_RUN:-0}"
@@ -73,27 +61,27 @@ MODEL_AGENTS=(
 )
 
 OPS_FILES=(
-  "scripts/openclaw-ops/chat_output.py"
-  "scripts/openclaw-ops/model_tier_profiles.json"
-  "scripts/openclaw-ops/MODEL_TIER_SWITCH.md"
-  "scripts/openclaw-ops/switch_model_tier.py"
-  "scripts/openclaw-ops/sync_agents_12_to_servers.sh"
-  "scripts/openclaw-ops/utf8_runtime.py"
-  "scripts/openclaw-ops/workflow_views.py"
+  "scripts/openclaw-ops/shared/chat_output.py"
+  "skills/library/openclaw-workflow-manager/scripts/model_tier_profiles.json"
+  "skills/library/openclaw-workflow-manager/scripts/MODEL_TIER_SWITCH.md"
+  "skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py"
+  "skills/library/fleet-sync/scripts/sync_agents_12_to_servers.sh"
+  "scripts/openclaw-ops/shared/utf8_runtime.py"
+  "skills/library/openclaw-workflow-manager/scripts/workflow_views.py"
 )
 
 POLICY_FILES=(
-  "scripts/openclaw-ops/policy/alert_dedupe.py"
-  "scripts/openclaw-ops/policy/dataclass_compat.py"
-  "scripts/openclaw-ops/policy/gateway_service_manager.py"
-  "scripts/openclaw-ops/policy/io_write_gateway.py"
-  "scripts/openclaw-ops/policy/policy-config.json"
-  "scripts/openclaw-ops/policy/policy_enforcer.py"
-  "scripts/openclaw-ops/policy/routing-rules.json"
-  "scripts/openclaw-ops/policy/task_capability_binding.py"
-  "scripts/openclaw-ops/policy/task_center.py"
-  "scripts/openclaw-ops/policy/task_executor_runner.py"
-  "scripts/openclaw-ops/policy/token-pricing.json"
+  "skills/library/control-plane-ops/scripts/policy/alert_dedupe.py"
+  "skills/library/control-plane-ops/scripts/policy/dataclass_compat.py"
+  "skills/library/control-plane-ops/scripts/policy/gateway_service_manager.py"
+  "skills/library/control-plane-ops/scripts/policy/io_write_gateway.py"
+  "skills/library/control-plane-ops/scripts/policy/policy-config.json"
+  "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py"
+  "skills/library/control-plane-ops/scripts/policy/routing-rules.json"
+  "skills/library/control-plane-ops/scripts/policy/task_capability_binding.py"
+  "skills/library/control-plane-ops/scripts/policy/task_center.py"
+  "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py"
+  "skills/library/control-plane-ops/scripts/policy/token-pricing.json"
 )
 
 SSH_OPTS=(

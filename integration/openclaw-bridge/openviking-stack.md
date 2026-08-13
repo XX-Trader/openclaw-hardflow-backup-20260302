@@ -88,7 +88,7 @@
 ## 验收命令
 
 ```bash
-python scripts/openclaw-ops/check_openviking_stack.py --workspace-root .
+python skills/library/openclaw-workflow-manager/scripts/check_openviking_stack.py --workspace-root .
 ```
 
 预期：

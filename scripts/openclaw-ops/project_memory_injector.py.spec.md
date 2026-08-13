@@ -47,7 +47,7 @@ python project_memory_injector.py \
 # 项目上下文
 
 ## 基本信息
-- 项目：xx-trader
+- 项目：demo-service
 - 类型：webapp
 - 技术栈：Vue + Django + PostgreSQL
 
@@ -66,7 +66,7 @@ python project_memory_injector.py \
 
 ```json
 {
-  "project_key": "xx-trader",
+  "project_key": "demo-service",
   "session_id": "sess-001",
   "inject_level": "summary",
   "injected_files": ["PROJECT_PROFILE.md", "DELIVERY_RULES.md"],
@@ -88,7 +88,7 @@ python project_memory_injector.py \
 ## 7. 测试用例
 
 ### TC-1: 正常注入
-- 输入：project-key=xx-trader, inject-level=summary
+- 输入：project-key=demo-service, inject-level=summary
 - 期望：返回包含 profile + rules + decisions 摘要的上下文
 
 ### TC-2: 项目不存在

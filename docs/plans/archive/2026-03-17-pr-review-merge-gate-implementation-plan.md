@@ -7,7 +7,7 @@
 - `governance_evolution_runner.py` 已支持受控改动、可选 push、可选创建 PR。
 - `reviewer_cron_runner.py` 已支持 PR 检查、approval file、可选自动 merge。
 
-问题在于，`reviewer` 仍保留了“高频全仓扫描器”的历史定位，而 `pm-website` 这类运行节点更需要稳定，不适合再承担重型仓库巡检。因此需要把职责收口成一条更稳的闭环：
+问题在于，`reviewer` 仍保留了“高频全仓扫描器”的历史定位，而 `HOST_A` 这类运行节点更需要稳定，不适合再承担重型仓库巡检。因此需要把职责收口成一条更稳的闭环：
 
 `治理/优化 agent 产出改动 -> 创建或更新 PR -> reviewer 只审查 PR -> 命中 gate 才自动合并`
 
@@ -17,7 +17,7 @@
 
 ## 适用范围
 
-- 适用节点：`pm-website` 这一类线上运行节点
+- 适用节点：`HOST_A` 这一类线上运行节点
 - 适用改动：受控 agent 生成的低到中风险 workflow / ops 仓库改动
 - 不适用：
   - 高风险生产配置变更
@@ -125,7 +125,7 @@
 
 涉及文件：
 
-- `scripts/openclaw-ops/reviewer_cron_runner.py`
+- `skills/library/receiving-code-review/scripts/reviewer_cron_runner.py`
 - `scripts/openclaw-ops/install_reviewer_scan_jobs.py`
 - `tests/scripts_openclaw_ops/test_reviewer_pr_gate.py`
 - `tests/scripts_openclaw_ops/test_cron_quiet_modes.py`
@@ -147,13 +147,13 @@
 
 - `scripts/openclaw-ops/install_workflow_profile.py`
 - `scripts/openclaw-ops/policy/workflow_setup.py`
-- `scripts/openclaw-ops/export_schedule_registry.py`
+- `skills/library/control-plane-ops/scripts/export_schedule_registry.py`
 - `tests/scripts_openclaw_ops/test_cron_quiet_modes.py`
 
 要修改的内容：
 
 - 安装器明确支持“governance auto-pr + reviewer gate”的组合
-- `pm-website` 推荐策略下，不恢复 reviewer 全仓高频审查
+- `HOST_A` 推荐策略下，不恢复 reviewer 全仓高频审查
 - schedule registry 能输出“PR 审查 / 自动合并 gate”职责说明
 
 ## 推荐实施顺序
@@ -169,7 +169,7 @@
 
 ### 第二步：补 governance PR 元数据
 
-先让治理链把 PR URL、编号、分支名、失败原因稳定写出来。  
+先让治理链把 PR URL、编号、分支名、失败原因稳定写出来。
 没有这层稳定元数据，后面的 reviewer 无法可靠做 gate。
 
 ### 第三步：收口 reviewer
@@ -180,11 +180,11 @@
 
 让 profile 安装器和 schedule 导出也使用新的职责描述，避免代码改完但文档/安装器还在说旧话。
 
-### 第五步：只在 `pm-website` 灰度
+### 第五步：只在 `HOST_A` 灰度
 
 先单机灰度，不直接全量推广到所有服务器。
 
-## `pm-website` 灰度落地步骤
+## `HOST_A` 灰度落地步骤
 
 ### 1. 先备份运行态
 
@@ -216,7 +216,7 @@
 {
   "approved_prs": [
     {
-      "repo": "openclaw-hardflow-backup-20260302",
+      "repo": "workflow-infra",
       "head_prefix": "auto/evolution-",
       "base": "main"
     }
@@ -286,11 +286,11 @@ py -3 -m pytest tests/scripts_openclaw_ops/test_cron_quiet_modes.py -k 'reviewer
 - governance evolution 可以稳定创建或更新 PR
 - 自动 merge 只对受控 PR 生效
 - 审查失败时只报告和挂起，不破坏主分支
-- `pm-website` 的整体运行稳定性不因 reviewer 链再次下降
+- `HOST_A` 的整体运行稳定性不因 reviewer 链再次下降
 
 ## 建议的最终运行策略
 
-对于 `pm-website`，推荐长期保持：
+对于 `HOST_A`，推荐长期保持：
 
 - `project_index_maintainer`：Git 更新触发 + 4 小时兜底
 - `reviewer_incremental_daily_4am`：关闭

@@ -24,7 +24,7 @@
     },
     "glmcode": {
       "baseUrl": "https://open.bigmodel.cn/api/coding/paas/v4",
-      "apiKey": "25154eb3c7af48b7ae4091181f7c7f51.yFrs4KsFLLQTcpc8",
+      "apiKey": "${GLM_API_KEY}",
       "api": "openai-completions",
       "models": [
         {

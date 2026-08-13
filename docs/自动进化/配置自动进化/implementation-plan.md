@@ -44,7 +44,7 @@
 
 ### Phase 1：修复 B 层 Clone
 
-- [ ] 在 nofx 服务器 git clone 创建 `/root/openclaw-hardflow-backup-20260302/`
+- [ ] 在 runtime-host 服务器 git clone 创建 `/root/workflow-infra/`
 - [ ] 验证 `openclaw.json` 中 `HOOKS_SOURCE_DIR` / `SKILLS_SOURCE_DIR` 可达
 - [ ] 手动触发 `auto_update_daily` 验证 pull + install 正常
 
@@ -72,5 +72,5 @@
 | 编号 | 问题 | 影响 |
 |------|------|------|
 | D1 | C 层变更直接 push，还是通过 B 层中转？ | 决定 Phase 2 实施方案 |
-| D2 | B 层路径是否确认为 `/root/openclaw-hardflow-backup-20260302/`？ | 决定 Phase 1 clone 目标 |
+| D2 | B 层路径是否确认为 `/root/workflow-infra/`？ | 决定 Phase 1 clone 目标 |
 | D3 | 快照排除哪些目录？ | 决定 Phase 3 .gitignore 配置 |

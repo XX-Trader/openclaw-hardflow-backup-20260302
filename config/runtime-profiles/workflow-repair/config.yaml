@@ -1,0 +1,22 @@
+# Generic workflow repair runtime profile template.
+worktree: true
+approvals:
+  mode: "off"
+command_allowlist: []
+security:
+  redact_secrets: true
+terminal:
+  backend: local
+  cwd: "${HARDFLOW_WORKFLOW_REPO}"
+  timeout: 180
+agent:
+  max_turns: 90
+discord:
+  require_mention: true
+  auto_thread: true
+  reactions: true
+  allow_mentions:
+    everyone: false
+    roles: false
+    users: true
+    replied_user: true

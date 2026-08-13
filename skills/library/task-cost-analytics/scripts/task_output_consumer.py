@@ -23,6 +23,21 @@ for import_dir in IMPORT_DIRS:
 
 from io_write_gateway import write_json_atomic  # type: ignore
 from task_center import TaskCenter  # type: ignore
+
+# Source checkouts keep each script under its owning Skill; installed runtimes
+# flatten the same dependencies into the ops directory. Bootstrap only when
+# the repository marker is present so both layouts share one implementation.
+for _candidate_root in Path(__file__).resolve().parents:
+    _shared_dir = _candidate_root / "scripts" / "openclaw-ops" / "shared"
+    if _shared_dir.is_dir():
+        _shared_value = str(_shared_dir)
+        if _shared_value not in sys.path:
+            sys.path.insert(0, _shared_value)
+        from repo_imports import bootstrap_repository_imports
+
+        bootstrap_repository_imports(__file__)
+        break
+
 from utf8_runtime import configure_process_utf8_stdio
 from workflow_views import build_task_control_plane_event, render_human_view
 

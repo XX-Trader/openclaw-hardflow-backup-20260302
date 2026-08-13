@@ -27,7 +27,7 @@ class TaskCenterCapabilityFieldTests(unittest.TestCase):
     def test_create_and_update_task_normalize_capability_fields(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -127,7 +127,7 @@ class TaskCenterCapabilityFieldTests(unittest.TestCase):
     def test_record_and_list_benchmark_runs(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -189,7 +189,7 @@ class TaskCenterCapabilityFieldTests(unittest.TestCase):
     def test_update_task_incident_supports_lifecycle_transitions(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -257,7 +257,7 @@ class TaskCenterCapabilityFieldTests(unittest.TestCase):
     def test_task_output_incident_and_benchmark_inherit_task_trace_id(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

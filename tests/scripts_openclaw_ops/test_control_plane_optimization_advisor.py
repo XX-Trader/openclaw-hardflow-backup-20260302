@@ -30,11 +30,11 @@ class ControlPlaneOptimizationAdvisorTests(unittest.TestCase):
     def test_build_report_generates_stage_recommendations_and_roi(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         advisor_module = load_module(
             "control_plane_optimization_advisor",
-            "scripts/openclaw-ops/control_plane_optimization_advisor.py",
+            "skills/library/control-plane-ops/scripts/control_plane_optimization_advisor.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -209,11 +209,11 @@ class ControlPlaneOptimizationAdvisorTests(unittest.TestCase):
     def test_main_writes_json_and_markdown_outputs(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         advisor_module = load_module(
             "control_plane_optimization_advisor",
-            "scripts/openclaw-ops/control_plane_optimization_advisor.py",
+            "skills/library/control-plane-ops/scripts/control_plane_optimization_advisor.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

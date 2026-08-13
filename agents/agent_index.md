@@ -1,7 +1,7 @@
 # Agent Index
 
-> 当前文件描述 nofx workflow 的逻辑 owner / cron 责任标签，不代表服务器上有同名常驻 agent 进程。
-> 真实入口是 `arbitrageagent` / `spreadagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`。
+> 当前文件描述 runtime-host workflow 的逻辑 owner / cron 责任标签，不代表服务器上有同名常驻 agent 进程。
+> 真实入口是 `deliveryagent` / `projectagent` 两个 Hermes Discord profile，模型均为 `openai-codex/gpt-5.5`。
 
 ## workflow stage owners
 
@@ -26,4 +26,4 @@
 
 ## inactive legacy labels
 
-`main`、`explorer`、`agent-factory`、`self-evolution-agent`、`git-master` 不属于 nofx 当前 active workflow / cron owner 集合；历史资料只保留在 archive 或旧会话证据中。
+`main`、`explorer`、`agent-factory`、`self-evolution-agent`、`git-master` 不属于 runtime-host 当前 active workflow / cron owner 集合；历史资料只保留在 archive 或旧会话证据中。

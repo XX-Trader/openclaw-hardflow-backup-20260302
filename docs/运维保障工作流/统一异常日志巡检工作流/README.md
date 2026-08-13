@@ -29,7 +29,7 @@
 
 | 组件 | 路径 | 规模 |
 |------|------|------|
-| 异常巡检器 | `scripts/openclaw-ops/unified_exception_logger.py` | 21KB / 549行 |
+| 异常巡检器 | `skills/library/log-monitor/scripts/unified_exception_logger.py` | 21KB / 549行 |
 
 ## Auto-Discover 目录发现（2026-03-29 新增）
 

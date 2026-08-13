@@ -47,7 +47,7 @@ class TaskCenterRetryUpdateTests(unittest.TestCase):
     def test_update_task_allows_retry_and_failure_counters(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -76,7 +76,7 @@ class TaskCenterRetryUpdateTests(unittest.TestCase):
     def test_create_task_routes_writes_through_retry_transaction(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -98,7 +98,7 @@ class TaskCenterRetryUpdateTests(unittest.TestCase):
     def test_transition_status_and_add_event_route_writes_through_retry_transaction(self):
         module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

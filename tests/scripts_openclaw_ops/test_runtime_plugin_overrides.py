@@ -28,7 +28,7 @@ class RuntimePluginOverridesTests(unittest.TestCase):
     def test_sync_plugin_overrides_copies_updates_and_deletes_manifest_tracked_files(self):
         module = load_module(
             "sync_runtime_plugin_overrides",
-            "scripts/openclaw-ops/sync_runtime_plugin_overrides.py",
+            "skills/library/fleet-sync/scripts/sync_runtime_plugin_overrides.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

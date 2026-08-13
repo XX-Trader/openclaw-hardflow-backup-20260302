@@ -7,9 +7,24 @@ import argparse
 import json
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+for _candidate_root in Path(__file__).resolve().parents:
+    _shared_dir = _candidate_root / "scripts" / "openclaw-ops" / "shared"
+    if _shared_dir.is_dir():
+        _shared_value = str(_shared_dir)
+        if _shared_value not in sys.path:
+            sys.path.insert(0, _shared_value)
+        from repo_imports import bootstrap_repository_imports
+
+        bootstrap_repository_imports(__file__)
+        break
 
 from io_write_gateway import write_json_atomic
 
@@ -173,7 +188,7 @@ def main() -> int:
     home = Path(os.path.expanduser("~"))
     parser = argparse.ArgumentParser(description="Build runtime project registry with local path adaptation")
     parser.add_argument("--local-registry", default=str(home / ".openclaw/ops/task-center/project-registry.json"))
-    parser.add_argument("--reference-registry", default=str(home / ".openclaw/ops/task-center/project-registry.hangqing.json"))
+    parser.add_argument("--reference-registry", default=str(home / ".openclaw/ops/task-center/project-registry.reference.json"))
     parser.add_argument("--output-registry", default=str(home / ".openclaw/ops/task-center/project-registry.runtime.json"))
     parser.add_argument("--require-non-empty", action="store_true", help="exit non-zero when runtime projects is empty")
     parser.add_argument("--emit-json", action="store_true")

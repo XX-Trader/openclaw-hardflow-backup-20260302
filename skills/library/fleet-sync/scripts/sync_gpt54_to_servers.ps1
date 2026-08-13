@@ -1,46 +1,38 @@
 param(
     [string[]]$Servers = @(),
+    [string]$SshConfig = "",
     [switch]$DryRun,
     [switch]$SkipGatewayRestart
 )
 
 $ErrorActionPreference = "Stop"
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$sshConfig = $env:SSH_CONFIG
-if (-not $sshConfig) {
-    foreach ($candidate in @(
-        "D:/ssh_keys/ssh_config"
-    )) {
-        if ($candidate -and (Test-Path $candidate)) {
-            $sshConfig = $candidate
-            break
-        }
-    }
+$repoRoot = if ($env:HARDFLOW_WORKFLOW_REPO) {
+    $env:HARDFLOW_WORKFLOW_REPO
+} else {
+    (& git -C $PSScriptRoot rev-parse --show-toplevel).Trim()
 }
-if (-not $sshConfig) {
-    $directConfig = "D:\\ssh_keys\\ssh_config"
-    if (Test-Path $directConfig) {
-        $sshConfig = $directConfig
-    }
+if ([string]::IsNullOrWhiteSpace($SshConfig)) {
+    $SshConfig = if ($env:SSH_CONFIG) { $env:SSH_CONFIG } else { Join-Path $HOME ".ssh/config" }
 }
-$sshExe = "C:/Windows/System32/OpenSSH/ssh.exe"
-$scpExe = "C:/Windows/System32/OpenSSH/scp.exe"
+$sshExe = (Get-Command $(if ($env:SSH_EXE) { $env:SSH_EXE } else { "ssh" }) -ErrorAction Stop).Source
+$scpExe = (Get-Command $(if ($env:SCP_EXE) { $env:SCP_EXE } else { "scp" }) -ErrorAction Stop).Source
 
-if (-not (Test-Path $sshConfig)) {
-    throw "ssh_config not found: $sshConfig"
-}
-if (-not (Test-Path $sshExe)) {
-    throw "ssh.exe not found: $sshExe"
-}
-if (-not (Test-Path $scpExe)) {
-    throw "scp.exe not found: $scpExe"
+if (-not (Test-Path $SshConfig)) {
+    throw "ssh_config not found: $SshConfig"
 }
 
 if (-not $Servers -or $Servers.Count -eq 0) {
-    $Servers = Select-String -Path $sshConfig -Pattern '^Host\s+' |
+    if ($env:HARDFLOW_FLEET_SERVERS) {
+        $Servers = @($env:HARDFLOW_FLEET_SERVERS -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    } else {
+        $Servers = Select-String -Path $SshConfig -Pattern '^Host\s+' |
         ForEach-Object { ($_ -split '\s+', 2)[1].Trim() } |
-        Where-Object { $_ -and $_ -ne 'google-us' }
+        Where-Object { $_ -and $_ -notmatch '[*?]' }
+    }
+}
+if (-not $Servers -or $Servers.Count -eq 0) {
+    throw "provide hosts with -Servers or HARDFLOW_FLEET_SERVERS"
 }
 
 $modelAgents = @(
@@ -58,27 +50,27 @@ $modelAgents = @(
 )
 
 $opsFiles = @(
-    "scripts/openclaw-ops/chat_output.py",
-    "scripts/openclaw-ops/model_tier_profiles.json",
-    "scripts/openclaw-ops/MODEL_TIER_SWITCH.md",
-    "scripts/openclaw-ops/switch_model_tier.py",
-    "scripts/openclaw-ops/sync_agents_12_to_servers.sh",
-    "scripts/openclaw-ops/utf8_runtime.py",
-    "scripts/openclaw-ops/workflow_views.py"
+    "scripts/openclaw-ops/shared/chat_output.py",
+    "skills/library/openclaw-workflow-manager/scripts/model_tier_profiles.json",
+    "skills/library/openclaw-workflow-manager/scripts/MODEL_TIER_SWITCH.md",
+    "skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py",
+    "skills/library/fleet-sync/scripts/sync_agents_12_to_servers.sh",
+    "scripts/openclaw-ops/shared/utf8_runtime.py",
+    "skills/library/openclaw-workflow-manager/scripts/workflow_views.py"
 )
 
 $policyFiles = @(
-    "scripts/openclaw-ops/policy/alert_dedupe.py",
-    "scripts/openclaw-ops/policy/dataclass_compat.py",
-    "scripts/openclaw-ops/policy/gateway_service_manager.py",
-    "scripts/openclaw-ops/policy/io_write_gateway.py",
-    "scripts/openclaw-ops/policy/policy-config.json",
-    "scripts/openclaw-ops/policy/policy_enforcer.py",
-    "scripts/openclaw-ops/policy/routing-rules.json",
-    "scripts/openclaw-ops/policy/task_capability_binding.py",
-    "scripts/openclaw-ops/policy/task_center.py",
-    "scripts/openclaw-ops/policy/task_executor_runner.py",
-    "scripts/openclaw-ops/policy/token-pricing.json"
+    "skills/library/control-plane-ops/scripts/policy/alert_dedupe.py",
+    "skills/library/control-plane-ops/scripts/policy/dataclass_compat.py",
+    "skills/library/control-plane-ops/scripts/policy/gateway_service_manager.py",
+    "skills/library/control-plane-ops/scripts/policy/io_write_gateway.py",
+    "skills/library/control-plane-ops/scripts/policy/policy-config.json",
+    "skills/library/control-plane-ops/scripts/policy/policy_enforcer.py",
+    "skills/library/control-plane-ops/scripts/policy/routing-rules.json",
+    "skills/library/control-plane-ops/scripts/policy/task_capability_binding.py",
+    "skills/library/control-plane-ops/scripts/policy/task_center.py",
+    "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
+    "skills/library/control-plane-ops/scripts/policy/token-pricing.json"
 )
 
 $patchPy = @'

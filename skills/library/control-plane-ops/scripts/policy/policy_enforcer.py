@@ -12,6 +12,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+POLICY_DIR = Path(__file__).resolve().parent
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
 REPO_ROOT = Path(__file__).resolve().parents[5]
 SHARED_DIR = REPO_ROOT / "scripts" / "openclaw-ops" / "shared"
 if SHARED_DIR.exists() and str(SHARED_DIR) not in sys.path:
@@ -175,6 +178,9 @@ class PolicyEnforcer(
             out[key] = {str(v) for v in value}
         return out
 
+
+
+from policy_cli import cmd_init  # noqa: E402
 
 
 # ── CLI entry point (extracted to policy_cli.py) ──────────────────────

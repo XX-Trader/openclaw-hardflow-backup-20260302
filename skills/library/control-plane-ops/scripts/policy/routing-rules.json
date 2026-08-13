@@ -323,7 +323,7 @@
           "技术选型"
         ],
         "methodology": "逆向工作法（从期望结果倒推）+ 严谨逻辑推演",
-        "escalation": "方案争议→列出各方案优劣的量化对比"
+        "escalation": "方案争议→列出各方案优劣的指标化对比"
       },
       "performance": {
         "signal_keywords": [

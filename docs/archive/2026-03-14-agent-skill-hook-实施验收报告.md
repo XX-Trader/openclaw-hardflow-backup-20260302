@@ -47,9 +47,9 @@ python -m unittest \
 ```bash
 python scripts/openclaw-ops/inspect_runtime_bindings.py --emit-json
 python scripts/openclaw-ops/generate_runtime_binding_manifests.py
-python scripts/openclaw-ops/policy/policy_enforcer.py task-capability-coverage
-python scripts/openclaw-ops/ensure_runtime_skills.py --dry-run --emit-json
-python scripts/openclaw-ops/bootstrap_runtime_agents.py --dry-run
+python skills/library/control-plane-ops/scripts/policy/policy_enforcer.py task-capability-coverage
+python skills/library/openclaw-workflow-manager/scripts/ensure_runtime_skills.py --dry-run --emit-json
+python skills/library/openclaw-workflow-manager/scripts/bootstrap_runtime_agents.py --dry-run
 openclaw hooks list --json
 openclaw hooks check --json
 openclaw agents list

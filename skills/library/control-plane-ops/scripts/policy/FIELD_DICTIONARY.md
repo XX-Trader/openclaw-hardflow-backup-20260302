@@ -22,8 +22,8 @@
 
 设计原则与模板请优先查看：
 
-- [OpenClaw 基建设施输入输出与通信标准](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/adr/2026-03-23-openclaw-foundation-contract-standard.md)
-- [OpenClaw 基建设施模板文档](/d:/学习资料/量化交易/openclaw-hardflow-backup-20260302/docs/templates/openclaw-foundation-contract-templates.md)
+- [OpenClaw 基建设施输入输出与通信标准](/docs/adr/2026-03-23-openclaw-foundation-contract-standard.md)
+- [OpenClaw 基建设施模板文档](/docs/templates/openclaw-foundation-contract-templates.md)
 
 ## 1. 任务主表关键字段
 
@@ -101,7 +101,7 @@
 
 用途：
 
-- 记录单个任务某个 stage 的运行情况
+- 记录单个任务某个 stage 的执行状态
 
 关键字段：
 

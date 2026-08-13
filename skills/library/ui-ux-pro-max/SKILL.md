@@ -130,7 +130,7 @@ When user requests UI/UX work (design, build, create, implement, review, fix, im
 Extract key information from user request:
 - **Product type**: SaaS, e-commerce, portfolio, dashboard, landing page, etc.
 - **Style keywords**: minimal, playful, professional, elegant, dark mode, etc.
-- **Industry**: healthcare, fintech, gaming, education, etc.
+- **Industry**: healthcare, developer-tools, gaming, education, etc.
 - **Stack**: React, Vue, Next.js, or default to `html-tailwind`
 
 ### Step 2: Generate Design System (REQUIRED)
@@ -226,7 +226,7 @@ triggers:  keywords:    - "UI设计"    - "UX设计"    - "界面设计"    - "�
 | `product` | Product type recommendations | SaaS, e-commerce, portfolio, healthcare, beauty, service |
 | `style` | UI styles, colors, effects | glassmorphism, minimalism, dark mode, brutalism |
 | `typography` | Font pairings, Google Fonts | elegant, playful, professional, modern |
-| `color` | Color palettes by product type | saas, ecommerce, healthcare, beauty, fintech, service |
+| `color` | Color palettes by product type | saas, ecommerce, healthcare, beauty, developer-tools, service |
 | `landing` | Page structure, CTA strategies | hero, hero-centric, testimonial, pricing, social-proof |
 | `chart` | Chart types, library recommendations | trend, comparison, timeline, funnel, pie |
 | `ux` | Best practices, anti-patterns | animation, accessibility, z-index, loading |
@@ -297,10 +297,10 @@ The `--design-system` flag supports two output formats:
 
 ```bash
 # ASCII box (default) - best for terminal display
-python3 .claude/skills/ui-ux-pro-max/scripts/search.py "fintech crypto" --design-system
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "developer platform api" --design-system
 
 # Markdown - best for documentation
-python3 .claude/skills/ui-ux-pro-max/scripts/search.py "fintech crypto" --design-system -f markdown
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "developer platform api" --design-system -f markdown
 ```
 
 ---

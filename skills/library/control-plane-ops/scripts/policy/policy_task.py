@@ -2,6 +2,13 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+POLICY_DIR = Path(__file__).resolve().parent
+if str(POLICY_DIR) not in sys.path:
+    sys.path.insert(0, str(POLICY_DIR))
+
 import argparse
 import json
 import re
@@ -238,7 +245,7 @@ class TaskLifecycleMixin:
             )
         elif need_human_confirm and (not human_confirmed):
             confirm_command = (
-                "python3 scripts/openclaw-ops/policy/policy_enforcer.py "
+                "python3 skills/library/control-plane-ops/scripts/policy/policy_enforcer.py "
                 + f"confirm-risk --task-id {task_id} --confirmed true --actor human"
             )
         else:

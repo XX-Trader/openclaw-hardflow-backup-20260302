@@ -1,6 +1,6 @@
 # 智能路由插件 (Intelligent Router)
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/superma)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/ORG/REPO)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.13+-yellow.svg)](https://www.python.org/)
 
@@ -275,6 +275,6 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ---
 
-**维护者**: superma
+**维护者**: maintainers
 **版本**: 1.0.0
 **最后更新**: 2026-01-07

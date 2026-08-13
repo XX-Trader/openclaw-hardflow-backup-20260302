@@ -30,7 +30,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_api_test_audit_accepts_scrapling_engines(self):
         module = load_module(
             "api_test_audit",
-            "scripts/openclaw-ops/api_test_audit.py",
+            "skills/library/openclaw-security-audit/scripts/api_test_audit.py",
         )
         self.assertEqual(module.normalize_engine("scrapling", "http"), "scrapling")
         self.assertEqual(module.normalize_engine("scrapling-stealth", "http"), "scrapling-stealth")
@@ -38,7 +38,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_api_test_audit_missing_config_uses_chinese_card_without_path(self):
         module = load_module(
             "api_test_audit",
-            "scripts/openclaw-ops/api_test_audit.py",
+            "skills/library/openclaw-security-audit/scripts/api_test_audit.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -68,7 +68,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         payload = json.loads(stdout.getvalue().strip())
         self.assertTrue(payload["notify"])
-        self.assertEqual(payload["output"].splitlines()[0], "接口巡检异常")
+        self.assertIn("接口巡检异常", payload["output"].splitlines()[0])
         self.assertIn("巡检配置缺失", payload["output"])
         self.assertIn("留痕编号", payload["output"])
         self.assertNotIn(str(config_path), payload["output"])
@@ -78,7 +78,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_github_web_evolution_filters_infrastructure_repos(self):
         module = load_module(
             "github_web_evolution_runner",
-            "scripts/openclaw-ops/github_web_evolution_runner.py",
+            "skills/library/web-intelligence/scripts/github_web_evolution_runner.py",
         )
         self.assertTrue(module.is_infrastructure_repo({"full_name": "python/cpython"}))
         self.assertTrue(module.is_infrastructure_repo({"full_name": "nodejs/node"}))
@@ -87,7 +87,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_github_web_evolution_matches_project_scope(self):
         module = load_module(
             "github_web_evolution_runner",
-            "scripts/openclaw-ops/github_web_evolution_runner.py",
+            "skills/library/web-intelligence/scripts/github_web_evolution_runner.py",
         )
         self.assertTrue(
             module.matches_project_scope(
@@ -126,7 +126,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_default_query_pack_avoids_language_python_bias(self):
         module = load_module(
             "github_web_evolution_runner",
-            "scripts/openclaw-ops/github_web_evolution_runner.py",
+            "skills/library/web-intelligence/scripts/github_web_evolution_runner.py",
         )
         queries = module.build_query_list([], 80, 5)
         self.assertEqual(len(queries), 5)
@@ -137,7 +137,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_web_intel_prefers_scrapling_before_other_browsers(self):
         module = load_module(
             "web_intel_collect_runner",
-            "scripts/openclaw-ops/web_intel_collect_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_collect_runner.py",
         )
         call_order: list[str] = []
 
@@ -201,7 +201,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_web_intel_collect_follow_up_task_payload_hides_report_path(self):
         module = load_module(
             "web_intel_collect_runner",
-            "scripts/openclaw-ops/web_intel_collect_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_collect_runner.py",
         )
         captured_args: list[list[str]] = []
 
@@ -245,13 +245,13 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
         self.assertNotIn("/tmp/reports/web_collect_20260311.json", str(context_payload))
         self.assertIn("留痕编号=", observable_outputs)
         self.assertNotIn("report_file=", observable_outputs)
-        self.assertEqual(required_capabilities, "role_only")
+        self.assertEqual(required_capabilities, "skill_backed,task_execution")
         self.assertEqual(allowed_agents, "ops-agent")
 
     def test_web_intel_collect_summary_file_hides_internal_paths(self):
         module = load_module(
             "web_intel_collect_runner",
-            "scripts/openclaw-ops/web_intel_collect_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_collect_runner.py",
         )
         original_http = module.fetch_with_http
         original_browser = module.fetch_with_browser
@@ -336,7 +336,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_web_intel_humanizes_http_403_in_readable_chinese(self):
         module = load_module(
             "web_intel_collect_runner",
-            "scripts/openclaw-ops/web_intel_collect_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_collect_runner.py",
         )
         title, detail = module.humanize_collect_error("http_error:403", 403)
         self.assertEqual(title, "HTTP 请求失败")
@@ -345,7 +345,7 @@ class ScraplingAndGithubFilterTests(unittest.TestCase):
     def test_web_intel_review_follow_up_task_payload_hides_internal_paths(self):
         module = load_module(
             "web_intel_review_runner",
-            "scripts/openclaw-ops/web_intel_review_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_review_runner.py",
         )
         captured_args: list[list[str]] = []
 

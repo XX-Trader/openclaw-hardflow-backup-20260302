@@ -273,7 +273,7 @@ class TestDistillCleaner(unittest.TestCase):
         self.assertTrue(all(w.status in ("high_value", "index_only", "skip") for w in routed))
 
     def test_fallback_classify_memory(self):
-        result = dc.fallback_classify("配置路径 /home/ubuntu/.hermes 端口:2222")
+        result = dc.fallback_classify("配置路径 /home/runtime-user/.hermes 端口:2222")
         self.assertEqual(result["kind"], "memory")
 
     def test_fallback_classify_experience(self):

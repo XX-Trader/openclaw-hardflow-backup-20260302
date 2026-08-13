@@ -21,29 +21,29 @@ metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 ### 1. 查看看门狗状态
 
 ```bash
-python3 ~/scripts/openclaw-ops/config_watchdog.py --status
+python3 ~/skills/library/config-watchdog/scripts/config_watchdog.py --status
 ```
 
 ### 2. 手动触发快照
 
 ```bash
-python3 ~/scripts/openclaw-ops/config_watchdog.py --snapshot
+python3 ~/skills/library/config-watchdog/scripts/config_watchdog.py --snapshot
 ```
 
 ### 3. 检测变更
 
 ```bash
-python3 ~/scripts/openclaw-ops/config_watchdog.py --diff
+python3 ~/skills/library/config-watchdog/scripts/config_watchdog.py --diff
 ```
 
 ### 4. 回滚配置
 
 ```bash
 # 查看可用快照
-python3 ~/scripts/openclaw-ops/config_watchdog.py --list-snapshots
+python3 ~/skills/library/config-watchdog/scripts/config_watchdog.py --list-snapshots
 
 # 回滚到指定快照（需确认）
-python3 ~/scripts/openclaw-ops/config_watchdog.py --rollback <snapshot_id>
+python3 ~/skills/library/config-watchdog/scripts/config_watchdog.py --rollback <snapshot_id>
 ```
 
 ## 监控的配置文件

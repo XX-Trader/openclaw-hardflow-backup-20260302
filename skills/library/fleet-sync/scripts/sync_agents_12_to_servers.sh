@@ -2,25 +2,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+REPO_ROOT="${HARDFLOW_WORKFLOW_REPO:-$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel)}"
 cd "${REPO_ROOT}"
 
-SSH_CONFIG="${SSH_CONFIG:-}"
-if [[ -z "${SSH_CONFIG}" ]]; then
-  for candidate in "/d/ssh_keys/ssh_config" "/mnt/d/ssh_keys/ssh_config" "D:/ssh_keys/ssh_config"; do
-    if [[ -f "${candidate}" ]]; then
-      SSH_CONFIG="${candidate}"
-      break
-    fi
-  done
-fi
-
-if [[ -z "${SSH_CONFIG}" || ! -f "${SSH_CONFIG}" ]]; then
+SSH_CONFIG="${SSH_CONFIG:-${HOME}/.ssh/config}"
+if [[ ! -f "${SSH_CONFIG}" ]]; then
   echo "[sync-agents] cannot find ssh_config. Set SSH_CONFIG explicitly." >&2
   exit 1
 fi
 
-LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/scripts/openclaw-ops/policy/gateway_service_manager.py"
+LOCAL_GATEWAY_SERVICE_MANAGER="${REPO_ROOT}/skills/library/control-plane-ops/scripts/policy/gateway_service_manager.py"
 if [[ ! -f "${LOCAL_GATEWAY_SERVICE_MANAGER}" ]]; then
   echo "[sync-agents] gateway service manager missing: ${LOCAL_GATEWAY_SERVICE_MANAGER}" >&2
   exit 1
@@ -31,8 +22,11 @@ DRY_RUN="${DRY_RUN:-0}"
 
 if (( $# > 0 )); then
   SERVERS=("$@")
+elif [[ -n "${HARDFLOW_FLEET_SERVERS:-}" ]]; then
+  IFS=',' read -r -a SERVERS <<< "${HARDFLOW_FLEET_SERVERS}"
 else
-  SERVERS=("pm-website" "大白pm" "nofx" "coingod" "tokyo-claw")
+  echo "[sync-agents] provide hosts as arguments or HARDFLOW_FLEET_SERVERS." >&2
+  exit 2
 fi
 
 REMOTE_UPDATE_SCRIPT="$(cat <<'PY'

@@ -7,7 +7,7 @@
 ## 这次变更
 
 - 新增受管目录：`scripts/openclaw-ops/runtime-plugin-overrides/`
-- 新增同步脚本：`scripts/openclaw-ops/sync_runtime_plugin_overrides.py`
+- 新增同步脚本：`skills/library/fleet-sync/scripts/sync_runtime_plugin_overrides.py`
 - `install_workflow_profile.py` 现在默认会执行一次 plugin override 同步
 
 ## 受管范围

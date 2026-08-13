@@ -4,7 +4,7 @@
 
 ## 背景
 
-在 `nofx` 服务器上出现过一类运行时冲突：
+在 `runtime-host` 服务器上出现过一类运行时冲突：
 
 - 系统级 service：`openclaw.service`
 - 用户级 service：`openclaw-gateway.service`
@@ -20,7 +20,7 @@
 
 仓库新增了：
 
-- `scripts/openclaw-ops/policy/gateway_service_manager.py`
+- `skills/library/control-plane-ops/scripts/policy/gateway_service_manager.py`
 
 所有相关同步/部署脚本现在都改为通过这个 helper 重启 Gateway，而不是直接裸调 `openclaw gateway restart`。
 

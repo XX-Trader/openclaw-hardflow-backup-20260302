@@ -23,10 +23,10 @@ metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
 
 ```bash
 # 带自动发现功能的全量扫描
-python3 ~/scripts/openclaw-ops/unified_exception_logger.py --auto-discover
+python3 ~/skills/library/log-monitor/scripts/unified_exception_logger.py --auto-discover
 
 # 指定目录扫描
-python3 ~/scripts/openclaw-ops/unified_exception_logger.py --scan-dir /var/log/openclaw
+python3 ~/skills/library/log-monitor/scripts/unified_exception_logger.py --scan-dir /var/log/openclaw
 ```
 
 ### 2. 查看巡检报告

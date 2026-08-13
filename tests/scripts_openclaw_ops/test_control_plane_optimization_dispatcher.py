@@ -74,11 +74,11 @@ class ControlPlaneOptimizationDispatcherTests(unittest.TestCase):
     def test_dispatcher_creates_deduplicated_tasks_from_recommendations(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         dispatcher_module = load_module(
             "control_plane_optimization_dispatcher",
-            "scripts/openclaw-ops/control_plane_optimization_dispatcher.py",
+            "skills/library/control-plane-ops/scripts/control_plane_optimization_dispatcher.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -150,11 +150,11 @@ class ControlPlaneOptimizationDispatcherTests(unittest.TestCase):
     def test_main_writes_json_and_markdown_outputs(self):
         task_center_module = load_module(
             "task_center",
-            "scripts/openclaw-ops/policy/task_center.py",
+            "skills/library/control-plane-ops/scripts/policy/task_center.py",
         )
         dispatcher_module = load_module(
             "control_plane_optimization_dispatcher",
-            "scripts/openclaw-ops/control_plane_optimization_dispatcher.py",
+            "skills/library/control-plane-ops/scripts/control_plane_optimization_dispatcher.py",
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:

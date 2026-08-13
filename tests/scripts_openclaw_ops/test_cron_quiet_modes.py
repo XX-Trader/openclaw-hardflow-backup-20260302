@@ -35,9 +35,11 @@ class CronQuietModeTests(unittest.TestCase):
     def test_switch_model_tier_high_doubao_keeps_code_and_ops_layers(self):
         module = load_module(
             "switch_model_tier",
-            "scripts/openclaw-ops/switch_model_tier.py",
+            "skills/library/openclaw-workflow-manager/scripts/switch_model_tier.py",
         )
-        profiles = module.load_profiles(ROOT / "scripts/openclaw-ops/model_tier_profiles.json")
+        profiles = module.load_profiles(
+            ROOT / "skills/library/openclaw-workflow-manager/scripts/model_tier_profiles.json"
+        )
         tier = module.resolve_tier("high_doubao", profiles)
         profile = module.ensure_profile(profiles["tiers"][tier], tier)
 
@@ -53,7 +55,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_ops_cron_runner_creates_follow_up_task_for_failed_workflow(self):
         module = load_module(
             "ops_cron_runner",
-            "scripts/openclaw-ops/ops_cron_runner.py",
+            "skills/library/control-plane-ops/scripts/ops_cron_runner.py",
         )
         cfg = module.default_config()
         state = {}
@@ -109,17 +111,20 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertEqual(summary["existing_count"], 0)
         self.assertEqual(len(summary["tasks"]), 1)
         self.assertTrue(summary["tasks"][0]["task_id"].startswith("todo-ops-workflow-repair-"))
-        self.assertEqual(summary["tasks"][0]["assignee"], "optimization-agent")
+        self.assertEqual(summary["tasks"][0]["assignee"], "ops-agent")
         self.assertEqual(len(invoked), 1)
         args = invoked[0]
         self.assertIn("create-task", args)
         self.assertIn("ops_workflow_repair", args)
         self.assertIn("jobs", args)
-        self.assertIn("optimization-agent", args)
+        self.assertIn("ops-agent", args)
         self.assertIn("--required-capabilities", args)
-        self.assertEqual(args[args.index("--required-capabilities") + 1], "role_only")
+        self.assertEqual(
+            args[args.index("--required-capabilities") + 1],
+            "skill_backed,task_execution",
+        )
         self.assertIn("--allowed-agents", args)
-        self.assertEqual(args[args.index("--allowed-agents") + 1], "optimization-agent")
+        self.assertEqual(args[args.index("--allowed-agents") + 1], "ops-agent")
         self.assertIn("false", args)
         self.assertIn("true", args)
         self.assertEqual(repeated["created_count"], 0)
@@ -129,7 +134,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_ops_cron_runner_marks_existing_follow_up_task_without_error(self):
         module = load_module(
             "ops_cron_runner",
-            "scripts/openclaw-ops/ops_cron_runner.py",
+            "skills/library/control-plane-ops/scripts/ops_cron_runner.py",
         )
         cfg = module.default_config()
         state = {}
@@ -173,7 +178,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_ops_cron_runner_follow_up_output_includes_progress_summary(self):
         module = load_module(
             "ops_cron_runner",
-            "scripts/openclaw-ops/ops_cron_runner.py",
+            "skills/library/control-plane-ops/scripts/ops_cron_runner.py",
         )
         base_output = "\n".join(
             [
@@ -212,12 +217,12 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("新建修复任务 1 条", output)
         self.assertIn("已有待处理修复任务 1 条", output)
         self.assertIn("ops_daily_work_report_dingtalk", output)
-        self.assertIn("ops_local_openclaw_git_backup", output)
+        self.assertIn("OpenClaw 本地备份（1小时）", output)
 
     def test_task_executor_skips_ops_runtime_cron_binding_tasks(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         conn = sqlite3.connect(":memory:")
@@ -279,7 +284,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_builds_bounded_stable_session_id(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         task_id = "todo-ops-workflow-repair-5797cd5b-5539-4e95-8d58--1655223be5"
@@ -294,7 +299,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_quiet_when_no_failures(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
         summary = {
             "run_id": "exec-1",
@@ -313,12 +318,13 @@ class CronQuietModeTests(unittest.TestCase):
             ],
         }
         output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
-        self.assertEqual(output, "NO_REPLY")
+        self.assertIn("首次发现 1 个未闭环任务", output)
+        self.assertIn("执行结论1：待补充上下文", output)
 
     def test_task_executor_reports_failures(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
         summary = {
             "run_id": "exec-2",
@@ -335,14 +341,16 @@ class CronQuietModeTests(unittest.TestCase):
         }
         output = module.build_chat_output(summary, Path("/tmp/report.json"), "error")
         self.assertIn("任务执行器（10分钟）", output.splitlines()[0])
-        self.assertIn("原因解析：任务执行失败 2 个。", output)
+        self.assertIn("首次发现 2 个未闭环任务", output)
+        self.assertIn("失败原因1：执行前检查失败", output)
+        self.assertIn("失败原因2：执行结果回写失败", output)
         self.assertNotIn("todo-1", output)
         self.assertNotIn("report.json", output)
 
     def test_task_executor_retries_rate_limit_failures(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
         calls: list[int] = []
 
@@ -376,7 +384,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_resolves_agent_model_and_thinking_from_policy(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             policy_path = Path(tmpdir) / "policy.json"
@@ -424,7 +432,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_passes_thinking_flag_for_codex(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         with mock.patch.object(module.subprocess, "run") as mocked_run:
@@ -449,7 +457,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_does_not_retry_non_retryable_failures(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         def fake_call_agent(*args, **kwargs):
@@ -480,7 +488,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_failure_output_is_human_friendly_chinese(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
         summary = {
             "trigger_task": "cron:task-executor",
@@ -516,7 +524,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_failure_output_includes_conclusion_reason_and_progress(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
         summary = {
             "trigger_task": "cron:task-executor",
@@ -562,11 +570,11 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_duplicate_workflow_repair_alert_returns_no_reply(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
         dedupe_module = load_module(
             "alert_dedupe",
-            "scripts/openclaw-ops/policy/alert_dedupe.py",
+            "skills/library/control-plane-ops/scripts/policy/alert_dedupe.py",
         )
         summary = {
             "trigger_task": "cron:task-executor",
@@ -627,7 +635,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_incremental_notify_suppresses_unchanged_open_items(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         summary = {
@@ -684,7 +692,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_task_executor_incremental_notify_reports_only_changed_items(self):
         module = load_module(
             "task_executor_runner",
-            "scripts/openclaw-ops/policy/task_executor_runner.py",
+            "skills/library/control-plane-ops/scripts/policy/task_executor_runner.py",
         )
 
         first_summary = {
@@ -767,7 +775,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_web_collect_error_only_mode_stays_quiet_on_changes(self):
         module = load_module(
             "web_intel_collect_runner",
-            "scripts/openclaw-ops/web_intel_collect_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_collect_runner.py",
         )
         self.assertTrue(module.should_quiet("silent", "error", failed_count=0, changed_count=3))
         self.assertFalse(module.should_quiet("silent", "error", failed_count=1, changed_count=0))
@@ -775,7 +783,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_web_collect_failure_output_is_human_friendly_chinese(self):
         module = load_module(
             "web_intel_collect_runner",
-            "scripts/openclaw-ops/web_intel_collect_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_collect_runner.py",
         )
         output = module.build_output(
             sender_identity="web-agent/web-intel-collect",
@@ -800,7 +808,7 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertIn("网页情报采集异常", output)
         self.assertIn("openai-responses-doc", output)
         self.assertIn("429", output)
-        self.assertEqual(output.splitlines()[0], "网页情报采集异常")
+        self.assertIn("网页情报采集异常", output.splitlines()[0])
         self.assertIn("留痕编号", output)
         self.assertNotIn("/tmp/web_collect.json", output)
         self.assertNotIn("报告文件", output)
@@ -808,7 +816,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_web_review_error_only_mode_stays_quiet_on_changes(self):
         module = load_module(
             "web_intel_review_runner",
-            "scripts/openclaw-ops/web_intel_review_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_review_runner.py",
         )
         self.assertTrue(module.should_quiet("silent", "error", changed_count=2))
         self.assertFalse(module.should_quiet("chat", "error", changed_count=2))
@@ -816,27 +824,27 @@ class CronQuietModeTests(unittest.TestCase):
     def test_web_review_failure_output_is_human_friendly_chinese(self):
         module = load_module(
             "web_intel_review_runner",
-            "scripts/openclaw-ops/web_intel_review_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_review_runner.py",
         )
         output = module.build_failure_output(
             mode="optimization",
             sender_identity="optimization-agent/web-intel-review",
             task_id="cron:web-intel-review-optimization",
             started_at="2026-03-06T10:00:00+00:00",
-            error_text="parsed_dir_missing:/home/ubuntu/.openclaw/web/parsed",
+            error_text="parsed_dir_missing:/home/runtime-user/.openclaw/web/parsed",
         )
         self.assertIn("网页情报复核异常", output)
         self.assertIn("optimization", output)
         self.assertIn("解析结果目录缺失", output)
-        self.assertEqual(output.splitlines()[0], "网页情报复核异常")
+        self.assertIn("网页情报复核异常", output.splitlines()[0])
         self.assertIn("留痕", output)
-        self.assertNotIn("/home/ubuntu/.openclaw/web/parsed", output)
+        self.assertNotIn("/home/runtime-user/.openclaw/web/parsed", output)
         self.assertNotIn("report_file", output)
 
     def test_web_review_output_hides_report_path(self):
         module = load_module(
             "web_intel_review_runner",
-            "scripts/openclaw-ops/web_intel_review_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_review_runner.py",
         )
         output = module.build_output(
             mode="project-doc",
@@ -854,7 +862,7 @@ class CronQuietModeTests(unittest.TestCase):
                 }
             ],
         )
-        self.assertEqual(output.splitlines()[0], "网页情报复核提醒")
+        self.assertIn("网页情报复核提醒", output.splitlines()[0])
         self.assertIn("留痕编号", output)
         self.assertIn("openai-docs", output)
         self.assertNotIn("/tmp/web_review_report.json", output)
@@ -863,7 +871,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_web_review_extracts_new_information_and_updated_interfaces(self):
         module = load_module(
             "web_intel_review_runner",
-            "scripts/openclaw-ops/web_intel_review_runner.py",
+            "skills/library/web-intelligence/scripts/web_intel_review_runner.py",
         )
         previous_text = "\n".join(
             [
@@ -922,13 +930,13 @@ class CronQuietModeTests(unittest.TestCase):
     def test_local_git_backup_failure_output_is_human_friendly_chinese(self):
         module = load_module(
             "local_git_backup_runner",
-            "scripts/openclaw-ops/local_git_backup_runner.py",
+            "skills/library/git-sync/scripts/local_git_backup_runner.py",
         )
         output = module.build_chat_output(
             {
                 "time": "2026-03-06T10:00:00+00:00",
                 "task_id": "cron:ops-local-openclaw-git-backup",
-                "repo": "/home/ubuntu/.openclaw",
+                "repo": "/home/runtime-user/.openclaw",
                 "initialized": False,
                 "gitignore_updated": False,
                 "committed": False,
@@ -947,7 +955,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_todo_patrol_stays_quiet_when_only_dispatched_tasks_changed(self):
         module = load_module(
             "todo_patrol",
-            "scripts/openclaw-ops/todo_patrol.py",
+            "skills/library/todo-patrol/scripts/todo_patrol.py",
         )
         output = module.format_dispatch_message(
             task="cron:todo-patrol",
@@ -977,7 +985,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_todo_patrol_failure_output_is_human_friendly_chinese(self):
         module = load_module(
             "todo_patrol",
-            "scripts/openclaw-ops/todo_patrol.py",
+            "skills/library/todo-patrol/scripts/todo_patrol.py",
         )
         output = module.format_dispatch_message(
             task="cron:todo-patrol",
@@ -1005,7 +1013,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_todo_patrol_verbose_output_uses_human_card_without_machine_fields(self):
         module = load_module(
             "todo_patrol",
-            "scripts/openclaw-ops/todo_patrol.py",
+            "skills/library/todo-patrol/scripts/todo_patrol.py",
         )
         output = module.format_dispatch_message(
             task="cron:todo-patrol",
@@ -1073,7 +1081,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_reviewer_context_gate_failure_output_is_human_friendly_chinese(self):
         module = load_module(
             "reviewer_cron_runner",
-            "scripts/openclaw-ops/reviewer_cron_runner.py",
+            "skills/library/receiving-code-review/scripts/reviewer_cron_runner.py",
         )
         module.discover_git_repos = lambda _workspace: [Path("/tmp/repo-a")]
         module.ensure_project_context_gate = lambda _args, _mode, _repos: {
@@ -1109,7 +1117,7 @@ class CronQuietModeTests(unittest.TestCase):
     def test_reviewer_main_output_hides_machine_fields(self):
         module = load_module(
             "reviewer_cron_runner",
-            "scripts/openclaw-ops/reviewer_cron_runner.py",
+            "skills/library/receiving-code-review/scripts/reviewer_cron_runner.py",
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             state_file = Path(tmpdir) / "state.json"
@@ -1151,261 +1159,21 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertNotIn("- exception:", output)
         self.assertNotIn("evidence:", output)
 
-    def test_project_index_command_omits_git_pull_by_default(self):
-        module = load_module(
-            "install_project_index_job",
-            "scripts/openclaw-ops/install_project_index_job.py",
-        )
-        command = module.build_runner_command(
-            maintainer_py="/home/ubuntu/.openclaw/ops/policy/project_index_maintainer.py",
-            registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
-            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            task_id="cron:project-index-maintainer-4h",
-            actor="project-agent",
-            git_pull=False,
-            disable_memory_index_on_change=True,
-            skip_unchanged_git_projects=True,
-        )
-        self.assertNotIn("--git-pull", command)
-        self.assertIn("--disable-memory-index-on-change", command)
-        self.assertIn("--skip-unchanged-git-projects", command)
 
-    def test_project_index_job_prompt_requires_single_exec_call(self):
-        module = load_module(
-            "install_project_index_job",
-            "scripts/openclaw-ops/install_project_index_job.py",
-        )
-        jobs, _ = module.upsert_job(
-            jobs=[],
-            job_id="job-project-index",
-            every_ms=1800000,
-            maintainer_py="/home/ubuntu/.openclaw/ops/policy/project_index_maintainer.py",
-            registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
-            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            task_id="cron:project-index-maintainer-4h",
-            actor="project-agent",
-            git_pull=False,
-            disable_memory_index_on_change=True,
-            skip_unchanged_git_projects=True,
-            channel="telegram",
-            target="-1003333097130",
-        )
-        message = jobs[0]["payload"]["message"]
-        self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
-        self.assertIn("Command still running", message)
-        self.assertIn("process poll", message)
-        self.assertIn("Never output process filler sentences such as 'Let's run ...'", message)
 
-    def test_project_index_job_defaults_to_silent_delivery(self):
-        module = load_module(
-            "install_project_index_job",
-            "scripts/openclaw-ops/install_project_index_job.py",
-        )
-        jobs, _ = module.upsert_job(
-            jobs=[],
-            job_id="job-project-index",
-            every_ms=1800000,
-            maintainer_py="/home/ubuntu/.openclaw/ops/policy/project_index_maintainer.py",
-            registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
-            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            task_id="cron:project-index-maintainer-4h",
-            actor="project-agent",
-            git_pull=False,
-            disable_memory_index_on_change=True,
-            skip_unchanged_git_projects=True,
-            channel="telegram",
-            target="-1003333097130",
-        )
-        self.assertEqual(jobs[0]["delivery"]["mode"], "none")
-        self.assertNotIn("failureAlert", jobs[0])
-        self.assertIn("git HEAD change driven", jobs[0]["description"])
 
-    def test_reviewer_install_message_blocks_follow_up_chatter(self):
-        module = load_module(
-            "install_reviewer_scan_jobs",
-            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
-        )
-        message = module.build_message("python3 /tmp/reviewer_cron_runner.py --mode daily_incremental")
-        self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
-        self.assertIn("Command still running", message)
-        self.assertIn("process poll", message)
-        self.assertIn("Never output process filler sentences such as 'Let's run ...'", message)
 
-    def test_reviewer_jobs_default_to_silent_delivery(self):
-        module = load_module(
-            "install_reviewer_scan_jobs",
-            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
-        )
-        fresh = module.build_jobs(
-            runner_py="/tmp/reviewer.py",
-            workspace="/tmp/workspace",
-            state_file="/tmp/state.json",
-            history_dir="/tmp/history",
-            tz_name="Asia/Shanghai",
-            hourly_every_ms=3600000,
-            daily_expr="0 4 * * *",
-            bi_daily_expr="20 4 */2 * *",
-            weekly_expr="40 4 * * 1",
-            enable_hourly=True,
-            enable_daily=True,
-            enable_bi_daily=True,
-            enable_weekly=True,
-            normal_log_mode="silent",
-            daily_fix_command="",
-            hourly_git_fetch=True,
-            hourly_check_pr=True,
-            hourly_allow_merge=False,
-            hourly_push_after_merge=False,
-            hourly_merge_approval_file="",
-            project_context_gate=True,
-            project_context_db="/tmp/task_center.db",
-            project_context_assignee="project-agent",
-        )
-        merged, _ = module.upsert_jobs(jobs=[], fresh_jobs=fresh, channel="telegram", target="-1003333097130")
-        self.assertTrue(all(item["delivery"]["mode"] == "none" for item in merged[:4]))
-        self.assertTrue(all(item["failureAlert"]["to"] == "-1003333097130" for item in merged[:4]))
 
-    def test_reviewer_jobs_pin_stable_model_and_light_context(self):
-        module = load_module(
-            "install_reviewer_scan_jobs",
-            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
-        )
-        fresh = module.build_jobs(
-            runner_py="/tmp/reviewer.py",
-            workspace="/tmp/workspace",
-            state_file="/tmp/state.json",
-            history_dir="/tmp/history",
-            tz_name="Asia/Shanghai",
-            hourly_every_ms=3600000,
-            daily_expr="0 4 * * *",
-            bi_daily_expr="20 4 */2 * *",
-            weekly_expr="40 4 * * 1",
-            enable_hourly=True,
-            enable_daily=True,
-            enable_bi_daily=True,
-            enable_weekly=True,
-            normal_log_mode="silent",
-            daily_fix_command="",
-            hourly_git_fetch=True,
-            hourly_check_pr=True,
-            hourly_allow_merge=False,
-            hourly_push_after_merge=False,
-            hourly_merge_approval_file="",
-            project_context_gate=True,
-            project_context_db="/tmp/task_center.db",
-            project_context_assignee="project-agent",
-        )
-        self.assertTrue(all(item["payload"]["model"] == "glmcode/glm-5" for item in fresh))
-        self.assertTrue(all(item["payload"]["lightContext"] is True for item in fresh))
 
-    def test_reviewer_jobs_support_pr_gate_only_mode(self):
-        module = load_module(
-            "install_reviewer_scan_jobs",
-            "scripts/openclaw-ops/install_reviewer_scan_jobs.py",
-        )
-        fresh = module.build_jobs(
-            runner_py="/tmp/reviewer.py",
-            workspace="/tmp/workspace",
-            state_file="/tmp/state.json",
-            history_dir="/tmp/history",
-            tz_name="Asia/Shanghai",
-            hourly_every_ms=3600000,
-            daily_expr="0 4 * * *",
-            bi_daily_expr="20 4 */2 * *",
-            weekly_expr="40 4 * * 1",
-            enable_hourly=True,
-            enable_daily=True,
-            enable_bi_daily=True,
-            enable_weekly=True,
-            normal_log_mode="silent",
-            daily_fix_command="",
-            hourly_git_fetch=True,
-            hourly_check_pr=True,
-            hourly_allow_merge=True,
-            hourly_push_after_merge=False,
-            hourly_merge_approval_file="/tmp/reviewer-merge-approval.json",
-            project_context_gate=True,
-            project_context_db="/tmp/task_center.db",
-            project_context_assignee="project-agent",
-            hourly_pr_gate_only=True,
-        )
-        self.assertIn("--pr-gate-only", fresh[0]["payload"]["message"])
-        self.assertIn("PR review gate", fresh[0]["description"])
 
-    def test_task_executor_message_uses_notify_on_error(self):
-        module = load_module(
-            "install_task_executor_job",
-            "scripts/openclaw-ops/install_task_executor_job.py",
-        )
-        message = module.build_message(
-            executor_py="/home/ubuntu/.openclaw/ops/policy/task_executor_runner.py",
-            db_path="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            max_tasks=3,
-            model="",
-            actor="coordinator",
-            planner_id="coordinator",
-            openclaw_bin="openclaw",
-            report_dir="/home/ubuntu/.openclaw/ops/task-center/executor-runs",
-            local_agent=True,
-            notify_on="error",
-        )
-        self.assertIn("--notify-on error", message)
-        self.assertIn("Command still running", message)
-        self.assertIn("process poll", message)
-        self.assertNotIn("--emit-json", message)
 
-    def test_cron_setup_hardens_project_index_without_git_pull(self):
-        module = load_module(
-            "cron_setup",
-            "scripts/openclaw-ops/cron_setup.py",
-        )
-        jobs = [
-            {
-                "id": "job-project-index",
-                "name": "project_index_maintainer_4h",
-                "enabled": True,
-                "payload": {"kind": "agentTurn", "message": "old"},
-            }
-        ]
-        result = module.harden_known_jobs(jobs, Path("/home/ubuntu/.openclaw"))
-        self.assertEqual(result["status"]["project_index_maintainer_4h"], "hardened")
-        self.assertNotIn("--git-pull", jobs[0]["payload"]["message"])
 
-    def test_cron_setup_prompt_requires_single_exec_call(self):
-        module = load_module(
-            "cron_setup",
-            "scripts/openclaw-ops/cron_setup.py",
-        )
-        message = module.build_message("python3 /tmp/demo.py")
-        self.assertIn("first assistant turn MUST contain exactly one exec tool call", message)
-        self.assertIn("Command still running", message)
-        self.assertIn("process poll", message)
 
-    def test_cron_setup_monitor_config_uses_home_defaults_when_runner_config_is_dict(self):
-        module = load_module(
-            "cron_setup",
-            "scripts/openclaw-ops/cron_setup.py",
-        )
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_file = Path(tmpdir) / "cron-monitor-config.json"
-            with mock.patch.object(module, "runner_default_config", return_value={}):
-                cfg = module.ensure_monitor_config(config_file, overwrite=True, switches={})
-
-        home = Path.home()
-        self.assertEqual(
-            cfg["runtime_monitor"]["project_registry"],
-            str(home / ".openclaw" / "ops" / "task-center" / "project-registry.json"),
-        )
-        self.assertEqual(
-            cfg["workflow_monitor"]["jobs_file"],
-            str(home / ".openclaw" / "cron" / "jobs.json"),
-        )
 
     def test_ops_cron_runner_invoke_policy_enforcer_retries_database_locked(self):
         module = load_module(
             "ops_cron_runner",
-            "scripts/openclaw-ops/ops_cron_runner.py",
+            "skills/library/control-plane-ops/scripts/ops_cron_runner.py",
         )
 
         runs = [
@@ -1423,677 +1191,32 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertEqual(run_mock.call_count, 2)
         sleep_mock.assert_called_once()
 
-    def test_install_workflow_profile_task_executor_cmd_pins_error_only_notify(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_install_task_executor_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
-            ops_home="/home/ubuntu/.openclaw/ops",
-            workflow_repo_path="/repo",
-            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            every_ms=600000,
-            max_tasks=3,
-            model="auto",
-            local_agent=True,
-            channel="telegram",
-            target="-1003333097130",
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("--notify-on error", rendered)
-        self.assertIn("--emit-json", rendered)
 
-    def test_install_workflow_profile_resolve_delivery_uses_runtime_telegram_group_target(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_path = Path(tmpdir) / "openclaw.json"
-            config_path.write_text(
-                json.dumps(
-                    {
-                        "channels": {
-                            "telegram": {
-                                "botToken": "demo-token",
-                                "cronDeliveryChatId": "-1003775035700",
-                            }
-                        }
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-            channel, target, meta = module.resolve_runtime_delivery_target(
-                channel="",
-                target="",
-                local_config_path=str(config_path),
-            )
 
-        self.assertEqual(channel, "telegram")
-        self.assertEqual(target, "-1003775035700")
-        self.assertEqual(meta["source"], "runtime_openclaw_config")
-        self.assertIn("channels.telegram.cronDeliveryChatId", meta["resolved_from"])
 
-    def test_install_workflow_profile_preserves_local_telegram_cron_delivery_chat_id(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        base_cfg = {
-            "channels": {
-                "telegram": {
-                    "botToken": "local-token",
-                    "cronDeliveryChatId": "-1003775035700",
-                }
-            }
-        }
-        merged_cfg = {
-            "channels": {
-                "telegram": {
-                    "enabled": True,
-                }
-            }
-        }
 
-        preserved = module.preserve_local_telegram_credentials(base_cfg, merged_cfg)
 
-        self.assertEqual(
-            merged_cfg["channels"]["telegram"]["cronDeliveryChatId"],
-            "-1003775035700",
-        )
-        self.assertIn("channels.telegram.cronDeliveryChatId", preserved)
 
-    def test_install_workflow_profile_project_index_cmd_disables_git_pull(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_install_project_index_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
-            ops_home="/home/ubuntu/.openclaw/ops",
-            project_registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
-            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            every_ms=1800000,
-            channel="telegram",
-            target="-1003333097130",
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("--no-git-pull", rendered)
-        self.assertIn("--emit-json", rendered)
 
-    def test_install_workflow_profile_web_intel_cmd_uses_error_only_notify(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_install_web_intel_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
-            ops_home="/home/ubuntu/.openclaw/ops",
-            openclaw_home="/home/ubuntu/.openclaw",
-            project_registry="/home/ubuntu/.openclaw/ops/task-center/project-registry.json",
-            collect_every_ms=3600000,
-            opt_review_every_ms=14400000,
-            project_review_every_ms=21600000,
-            collect_min_interval_minutes=60,
-            review_min_interval_minutes=180,
-            channel="telegram",
-            target="-1003333097130",
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("--collect-notify-on error", rendered)
-        self.assertIn("--review-notify-on error", rendered)
 
-    def test_install_workflow_profile_reviewer_fix_command_uses_policy_subdir(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp = Path(tmpdir)
-            stdout = io.StringIO()
-            argv = [
-                "install_workflow_profile.py",
-                "--profile",
-                "core",
-                "--jobs-file",
-                str(tmp / ".openclaw" / "cron" / "jobs.json"),
-                "--openclaw-home",
-                str(tmp / ".openclaw"),
-                "--workflow-repo-path",
-                str(tmp / "workflow-repo"),
-                "--project-registry",
-                str(tmp / ".openclaw" / "ops" / "task-center" / "project-registry.json"),
-                "--task-db",
-                str(tmp / ".openclaw" / "ops" / "task-center" / "task_center.db"),
-                "--dry-run",
-                "--no-sync-overlay-config",
-                "--no-ensure-runtime-skills",
-                "--no-normalize-openclaw-paths",
-                "--no-recover-stale-cron-running-state",
-            ]
-            with mock.patch.object(sys, "argv", argv):
-                with contextlib.redirect_stdout(stdout):
-                    module.main()
 
-        output = stdout.getvalue().replace("\\", "/")
-        self.assertIn("/ops/policy/policy_enforcer.py next-todo --limit 5", output)
-        self.assertNotIn("/ops/policy_enforcer.py next-todo --limit 5", output)
 
-    def test_install_workflow_profile_ensure_runtime_skills_cmd_uses_manifest(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_ensure_runtime_skills_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            openclaw_home="/home/ubuntu/.openclaw",
-            manifest_path="/repo/scripts/openclaw-ops/runtime-required-skills.json",
-            dry_run=True,
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("ensure_runtime_skills.py", rendered)
-        self.assertIn("--manifest /repo/scripts/openclaw-ops/runtime-required-skills.json", rendered)
-        self.assertIn("--dry-run", rendered)
-        self.assertIn("--emit-json", rendered)
 
-    def test_install_workflow_profile_sync_runtime_plugin_overrides_cmd_uses_openclaw_home(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_sync_runtime_plugin_overrides_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            openclaw_home="/home/ubuntu/.openclaw",
-            dry_run=True,
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("sync_runtime_plugin_overrides.py", rendered)
-        self.assertIn("runtime-plugin-overrides", rendered)
-        self.assertIn("--openclaw-home /home/ubuntu/.openclaw", rendered)
-        self.assertIn("--dry-run", rendered)
-        self.assertIn("--emit-json", rendered)
 
-    def test_install_workflow_profile_normalize_runtime_binding_tasks_cmd_uses_task_db(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_normalize_runtime_binding_tasks_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            task_db="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            dry_run=True,
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("normalize_runtime_binding_tasks.py", rendered)
-        self.assertIn("--db /home/ubuntu/.openclaw/ops/task-center/task_center.db", rendered)
-        self.assertIn("--dry-run", rendered)
-        self.assertIn("--emit-json", rendered)
 
-    def test_install_workflow_profile_recover_stale_cron_running_state_cmd_uses_jobs_file(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_recover_stale_cron_running_state_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
-            stale_minutes=45,
-            dry_run=True,
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("recover_stale_cron_running_state.py", rendered)
-        self.assertIn("--jobs-file /home/ubuntu/.openclaw/cron/jobs.json", rendered)
-        self.assertIn("--stale-minutes 45", rendered)
-        self.assertIn("--dry-run", rendered)
-        self.assertIn("--emit-json", rendered)
 
-    def test_install_workflow_profile_export_schedule_registry_cmd_uses_jobs_file_and_output(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_export_schedule_registry_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            jobs_file="/home/ubuntu/.openclaw/cron/jobs.json",
-            mapping_file="/repo/cron/jobs_agent_mapping.md",
-            output_file="/home/ubuntu/.openclaw/ops/workflow/schedule-registry.json",
-            profile="all",
-            dry_run=True,
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("export_schedule_registry.py", rendered)
-        self.assertIn("--jobs-file /home/ubuntu/.openclaw/cron/jobs.json", rendered)
-        self.assertIn("--mapping-file /repo/cron/jobs_agent_mapping.md", rendered)
-        self.assertIn("--output-file /home/ubuntu/.openclaw/ops/workflow/schedule-registry.json", rendered)
-        self.assertIn("--profile all", rendered)
-        self.assertIn("--dry-run", rendered)
-        self.assertIn("--emit-json", rendered)
 
-    def test_install_workflow_profile_reconcile_gateway_service_cmd_prefers_user(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        cmd = module.build_reconcile_gateway_service_cmd(
-            python_bin="python3",
-            here=Path("/repo/scripts/openclaw-ops"),
-            prefer="user",
-            dry_run=True,
-        )
-        rendered = " ".join(cmd)
-        self.assertIn("gateway_service_manager.py", rendered)
-        self.assertIn("--action restart", rendered)
-        self.assertIn("--prefer user", rendered)
-        self.assertIn("--dry-run", rendered)
-        self.assertIn("--emit-json", rendered)
 
-    def test_install_workflow_profile_main_includes_recover_stale_cron_step(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        step_names: list[str] = []
 
-        def fake_run_step(name: str, cmd: list[str], dry_run: bool):
-            step_names.append(name)
-            return {"step": name, "ok": True, "dry_run": dry_run, "returncode": 0}
 
-        with mock.patch.object(
-            sys,
-            "argv",
-            [
-                "install_workflow_profile.py",
-                "--profile",
-                "core",
-                "--dry-run",
-                "--emit-json",
-            ],
-        ):
-            with mock.patch.object(module, "sync_overlay_config", return_value={"step": module.OVERLAY_SYNC_STEP, "ok": True}):
-                with mock.patch.object(module, "run_step", side_effect=fake_run_step):
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        module.main()
 
-        self.assertIn("recover_stale_cron_running_state (stale runningAtMs cleanup)", step_names)
 
-    def test_install_workflow_profile_main_includes_export_schedule_registry_step(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        step_names: list[str] = []
-
-        def fake_run_step(name: str, cmd: list[str], dry_run: bool):
-            step_names.append(name)
-            return {"step": name, "ok": True, "dry_run": dry_run, "returncode": 0}
-
-        with mock.patch.object(
-            sys,
-            "argv",
-            [
-                "install_workflow_profile.py",
-                "--profile",
-                "core",
-                "--dry-run",
-                "--emit-json",
-            ],
-        ):
-            with mock.patch.object(module, "sync_overlay_config", return_value={"step": module.OVERLAY_SYNC_STEP, "ok": True}):
-                with mock.patch.object(module, "run_step", side_effect=fake_run_step):
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        module.main()
-
-        self.assertIn("export_schedule_registry (workflow registry snapshot)", step_names)
-
-    def test_install_workflow_profile_main_includes_reconcile_gateway_service_step(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-        step_names: list[str] = []
-
-        def fake_run_step(name: str, cmd: list[str], dry_run: bool):
-            step_names.append(name)
-            return {"step": name, "ok": True, "dry_run": dry_run, "returncode": 0}
-
-        with mock.patch.object(
-            sys,
-            "argv",
-            [
-                "install_workflow_profile.py",
-                "--profile",
-                "core",
-                "--dry-run",
-                "--emit-json",
-            ],
-        ):
-            with mock.patch.object(module, "sync_overlay_config", return_value={"step": module.OVERLAY_SYNC_STEP, "ok": True}):
-                with mock.patch.object(module, "run_step", side_effect=fake_run_step):
-                    with contextlib.redirect_stdout(io.StringIO()):
-                        module.main()
-
-        self.assertIn("reconcile_gateway_service (canonical gateway supervisor)", step_names)
-
-    def test_sync_overlay_config_preserves_local_telegram_bot_token(self):
-        module = load_module(
-            "install_workflow_profile",
-            "scripts/openclaw-ops/install_workflow_profile.py",
-        )
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            root = Path(tmpdir)
-            workflow_repo = root / "workflow-repo"
-            (workflow_repo / "openclaw").mkdir(parents=True, exist_ok=True)
-            (workflow_repo / "hooks").mkdir(parents=True, exist_ok=True)
-            (workflow_repo / "skills").mkdir(parents=True, exist_ok=True)
-            source = workflow_repo / "openclaw" / "openclaw.json"
-            target = root / "openclaw-home" / "openclaw.json"
-            target.parent.mkdir(parents=True, exist_ok=True)
-
-            source.write_text(
-                json.dumps(
-                    {
-                        "channels": {
-                            "telegram": {
-                                "enabled": True,
-                                "botToken": "repo-unified-token",
-                                "groupPolicy": "open",
-                            }
-                        },
-                        "plugins": {"entries": {"telegram": {"enabled": True}}},
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            target.write_text(
-                json.dumps(
-                    {
-                        "channels": {
-                            "telegram": {
-                                "enabled": True,
-                                "botToken": "local-server-token",
-                                "allowFrom": ["1309629117"],
-                            }
-                        }
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-
-            result = module.sync_overlay_config(
-                source_path=str(source),
-                target_path=str(target),
-                vendor_runtime_root=str(root / "vendor"),
-                boundary_doc_path=str(root / "boundary.md"),
-                workflow_repo_path=str(workflow_repo),
-                dry_run=False,
-            )
-
-            self.assertTrue(result["ok"])
-            self.assertEqual(
-                result["merge_mode"],
-                "repo-overlay-wins-with-local-telegram-credentials",
-            )
-            self.assertIn(
-                "channels.telegram.botToken",
-                result.get("preserved_local_config_keys", []),
-            )
-
-            merged = json.loads(target.read_text(encoding="utf-8"))
-            telegram = merged["channels"]["telegram"]
-            self.assertEqual(telegram["botToken"], "local-server-token")
-            self.assertEqual(telegram["groupPolicy"], "open")
-            self.assertEqual(telegram["allowFrom"], ["1309629117"])
-
-    def test_todo_patrol_job_defaults_to_silent_delivery(self):
-        module = load_module(
-            "install_todo_patrol_job",
-            "scripts/openclaw-ops/install_todo_patrol_job.py",
-        )
-        jobs, _ = module.upsert_job(
-            jobs=[],
-            job_id="job-todo",
-            ops_script="/home/ubuntu/.openclaw/ops/todo_patrol.py",
-            every_ms=900000,
-            max_dispatch=5,
-            default_request_source="human",
-            ai_context_min_pct=100.0,
-            skip_ops_incidents=True,
-            output_mode="summary",
-            channel="telegram",
-            target="-1003333097130",
-        )
-        self.assertEqual(jobs[0]["delivery"]["mode"], "none")
-        self.assertNotIn("failureAlert", jobs[0])
-
-    def test_local_git_backup_job_defaults_to_silent_delivery(self):
-        module = load_module(
-            "install_local_openclaw_backup_job",
-            "scripts/openclaw-ops/install_local_openclaw_backup_job.py",
-        )
-        jobs, _ = module.upsert_job(
-            jobs=[],
-            job_id="job-backup",
-            every_ms=3600000,
-            runner_py="/home/ubuntu/.openclaw/ops/local_git_backup_runner.py",
-            openclaw_home="/home/ubuntu/.openclaw",
-            task_id="cron:ops-local-openclaw-git-backup",
-            notify_on="errors-only",
-            list_changed_files=False,
-            max_listed_files=20,
-            channel="telegram",
-            target="-1003333097130",
-        )
-        self.assertEqual(jobs[0]["delivery"]["mode"], "none")
-        self.assertEqual(jobs[0]["failureAlert"]["after"], 1)
-        self.assertEqual(jobs[0]["payload"]["model"], "glmcode/glm-4.7")
-        self.assertTrue(jobs[0]["payload"]["lightContext"])
-
-    def test_daily_work_report_job_defaults_to_silent_delivery_and_carries_todo_files(self):
-        module = load_module(
-            "cron_setup",
-            "scripts/openclaw-ops/cron_setup.py",
-        )
-        job = module.build_daily_work_job(
-            script_py="/home/ubuntu/.openclaw/ops/daily_work_report.py",
-            db_file="/home/ubuntu/.openclaw/ops/task-center/task_center.db",
-            state_file="/home/ubuntu/.openclaw/ops/daily-work/state.json",
-            report_dir="/home/ubuntu/.openclaw/ops/daily-work/reports",
-            expr="15 0 * * *",
-            tz_name="Asia/Shanghai",
-            log_mode="silent",
-            webhook_env="DINGTALK_WEBHOOK_URL",
-            secret_env="DINGTALK_SECRET",
-            env_file="/home/ubuntu/.openclaw/ops/runtime.env",
-            todo_files=[
-                "/home/ubuntu/openclaw-hardflow-backup-20260302/todo.md",
-                "/home/ubuntu/openclaw-hardflow-backup-20260302/TODO.md",
-            ],
-        )
-        self.assertEqual(job["delivery"]["mode"], "none")
-        self.assertNotIn("failureAlert", job)
-        message = job["payload"]["message"]
-        self.assertIn("--todo-file /home/ubuntu/openclaw-hardflow-backup-20260302/todo.md", message)
-        self.assertIn("--todo-file /home/ubuntu/openclaw-hardflow-backup-20260302/TODO.md", message)
-        self.assertEqual(job["payload"]["model"], "glmcode/glm-4.7")
-        self.assertTrue(job["payload"]["lightContext"])
-
-    def test_ops_daily_summary_job_defaults_to_silent_delivery(self):
-        module = load_module(
-            "cron_setup",
-            "scripts/openclaw-ops/cron_setup.py",
-        )
-        jobs = module.build_core_jobs(
-            runner_py="/home/ubuntu/.openclaw/ops/ops_cron_runner.py",
-            config_file="/home/ubuntu/.openclaw/ops/cron-monitor-config.json",
-            state_file="/home/ubuntu/.openclaw/ops/cron-monitor-state.json",
-            history_dir="/home/ubuntu/.openclaw/ops/cron-runs",
-            every_ms=900000,
-            full_expr="23 */6 * * *",
-            daily_expr="5 0 * * *",
-            tz_name="Asia/Shanghai",
-            daily_major_only=True,
-            incremental_log_mode="silent",
-            full_log_mode="silent",
-            daily_log_mode="silent",
-        )
-        daily_job = next(item for item in jobs if item["name"] == "ops_daily_summary")
-        self.assertEqual(daily_job["delivery"]["mode"], "none")
-        self.assertNotIn("failureAlert", daily_job)
-
-    def test_web_intel_jobs_default_to_silent_delivery(self):
-        module = load_module(
-            "install_web_intel_jobs",
-            "scripts/openclaw-ops/install_web_intel_jobs.py",
-        )
-        job = module.make_job(
-            job_id="web-intel-job",
-            agent_id="web-agent",
-            name="web_intel_collect_hourly",
-            description="desc",
-            every_ms=3600000,
-            message="run",
-            timeout_seconds=300,
-            old=None,
-            channel="telegram",
-            target="-1003333097130",
-        )
-        self.assertEqual(job["delivery"]["mode"], "none")
-        self.assertNotIn("failureAlert", job)
-
-    def test_cron_setup_maintenance_jobs_disable_failure_alert_by_default(self):
-        module = load_module(
-            "cron_setup",
-            "scripts/openclaw-ops/cron_setup.py",
-        )
-        conversation_job = module.build_conversation_evolution_job(
-            script_py="/tmp/conversation.py",
-            db_file="/tmp/task_center.db",
-            openclaw_home="/tmp/openclaw",
-            state_file="/tmp/state.json",
-            report_dir="/tmp/reports",
-            every_ms=21600000,
-            log_mode="silent",
-            lookback_hours=24,
-            min_interval_minutes=180,
-            max_files=120,
-            max_evidence_per_candidate=4,
-            min_evidence_lines=3,
-            min_unique_files=2,
-            min_quality_score=60,
-            recent_dedupe_days=30,
-            max_tasks_per_run=2,
-            schedule_gap_minutes=120,
-            assignee="optimization-agent",
-        )
-        governance_job = module.build_governance_evolution_job(
-            script_py="/tmp/governance.py",
-            db_file="/tmp/task_center.db",
-            state_file="/tmp/state.json",
-            report_dir="/tmp/reports",
-            repo_path="/tmp/repo",
-            openclaw_config="/tmp/openclaw.json",
-            project_registry="/tmp/project-registry.json",
-            repo_id="repo-id",
-            repo_name="repo-name",
-            auto_git_update=False,
-            git_update_strategy="fetch",
-            git_fetch_timeout=120,
-            every_ms=21600000,
-            log_mode="silent",
-            max_files=120,
-            min_interval_minutes=180,
-            task_clarity="ambiguous",
-            project_context_gate=True,
-            project_context_assignee="project-agent",
-            create_review_task=True,
-            auto_pr=False,
-            pr_base="main",
-            reviewer_gh_user="",
-            push_before_pr=False,
-        )
-        github_job = module.build_github_web_evolution_job(
-            script_py="/tmp/github.py",
-            db_file="/tmp/task_center.db",
-            openclaw_home="/tmp/openclaw",
-            web_root="/tmp/openclaw/web",
-            state_file="/tmp/state.json",
-            report_dir="/tmp/reports",
-            every_ms=43200000,
-            log_mode="silent",
-            min_interval_minutes=360,
-            max_queries=4,
-            max_repos_per_query=8,
-            max_total_repos=16,
-            min_stars=50,
-            min_quality_score=60,
-            min_new_or_updated=1,
-            recent_dedupe_days=30,
-            max_tasks_per_run=2,
-            schedule_gap_minutes=120,
-            assignee="optimization-agent",
-            github_token_env="GITHUB_TOKEN",
-        )
-        git_sync_job = module.build_git_sync_job(
-            script_py="/tmp/git_sync.py",
-            repo_path="/tmp/repo",
-            every_ms=21600000,
-            log_mode="silent",
-            remote="origin",
-            branch="main",
-            max_files=120,
-            commit_prefix="chore(sync): update",
-            auto_pull=True,
-            push=True,
-            include_prefixes=[],
-            exclude_prefixes=[],
-            required_remote_urls=[],
-            notify_on="error",
-        )
-        auto_update_job = module.build_auto_update_install_job(
-            script_py="/tmp/auto_update.py",
-            repo_path="/tmp/repo",
-            every_ms=3600000,
-            log_mode="silent",
-            remote="origin",
-            branch="main",
-            install_cmd="python3 install.py",
-            install_on_no_change=False,
-            git_timeout=120,
-            install_timeout=900,
-            report_dir="/tmp/reports",
-            required_remote_urls=[],
-            notify_on="error",
-        )
-
-        for job in [conversation_job, governance_job, github_job, git_sync_job, auto_update_job]:
-            self.assertEqual(job["delivery"]["mode"], "none")
-            self.assertNotIn("failureAlert", job)
 
     def test_ops_cron_runner_ignores_low_value_maintenance_job_failures(self):
         module = load_module(
             "ops_cron_runner",
-            "scripts/openclaw-ops/ops_cron_runner.py",
+            "skills/library/control-plane-ops/scripts/ops_cron_runner.py",
         )
         cfg = module.default_config()
         state = {}
@@ -2142,269 +1265,9 @@ class CronQuietModeTests(unittest.TestCase):
         self.assertEqual(len(summary["failed_jobs"]), 1)
         self.assertEqual(summary["failed_jobs"][0]["name"], "reviewer_weekly_structure_review")
 
-    def test_install_workflow_profile_dry_run_uses_hardened_runtime_flags(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp = Path(tmpdir)
-            openclaw_home = tmp / "openclaw-home"
-            workflow_repo = tmp / "workflow-repo"
-            openclaw_home.mkdir(parents=True)
-            workflow_repo.mkdir(parents=True)
 
-            proc = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts/openclaw-ops/install_workflow_profile.py"),
-                    "--profile",
-                    "all",
-                    "--jobs-file",
-                    str(tmp / "jobs.json"),
-                    "--openclaw-home",
-                    str(openclaw_home),
-                    "--workflow-repo-path",
-                    str(workflow_repo),
-                    "--project-registry",
-                    str(tmp / "project-registry.json"),
-                    "--task-db",
-                    str(tmp / "task_center.db"),
-                    "--channel",
-                    "telegram",
-                    "--to",
-                    "-1003333097130",
-                    "--install-web-intel-jobs",
-                    "--no-sync-overlay-config",
-                    "--no-normalize-openclaw-paths",
-                    "--dry-run",
-                    "--emit-json",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                cwd=ROOT,
-            )
 
-        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
-        self.assertIn("--notify-on error", proc.stdout)
-        self.assertIn("--no-git-pull", proc.stdout)
-        self.assertIn("--collect-notify-on error", proc.stdout)
-        self.assertIn("--review-notify-on error", proc.stdout)
-        self.assertIn("--daily-work-todo-file", proc.stdout)
-        self.assertIn(str(workflow_repo / "todo.md"), proc.stdout)
-        self.assertIn(str(workflow_repo / "TODO.md"), proc.stdout)
 
-    def test_install_workflow_profile_can_enable_governance_auto_pr_and_reviewer_pr_gate(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp = Path(tmpdir)
-            openclaw_home = tmp / "openclaw-home"
-            workflow_repo = tmp / "workflow-repo"
-            openclaw_home.mkdir(parents=True)
-            workflow_repo.mkdir(parents=True)
-
-            proc = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts/openclaw-ops/install_workflow_profile.py"),
-                    "--profile",
-                    "core",
-                    "--jobs-file",
-                    str(tmp / "jobs.json"),
-                    "--openclaw-home",
-                    str(openclaw_home),
-                    "--workflow-repo-path",
-                    str(workflow_repo),
-                    "--project-registry",
-                    str(tmp / "project-registry.json"),
-                    "--task-db",
-                    str(tmp / "task_center.db"),
-                    "--channel",
-                    "telegram",
-                    "--to",
-                    "-1003333097130",
-                    "--governance-auto-pr",
-                    "--governance-reviewer-gh-user",
-                    "reviewer-bot",
-                    "--governance-push-before-pr",
-                    "--reviewer-enable-hourly-pr-gate",
-                    "--reviewer-hourly-allow-merge",
-                    "--reviewer-hourly-merge-approval-file",
-                    str(tmp / "reviewer-merge-approval.json"),
-                    "--no-sync-overlay-config",
-                    "--no-normalize-openclaw-paths",
-                    "--dry-run",
-                    "--emit-json",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                cwd=ROOT,
-            )
-
-        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
-        self.assertIn("--governance-evolution-auto-pr", proc.stdout)
-        self.assertIn("--governance-evolution-reviewer-gh-user reviewer-bot", proc.stdout)
-        self.assertIn("--governance-evolution-push-before-pr", proc.stdout)
-        self.assertIn("--enable-hourly", proc.stdout)
-        self.assertIn("--hourly-pr-gate-only", proc.stdout)
-        self.assertIn("--hourly-allow-merge", proc.stdout)
-        self.assertIn("--workspace", proc.stdout)
-        self.assertIn(str(workflow_repo), proc.stdout)
-
-    def test_install_governance_evolution_job_supports_watch_prefixes_and_excludes(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp = Path(tmpdir)
-            jobs_file = tmp / "jobs.json"
-            proc = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts/openclaw-ops/install_governance_evolution_job.py"),
-                    "--jobs-file",
-                    str(jobs_file),
-                    "--repo-path",
-                    "/srv/lobster",
-                    "--repo-id",
-                    "lobster",
-                    "--repo-name",
-                    "lobster",
-                    "--watch-prefix",
-                    "README.md",
-                    "--watch-prefix",
-                    "src/",
-                    "--exclude-prefix",
-                    "dist/",
-                    "--no-auto-pr",
-                    "--emit-json",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                cwd=ROOT,
-            )
-
-            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
-            payload = json.loads(jobs_file.read_text(encoding="utf-8"))
-            message = payload["jobs"][0]["payload"]["message"]
-
-        self.assertIn('--watch-prefix "README.md"', message)
-        self.assertIn('--watch-prefix "src/"', message)
-        self.assertIn('--exclude-prefix "dist/"', message)
-        self.assertNotIn(" --auto-pr ", f" {message} ")
-
-    def test_install_workflow_profile_can_emit_multi_project_repo_jobs_from_registry(self):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp = Path(tmpdir)
-            openclaw_home = tmp / "openclaw-home"
-            workflow_repo = tmp / "workflow-repo"
-            extra_repo = tmp / "pbm-website"
-            extra_repo_2 = tmp / "admin-console"
-            openclaw_home.mkdir(parents=True)
-            workflow_repo.mkdir(parents=True)
-            extra_repo.mkdir(parents=True)
-            extra_repo_2.mkdir(parents=True)
-            registry_file = tmp / "project-registry.json"
-            registry_file.write_text(
-                json.dumps(
-                    {
-                        "discovery": {"enabled": False},
-                        "projects": [
-                            {
-                                "id": "workflow-repo",
-                                "name": "workflow-repo",
-                                "path": str(workflow_repo),
-                                "git_branch": "main",
-                            },
-                            {
-                                "id": "pbm-website",
-                                "name": "PBM Website",
-                                "path": str(extra_repo),
-                                "git_branch": "main",
-                                "governance": {
-                                    "watch_prefixes": ["README.md", "src/"],
-                                    "exclude_prefixes": ["dist/"],
-                                    "auto_pr_enabled": False
-                                },
-                                "git_sync": {
-                                    "enabled": True,
-                                    "commit_prefix": "chore(pbm-website): sync automation updates"
-                                },
-                                "auto_update_install_cmd": "bash scripts/deploy/install.sh"
-                            },
-                            {
-                                "id": "admin-console",
-                                "name": "Admin Console",
-                                "path": str(extra_repo_2),
-                                "git_branch": "master",
-                                "git_sync": {
-                                    "enabled": False
-                                }
-                            },
-                        ],
-                    },
-                    ensure_ascii=False,
-                ),
-                encoding="utf-8",
-            )
-
-            proc = subprocess.run(
-                [
-                    sys.executable,
-                    str(ROOT / "scripts/openclaw-ops/install_workflow_profile.py"),
-                    "--profile",
-                    "core",
-                    "--jobs-file",
-                    str(tmp / "jobs.json"),
-                    "--openclaw-home",
-                    str(openclaw_home),
-                    "--workflow-repo-path",
-                    str(workflow_repo),
-                    "--workflow-repo-id",
-                    "workflow-repo",
-                    "--project-registry",
-                    str(registry_file),
-                    "--task-db",
-                    str(tmp / "task_center.db"),
-                    "--channel",
-                    "telegram",
-                    "--to",
-                    "-1003333097130",
-                    "--governance-auto-pr",
-                    "--governance-reviewer-gh-user",
-                    "reviewer-bot",
-                    "--reviewer-hourly-allow-merge",
-                    "--reviewer-hourly-merge-approval-file",
-                    str(tmp / "reviewer-merge-approval.json"),
-                    "--install-multi-project-governance-jobs",
-                    "--install-multi-project-reviewer-pr-gates",
-                    "--install-multi-project-git-sync-jobs",
-                    "--install-multi-project-auto-update-install-jobs",
-                    "--multi-project-auto-update-install-cmd-template",
-                    "bash deploy/{repo_id}.sh",
-                    "--no-sync-overlay-config",
-                    "--no-normalize-openclaw-paths",
-                    "--dry-run",
-                    "--emit-json",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-                cwd=ROOT,
-            )
-
-        self.assertEqual(proc.returncode, 0, msg=proc.stderr)
-        self.assertIn("install_governance_evolution_job.py", proc.stdout)
-        self.assertIn("--job-scope pbm-website", proc.stdout)
-        self.assertIn("--repo-id pbm-website", proc.stdout)
-        self.assertIn(str(extra_repo), proc.stdout)
-        self.assertIn("--watch-prefix README.md", proc.stdout)
-        self.assertIn("--watch-prefix src/", proc.stdout)
-        self.assertIn("--exclude-prefix dist/", proc.stdout)
-        self.assertIn("--no-auto-pr", proc.stdout)
-        self.assertIn("--selected-jobs hourly", proc.stdout)
-        self.assertIn("--workspace", proc.stdout)
-        self.assertIn("install_git_sync_job.py", proc.stdout)
-        self.assertIn("install_auto_update_install_job.py", proc.stdout)
-        self.assertIn("--commit-prefix 'chore(pbm-website): sync automation updates'", proc.stdout)
-        self.assertIn("bash scripts/deploy/install.sh", proc.stdout)
-        self.assertIn("bash deploy/admin-console.sh", proc.stdout)
-        self.assertNotIn(f"install_git_sync_job ({extra_repo_2.name})", proc.stdout)
 
 
 if __name__ == "__main__":

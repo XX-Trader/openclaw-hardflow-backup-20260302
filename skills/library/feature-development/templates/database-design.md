@@ -11,16 +11,16 @@
 
 | 表名 | 说明 | 操作 |
 |------|------|------|
-| pm_trader_group | 交易员分组表 | 新增 |
-| pm_trader_group_member | 交易员分组关联表 | 新增 |
+| pm_member_group | 成员分组表 | 新增 |
+| pm_member_group_member | 成员分组关联表 | 新增 |
 
 ---
 
 ## 2. 表结构详细设计
 
-### 2.1 pm_trader_group（交易员分组表）
+### 2.1 pm_member_group（成员分组表）
 
-**表说明**: 存储交易员分组的基础信息
+**表说明**: 存储成员分组的基础信息
 
 **字段列表**:
 
@@ -48,7 +48,7 @@
 
 **Django Model 定义**:
 ```python
-class PMTraderGroup(models.Model):
+class PMMemberGroup(models.Model):
     id = models.BigAutoField(primary_key=True)
     user = models.ForeignKey(
         'user.User',
@@ -79,7 +79,7 @@ class PMTraderGroup(models.Model):
     )
 
     class Meta:
-        db_table = 'pm_trader_group'
+        db_table = 'pm_member_group'
         indexes = [
             models.Index(fields=['user_id']),
             models.Index(fields=['user_id', 'is_deleted']),
@@ -89,17 +89,17 @@ class PMTraderGroup(models.Model):
 
 ---
 
-### 2.2 pm_trader_group_member（交易员分组关联表）
+### 2.2 pm_member_group_member（成员分组关联表）
 
-**表说明**: 存储交易员和分组的多对多关系
+**表说明**: 存储成员和分组的多对多关系
 
 **字段列表**:
 
 | 字段名 | 类型 | 长度 | 允许NULL | 默认值 | 约束 | 索引 | 说明 |
 |--------|------|------|----------|--------|------|------|------|
 | id | BIGINT | - | ❌ | AUTO | PK | ✅ 主键 | 主键ID |
-| group_id | BIGINT | - | ❌ | - | FK | ✅ 普通索引 | 分组ID，关联pm_trader_group.id |
-| trader_id | BIGINT | - | ❌ | - | - | ✅ 普通索引 | 交易员ID（关联交易员表的ID字段） |
+| group_id | BIGINT | - | ❌ | - | FK | ✅ 普通索引 | 分组ID，关联pm_member_group.id |
+| member_id | BIGINT | - | ❌ | - | - | ✅ 普通索引 | 成员ID（关联成员表的ID字段） |
 | joined_at | DATETIME | - | ❌ | NOW | - | - | 加入时间 |
 
 **索引设计**:
@@ -107,27 +107,27 @@ class PMTraderGroup(models.Model):
 | 索引名 | 字段 | 类型 | 说明 |
 |--------|------|------|------|
 | PRIMARY | id | PRIMARY | 主键索引 |
-| idx_group_id | group_id | INDEX | 分组ID索引，加速查询分组下的交易员 |
-| idx_trader_id | trader_id | INDEX | 交易员ID索引，加速查询交易员所属分组 |
-| unique_group_trader | group_id, trader_id | UNIQUE | 唯一索引，防止重复添加 |
+| idx_group_id | group_id | INDEX | 分组ID索引，加速查询分组下的成员 |
+| idx_member_id | member_id | INDEX | 成员ID索引，加速查询成员所属分组 |
+| unique_group_member | group_id, member_id | UNIQUE | 唯一索引，防止重复添加 |
 
 **约束说明**:
-- `(group_id, trader_id)` 联合唯一，防止一个交易员重复加入同一分组
-- `group_id` 外键关联 `pm_trader_group.id`，级联删除（删除分组时自动删除关联记录）
-- `trader_id` 为逻辑外键，关联交易员表（不设置物理外键，提升性能）
+- `(group_id, member_id)` 联合唯一，防止一个成员重复加入同一分组
+- `group_id` 外键关联 `pm_member_group.id`，级联删除（删除分组时自动删除关联记录）
+- `member_id` 为逻辑外键，关联成员表（不设置物理外键，提升性能）
 
 **Django Model 定义**:
 ```python
-class PMTraderGroupMember(models.Model):
+class PMMemberGroupMember(models.Model):
     id = models.BigAutoField(primary_key=True)
     group = models.ForeignKey(
-        PMTraderGroup,
+        PMMemberGroup,
         on_delete=models.CASCADE,
         db_column='group_id',
         verbose_name='所属分组'
     )
-    trader_id = models.BigIntegerField(
-        verbose_name='交易员ID'
+    member_id = models.BigIntegerField(
+        verbose_name='成员ID'
     )
     joined_at = models.DateTimeField(
         auto_now_add=True,
@@ -135,12 +135,12 @@ class PMTraderGroupMember(models.Model):
     )
 
     class Meta:
-        db_table = 'pm_trader_group_member'
+        db_table = 'pm_member_group_member'
         indexes = [
             models.Index(fields=['group_id']),
-            models.Index(fields=['trader_id']),
+            models.Index(fields=['member_id']),
         ]
-        unique_together = [['group', 'trader_id']]
+        unique_together = [['group', 'member_id']]
 ```
 
 ---
@@ -156,7 +156,7 @@ class PMTraderGroupMember(models.Model):
          │
          │ N
 ┌────────▼────────┐
-│pm_trader_group  │
+│pm_member_group  │
 │  (分组表)        │
 ├─────────────────┤
 │ id (PK)         │◄──────┐
@@ -171,21 +171,21 @@ class PMTraderGroupMember(models.Model):
          │                │
          │ N              │
 ┌────────▼────────┐       │
-│pm_trader_group_ │       │
+│pm_member_group_ │       │
 │    member       │       │
 │  (关联表)        │───────┘
 ├─────────────────┤
 │ id (PK)         │
 │ group_id (FK)   │
-│ trader_id       │
+│ member_id       │
 │ joined_at       │
 └─────────────────┘
 ```
 
 **关系说明**:
 - 一个用户可以有多个分组 (1:N)
-- 一个分组可以包含多个交易员 (1:N，通过关联表实现)
-- 一个交易员只能属于一个分组（业务层控制）
+- 一个分组可以包含多个成员 (1:N，通过关联表实现)
+- 一个成员只能属于一个分组（业务层控制）
 
 ---
 
@@ -197,7 +197,7 @@ class PMTraderGroupMember(models.Model):
 
 ```sql
 -- 创建分组表
-CREATE TABLE `pm_trader_group` (
+CREATE TABLE `pm_member_group` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `user_id` BIGINT NOT NULL COMMENT '所属用户ID',
   `group_name` VARCHAR(100) NOT NULL COMMENT '分组名称',
@@ -209,19 +209,19 @@ CREATE TABLE `pm_trader_group` (
   INDEX `idx_user_id` (`user_id`),
   INDEX `idx_user_deleted` (`user_id`, `is_deleted`),
   UNIQUE KEY `unique_user_group` (`user_id`, `group_name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交易员分组表';
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='成员分组表';
 
 -- 创建关联表
-CREATE TABLE `pm_trader_group_member` (
+CREATE TABLE `pm_member_group_member` (
   `id` BIGINT NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `group_id` BIGINT NOT NULL COMMENT '分组ID',
-  `trader_id` BIGINT NOT NULL COMMENT '交易员ID',
+  `member_id` BIGINT NOT NULL COMMENT '成员ID',
   `joined_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '加入时间',
   PRIMARY KEY (`id`),
   INDEX `idx_group_id` (`group_id`),
-  INDEX `idx_trader_id` (`trader_id`),
-  UNIQUE KEY `unique_group_trader` (`group_id`, `trader_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='交易员分组关联表';
+  INDEX `idx_member_id` (`member_id`),
+  UNIQUE KEY `unique_group_member` (`group_id`, `member_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='成员分组关联表';
 ```
 
 ### 4.2 Django迁移命令

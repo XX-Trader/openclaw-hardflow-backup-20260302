@@ -50,10 +50,10 @@
 ## 验证
 
 ```bash
-python scripts/openclaw-ops/policy/policy_enforcer.py next-todo --limit 3
-python scripts/openclaw-ops/policy/policy_enforcer.py report-agent-result --help
-python scripts/openclaw-ops/policy/project_index_maintainer.py --help
-python scripts/openclaw-ops/policy/task_executor_runner.py --help
+python skills/library/control-plane-ops/scripts/policy/policy_enforcer.py next-todo --limit 3
+python skills/library/control-plane-ops/scripts/policy/policy_enforcer.py report-agent-result --help
+python skills/library/control-plane-ops/scripts/policy/project_index_maintainer.py --help
+python skills/library/control-plane-ops/scripts/policy/task_executor_runner.py --help
 ```
 
 预期：

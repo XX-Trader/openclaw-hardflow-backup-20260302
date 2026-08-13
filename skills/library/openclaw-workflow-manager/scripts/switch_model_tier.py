@@ -17,6 +17,19 @@ POLICY_DIR = SCRIPT_DIR / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
 
+# Source checkouts keep shared policy helpers under their owning Skill, while
+# installed runtimes flatten them into one ops directory.
+for _candidate_root in Path(__file__).resolve().parents:
+    _shared_dir = _candidate_root / "scripts" / "openclaw-ops" / "shared"
+    if _shared_dir.is_dir():
+        _shared_value = str(_shared_dir)
+        if _shared_value not in sys.path:
+            sys.path.insert(0, _shared_value)
+        from repo_imports import bootstrap_repository_imports
+
+        bootstrap_repository_imports(__file__)
+        break
+
 from io_write_gateway import atomic_write_text, write_json_atomic
 
 REPO_ROOT = SCRIPT_DIR.parent.parent

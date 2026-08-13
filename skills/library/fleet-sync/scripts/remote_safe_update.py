@@ -11,19 +11,14 @@ from pathlib import Path
 from typing import Iterable
 
 
-DEFAULT_AUTO_EXCLUDE_SERVERS = {"google-us"}
-DEFAULT_REPO_CANDIDATES = (
-    "~/openclaw-hardflow-backup-20260302",
-    "~/projects/openclaw-hardflow-backup-20260302",
-)
+DEFAULT_AUTO_EXCLUDE_SERVERS: set[str] = set()
+DEFAULT_REPO_CANDIDATES = ("~/workflow-infra", "~/projects/workflow-infra")
 DEFAULT_VOLATILE_PREFIXES = (
     ".workflow/project-index/",
     ".workflow/project-index-local/",
     ".workflow/experience/",
     ".workflow/sessions/",
-    "scripts/openclaw-ops/policy/runtime/",
-    "openclaw-memory/",
-    "memory/",
+    "skills/library/control-plane-ops/scripts/policy/runtime/",
 )
 DEFAULT_STRATEGY = "runtime-reset"
 CONFLICT_STRATEGIES = ("runtime-reset", "stash-nonvolatile", "snapshot-branch")
@@ -32,9 +27,7 @@ CONFLICT_STRATEGIES = ("runtime-reset", "stash-nonvolatile", "snapshot-branch")
 def detect_default_ssh_config() -> str:
     candidates = [
         os.environ.get("SSH_CONFIG", ""),
-        "D:/ssh_keys/ssh_config",
-        "/d/ssh_keys/ssh_config",
-        "/mnt/d/ssh_keys/ssh_config",
+        str(Path.home() / ".ssh" / "config"),
     ]
     for candidate in candidates:
         if candidate and Path(candidate).exists():
@@ -622,7 +615,8 @@ def main() -> int:
     if str(args.repo_path or "").strip():
         repo_candidates = [str(args.repo_path).strip()]
     else:
-        repo_candidates = list(args.repo_candidates or DEFAULT_REPO_CANDIDATES)
+        configured_repo = os.environ.get("HARDFLOW_REMOTE_WORKFLOW_REPO", "").strip()
+        repo_candidates = list(args.repo_candidates or ([configured_repo] if configured_repo else DEFAULT_REPO_CANDIDATES))
     volatile_prefixes = list(args.volatile_prefixes or DEFAULT_VOLATILE_PREFIXES)
 
     remote_script = build_remote_script(

@@ -2,7 +2,7 @@
 
 ## 背景与原因
 
-线上 6 台非 `google-us` 服务器的 cron 对话历史里，多个 `agentTurn` command-runner 任务把模型的自然语言废话直接投递到了聊天通道，而不是投递真实命令输出或 `NO_REPLY`。
+线上 6 台非 `HOST_F` 服务器的 cron 对话历史里，多个 `agentTurn` command-runner 任务把模型的自然语言废话直接投递到了聊天通道，而不是投递真实命令输出或 `NO_REPLY`。
 
 已确认的典型误发包括：
 

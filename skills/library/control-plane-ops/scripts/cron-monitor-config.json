@@ -1,10 +1,10 @@
 {
   "schema_version": "2026-03-02",
   "log_roots": [
-    "C:\\Users\\superma\\.openclaw\\workspace-ops-agent\\ops",
-    "C:\\Users\\superma\\.openclaw\\workspace-ops-agent\\ops\\logs",
-    "C:\\Users\\superma\\.openclaw\\workflows",
-    "C:\\Users\\superma\\.openclaw\\logs"
+    "~/.openclaw/workspace-ops-agent/ops",
+    "~/.openclaw/workspace-ops-agent/ops/logs",
+    "~/.openclaw/workflows",
+    "~/.openclaw/logs"
   ],
   "log_patterns": [
     "*.log",
@@ -46,7 +46,7 @@
   },
   "runtime_monitor": {
     "enabled": true,
-    "project_registry": "C:\\Users\\superma\\.openclaw\\ops\\task-center\\project-registry.json",
+    "project_registry": "~/.openclaw/ops/task-center/project-registry.json",
     "max_projects": 24,
     "max_items_per_project": 12,
     "process_timeout_seconds": 15,
@@ -55,7 +55,7 @@
   "system_monitor": {
     "enabled": true,
     "disk_paths": [
-      "C:\\"
+      "~"
     ],
     "disk_warn_percent": 85.0,
     "memory_warn_percent": 90.0,
@@ -68,23 +68,13 @@
     "paths": [
       {
         "name": "openclaw_home",
-        "path": "C:\\Users\\superma\\.openclaw",
+        "path": "~/.openclaw",
         "warn_gb": 8.0
       },
       {
-        "name": "openclaw_workflow_repo",
-        "path": "C:\\Users\\superma\\openclaw-hardflow-backup-20260302",
+        "name": "workflow_repo",
+        "path": "~/workflow-infra",
         "warn_gb": 5.0
-      },
-      {
-        "name": "market_center",
-        "path": "C:\\Users\\superma\\DabaiMarketCenter",
-        "warn_gb": 20.0
-      },
-      {
-        "name": "subscription_website",
-        "path": "C:\\Users\\superma\\Dabai-Polymarket-Subscription-Website",
-        "warn_gb": 10.0
       }
     ],
     "top_n": 5,
@@ -99,7 +89,7 @@
   },
   "workflow_monitor": {
     "enabled": true,
-    "jobs_file": "C:\\Users\\superma\\.openclaw\\cron\\jobs.json",
+    "jobs_file": "~/.openclaw/cron/jobs.json",
     "max_report_jobs": 8,
     "stale_error_minutes": 30,
     "ignore_job_names": [
@@ -119,9 +109,9 @@
   },
   "token_monitor": {
     "enabled": true,
-    "task_center_db": "C:\\Users\\superma\\.openclaw\\ops\\task-center\\task_center.db",
-    "cron_runs_dir": "C:\\Users\\superma\\.openclaw\\cron\\runs",
-    "jobs_file": "C:\\Users\\superma\\.openclaw\\cron\\jobs.json",
+    "task_center_db": "~/.openclaw/ops/task-center/task_center.db",
+    "cron_runs_dir": "~/.openclaw/cron/runs",
+    "jobs_file": "~/.openclaw/cron/jobs.json",
     "window_hours": 24,
     "top_agents": 5
   },
@@ -180,8 +170,8 @@
   "incident_handoff": {
     "enabled": true,
     "mode": "todo_only",
-    "todo_file": "C:\\Users\\superma\\.openclaw\\workspace-coordinator\\TODO.md",
-    "routing_file": "C:\\Users\\superma\\.openclaw\\ops\\policy\\routing-rules.json",
+    "todo_file": "~/.openclaw/workspace-coordinator/TODO.md",
+    "routing_file": "~/.openclaw/ops/policy/routing-rules.json",
     "source": "ops-cron-runner",
     "default_assignee": "coordinator",
     "max_handoff_per_run": 6,
@@ -192,7 +182,7 @@
   },
   "workflow_follow_up": {
     "enabled": true,
-    "task_center_db": "C:\\Users\\superma\\.openclaw\\ops\\task-center\\task_center.db",
+    "task_center_db": "~/.openclaw/ops/task-center/task_center.db",
     "task_type": "ops_workflow_repair",
     "source": "ops-agent/ops-cron-runner",
     "default_assignee": "ops-agent",

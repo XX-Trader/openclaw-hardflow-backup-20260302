@@ -24,7 +24,6 @@ import sqlite3
 import subprocess
 import sys
 import uuid
-from dataclass_compat import compat_dataclass as dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -35,6 +34,22 @@ ROOT = Path(__file__).resolve().parent
 POLICY_DIR = ROOT / "policy"
 if str(POLICY_DIR) not in sys.path:
     sys.path.insert(0, str(POLICY_DIR))
+
+# Source checkouts keep each script under its owning Skill; installed runtimes
+# flatten the same dependencies into the ops directory. Bootstrap only when
+# the repository marker is present so both layouts share one implementation.
+for _candidate_root in Path(__file__).resolve().parents:
+    _shared_dir = _candidate_root / "scripts" / "openclaw-ops" / "shared"
+    if _shared_dir.is_dir():
+        _shared_value = str(_shared_dir)
+        if _shared_value not in sys.path:
+            sys.path.insert(0, _shared_value)
+        from repo_imports import bootstrap_repository_imports
+
+        bootstrap_repository_imports(__file__)
+        break
+
+from dataclass_compat import compat_dataclass as dataclass
 from utf8_runtime import configure_process_utf8_stdio
 from task_capability_binding import build_task_constraint_fields  # type: ignore
 try:

@@ -1,55 +1,22 @@
 ---
 name: task-cost-analytics
-description: >
-  任务成本统计技能。用于统计 Token 消耗、分析任务执行成本、
-  生成成本报告。当需要了解 LLM 调用成本或优化 Token 使用时使用。
-metadata: {"openclaw": {"requires": {"bins": ["python3"]}, "os": ["linux"]}}
+description: 任务运行与输出统计技能，用于聚合 Task Center 状态、失败原因、执行指标和增量广播。
+metadata: {"openclaw": {"requires": {"bins": ["python3"]}}}
 ---
 
-# 任务成本统计操作手册
+# 任务运行与输出统计
 
-## 适用场景
+## Owner
 
-- 统计指定时间范围内的 Token 消耗
-- 分析各 Agent 的成本占比
-- 识别高成本任务和优化机会
-- 生成成本报告
+- `scripts/daily_work_report.py`
+- `scripts/task_output_consumer.py`
+- `scripts/task_output_broadcast_runner.py`
 
-## 操作流程
+## 流程
 
-### 1. 查看成本概览
+1. 从 Task Center 和结构化运行产物读取数据。
+2. 按时间窗、任务状态和可见性聚合。
+3. 对相同输出使用稳定去重键。
+4. 仅发送新增或变化的可见结果。
 
-```bash
-# 查看今日成本
-python3 ~/scripts/openclaw-ops/cost_analytics.py --today
-
-# 查看本周成本
-python3 ~/scripts/openclaw-ops/cost_analytics.py --week
-```
-
-### 2. Agent 成本分析
-
-```bash
-python3 ~/scripts/openclaw-ops/cost_analytics.py --by-agent
-```
-
-### 3. 任务类型分析
-
-```bash
-python3 ~/scripts/openclaw-ops/cost_analytics.py --by-task-type
-```
-
-## 成本维度
-
-| 维度 | 指标 | 说明 |
-|------|------|------|
-| Token 总量 | input_tokens + output_tokens | 请求+响应 |
-| 按 Agent | 各 Agent 的 Token 消耗占比 | 识别高消耗 Agent |
-| 按任务类型 | coding/review/ops/evolution | 识别高消耗场景 |
-| 按模型 | gpt-5.4 vs glm-4.7 等 | 模型成本对比 |
-
-## 约束
-
-- 数据来源：任务执行日志和 Gateway 统计
-- 报告格式：Markdown 或 JSON
-- 不直接修改模型配置，只提供分析建议
+先对 `--help` 和临时任务库执行 smoke，再接入 Runtime 调度。输出隐藏凭证、内部绝对路径和原始会话内容。

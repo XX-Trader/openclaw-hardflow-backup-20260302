@@ -52,7 +52,7 @@
 
 - `openclaw/openclaw.json`
 - `scripts/openclaw-ops/install_workflow_profile.py`
-- `scripts/openclaw-ops/policy/task_executor_runner.py`
+- `skills/library/control-plane-ops/scripts/policy/task_executor_runner.py`
 
 ### 调度层真值
 
@@ -236,7 +236,7 @@
 
 建议改造：
 
-- `scripts/openclaw-ops/policy/task_executor_runner.py`
+- `skills/library/control-plane-ops/scripts/policy/task_executor_runner.py`
 
 preflight 首阶段只做告警，不中断执行：
 
@@ -265,9 +265,9 @@ preflight 首阶段只做告警，不中断执行：
 
 优先改造脚本：
 
-- `scripts/openclaw-ops/ops_cron_runner.py`
-- `scripts/openclaw-ops/web_intel_collect_runner.py`
-- `scripts/openclaw-ops/web_intel_review_runner.py`
+- `skills/library/control-plane-ops/scripts/ops_cron_runner.py`
+- `skills/library/web-intelligence/scripts/web_intel_collect_runner.py`
+- `skills/library/web-intelligence/scripts/web_intel_review_runner.py`
 - `scripts/openclaw-ops/self_evolution_todo.py`
 
 建议策略：
@@ -327,15 +327,15 @@ python scripts/openclaw-ops/inspect_runtime_bindings.py --emit-json
 openclaw hooks list --json
 openclaw hooks check --json
 openclaw agents list
-python scripts/openclaw-ops/ensure_runtime_skills.py --dry-run --emit-json
-python scripts/openclaw-ops/bootstrap_runtime_agents.py --dry-run
-python scripts/openclaw-ops/policy/policy_enforcer.py task-capability-coverage
+python skills/library/openclaw-workflow-manager/scripts/ensure_runtime_skills.py --dry-run --emit-json
+python skills/library/openclaw-workflow-manager/scripts/bootstrap_runtime_agents.py --dry-run
+python skills/library/control-plane-ops/scripts/policy/policy_enforcer.py task-capability-coverage
 ```
 
 进入任务层阶段后补充：
 
 ```bash
-python scripts/openclaw-ops/policy/task_executor_runner.py --help
+python skills/library/control-plane-ops/scripts/policy/task_executor_runner.py --help
 python -m unittest tests.scripts_openclaw_ops.test_task_executor_output_contract
 ```
 
