@@ -128,21 +128,23 @@ _LINUX_SKILL_ROOTS: list[str] = [
 
 
 def _get_platform_skill_dirs() -> list[Path]:
-    """根据当前平台返回所有应该扫描的技能根目录。"""
+    """当前平台目录优先，同时扫描跨运行时共享的技能根目录。"""
     dirs: list[Path] = []
     home = Path.home()
     import platform
 
     if platform.system() == "Windows" or os.name == "nt":
-        for rel in _WINDOWS_SKILL_ROOTS:
-            d = home / rel
-            if d.is_dir():
-                dirs.append(d)
+        ordered_roots = [*_WINDOWS_SKILL_ROOTS, *_LINUX_SKILL_ROOTS]
     else:
-        for rel in _LINUX_SKILL_ROOTS:
-            d = home / rel
-            if d.is_dir():
-                dirs.append(d)
+        ordered_roots = [*_LINUX_SKILL_ROOTS, *_WINDOWS_SKILL_ROOTS]
+
+    seen: set[str] = set()
+    for rel in ordered_roots:
+        directory = home / rel
+        key = str(directory)
+        if directory.is_dir() and key not in seen:
+            seen.add(key)
+            dirs.append(directory)
 
     return dirs
 
@@ -156,9 +158,9 @@ def discover_existing_skills(
 
     搜索策略（按优先级）：
     1. 索引文件（如果存在且不超过 1 小时）
-    2. 用户 home 下的平台技能目录
-       - Windows: ~/.agents/skills/, ~/.claude/skills/, ~/.codex/skills/
-       - Linux/WSL: ~/.openclaw/skills/, ~/.hermes/skills/
+    2. 用户 home 下的跨运行时技能目录（当前平台目录优先）
+       - Windows 系：~/.agents/skills/, ~/.claude/skills/, ~/.codex/skills/
+       - Linux/WSL 系：~/.openclaw/skills/, ~/.hermes/skills/
     3. 工作区下的 skills/library/, .claude/skills/, .codex/skills/
     """
     # 尝试从索引文件加载

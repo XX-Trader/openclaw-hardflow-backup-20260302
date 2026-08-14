@@ -454,17 +454,25 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
             )
 
             projects = module.load_project_registry(project_registry)
+            expected_paths = {
+                "explicit": str(explicit.resolve()),
+                "discovered": str(discovered.resolve()),
+                "workflow": str(workflow_repo.resolve()),
+                "upstream": str(upstream_repo.resolve()),
+                "hidden_skill": str(hidden_skill.resolve()),
+                "hidden_tool": str(hidden_tool.resolve()),
+            }
 
         paths = {item["path"] for item in projects}
-        self.assertIn(str(explicit), paths)
-        self.assertIn(str(discovered), paths)
-        self.assertIn(str(workflow_repo), paths)
-        self.assertIn(str(upstream_repo), paths)
-        self.assertNotIn(str(hidden_skill), paths)
-        self.assertNotIn(str(hidden_tool), paths)
-        business = next(item for item in projects if item["path"] == str(discovered))
-        workflow = next(item for item in projects if item["path"] == str(workflow_repo))
-        upstream = next(item for item in projects if item["path"] == str(upstream_repo))
+        self.assertIn(expected_paths["explicit"], paths)
+        self.assertIn(expected_paths["discovered"], paths)
+        self.assertIn(expected_paths["workflow"], paths)
+        self.assertIn(expected_paths["upstream"], paths)
+        self.assertNotIn(expected_paths["hidden_skill"], paths)
+        self.assertNotIn(expected_paths["hidden_tool"], paths)
+        business = next(item for item in projects if item["path"] == expected_paths["discovered"])
+        workflow = next(item for item in projects if item["path"] == expected_paths["workflow"])
+        upstream = next(item for item in projects if item["path"] == expected_paths["upstream"])
         self.assertEqual(business["project_role"], "business")
         self.assertTrue(business["vendor_monitoring"]["enabled"])
         self.assertEqual(workflow["project_role"], "workflow-ops")

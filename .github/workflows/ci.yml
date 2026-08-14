@@ -38,10 +38,12 @@ jobs:
       PYTHONUTF8: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - name: Check repository policy
         run: python scripts/openclaw-ops/repository_policy_check.py --tracked-only --emit-json
       - name: Check whitespace
-        run: git show --check --format= HEAD
+        run: git diff --check HEAD^ HEAD

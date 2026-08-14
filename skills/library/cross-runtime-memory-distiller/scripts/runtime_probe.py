@@ -8,7 +8,7 @@ import json
 import os
 import sys
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Iterable
 
 
@@ -95,6 +95,12 @@ def normalize_hosts(value: Iterable[str] | str | None) -> list[str]:
     return normalized
 
 
+def _runtime_path(value: str | Path, runtime_kind: str) -> PurePosixPath | PureWindowsPath:
+    """按目标运行时而不是探测器宿主解释路径分隔符。"""
+    path_type = PureWindowsPath if runtime_kind == "windows" else PurePosixPath
+    return path_type(str(value))
+
+
 def build_openclaw_probe_result(
     *,
     current_os: str,
@@ -105,11 +111,9 @@ def build_openclaw_probe_result(
     """构建 OpenClaw 宿主的探测结果。"""
     runtime_kind = normalize_runtime_kind(runtime_kind_override, current_os=current_os)
     if home_override:
-        home = Path(str(home_override)).expanduser()
-    elif runtime_kind == "windows":
-        home = user_home / ".openclaw"
+        home = _runtime_path(home_override, runtime_kind)
     else:
-        home = user_home / ".openclaw"
+        home = _runtime_path(user_home, runtime_kind) / ".openclaw"
 
     return RuntimeProbeResult(
         host="openclaw",
@@ -144,28 +148,26 @@ def build_hermes_probe_result(
     if runtime_kind == "wsl":
         distro = str(hermes_wsl_distro or "Ubuntu").strip() or "Ubuntu"
         wsl_user = str(hermes_wsl_user or "ubuntu").strip() or "ubuntu"
-        home = str(home_override or f"/home/{wsl_user}/.hermes")
+        home_path = _runtime_path(home_override or f"/home/{wsl_user}/.hermes", runtime_kind)
         return RuntimeProbeResult(
             host="hermes",
             runtime_kind="wsl",
             transport="wsl_exec",
             distro=distro,
-            home=home,
-            session_roots=[f"{home}/sessions"],
+            home=str(home_path),
+            session_roots=[str(home_path / "sessions")],
             hot_memory_paths={
-                "user": f"{home}/memories/USER.md",
-                "memory": f"{home}/memories/MEMORY.md",
+                "user": str(home_path / "memories" / "USER.md"),
+                "memory": str(home_path / "memories" / "MEMORY.md"),
             },
             workspace_roots=[],
-            state_db=f"{home}/state.db",
+            state_db=str(home_path / "state.db"),
         )
 
     if home_override:
-        home_path = Path(str(home_override)).expanduser()
-    elif runtime_kind == "windows":
-        home_path = user_home / ".hermes"
+        home_path = _runtime_path(home_override, runtime_kind)
     else:
-        home_path = user_home / ".hermes"
+        home_path = _runtime_path(user_home, runtime_kind) / ".hermes"
 
     return RuntimeProbeResult(
         host="hermes",

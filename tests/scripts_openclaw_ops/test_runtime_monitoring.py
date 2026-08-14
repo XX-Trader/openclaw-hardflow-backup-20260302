@@ -39,6 +39,7 @@ class RuntimeMonitoringTests(unittest.TestCase):
             api_log = project_root / "logs" / "api.log"
             api_log.parent.mkdir(parents=True)
             api_log.write_text("boot ok\n", encoding="utf-8")
+            expected_api_log = str(api_log.resolve())
             registry = tmp / "project-registry.json"
             registry.write_text(
                 json.dumps(
@@ -104,7 +105,7 @@ class RuntimeMonitoringTests(unittest.TestCase):
         self.assertEqual(result["summary"]["item_count"], 2)
         self.assertEqual(result["summary"]["required_missing_count"], 1)
         self.assertEqual(result["summary"]["running_count"], 1)
-        self.assertIn(str(api_log), result["log_paths"])
+        self.assertIn(expected_api_log, result["log_paths"])
 
         project = result["projects"][0]
         item_by_id = {item["id"]: item for item in project["items"]}
