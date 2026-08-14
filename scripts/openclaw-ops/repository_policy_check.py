@@ -15,15 +15,13 @@ from typing import Iterable, Sequence
 TEXT_SUFFIXES = {"", ".cfg", ".csv", ".env", ".example", ".ini", ".js", ".json", ".jsonl", ".md", ".patch", ".ps1", ".py", ".service", ".sh", ".toml", ".ts", ".txt", ".yaml", ".yml"}
 SKIP_PARTS = {".git", ".codex-tmp", ".pytest_cache", "__pycache__", "node_modules", "vendor"}
 SELF_PATH = "scripts/openclaw-ops/repository_policy_check.py"
-DISCLAIMER_FILES = {"README.md", "requirements.md"}
-DISCLAIMER_MARKER = "不包含行情、回测或交易执行程序"
 ARCHIVE_PREFIXES = ("docs/archive/", "docs/plans/archive/")
 
 DOMAIN_PATTERNS = {
     "domain_zh": re.compile(
         r"金融|财经|股票|股市|证券|行情|回测|交易执行|量化交易|量化策略|套利|对冲|多头|空头|"
         r"(?<!再)做多|做空(?!白)|盘口|K线|币圈|加密货币|虚拟币|期货|期权|外汇|基金|债券|"
-        r"可转债|涨停|跌停|竞价|主力资金|资金流|仓位|止损|止盈|买入|卖出|持仓|收益率|盈亏"
+        r"可转债|涨停|跌停|竞价|主力资金|资金流|仓位|止损|止盈|买入|卖出|持仓|收益率|盈亏|价差"
     ),
     "domain_en": re.compile(
         r"\b(?:finance|financial|stocks?|trading|traders?|backtests?|backtesting|arbitrage|"
@@ -106,12 +104,6 @@ def compact_preview(value: str, limit: int = 90) -> str:
     return re.sub(r"\s+", " ", value).strip()[:limit]
 
 
-def without_positioning_disclaimer(relative: str, text: str) -> str:
-    if relative not in DISCLAIMER_FILES:
-        return text
-    return "\n".join(line for line in text.splitlines() if DISCLAIMER_MARKER not in line)
-
-
 def secret_field_findings(relative: str, text: str) -> Iterable[Finding]:
     patterns = [JSON_SECRET_FIELD]
     if Path(relative).suffix.lower() in {".env", ".example", ".service", ".sh", ".yaml", ".yml"}:
@@ -140,10 +132,11 @@ def scan_repository(repo: Path, *, include_untracked: bool = True) -> dict[str, 
         scanned += 1
 
         if relative_text != SELF_PATH:
-            domain_text = without_positioning_disclaimer(relative_text, text)
+            domain_text = text
             for category, pattern in DOMAIN_PATTERNS.items():
-                for match in pattern.finditer(domain_text):
-                    findings.append(Finding(category, relative_text, line_number(domain_text, match.start()), compact_preview(match.group(0))))
+                scan_text = re.sub(r"[_-]+", " ", domain_text) if category == "domain_en" else domain_text
+                for match in pattern.finditer(scan_text):
+                    findings.append(Finding(category, relative_text, line_number(scan_text, match.start()), compact_preview(match.group(0))))
             normalized_path_text = text.replace("\\", "/")
             for match in PERSONAL_PATH_PATTERN.finditer(normalized_path_text):
                 findings.append(Finding("personal_path", relative_text, line_number(normalized_path_text, match.start()), compact_preview(match.group(0))))

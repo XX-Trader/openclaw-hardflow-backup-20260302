@@ -39,6 +39,31 @@ class RepositoryPolicyCheckTests(unittest.TestCase):
         self.assertEqual(report["findings"][0]["path"], "文档/说明.md")
         self.assertEqual(report["findings"][0]["category"], "domain_zh")
 
+    def test_readme_has_no_positioning_exception(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            git(repo, "init", "-q")
+            (repo / "README.md").write_text("仓库定位：" + "行" + "情" + "处理。\n", encoding="utf-8")
+            git(repo, "add", "--", "README.md")
+            report = module.scan_repository(repo, include_untracked=False)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["findings"][0]["path"], "README.md")
+        self.assertEqual(report["findings"][0]["category"], "domain_zh")
+
+    def test_domain_identifier_separator_is_normalized(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            git(repo, "init", "-q")
+            source = repo / "config.py"
+            source.write_text("FUT" + "URES_URL = 'https://example.invalid'\n", encoding="utf-8")
+            git(repo, "add", "--", "config.py")
+            report = module.scan_repository(repo, include_untracked=False)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["findings"][0]["path"], "config.py")
+        self.assertEqual(report["findings"][0]["category"], "domain_en")
+
     def test_placeholders_pass_and_realistic_secret_shape_is_reported(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmpdir:

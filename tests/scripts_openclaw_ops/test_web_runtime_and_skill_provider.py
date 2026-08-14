@@ -61,7 +61,7 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                 "\n".join(
                     [
                         'BASE_URL = "https://api.github.com/repos/example/project"',
-                        'FUTURES_URL = "https://uploads.github.com/repos/example/project/releases"',
+                        'RELEASES_URL = "https://uploads.github.com/repos/example/project/releases"',
                     ]
                 ),
                 encoding="utf-8",
@@ -99,8 +99,8 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
             service_file.write_text(
                 "\n".join(
                     [
-                        'BASE_URL = "https://api.polybaymax.com/v1/orders"',
-                        'PUBLIC_URL = "https://dabaiquant.com/api/markets"',
+                        'BASE_URL = "https://api.cobaltservice.dev/v1/events"',
+                        'PUBLIC_URL = "https://api.summitplatform.dev/v1/components"',
                     ]
                 ),
                 encoding="utf-8",
@@ -121,12 +121,12 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
         repo_sources = payload["repo_sources"]
         vendors = {item.get("vendor") for item in repo_sources}
         all_queries = [query for item in repo_sources for query in item.get("repo_queries", [])]
-        self.assertIn("api.polybaymax.com", payload["external_api_hosts"])
-        self.assertIn("dabaiquant.com", payload["external_api_hosts"])
-        self.assertIn("polybaymax", vendors)
-        self.assertIn("dabaiquant", vendors)
-        self.assertTrue(any("polybaymax api sdk" in query.lower() for query in all_queries))
-        self.assertTrue(any("dabaiquant api sdk" in query.lower() for query in all_queries))
+        self.assertIn("api.cobaltservice.dev", payload["external_api_hosts"])
+        self.assertIn("api.summitplatform.dev", payload["external_api_hosts"])
+        self.assertIn("cobaltservice", vendors)
+        self.assertIn("summitplatform", vendors)
+        self.assertTrue(any("cobaltservice api sdk" in query.lower() for query in all_queries))
+        self.assertTrue(any("summitplatform api sdk" in query.lower() for query in all_queries))
 
     def test_project_index_maintainer_skips_unchanged_git_projects_after_state_recorded(self):
         module = load_module(

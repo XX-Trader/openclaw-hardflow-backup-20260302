@@ -17,7 +17,7 @@ runtime-host 现在按四层理解：
 | profile | 类型 | 模型 | 作用 |
 |---------|------|------|------|
 | `deliveryagent` | Hermes Discord profile | 主 `openai-codex/gpt-5.5`；回退 `kimi-k2.6 -> glm-5.1`；辅助默认 `glm-4.7` | 通用项目交付与运行维护入口 |
-| `projectagent` | Hermes Discord profile | 主 `openai-codex/gpt-5.5`；回退 `kimi-k2.6 -> glm-5.1`；辅助默认 `glm-4.7` | 价差费率监控与只读观测入口 |
+| `projectagent` | Hermes Discord profile | 主 `openai-codex/gpt-5.5`；回退 `kimi-k2.6 -> glm-5.1`；辅助默认 `glm-4.7` | 项目状态巡检与只读观测入口 |
 
 这两个 profile 收到执行类请求后必须创建 `project-delivery-pipeline` run，不在 profile 会话里直接实现、部署、安装依赖、修改代码或提交 Git。
 
@@ -64,7 +64,7 @@ research
 | `backend-dev` | 编码 | 后端、脚本、服务和策略代码修改执行 |
 | `frontend-dev` | 编码 | 前端、页面、UI 和交互代码修改执行 |
 | `tester` | 测试、验收 | verification 与 acceptance |
-| `deployer` | deployment | 内控 FastAPI restart/smoke |
+| `deployer` | deployment | 项目配置驱动的部署与 smoke |
 | `doc-writer` | memory_writeback | 文档和项目记忆回写 |
 
 这些 owner 会出现在 `command-runs/*.json`、`agent-workspaces/manifest.json`、Task Center 记录和状态卡里。它们代表阶段责任与隔离 workspace，不代表 runtime-host 上存在同名常驻模型进程。
