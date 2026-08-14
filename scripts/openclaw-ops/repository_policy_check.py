@@ -10,12 +10,14 @@ import subprocess
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable, Sequence
+from urllib.parse import unquote
 
 
 TEXT_SUFFIXES = {"", ".cfg", ".csv", ".env", ".example", ".ini", ".js", ".json", ".jsonl", ".md", ".patch", ".ps1", ".py", ".service", ".sh", ".toml", ".ts", ".txt", ".yaml", ".yml"}
 SKIP_PARTS = {".git", ".codex-tmp", ".pytest_cache", "__pycache__", "node_modules", "vendor"}
 SELF_PATH = "scripts/openclaw-ops/repository_policy_check.py"
 ARCHIVE_PREFIXES = ("docs/archive/", "docs/plans/archive/")
+MARKDOWN_LINK_SKIP_PREFIXES = ("docs/archive/", "docs/plans/")
 
 DOMAIN_PATTERNS = {
     "domain_zh": re.compile(
@@ -55,6 +57,7 @@ PLACEHOLDER_PATTERN = re.compile(
     r"changeme|django-insecure-|none|null|true|false)", re.IGNORECASE
 )
 STALE_OWNER_PATTERN = re.compile(r"scripts/openclaw-ops/[A-Za-z0-9_./-]+\.py")
+MARKDOWN_LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\((?P<target>[^)]+)\)")
 
 
 @dataclass(frozen=True)
@@ -117,6 +120,28 @@ def secret_field_findings(relative: str, text: str) -> Iterable[Finding]:
             yield Finding("secret_field", relative, line_number(text, match.start()), f"{field}=<redacted:{len(value)}>")
 
 
+def markdown_link_findings(repo: Path, relative: str, text: str) -> Iterable[Finding]:
+    if not relative.endswith(".md") or relative.startswith(MARKDOWN_LINK_SKIP_PREFIXES):
+        return
+    source_dir = (repo / relative).parent
+    for match in MARKDOWN_LINK_PATTERN.finditer(text):
+        raw_target = match.group("target").strip()
+        target = raw_target[1:raw_target.find(">")].strip() if raw_target.startswith("<") and ">" in raw_target else raw_target.split(maxsplit=1)[0]
+        if not target or target.startswith(("#", "http://", "https://", "mailto:", "data:", "file://")):
+            continue
+        target = unquote(target.split("#", 1)[0].split("?", 1)[0])
+        if not target or "{{" in target or "}}" in target:
+            continue
+        candidate = repo / target.lstrip("/") if target.startswith("/") else source_dir / target
+        if not candidate.exists():
+            yield Finding(
+                "broken_markdown_link",
+                relative,
+                line_number(text, match.start()),
+                compact_preview(target),
+            )
+
+
 def scan_repository(repo: Path, *, include_untracked: bool = True) -> dict[str, object]:
     findings: list[Finding] = []
     scanned = 0
@@ -145,6 +170,7 @@ def scan_repository(repo: Path, *, include_untracked: bool = True) -> dict[str, 
                 for match in pattern.finditer(text):
                     value = match.group(0)
                     findings.append(Finding(category, relative_text, line_number(text, match.start()), f"{value[:3]}...{value[-3:]}"))
+            findings.extend(markdown_link_findings(repo, relative_text, text))
 
         if relative_text.startswith(ARCHIVE_PREFIXES) or relative_text == "vendor/README.md":
             continue

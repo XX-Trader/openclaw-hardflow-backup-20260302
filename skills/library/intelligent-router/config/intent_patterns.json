@@ -54,6 +54,12 @@
     "check_skill_exists": true,
     "check_subagent_exists": true,
     "check_combo_exists": true,
-    "case_sensitive": false
+    "case_sensitive": false,
+    "allowed_combos": [
+      "数据分析组合",
+      "全栈开发组合",
+      "代码审查组合",
+      "性能分析组合"
+    ]
   }
 }

@@ -16,9 +16,9 @@ unified_exception_logger.py — 统一异常日志收集与分类巡检
 用法:
     python unified_exception_logger.py --help
     python unified_exception_logger.py --auto-discover --dry-run
-    python unified_exception_logger.py --auto-discover --output-dir /root/.openclaw/ops/exception-reports/
-    python unified_exception_logger.py --log-dirs /root/.openclaw/ops/workflow-logs/ --dry-run
-    python unified_exception_logger.py --log-dirs /dir1 /dir2 --output-dir /root/.openclaw/ops/exception-reports/
+    python unified_exception_logger.py --auto-discover --output-dir ~/.openclaw/ops/exception-reports/
+    python unified_exception_logger.py --log-dirs ~/.openclaw/ops/workflow-logs/ --dry-run
+    python unified_exception_logger.py --log-dirs /dir1 /dir2 --output-dir ~/.openclaw/ops/exception-reports/
 """
 
 import argparse
@@ -402,7 +402,7 @@ def archive_to_abnormal(abnormal_dir, json_path, md_path, task_id=None):
     """将巡检报告归档到统一异常日志目录。
 
     Args:
-        abnormal_dir: 归档目标目录（如 /root/.openclaw/logs/abnormal/）。
+        abnormal_dir: 归档目标目录（如 ~/.openclaw/logs/abnormal/）。
         json_path: JSON 报告路径。
         md_path: Markdown 报告路径。
         task_id: 任务 ID（用于归档文件名前缀）。
@@ -483,8 +483,8 @@ def build_cli_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  %(prog)s --log-dirs /root/.openclaw/ops/workflow-logs/ --dry-run
-  %(prog)s --log-dirs /dir1 /dir2 --output-dir /root/.openclaw/ops/exception-reports/
+  %(prog)s --log-dirs ~/.openclaw/ops/workflow-logs/ --dry-run
+  %(prog)s --log-dirs /dir1 /dir2 --output-dir ~/.openclaw/ops/exception-reports/
   %(prog)s --log-dirs ./logs/ --scan-since-hours 48
         """,
     )

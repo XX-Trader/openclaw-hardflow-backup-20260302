@@ -1,7 +1,7 @@
 # ACP 全链路编码工作流 — 架构设计
 
 > 版本：v1.0 | 2026-03-29
-> 详细实现见 [`scripts/hardflow/README.md`](../../../scripts/hardflow/README.md)
+> 详细实现见 [HardFlow Automation Skill](../../../skills/openclaw-hardflow-automation/SKILL.md)
 
 ## 1. 分层架构
 

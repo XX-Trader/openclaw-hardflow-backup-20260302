@@ -22,6 +22,20 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+# Source checkouts keep shared helpers in scripts/openclaw-ops/shared; installed
+# runtimes flatten those helpers beside this runner. Bootstrap only when the
+# repository layout is discoverable so both layouts keep the same entrypoint.
+for _candidate_root in Path(__file__).resolve().parents:
+    _shared_dir = _candidate_root / "scripts" / "openclaw-ops" / "shared"
+    if _shared_dir.is_dir():
+        _shared_value = str(_shared_dir)
+        if _shared_value not in sys.path:
+            sys.path.insert(0, _shared_value)
+        from repo_imports import bootstrap_repository_imports
+
+        bootstrap_repository_imports(__file__)
+        break
+
 from chat_output import render_chat_notice, short_location_label
 
 UTC = timezone.utc
@@ -43,7 +57,7 @@ SENSITIVE_CONTENT_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("api_key",     re.compile(r"(?:api[_-]?key|secret[_-]?key)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{16,}", re.IGNORECASE)),
     ("private_key", re.compile(r"-----BEGIN\s+(?:RSA|EC|DSA|OPENSSH)\s+PRIVATE\s+KEY-----")),
     ("openai_key",  re.compile(r"sk-[A-Za-z0-9]{20,}")),
-    ("password",    re.compile(r"(?:password|passwd|pwd)\s*[:=]\s*['\"]?[^\s'\"]{8,}", re.IGNORECASE)),
+    ("password",    re.compile(r"(?:password|passwd|pwd)\s*[:=]\s*['\"]?(?!\$\{|<)[^\s'\"]{8,}", re.IGNORECASE)),
     ("bearer_token",re.compile(r"Bearer\s+[A-Za-z0-9_\-\.]{20,}", re.IGNORECASE)),
     ("generic_token",re.compile(r"(?:token|access_token|auth_token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{20,}", re.IGNORECASE)),
 ]

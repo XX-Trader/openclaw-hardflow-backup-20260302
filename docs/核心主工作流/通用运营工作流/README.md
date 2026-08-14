@@ -48,6 +48,6 @@ OpenClaw 的日常运营中枢，负责任务调度、监控巡检、需求对�
 
 ## 详细文档
 
-- Policy Enforcer 代码级文档：[`scripts/openclaw-ops/policy/README.md`](../../../scripts/openclaw-ops/policy/README.md)
-- 字段字典：[`scripts/openclaw-ops/policy/FIELD_DICTIONARY.md`](../../../scripts/openclaw-ops/policy/FIELD_DICTIONARY.md)
-- TODO 巡检策略流程：[`scripts/openclaw-ops/TODO_PATROL_POLICY_FLOW.md`](../../../scripts/openclaw-ops/TODO_PATROL_POLICY_FLOW.md)
+- Policy Enforcer 代码级文档：[Policy README](../../../skills/library/control-plane-ops/scripts/policy/README.md)
+- 字段字典：[Field Dictionary](../../../skills/library/control-plane-ops/scripts/policy/FIELD_DICTIONARY.md)
+- TODO 巡检策略流程：[TODO Patrol Policy Flow](../../../skills/library/todo-patrol/scripts/TODO_PATROL_POLICY_FLOW.md)

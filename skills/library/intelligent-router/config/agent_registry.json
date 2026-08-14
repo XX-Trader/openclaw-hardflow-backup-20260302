@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-08-13",
+  "last_updated": "2026-08-14",
   "description": "所有可用 Agent 的注册表",
   "agents": [
     {
@@ -636,6 +636,58 @@
         "语法修复"
       ],
       "priority": 3,
+      "available": true
+    },
+    {
+      "name": "coordinator",
+      "description": "工作流 owner、路由和治理协调",
+      "category": "Workflow Owners",
+      "capabilities": [
+        "任务路由",
+        "流程协调",
+        "发布门禁",
+        "治理配置"
+      ],
+      "priority": 1,
+      "available": true
+    },
+    {
+      "name": "csharp-developer",
+      "description": "C# 与 .NET 应用开发",
+      "category": "Language Specialists",
+      "capabilities": [
+        "C# 开发",
+        ".NET",
+        "ASP.NET Core",
+        "代码审查"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "data-scientist",
+      "description": "数据探索、建模与实验分析",
+      "category": "Data & AI",
+      "capabilities": [
+        "数据探索",
+        "统计建模",
+        "实验分析",
+        "结果验证"
+      ],
+      "priority": 2,
+      "available": true
+    },
+    {
+      "name": "game-developer",
+      "description": "交互式应用与游戏工程",
+      "category": "Development & Architecture",
+      "capabilities": [
+        "游戏工程",
+        "交互逻辑",
+        "资源管线",
+        "性能优化"
+      ],
+      "priority": 2,
       "available": true
     },
     {

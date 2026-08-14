@@ -8,7 +8,7 @@ claim_verification_auditor.py — Agent 声明交叉验证审计器
 
 用法:
     python claim_verification_auditor.py --help
-    python claim_verification_auditor.py --session-log-dir /root/.openclaw/ops/workflow-logs/ --output-dir /root/.openclaw/ops/claim-audit/
+    python claim_verification_auditor.py --session-log-dir ~/.openclaw/ops/workflow-logs/ --output-dir ~/.openclaw/ops/claim-audit/
     python claim_verification_auditor.py --session-log-dir ./test-logs/ --dry-run
 """
 
@@ -481,9 +481,9 @@ def build_cli_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  %(prog)s --session-log-dir /root/.openclaw/ops/workflow-logs/ --output-dir /root/.openclaw/ops/claim-audit/
+  %(prog)s --session-log-dir ~/.openclaw/ops/workflow-logs/ --output-dir ~/.openclaw/ops/claim-audit/
   %(prog)s --session-log-dir ./logs/ --dry-run
-  %(prog)s --session-log-dir ./logs/ --scan-since-hours 48 --task-db /root/.openclaw/ops/task_center.db
+  %(prog)s --session-log-dir ./logs/ --scan-since-hours 48 --task-db ~/.openclaw/ops/task_center.db
         """,
     )
     parser.add_argument("--session-log-dir", required=True, help="Agent 会话日志目录")

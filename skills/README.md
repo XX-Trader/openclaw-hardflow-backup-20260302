@@ -27,7 +27,6 @@
 
 | Skill | 说明 |
 |-------|------|
-| [openclaw-evolution-upgrader](library/openclaw-evolution-upgrader/SKILL.md) | 内部反馈升级、外部模式吸收、架构推进 |
 | [openclaw-workflow-manager](library/openclaw-workflow-manager/SKILL.md) | 工作流地图、漂移巡检、安装管理 |
 | [web-intelligence](library/web-intelligence/SKILL.md) | GitHub 扫描、网页情报采集、外部评估 |
 

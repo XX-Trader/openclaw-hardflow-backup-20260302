@@ -363,15 +363,7 @@ Smart Flow:
 
 ## 安装
 
-参见 [INSTALL.md](../../INSTALL.md)
-
----
-
-## 文档
-
-- [ARCHITECTURE.md](../../docs/ARCHITECTURE.md) - 架构设计
-- [AGENT_LIST.md](../../docs/AGENT_LIST.md) - 支持 Agent 列表
-- [CUSTOMIZATION.md](../../docs/CUSTOMIZATION.md) - 自定义指南
+本 Skill 作为仓库内模板使用，统一入口与维护约定见 [Skills README](../../README.md)。
 
 ---
 

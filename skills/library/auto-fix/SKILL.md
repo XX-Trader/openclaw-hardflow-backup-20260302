@@ -557,8 +557,8 @@ main (主分支)
 
 ## 📖 更多信息
 
-详细设计文档: [AUTO-FIX-DESIGN.md](./AUTO-FIX-DESIGN.md)
-修复边界说明: [AUTO-FIX-BOUNDARIES.md](./AUTO-FIX-BOUNDARIES.md)
+详细设计文档: [AUTO-FIX-DESIGN.md](../deployment-test/AUTO-FIX-DESIGN.md)
+修复边界说明: [AUTO-FIX-BOUNDARIES.md](../deployment-test/AUTO-FIX-BOUNDARIES.md)
 
 ---
 

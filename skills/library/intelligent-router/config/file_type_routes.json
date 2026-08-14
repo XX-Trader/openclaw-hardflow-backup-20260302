@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-01-07",
+  "last_updated": "2026-08-14",
   "description": "文件扩展名到 Agent 的路由映射规则",
   "file_types": [
     {
@@ -18,12 +18,20 @@
       "category": "前端资源",
       "extensions": [
         ".js",
-        ".ts",
-        ".javascript",
-        ".typescript"
+        ".javascript"
       ],
       "agent": "javascript-developer",
-      "description": "JavaScript/TypeScript 代码",
+      "description": "JavaScript 代码",
+      "priority": 2
+    },
+    {
+      "category": "TypeScript",
+      "extensions": [
+        ".ts",
+        ".typescript"
+      ],
+      "agent": "typescript-expert",
+      "description": "TypeScript 代码",
       "priority": 2
     },
     {
@@ -91,7 +99,7 @@
         ".cs",
         ".csx"
       ],
-      "agent": "c-developer",
+      "agent": "csharp-developer",
       "description": "C# 代码",
       "priority": 1
     },

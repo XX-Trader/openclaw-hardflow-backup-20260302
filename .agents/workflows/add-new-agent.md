@@ -83,8 +83,8 @@ git commit -m "feat(agents): 新增 <agent-id> Agent - <一句话描述>"
 ### 4. 部署到远程服务器
 通过 Python paramiko 脚本（避免 PowerShell 转义问题）：
 
-1. **上传 agent 文件** → `/root/.openclaw/agents/<agent-id>/`
-2. **更新 openclaw.json**（`/root/.openclaw/openclaw/openclaw.json`）：
+1. **上传 agent 文件** → `<runtime-home>/agents/<agent-id>/`
+2. **更新 openclaw.json**（`<runtime-home>/openclaw/openclaw.json`）：
    - 在 `agents.list` 数组中添加新条目
    - 在 `tools.agentToAgent.allow` 中添加 agent ID
    - 在需要调度它的 agent（如 coordinator、main）的 `subagents.allowAgents` 中添加

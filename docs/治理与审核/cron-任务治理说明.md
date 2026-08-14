@@ -186,7 +186,7 @@
 
 备份文件：
 
-1. `/root/.openclaw/cron/jobs.json.bak.redundancy-cleanup.20260320_143148`
+1. `~/.openclaw/cron/jobs.json.bak.redundancy-cleanup.20260320_143148`
 
 ### 5.3 清理后状态
 

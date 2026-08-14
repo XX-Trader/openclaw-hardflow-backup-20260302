@@ -10,9 +10,8 @@
 
 请同时参考：
 
-- [docs/2026-03-17-multi-project-server-template.md](../../../docs/2026-03-17-multi-project-server-template.md)
+- [多项目服务器模板](../../../../../docs/基础设施/部署与运维/多项目服务器模板.md)
 - [project-registry.example.json](./project-registry.example.json)
-- [reviewer-merge-approval.multi-project.example.json](../reviewer-merge-approval.multi-project.example.json)
 
 ## 1. 前置检查
 

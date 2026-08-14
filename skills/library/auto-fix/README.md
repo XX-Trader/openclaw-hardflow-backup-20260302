@@ -573,8 +573,8 @@ new_failures = re.findall(
 
 ## 📝 相关文档
 
-- [AUTO-FIX-DESIGN.md](AUTO-FIX-DESIGN.md) - 完整系统设计文档
-- [AUTO-FIX-BOUNDARIES.md](AUTO-FIX-BOUNDARIES.md) - 修复边界与决策树
+- [AUTO-FIX-DESIGN.md](../deployment-test/AUTO-FIX-DESIGN.md) - 完整系统设计文档
+- [AUTO-FIX-BOUNDARIES.md](../deployment-test/AUTO-FIX-BOUNDARIES.md) - 修复边界与决策树
 - [SKILL.md](SKILL.md) - 技能定义
 
 ## 🤝 反馈与贡献

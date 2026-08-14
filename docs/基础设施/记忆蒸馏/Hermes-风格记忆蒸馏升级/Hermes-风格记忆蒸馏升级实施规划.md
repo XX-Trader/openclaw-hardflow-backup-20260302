@@ -55,7 +55,7 @@
 
 > 2026-04-21 架构评审新增
 
-[项目交付优先工作流](../../核心主工作流/项目交付优先工作流/README.md) 引入了"项目级记忆分仓"（`.workflow/project-memory/<project_key>/`），与本方案的热记忆落点（`USER.md` / `MEMORY.md`）存在潜在双真相源风险。必须在此裁决清楚。
+[项目交付优先工作流](../../../核心主工作流/项目交付优先工作流/README.md) 引入了"项目级记忆分仓"（`.workflow/project-memory/<project_key>/`），与本方案的热记忆落点（`USER.md` / `MEMORY.md`）存在潜在双真相源风险。必须在此裁决清楚。
 
 ### 裁决结论
 

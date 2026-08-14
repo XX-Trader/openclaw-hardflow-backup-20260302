@@ -8,10 +8,10 @@ config_watchdog.py — 配置文件安全看门狗
 
 用法:
     python config_watchdog.py --help
-    python config_watchdog.py --config-dir /root/.openclaw/ --dry-run
-    python config_watchdog.py --config-dir /root/.openclaw/ --snapshot
-    python config_watchdog.py --config-dir /root/.openclaw/ --verify
-    python config_watchdog.py --config-dir /root/.openclaw/ --rollback --target openclaw.json
+    python config_watchdog.py --config-dir ~/.openclaw/ --dry-run
+    python config_watchdog.py --config-dir ~/.openclaw/ --snapshot
+    python config_watchdog.py --config-dir ~/.openclaw/ --verify
+    python config_watchdog.py --config-dir ~/.openclaw/ --rollback --target openclaw.json
 """
 
 import argparse
@@ -485,10 +485,10 @@ def build_cli_parser():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  %(prog)s --config-dir /root/openclaw/ --snapshot          # 创建快照
-  %(prog)s --config-dir /root/openclaw/ --verify            # 比对变更
-  %(prog)s --config-dir /root/openclaw/ --validate          # 语法校验
-  %(prog)s --config-dir /root/openclaw/ --rollback --target openclaw.json  # 回滚
+  %(prog)s --config-dir ~/.openclaw/ --snapshot          # 创建快照
+  %(prog)s --config-dir ~/.openclaw/ --verify            # 比对变更
+  %(prog)s --config-dir ~/.openclaw/ --validate          # 语法校验
+  %(prog)s --config-dir ~/.openclaw/ --rollback --target openclaw.json  # 回滚
         """,
     )
     parser.add_argument("--config-dir", required=True, help="配置根目录")

@@ -30,7 +30,7 @@ class RuntimeDocsCleanTests(unittest.TestCase):
         self.assertNotIn("閹貉冨煑闂", text)
 
     def test_done_top_sections_are_clean_chinese(self):
-        text = read_head("done.md", 32)
+        text = (ROOT / "done.md").read_text(encoding="utf-8-sig")
         self.assertIn("领域中立", text)
         self.assertIn("项目交付状态机", text)
         self.assertIn("跨 Runtime 安装器", text)

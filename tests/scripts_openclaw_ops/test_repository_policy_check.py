@@ -97,6 +97,21 @@ class RepositoryPolicyCheckTests(unittest.TestCase):
         self.assertEqual(report["counts"], {"stale_owner_reference": 1})
         self.assertEqual(report["findings"][0]["path"], "docs/current.md")
 
+    def test_current_markdown_reports_missing_link_but_plans_do_not(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo = Path(tmpdir)
+            git(repo, "init", "-q")
+            current = repo / "docs" / "current.md"
+            plan = repo / "docs" / "plans" / "historical.md"
+            plan.parent.mkdir(parents=True)
+            current.write_text("[missing](missing.md)\n", encoding="utf-8")
+            plan.write_text("[historical](missing.md)\n", encoding="utf-8")
+            git(repo, "add", "--", "docs/current.md", "docs/plans/historical.md")
+            report = module.scan_repository(repo, include_untracked=False)
+        self.assertEqual(report["counts"], {"broken_markdown_link": 1})
+        self.assertEqual(report["findings"][0]["path"], "docs/current.md")
+
 
 if __name__ == "__main__":
     unittest.main()

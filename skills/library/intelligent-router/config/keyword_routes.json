@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "last_updated": "2026-03-01",
+  "last_updated": "2026-08-14",
   "description": "关键词到 Agent 的路由映射规则",
   "keywords": [
     {
@@ -13,8 +13,8 @@
         "实现功能",
         "功能开发"
       ],
-      "agent": "feature-development",
-      "description": "Django+Vue 标准化开发流程",
+      "agent": "coordinator",
+      "description": "按目标仓库契约选择实现与验证 owner",
       "priority": 1
     },
     {
@@ -27,8 +27,8 @@
         "调试问题",
         "bug 修复"
       ],
-      "agent": "auto-fix",
-      "description": "自动测试-修复-提交循环",
+      "agent": "debugger",
+      "description": "受控调试、复现、修复与验证流程",
       "priority": 1
     },
     {
@@ -40,8 +40,8 @@
         "部署到生产",
         "线上部署"
       ],
-      "agent": "db-deploy",
-      "description": "全栈项目自动部署",
+      "agent": "deployment-engineer",
+      "description": "按项目提供的命令执行部署与回滚门禁",
       "priority": 1
     },
     {
@@ -52,8 +52,8 @@
         "windows 环境",
         "开发环境搭建"
       ],
-      "agent": "windows-fullstack-deploy",
-      "description": "Windows 本地开发环境部署",
+      "agent": "deployment-engineer",
+      "description": "按当前操作系统和项目契约准备本地环境",
       "priority": 2
     },
     {
@@ -63,8 +63,8 @@
         "验收测试",
         "部署后测试"
       ],
-      "agent": "deployment-test",
-      "description": "部署后自动化测试",
+      "agent": "test-automator",
+      "description": "按项目验收命令执行部署后验证",
       "priority": 2
     },
     {
@@ -126,7 +126,7 @@
         "数据模型",
         "表结构设计"
       ],
-      "agent": "database-architect",
+      "agent": "backend-architect",
       "description": "数据库架构设计",
       "priority": 2
     },

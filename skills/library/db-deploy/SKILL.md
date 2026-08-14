@@ -110,10 +110,10 @@ API_DOMAIN="api.example.com"
 # 数据库配置
 DB_NAME="my_database"
 DB_USER="db_user"
-DB_PASSWORD="your_secure_password"
+# DB_PASSWORD 由 Runtime Secret Store 注入，不写入仓库配置
 
 # Django 配置
-DJANGO_SECRET_KEY="your_django_secret_key"
+# APP_SECRET_KEY 由 Runtime Secret Store 注入，不写入仓库配置
 DJANGO_SETTINGS_MODULE="myproject.settings"
 
 # 前端配置
@@ -558,11 +558,11 @@ bash /path/to/db-deploy/scripts/start.sh
 | `SERVER_HOST` | `YOUR_SERVER_IP` | 服务器 IP |
 | `SERVER_PORT` | `22` | SSH 端口 |
 | `SERVER_USER` | `root` | SSH 用户 |
-| `SERVER_SSH_KEY` | `-----BEGIN OPENSSH PRIVATE KEY-----...` | SSH 私钥内容 |
-| `DJANGO_SECRET_KEY` | `your_django_secret_key` | Django 密钥 |
+| `SERVER_SSH_KEY` | `<SSH_KEY_SECRET_REF>` | SSH 密钥的 Secret Store 引用 |
+| `DJANGO_SECRET_KEY` | `<APP_SECRET_REF>` | 应用密钥的 Secret Store 引用 |
 | `DB_NAME` | `my_database` | 数据库名 |
 | `DB_USER` | `db_user` | 数据库用户 |
-| `DB_PASSWORD` | `your_secure_password` | 数据库密码 |
+| `DB_PASSWORD` | `<DB_PASSWORD_SECRET_REF>` | 数据库口令的 Secret Store 引用 |
 
 #### 5.2 创建 GitHub Actions 工作流
 
@@ -1033,7 +1033,7 @@ ssh ubuntu@YOUR_SERVER_IP
 bash /path/to/scripts/deploy-github-runner.sh
 ```
 
-详细文档: [github-actions-runner 技能](../../github-actions-runner/SKILL.md)
+详细文档: [github-actions-runner 技能](../github-actions-runner/SKILL.md)
 
 #### 配置 Workflow 文件
 

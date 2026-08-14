@@ -384,8 +384,6 @@ echo "github-runner ALL=(ALL) NOPASSWD: ALL" | sudo tee /etc/sudoers.d/github-ru
 ## 📚 相关资源
 
 - [GitHub Actions Runner 官方文档](https://docs.github.com/en/actions/hosting-your-own-runners)
-- [完整部署指南](../docs/GitHub-Actions-Runner-部署指南.md)
-- [快速参考](../docs/GitHub-Actions-Runner-快速参考.md)
 - [项目部署技能](../db-deploy/SKILL.md)
 
 ## 🔗 与其他技能配合

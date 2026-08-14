@@ -1,7 +1,7 @@
 # ACP 评分系统升级
 
 > 状态：📋 需求已定义 | 父级：[ACP全链路编码工作流](../README.md)
-> 创建时间：2026-03-29 | 研究参考：[Harness Engineering 实战难点与借鉴](../../研究参考/harness-engineering-实战难点与借鉴.md)
+> 创建时间：2026-03-29 | 研究参考：[Harness Engineering 实战难点与借鉴](../../../研究参考/harness-engineering-实战难点与借鉴.md)
 
 ## 一、需求背景
 
@@ -45,5 +45,5 @@ HardFlow 的门禁检查管道（`check-score-gate.mjs` + `score-policy.json`）
 |------|------|------|
 | 架构设计 v2 | 架构 | [architecture.md](architecture.md) |
 | 实施计划 v2 | 实施 | [implementation-plan.md](implementation-plan.md) |
-| 研究报告 | 参考 | [Harness Engineering 研究](../../研究参考/harness-engineering-实战难点与借鉴.md) |
-| 评分卡 Schema | 规范 | [`scripts/hardflow/SCORECARD_SCHEMA.md`](../../../../scripts/hardflow/SCORECARD_SCHEMA.md) |
+| 研究报告 | 参考 | [Harness Engineering 研究](../../../研究参考/harness-engineering-实战难点与借鉴.md) |
+| 评分卡 Schema | 规范 | [HardFlow Scorecard Schema](../../../../skills/openclaw-hardflow-automation/docs/SCORECARD_SCHEMA.md) |
