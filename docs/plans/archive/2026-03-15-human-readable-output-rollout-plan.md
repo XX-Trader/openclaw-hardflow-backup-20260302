@@ -327,7 +327,7 @@ No commit in this task; deployment only.
 ### Task 9: Verify Every Server After Install
 
 **Files:**
-- Reuse: `~/.ssh/tmp-verify-dabai.sh`
+- Reuse: `~/.ssh/tmp-verify-target.sh`
 - Reuse: `~/.ssh/tmp-verify-HOST_D-post.sh`
 - Reuse: `~/.ssh/tmp-verify-runtime-host-post.sh`
 - Reuse: `~/.ssh/tmp-verify-tokyo-post.sh`

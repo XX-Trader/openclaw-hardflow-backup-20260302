@@ -7,6 +7,7 @@ Examples:
   python setup.py --runtime-home ~/.hardflow-runtime
   python setup.py --runtime-home ~/.openclaw --runtime-name openclaw
   python setup.py --runtime-home ~/.hermes --runtime-name hermes
+  python setup.py rollback --runtime-home ~/.hardflow-runtime
   python setup.py cron-off
   python setup.py cron-on
   python setup.py cron-status
@@ -23,7 +24,7 @@ def has_mode_arg(argv: list[str]) -> bool:
     if not argv:
         return False
     first = argv[0].strip().lower()
-    return first in {"install", "init", "setup"}
+    return first in {"install", "init", "setup", "rollback"}
 
 
 def main() -> int:

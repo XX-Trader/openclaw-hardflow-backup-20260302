@@ -177,7 +177,8 @@ distill_runner.py:
   --db-path            distill.db 路径 (默认: ~/.openclaw/ops/distill/distill.db)
   --report-dir         报告输出目录 (默认: ~/.openclaw/ops/distill/reports)
   --evidence-dir       证据包目录
-  --skip-llm           跳过解析 Agent，使用规则降级分类（当前默认）
+  --classifier         确定性分类器（当前支持 rules）
+  --skip-llm           旧版兼容参数，等同于 --classifier rules
   --emit-bridge-report 产出控制面桥接报告
   --dry-run            只探测+打分，不写入热记忆
   --workspace          工作区路径（用于 repo delta 采集代码变更）

@@ -47,7 +47,7 @@ For security veto, each finding object should include:
     "code_structure": 93
   },
   "evidence": [
-    "Project/ShengBeiVue/src/views/dashboard/index.vue",
+    "frontend/src/views/dashboard/index.vue",
     ".workflow/runs/20260301_101010/attempt-1/test.log",
     "playwright screenshot: artifacts/frontend-review.png"
   ],

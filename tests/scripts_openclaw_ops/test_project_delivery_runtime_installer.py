@@ -241,6 +241,63 @@ class ProjectDeliveryRuntimeInstallerTests(unittest.TestCase):
             self.assertTrue(report.changed)
             self.assertFalse(runtime_home.exists())
 
+    def test_install_upgrade_and_chained_rollback_restore_previous_state(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            runtime_home = tmp / "rollback-runtime"
+            config = module.InstallConfig(
+                runtime_home=runtime_home,
+                runtime_name="rollback-runtime",
+                repo_root=ROOT,
+                skills_dir=runtime_home / "skills",
+                ops_dir=runtime_home / "ops",
+                cron_file=runtime_home / "cron" / "jobs.json",
+                state_dir=runtime_home / ".workflow" / "pipeline-runs",
+                project_memory_dir=runtime_home / ".workflow" / "project-memory",
+                task_center_db=runtime_home / "ops" / "task-center" / "task_center.db",
+            )
+
+            first = module.install_runtime(config)
+            self.assertTrue(first.ok)
+            self.assertTrue(first.changed)
+            self.assertTrue(Path(first.rollback_snapshot, "snapshot.json").is_file())
+            target = runtime_home / "ops" / "project_pipeline_entry.py"
+            original = target.read_text(encoding="utf-8")
+            unrelated = runtime_home / "keep.txt"
+            unrelated.write_text("preserve me\n", encoding="utf-8")
+
+            repeated = module.install_runtime(config)
+            self.assertTrue(repeated.ok)
+            self.assertFalse(repeated.changed)
+            self.assertEqual(first.rollback_snapshot, repeated.rollback_snapshot)
+
+            upgraded_source = tmp / "project_pipeline_entry_v2.py"
+            upgraded_source.write_text(original + "\n# fixture upgrade\n", encoding="utf-8")
+            module.OPS_SCRIPT_MAP = dict(module.OPS_SCRIPT_MAP)
+            module.OPS_SCRIPT_MAP["project_pipeline_entry.py"] = str(upgraded_source)
+            upgraded = module.install_runtime(config)
+            self.assertTrue(upgraded.ok)
+            self.assertTrue(upgraded.changed)
+            self.assertNotEqual(first.rollback_snapshot, upgraded.rollback_snapshot)
+            self.assertIn("# fixture upgrade", target.read_text(encoding="utf-8"))
+
+            restored = module.rollback_runtime(config)
+            self.assertTrue(restored.ok)
+            self.assertTrue(restored.rolled_back)
+            self.assertTrue(restored.changed)
+            self.assertEqual(original, target.read_text(encoding="utf-8"))
+            restored_manifest = json.loads(Path(restored.manifest_file).read_text(encoding="utf-8"))
+            self.assertEqual(first.rollback_snapshot, restored_manifest["rollback_snapshot"])
+            self.assertEqual("preserve me\n", unrelated.read_text(encoding="utf-8"))
+
+            removed = module.rollback_runtime(config)
+            self.assertTrue(removed.ok)
+            self.assertTrue(removed.rolled_back)
+            self.assertFalse(target.exists())
+            self.assertFalse(Path(removed.manifest_file).exists())
+            self.assertEqual("preserve me\n", unrelated.read_text(encoding="utf-8"))
+
 
 if __name__ == "__main__":
     unittest.main()

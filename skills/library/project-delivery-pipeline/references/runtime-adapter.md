@@ -51,7 +51,16 @@ python setup.py --runtime-home ~/.hermes --runtime-name hermes
 ```
 
 The installer syncs the required skills, flat ops scripts, policy scripts, cron
-jobs, and an install manifest. It replaces the old `workflow_setup.py`,
+jobs, and an install manifest. Each changed install records a managed-file
+snapshot; an unchanged repeat keeps the existing snapshot. Restore the state
+before the latest changed install with:
+
+```bash
+python setup.py rollback --runtime-home <runtime_home> --runtime-name <runtime_name>
+```
+
+Rollback restores or removes only paths recorded in that snapshot, so unrelated
+runtime files remain in place. The installer replaces the old `workflow_setup.py`,
 `install_workflow_profile.py`, `cron_setup.py`, and `install_*_job.py` chain.
 
 ## Hermes Mapping

@@ -69,6 +69,7 @@ Install into any runtime home:
 
 ```bash
 python setup.py --runtime-home ~/.hardflow-runtime --runtime-name local-agent
+python setup.py rollback --runtime-home ~/.hardflow-runtime --runtime-name local-agent
 ```
 
 Record the same run into Task Center:
@@ -228,6 +229,7 @@ research.
 Any host runtime should treat this skill as the workflow state surface:
 
 - install with `python setup.py --runtime-home <runtime_home> --runtime-name <runtime_name>`
+- roll back the latest changed install with `python setup.py rollback --runtime-home <runtime_home> --runtime-name <runtime_name>`
 - call the runner with `--runtime-host <runtime_name> --runtime-home <runtime_home>`
 - store run artifacts under `.workflow/pipeline-runs/<run_id>/`
 - store project memory under `.workflow/project-memory/<project_key>/` or an

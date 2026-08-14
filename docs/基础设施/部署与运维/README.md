@@ -7,6 +7,7 @@
 ```bash
 python setup.py --runtime-home <RUNTIME_HOME> --runtime-name <RUNTIME_NAME> --dry-run --emit-json
 python setup.py --runtime-home <RUNTIME_HOME> --runtime-name <RUNTIME_NAME> --emit-json
+python setup.py rollback --runtime-home <RUNTIME_HOME> --runtime-name <RUNTIME_NAME> --emit-json
 ```
 
 `setup.py` 委托 `skills/library/project-delivery-pipeline/scripts/runtime_installer.py`，负责 Skills、ops 文件和 Cron 模板的幂等安装。
@@ -16,7 +17,8 @@ python setup.py --runtime-home <RUNTIME_HOME> --runtime-name <RUNTIME_NAME> --em
 1. 先审阅 dry-run JSON 中的目标路径、复制清单和 Cron 渲染结果。
 2. 安装后运行 `skills/library/log-monitor/scripts/runtime_profile_healthcheck.py`。
 3. 对 `cron/jobs.json` 做 JSON 解析，并由 `export_schedule_registry.py` 导出调度总表。
-4. 失败时只回滚本次安装清单中列出的文件，不触碰目标目录中的非托管内容。
+4. 有变更的安装会先生成受管文件快照；重复安装无变化时不增加快照。
+5. 回滚逐个恢复或移除快照清单中的受管文件，不触碰目标目录中的非托管内容。
 
 ## 平台文档
 

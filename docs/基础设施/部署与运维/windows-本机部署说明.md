@@ -22,4 +22,8 @@ pwsh -NoProfile -Command 'python skills/library/log-monitor/scripts/runtime_prof
 pwsh -NoProfile -Command 'python -m pytest -q tests/scripts_openclaw_ops/test_project_delivery_runtime_installer.py'
 ```
 
-先保留 dry-run 输出作为回滚基线，再执行实际写入。
+先保留 dry-run 输出作为变更基线，再执行实际写入。安装器会自动创建受管文件快照；回退最近一次变更使用：
+
+```powershell
+pwsh -NoProfile -Command 'python setup.py rollback --runtime-home "$env:USERPROFILE\.hardflow-runtime" --runtime-name local --emit-json'
+```

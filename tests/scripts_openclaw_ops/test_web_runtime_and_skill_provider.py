@@ -379,8 +379,8 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
                 json.dumps(
                     {
                         "external_api_hosts": [
-                            "api.polybaymax.com",
-                            "dabaiquant.com",
+                            "api.componentalpha.dev",
+                            "componentbeta.dev",
                         ]
                     },
                     ensure_ascii=False,
@@ -391,8 +391,8 @@ class WebRuntimeAndSkillProviderTests(unittest.TestCase):
 
             repo_targets = module.load_project_repo_targets(project_registry)
 
-        self.assertTrue(any("polybaymax api sdk" in query.lower() for query in repo_targets["queries"]))
-        self.assertTrue(any("dabaiquant api sdk" in query.lower() for query in repo_targets["queries"]))
+        self.assertTrue(any("componentalpha api sdk" in query.lower() for query in repo_targets["queries"]))
+        self.assertTrue(any("componentbeta api sdk" in query.lower() for query in repo_targets["queries"]))
 
     def test_project_registry_auto_discovers_git_projects(self):
         module = load_module(

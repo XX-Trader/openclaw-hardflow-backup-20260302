@@ -92,6 +92,14 @@ pwsh -NoProfile -Command 'python .\scripts\openclaw-ops\repository_policy_check.
 pwsh -NoProfile -Command 'python .\setup.py --runtime-home "$HOME\.hardflow-runtime" --runtime-name local --emit-json'
 ```
 
+每次产生实际变更的安装都会先保存受管文件快照；无变化的重复安装复用原快照。需要恢复最近一次变更前状态时运行：
+
+```powershell
+pwsh -NoProfile -Command 'python .\setup.py rollback --runtime-home "$HOME\.hardflow-runtime" --runtime-name local --emit-json'
+```
+
+回滚逐个恢复或移除清单中的受管文件，保留 Runtime 中的非托管内容；连续执行可沿安装快照逐次回退。
+
 ### 6. 演练通用项目流水线
 
 ```powershell
@@ -118,13 +126,15 @@ pwsh -NoProfile -Command 'python .\skills\library\project-delivery-pipeline\scri
 ## 开发与验证
 
 ```powershell
+pwsh -NoProfile -Command 'python -m pip install -r requirements-dev.txt'
 pwsh -NoProfile -Command 'python -m compileall -q setup.py scripts skills tests'
-pwsh -NoProfile -Command 'python -m pytest -q tests/scripts_openclaw_ops/test_project_delivery_pipeline_runner.py'
-pwsh -NoProfile -Command 'python -m pytest -q tests/scripts_openclaw_ops/test_project_pipeline_entry.py tests/scripts_openclaw_ops/test_live_runtime_bridge.py'
+pwsh -NoProfile -Command 'python -m pytest -q -m quick'
+pwsh -NoProfile -Command 'python -m pytest -q -m integration'
+pwsh -NoProfile -Command 'python .\scripts\openclaw-ops\generic_fixture_e2e.py --kind all --emit-json'
 pwsh -NoProfile -Command 'git diff --check'
 ```
 
-`pytest.ini` 会排除 vendor、缓存和运行产物。提交前还应检查：
+`quick` 覆盖策略、入口、路由与配置解析，`integration` 覆盖其余组件和端到端路径；两组测试穷尽全部用例且互不重复。`pytest.ini` 会排除 vendor、缓存和运行产物。提交前还应检查：
 
 1. 修改是否属于 `requirements.md` 当前范围。
 2. 测试是否证明修复而非只证明命令启动。
@@ -136,6 +146,10 @@ pwsh -NoProfile -Command 'git diff --check'
 
 - [当前需求](requirements.md)
 - [变更记录](CHANGELOG.md)
+- [贡献指南](CONTRIBUTING.md)
+- [安全策略](SECURITY.md)
+- [MIT 许可证](LICENSE)
+- [第三方声明](THIRD_PARTY_NOTICES.md)
 - [文档索引](docs/INDEX.md)
 - [运行手册](memory/RUNBOOK.md)
 - [部署说明](memory/DEPLOYMENT.md)

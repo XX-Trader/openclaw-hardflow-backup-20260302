@@ -24,4 +24,13 @@ python3 setup.py \
 
 ## 验收与回滚
 
-检查安装 JSON、目标目录文件、Cron JSON 和健康检查输出。回滚时依据本次安装清单删除或恢复托管文件，并保留目标 Runtime 自有配置。
+检查安装 JSON、目标目录文件、Cron JSON 和健康检查输出。回滚最近一次变更：
+
+```bash
+python3 setup.py rollback \
+  --runtime-home "${HARDFLOW_RUNTIME_HOME:-$HOME/.hardflow-runtime}" \
+  --runtime-name "${RUNTIME_NAME:-node}" \
+  --emit-json
+```
+
+回滚依据安装前快照恢复或移除受管文件，并保留目标 Runtime 自有配置。

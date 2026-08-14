@@ -10,6 +10,7 @@ from router_engine import IntelligentRouter
 router = IntelligentRouter(
     skills_dir="<skills-dir>",
     config_dir="<config-dir>",
+    agents_dir="<runtime-agents-dir>",
 )
 decision = router.route("请修复 bug 并补回归测试", file_context="src/service.py")
 ```
@@ -30,20 +31,20 @@ decision = router.route("请修复 bug 并补回归测试", file_context="src/se
 3. 按相同规则匹配文件名或扩展名；
 4. 回退到默认处理。
 
-显式 Skill 会对 `skills_dir` 下真实存在且包含 `SKILL.md` 的目录进行校验。显式 Agent 会对 `agent_registry.json` 中 `available=true` 的声明进行校验。组合名称必须位于 `intent_patterns.json` 的允许列表中。
+显式 Skill 会对 `skills_dir` 下真实存在且包含 `SKILL.md` 的目录进行校验。显式 Agent 必须同时存在于 `agents_dir` 的实际能力目录与 `agent_registry.json` 元数据中。组合的全部成员也必须已被 Runtime 发现。
 
-> Agent 注册表是路由配置，不等同于 Runtime 安装证据。调用方在分发前仍需核对目标 Runtime 的实际能力清单。
+> `agents_dir` 是本次路由的能力真值；注册表只提供受控元数据。路由结果仍不代表 Agent 已执行任务。
 
 ## 通用路由示例
 
 | 输入或上下文 | 目标 | 原因 |
 | --- | --- | --- |
-| `请修复 bug 并补测试` | `debugger` | 使用受控的复现、修复与验证流程 |
-| `新增功能并补验收` | `coordinator` | 由协调 owner 按目标仓库契约选择实现角色 |
-| `部署项目并保留回滚证据` | `deployment-engineer` | 部署方式由项目命令注入 |
-| `src/service.py` | `python-expert` | Python 文件类型规则 |
-| `src/model.ts` | `typescript-expert` | TypeScript 文件类型规则 |
-| `Dockerfile` | `deployment-engineer` | 完整文件名规则 |
+| `请修复 bug 并补测试` | `project-agent` | 收集复现证据并分派实现与验证 owner |
+| `新增功能并补验收` | `project-agent` | 按目标仓库契约组织交付 |
+| `部署项目并保留回滚证据` | `deployer` | 部署方式由项目命令注入 |
+| `src/service.py` | `backend-dev` | 通用源码规则 |
+| `src/model.ts` | `frontend-dev` | 前端源码规则 |
+| `Dockerfile` | `deployer` | 完整文件名规则 |
 
 默认规则不绑定仓库名、主机路径、账号、固定技术栈或部署命令。
 
@@ -54,11 +55,11 @@ decision = router.route("请修复 bug 并补回归测试", file_context="src/se
 | `config/intent_patterns.json` | 显式调用语法、校验开关和组合允许列表 |
 | `config/keyword_routes.json` | 关键词到目标的有序规则 |
 | `config/file_type_routes.json` | 文件名或扩展名到目标的有序规则 |
-| `config/agent_registry.json` | 可供路由器校验的 Agent 声明 |
+| `config/agent_registry.json` | 与能力目录对齐的 Agent 元数据 |
 
 新增或修改规则时，应同时确认：
 
-1. 目标 Skill 真实存在，或 Agent 已登记且在目标 Runtime 可用；
+1. 目标 Skill 真实存在，或 Agent 已登记且能从目标 Runtime 目录发现；
 2. 规则使用通用任务语义，不嵌入历史项目配置；
 3. 更高优先级规则不会被更早的低优先级规则遮蔽；
 4. `tests/scripts_openclaw_ops/test_intelligent_router.py` 覆盖新增分支。

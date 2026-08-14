@@ -36,10 +36,17 @@ class ExplicitCallDetector:
             name if self.case_sensitive else name.casefold()
             for name in agent_names
         }
-        self.combo_names = {
-            name if self.case_sensitive else name.casefold()
-            for name in self.validation_rules.get('allowed_combos', [])
-        }
+        self.combo_targets: dict[str, list[str]] = {}
+        configured_combos = self.validation_rules.get('combos', {})
+        for combo_name, members in configured_combos.items():
+            normalized_combo = combo_name if self.case_sensitive else combo_name.casefold()
+            normalized_members = {
+                member if self.case_sensitive else member.casefold()
+                for member in members
+            }
+            if members and normalized_members.issubset(self.agent_names):
+                self.combo_targets[normalized_combo] = list(members)
+        self.combo_names = set(self.combo_targets)
 
     def detect_explicit_call(self, user_input: str) -> Optional[Dict[str, Any]]:
         """检测显式调用
@@ -132,27 +139,39 @@ class ExplicitCallDetector:
             return normalized in self.agent_names
         return normalized in self.combo_names
 
+    def resolve_combo(self, target_name: str) -> list[str]:
+        normalized = target_name.strip()
+        if not self.case_sensitive:
+            normalized = normalized.casefold()
+        return list(self.combo_targets.get(normalized, []))
+
 
 class IntelligentRouter:
     """智能路由引擎"""
 
-    def __init__(self, skills_dir: str, config_dir: str):
+    def __init__(self, skills_dir: str, config_dir: str, agents_dir: Optional[str] = None):
         """初始化路由引擎
 
         Args:
             skills_dir: 技能目录
             config_dir: 配置目录
+            agents_dir: 目标 Runtime 的 Agent 能力目录
         """
         self.skills_dir = str(Path(skills_dir).expanduser().resolve())
         self.config_dir = str(Path(config_dir).expanduser().resolve())
+        self.agents_dir = self._resolve_agents_dir(agents_dir)
 
         with open(os.path.join(self.config_dir, 'agent_registry.json'), 'r', encoding='utf-8') as f:
             agent_registry = json.load(f)
-        self.agent_names = {
+        self.declared_agent_names = {
             item['name']
             for item in agent_registry.get('agents', [])
             if item.get('available', True) and item.get('name')
         }
+        self.discovered_agent_names = self._discover_agent_names(self.agents_dir)
+        self.agent_names = self.declared_agent_names & self.discovered_agent_names
+        self.registry_missing_agents = self.declared_agent_names - self.discovered_agent_names
+        self.unregistered_agents = self.discovered_agent_names - self.declared_agent_names
         self.skill_names = {
             child.name.casefold()
             for child in Path(self.skills_dir).iterdir()
@@ -172,6 +191,34 @@ class IntelligentRouter:
 
         with open(os.path.join(self.config_dir, 'file_type_routes.json'), 'r', encoding='utf-8') as f:
             self.file_type_routes = json.load(f)
+
+    def _resolve_agents_dir(self, agents_dir: Optional[str]) -> Optional[Path]:
+        if agents_dir:
+            resolved = Path(agents_dir).expanduser().resolve()
+            return resolved if resolved.is_dir() else None
+        env_agents_dir = os.environ.get('HARDFLOW_AGENTS_DIR')
+        if env_agents_dir:
+            resolved = Path(env_agents_dir).expanduser().resolve()
+            return resolved if resolved.is_dir() else None
+        candidates: list[Path] = []
+        for parent in Path(self.config_dir).parents:
+            candidates.append(parent / 'agents')
+        for candidate in candidates:
+            resolved = candidate.expanduser().resolve()
+            if resolved.is_dir():
+                return resolved
+        return None
+
+    @staticmethod
+    def _discover_agent_names(agents_dir: Optional[Path]) -> set[str]:
+        if agents_dir is None:
+            return set()
+        marker_names = {'SOUL.md', 'AGENT.md', 'agent.json'}
+        return {
+            child.name
+            for child in agents_dir.iterdir()
+            if child.is_dir() and any((child / marker).is_file() for marker in marker_names)
+        }
 
     def _is_known_target(self, target_name: Optional[str]) -> bool:
         if not target_name:
@@ -211,7 +258,7 @@ class IntelligentRouter:
         if explicit_call and self.explicit_detector.validate_target(
             explicit_call['type'], explicit_call['name']
         ):
-            return {
+            decision = {
                 'method': 'explicit',
                 'target': explicit_call['name'],
                 'task': explicit_call['task'],
@@ -219,6 +266,9 @@ class IntelligentRouter:
                 'confidence': 1.0,
                 'raw_match': explicit_call['raw_match']
             }
+            if explicit_call['type'] == 'combo':
+                decision['targets'] = self.explicit_detector.resolve_combo(explicit_call['name'])
+            return decision
 
         # 优先级 2: 关键词匹配
         keyword_match = self._match_keywords(user_input)
@@ -311,13 +361,14 @@ if __name__ == "__main__":
     router = IntelligentRouter(
         skills_dir=str(module_dir.parent),
         config_dir=str(module_dir / "config"),
+        agents_dir=str(module_dir.parents[2] / "agents"),
     )
 
     # 测试用例
     test_cases = [
         "[调用技能: pdf] 提取这个 PDF 中的表格数据",
-        "[调用 Subagent: smart-flow:python-expert] 优化这段代码性能",
-        "[调用组合: 数据分析组合] 分析这个数据管道的质量和性能",
+        "[调用 Subagent: backend-dev] 优化这段代码性能",
+        "[调用组合: 全栈开发组合] 实现服务并完成测试和审查",
         "帮我审查代码",  # 关键词匹配
         "优化这个组件",  # 需要文件上下文
         "简单的问候",  # 默认处理

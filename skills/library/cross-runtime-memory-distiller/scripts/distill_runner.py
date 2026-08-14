@@ -120,6 +120,7 @@ def run_distill(
     evidence_dir: str = "",
     report_dir: str = "",
     skip_llm: bool = False,
+    classifier: str = "rules",
     emit_bridge_report: bool = False,
     dry_run: bool = False,
     task_id: str = "",
@@ -133,7 +134,7 @@ def run_distill(
     2. 接入数据源
     3. 清洗与切分
     4. 打分与路由
-    5. 分类（规则或 Parser Agent）
+    5. 使用确定性规则分类
     6. 写入热记忆 / 落盘产物
     7. 生成报告
 
@@ -144,7 +145,8 @@ def run_distill(
         db_path: distill.db 路径
         evidence_dir: 证据目录
         report_dir: 报告输出目录
-        skip_llm: 跳过解析 Agent，使用规则降级
+        skip_llm: 旧版兼容参数，等同于选择规则分类器
+        classifier: 分类器名称，当前支持 rules
         emit_bridge_report: 产出控制面桥接报告
         dry_run: 只探测+打分，不写入
         task_id: 关联任务 ID
@@ -154,6 +156,8 @@ def run_distill(
     Returns:
         蒸馏报告字典
     """
+    if classifier != "rules":
+        raise ValueError(f"unsupported classifier: {classifier}")
     start_time = datetime.now()
 
     # 1. 探测宿主环境
@@ -260,14 +264,7 @@ def run_distill(
     artifacts: list[dict[str, Any]] = []
 
     for w in high_value:
-        if skip_llm:
-            # 规则降级模式：使用纯规则分类，不依赖 LLM
-            artifact = classify_with_rules(w.text, w.window_id, w.source)
-        else:
-            # TODO: Phase 7 — 接入 Parser Agent 进行 LLM 辅助分类
-            # 当前 Parser Agent 尚未实装，自动降级为规则分类
-            logger.info("parser_agent_not_implemented:降级为规则分类 window=%s", w.window_id)
-            artifact = classify_with_rules(w.text, w.window_id, w.source)
+        artifact = classify_with_rules(w.text, w.window_id, w.source)
 
         artifact["artifact_id"] = store.next_id("artifact")
         artifact["trace_id"] = trace_id
@@ -338,6 +335,7 @@ def run_distill(
 
     report["elapsed_seconds"] = (datetime.now() - start_time).total_seconds()
     report["skill_drafts"] = skill_drafts
+    report["classifier"] = "rules-v1"
 
     if not dry_run and report_dir:
         save_report(report, report_dir, "distill")
@@ -361,8 +359,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--db-path", default="", help="distill.db 路径")
     parser.add_argument("--evidence-dir", default="", help="证据包目录")
     parser.add_argument("--report-dir", default="", help="报告输出目录")
-    parser.add_argument("--skip-llm", action="store_true", default=True,
-                        help="跳过解析 Agent，使用规则降级分类（当前默认启用，Parser Agent 尚未接入）")
+    parser.add_argument("--classifier", choices=["rules"], default="rules", help="确定性分类器")
+    parser.add_argument("--skip-llm", action="store_true",
+                        help="旧版兼容参数，等同于 --classifier rules")
     parser.add_argument("--emit-bridge-report", action="store_true", help="产出控制面桥接报告")
     parser.add_argument("--dry-run", action="store_true", help="只探测+打分，不写入热记忆")
     parser.add_argument("--log-level", default="INFO", help="日志级别")
@@ -388,6 +387,7 @@ def main(argv: list[str] | None = None) -> int:
         evidence_dir=args.evidence_dir,
         report_dir=args.report_dir,
         skip_llm=args.skip_llm,
+        classifier=args.classifier,
         emit_bridge_report=args.emit_bridge_report,
         dry_run=args.dry_run,
         task_id=args.task_id,

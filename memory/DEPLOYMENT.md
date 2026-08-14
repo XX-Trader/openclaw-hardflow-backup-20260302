@@ -47,8 +47,7 @@ pwsh -NoProfile -Command 'python .\setup.py --runtime-home "$HOME\.hardflow-runt
 ## 回滚
 
 - 代码：回到升级前提交或反向应用本次补丁。
-- Runtime 文件：恢复安装前备份，随后重启对应 Runtime。
-- Cron：恢复原 jobs 文件并复核启用状态。
+- Runtime 文件与 Cron：运行 `python setup.py rollback --runtime-home <RUNTIME_HOME> --runtime-name <RUNTIME_NAME> --emit-json`，按最新安装快照恢复受管内容。
 - 部署：执行目标项目提供的回滚命令；工作流不猜测服务管理方式。
 
 回滚完成后重新验证入口、配置、任务状态和项目烟测，不以命令返回零替代终态检查。

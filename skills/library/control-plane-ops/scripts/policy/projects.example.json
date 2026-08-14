@@ -2,9 +2,9 @@
   "projects": [
     {
       "name": "example-web-service",
-      "path": "/srv/projects/DabaiPMwebsite",
+      "path": "/srv/projects/example-web-service",
       "remote_name": "origin",
-      "expected_remote": "git@github.com:your-org/DabaiPMwebsite.git",
+      "expected_remote": "git@github.com:ORG/example-web-service.git",
       "check_remote": true
     },
     {

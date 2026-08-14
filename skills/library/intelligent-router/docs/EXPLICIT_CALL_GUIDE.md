@@ -25,10 +25,10 @@
 ```
 
 ```text
-[调用 Subagent: python-expert] 优化解析函数并补边界测试
+[调用 Subagent: backend-dev] 优化解析函数并补边界测试
 ```
 
-目标必须在 `config/agent_registry.json` 中声明为可用。该校验只证明配置一致；分发方还需核对目标 Runtime 的实际清单。
+目标必须在 `config/agent_registry.json` 中登记，并能从本次初始化使用的 `agents_dir` 发现。
 
 ### 组合
 
@@ -55,7 +55,7 @@
 [调用技能: missing-owner] 修复 bug 并补测试
 ```
 
-路由器会忽略失效 Skill，再根据“修复 bug”匹配到 `debugger`。
+路由器会忽略失效 Skill，再根据“修复 bug”匹配到 `project-agent`。
 
 ## 任务描述
 
@@ -78,7 +78,7 @@
 
 ### 路由目标与 Runtime 不一致
 
-`agent_registry.json` 是候选目标配置。调用方应在真正分发前读取 Runtime 的能力清单；目标缺失时回到协调 owner 或主调用方，而不是记录已执行。
+`agents_dir` 是本次 Runtime 能力真值，`agent_registry.json` 提供元数据。目标缺失时回到主调用方，并记录缺失能力，不记录已执行。
 
 ## 验证
 

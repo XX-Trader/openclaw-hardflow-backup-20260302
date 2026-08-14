@@ -474,4 +474,4 @@ A: 可以，使用 `./uninstall-github-runner.sh` 完全卸载。
 
 **版本**: v1.0.0
 **最后更新**: 2025-01-05
-**维护者**: DaBaiLiangHua_quant Team
+**维护者**: maintainers

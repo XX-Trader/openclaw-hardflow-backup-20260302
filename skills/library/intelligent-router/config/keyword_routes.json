@@ -1,449 +1,78 @@
 {
-  "version": "1.0.0",
+  "version": "2.0.0",
   "last_updated": "2026-08-14",
-  "description": "关键词到 Agent 的路由映射规则",
+  "description": "通用任务关键词到实际 workflow owner 的路由规则",
   "keywords": [
     {
-      "category": "开发相关",
-      "patterns": [
-        "新增功能",
-        "开发功能",
-        "功能模块",
-        "添加功能",
-        "实现功能",
-        "功能开发"
-      ],
-      "agent": "coordinator",
-      "description": "按目标仓库契约选择实现与验证 owner",
+      "category": "需求与功能",
+      "patterns": ["新增功能", "开发功能", "实现需求", "功能开发", "需求分析", "需求澄清"],
+      "agent": "project-agent",
       "priority": 1
     },
     {
-      "category": "开发相关",
-      "patterns": [
-        "修复 bug",
-        "修复错误",
-        "fix bug",
-        "解决问题",
-        "调试问题",
-        "bug 修复"
-      ],
-      "agent": "debugger",
-      "description": "受控调试、复现、修复与验证流程",
+      "category": "缺陷修复",
+      "patterns": ["修复 bug", "修复错误", "fix bug", "解决问题", "调试问题", "排错"],
+      "agent": "project-agent",
       "priority": 1
-    },
-    {
-      "category": "部署相关",
-      "patterns": [
-        "部署项目",
-        "部署到服务器",
-        "生产部署",
-        "部署到生产",
-        "线上部署"
-      ],
-      "agent": "deployment-engineer",
-      "description": "按项目提供的命令执行部署与回滚门禁",
-      "priority": 1
-    },
-    {
-      "category": "部署相关",
-      "patterns": [
-        "本地环境",
-        "本地部署",
-        "windows 环境",
-        "开发环境搭建"
-      ],
-      "agent": "deployment-engineer",
-      "description": "按当前操作系统和项目契约准备本地环境",
-      "priority": 2
-    },
-    {
-      "category": "部署相关",
-      "patterns": [
-        "部署测试",
-        "验收测试",
-        "部署后测试"
-      ],
-      "agent": "test-automator",
-      "description": "按项目验收命令执行部署后验证",
-      "priority": 2
     },
     {
       "category": "代码审查",
-      "patterns": [
-        "审查代码",
-        "代码审查",
-        "代码质量",
-        "检查代码",
-        "review 代码"
-      ],
-      "agent": "code-reviewer",
-      "description": "代码质量、安全审查",
+      "patterns": ["审查代码", "代码审查", "代码质量", "检查代码", "安全审计", "架构审查"],
+      "agent": "reviewer",
       "priority": 1
     },
     {
-      "category": "调试相关",
-      "patterns": [
-        "调试",
-        "debug",
-        "排错",
-        "查找错误",
-        "分析错误"
-      ],
-      "agent": "debugger",
-      "description": "错误分析和修复",
+      "category": "测试验收",
+      "patterns": ["编写测试", "测试用例", "单元测试", "集成测试", "端到端测试", "部署后测试", "验收测试"],
+      "agent": "tester",
       "priority": 1
+    },
+    {
+      "category": "部署发布",
+      "patterns": ["部署项目", "发布项目", "生产部署", "持续部署", "回滚发布", "本地环境", "开发环境搭建"],
+      "agent": "deployer",
+      "priority": 1
+    },
+    {
+      "category": "前端实现",
+      "patterns": ["前端代码", "前端组件", "前端页面", "界面实现", "交互实现", "样式优化"],
+      "agent": "frontend-dev",
+      "priority": 2
+    },
+    {
+      "category": "后端与数据",
+      "patterns": ["后端代码", "接口开发", "数据库设计", "表结构设计", "查询优化", "数据模型", "服务端"],
+      "agent": "backend-dev",
+      "priority": 2
     },
     {
       "category": "性能优化",
-      "patterns": [
-        "性能优化",
-        "优化性能",
-        "性能分析",
-        "性能调优",
-        "提升性能"
-      ],
-      "agent": "performance-engineer",
-      "description": "应用性能分析和优化",
+      "patterns": ["性能优化", "性能分析", "性能调优", "仓库精简", "冗余分析"],
+      "agent": "optimization-agent",
       "priority": 2
     },
     {
-      "category": "架构设计",
-      "patterns": [
-        "架构设计",
-        "系统架构",
-        "设计架构",
-        "架构规划"
-      ],
-      "agent": "backend-architect",
-      "description": "后端架构设计",
+      "category": "运行治理",
+      "patterns": ["日志分析", "配置检查", "配置漂移", "任务调度", "cron", "运行监控", "故障巡检"],
+      "agent": "ops-agent",
       "priority": 2
     },
     {
-      "category": "数据库设计",
-      "patterns": [
-        "数据库设计",
-        "设计数据库",
-        "数据模型",
-        "表结构设计"
-      ],
-      "agent": "backend-architect",
-      "description": "数据库架构设计",
+      "category": "文档",
+      "patterns": ["编写文档", "接口文档", "变更说明", "运行手册", "需求文档"],
+      "agent": "doc-writer",
       "priority": 2
     },
     {
-      "category": "需求分析",
-      "patterns": [
-        "需求分析",
-        "需求澄清",
-        "需求不明确",
-        "确认需求"
-      ],
-      "agent": "query-clarifier",
-      "description": "需求澄清和确认",
-      "priority": 1
-    },
-    {
-      "category": "数据库优化",
-      "patterns": [
-        "查询优化",
-        "sql 优化",
-        "优化查询",
-        "慢查询",
-        "索引优化"
-      ],
-      "agent": "database-optimizer",
-      "description": "SQL 优化和索引",
-      "priority": 1
-    },
-    {
-      "category": "数据库性能",
-      "patterns": [
-        "数据库性能",
-        "数据库调优",
-        "优化数据库",
-        "数据库优化"
-      ],
-      "agent": "database-optimization",
-      "description": "数据库性能优化",
+      "category": "外部研究",
+      "patterns": ["官方文档", "外部资料", "技术调研", "联网检索", "网页采集"],
+      "agent": "web-agent",
       "priority": 2
     },
     {
-      "category": "数据库管理",
-      "patterns": [
-        "数据库管理",
-        "数据库运维",
-        "数据库备份",
-        "dba"
-      ],
-      "agent": "database-admin",
-      "description": "数据库运维、备份、监控",
-      "priority": 2
-    },
-    {
-      "category": "Python 开发",
-      "patterns": [
-        "python 代码",
-        "python 函数",
-        "python 脚本",
-        "优化 python"
-      ],
-      "agent": "python-expert",
-      "description": "Python 高级特性",
-      "priority": 2
-    },
-    {
-      "category": "JavaScript 开发",
-      "patterns": [
-        "javascript 代码",
-        "js 代码",
-        "优化 js",
-        "优化 javascript"
-      ],
-      "agent": "javascript-developer",
-      "description": "现代 ES6+ + Node.js",
-      "priority": 2
-    },
-    {
-      "category": "TypeScript 开发",
-      "patterns": [
-        "typescript 代码",
-        "ts 代码",
-        "优化 ts",
-        "优化 typescript"
-      ],
-      "agent": "typescript-expert",
-      "description": "TypeScript 类型安全",
-      "priority": 2
-    },
-    {
-      "category": "Go 开发",
-      "patterns": [
-        "go 代码",
-        "golang 代码",
-        "优化 go"
-      ],
-      "agent": "golang-expert",
-      "description": "Go 并发编程",
-      "priority": 2
-    },
-    {
-      "category": "Java 开发",
-      "patterns": [
-        "java 代码",
-        "优化 java"
-      ],
-      "agent": "java-developer",
-      "description": "现代 Java + Spring Boot",
-      "priority": 2
-    },
-    {
-      "category": "前端开发",
-      "patterns": [
-        "前端代码",
-        "前端组件",
-        "前端页面",
-        "优化前端"
-      ],
-      "agent": "frontend-developer",
-      "description": "Next.js + React + shadcn/ui",
-      "priority": 2
-    },
-    {
-      "category": "React 优化",
-      "patterns": [
-        "react 性能",
-        "优化 react",
-        "react 组件优化"
-      ],
-      "agent": "react-performance-optimization",
-      "description": "React 性能优化",
-      "priority": 2
-    },
-    {
-      "category": "安全审计",
-      "patterns": [
-        "安全审计",
-        "安全检查",
-        "安全漏洞",
-        "安全性检查"
-      ],
-      "agent": "security-auditor",
-      "description": "代码安全漏洞审查",
-      "priority": 1
-    },
-    {
-      "category": "API 安全",
-      "patterns": [
-        "api 安全",
-        "接口安全",
-        "rest api 安全"
-      ],
-      "agent": "api-security-audit",
-      "description": "REST API 安全审计",
-      "priority": 2
-    },
-    {
-      "category": "测试自动化",
-      "patterns": [
-        "编写测试",
-        "测试用例",
-        "单元测试",
-        "集成测试",
-        "自动化测试"
-      ],
-      "agent": "test-automator",
-      "description": "单元/集成/E2E 测试",
-      "priority": 2
-    },
-    {
-      "category": "代码重构",
-      "patterns": [
-        "重构代码",
-        "代码重构",
-        "现代化改造"
-      ],
-      "agent": "legacy-modernizer",
-      "description": "遗留代码现代化",
-      "priority": 2
-    },
-    {
-      "category": "云架构",
-      "patterns": [
-        "云架构",
-        "云部署",
-        "aws",
-        "azure",
-        "gcp",
-        "云平台"
-      ],
-      "agent": "cloud-architect",
-      "description": "云架构设计",
-      "priority": 2
-    },
-    {
-      "category": "DevOps",
-      "patterns": [
-        "cicd",
-        "ci/cd",
-        "持续集成",
-        "持续部署",
-        "devops"
-      ],
-      "agent": "deployment-engineer",
-      "description": "CI/CD、Docker、云部署",
-      "priority": 2
-    },
-    {
-      "category": "AI/ML",
-      "patterns": [
-        "llm 应用",
-        "ai 应用",
-        "rag 系统",
-        "prompt 工程",
-        "prompt 优化"
-      ],
-      "agent": "ai-engineer",
-      "description": "构建 LLM 应用、RAG 系统",
-      "priority": 2
-    },
-    {
-      "category": "数据处理",
-      "patterns": [
-        "etl 管道",
-        "数据管道",
-        "数据仓库",
-        "数据处理",
-        "数据工程"
-      ],
-      "agent": "data-engineer",
-      "description": "构建 ETL 管道、数据仓库",
-      "priority": 2
-    },
-    {
-      "category": "机器学习",
-      "patterns": [
-        "ml 管道",
-        "机器学习",
-        "模型服务",
-        "模型部署"
-      ],
-      "agent": "ml-engineer",
-      "description": "ML 管道、模型服务",
-      "priority": 2
-    },
-    {
-      "category": "数据分析",
-      "patterns": [
-        "数据分析",
-        "统计分析",
-        "数据洞察",
-        "定量分析"
-      ],
-      "agent": "data-analyst",
-      "description": "定量分析、统计洞察",
-      "priority": 2
-    },
-    {
-      "category": "综合研究",
-      "patterns": [
-        "技术研究",
-        "技术调研",
-        "深入研究",
-        "综合研究"
-      ],
-      "agent": "research-orchestrator",
-      "description": "研究项目编排",
-      "priority": 2
-    },
-    {
-      "category": "文档编写",
-      "patterns": [
-        "编写文档",
-        "api 文档",
-        "openapi",
-        "swagger 文档"
-      ],
-      "agent": "api-documenter",
-      "description": "OpenAPI/Swagger 文档",
-      "priority": 2
-    },
-    {
-      "category": "架构审查",
-      "patterns": [
-        "架构审查",
-        "架构评审",
-        "架构一致性"
-      ],
-      "agent": "architect-review",
-      "description": "架构一致性审查",
-      "priority": 2
-    },
-    {
-      "category": "UI/UX 设计",
-      "patterns": [
-        "ui 设计",
-        "ux 设计",
-        "界面设计",
-        "用户体验"
-      ],
-      "agent": "ui-ux-designer",
-      "description": "用户界面和体验设计",
-      "priority": 2
-    },
-    {
-      "category": "Agent治理",
-      "patterns": [
-        "造agent",
-        "创建agent",
-        "新增agent",
-        "agent工厂",
-        "workflow owner",
-        "补齐agent",
-        "路由补齐",
-        "agent配置"
-      ],
+      "category": "工作流治理",
+      "patterns": ["创建 agent", "新增 agent", "workflow owner", "路由补齐", "agent 配置"],
       "agent": "coordinator",
-      "description": "按当前 runtime-host workflow owner 口径评估是否需要调整阶段 owner 或配置；不再自动创建 agent",
       "priority": 1
     }
   ]

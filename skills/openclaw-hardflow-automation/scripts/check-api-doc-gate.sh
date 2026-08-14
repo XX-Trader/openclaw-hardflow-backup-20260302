@@ -2,7 +2,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+ROOT_DIR="${HARDFLOW_REPO_ROOT:-}"
+if [[ -z "${ROOT_DIR}" ]]; then
+  ROOT_DIR="$(git -C "${SCRIPT_DIR}" rev-parse --show-toplevel 2>/dev/null || true)"
+fi
+if [[ -z "${ROOT_DIR}" ]]; then
+  ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+fi
 WORKFLOW_DIR="${ROOT_DIR}/.workflow"
 GATE_DIR="${WORKFLOW_DIR}/gates"
 STATE_FILE="${WORKFLOW_DIR}/current_run_id"
@@ -74,15 +80,14 @@ fi
 
 api_changed=0
 doc_changed=0
+API_CODE_PATH_REGEX="${API_CODE_PATH_REGEX:-(^|/)(api|apis)(/.*|[._-].*\.(py|js|jsx|ts|tsx|go|rs|java|kt|rb|php|cs))$|(^|/)(backend|server|service|services)/(routes?|routers?|controllers?|views?|serializers?|handlers?)(/.*|[._-].*\.(py|js|jsx|ts|tsx|go|rs|java|kt|rb|php|cs))$}"
+API_DOC_PATH_REGEX="${API_DOC_PATH_REGEX:-(^|/)docs/(api|openapi)(/|[._-])|(^|/)(openapi|swagger)\.(yaml|yml|json)$}"
 
 for file in "${changed_files[@]}"; do
-  if [[ "${file}" =~ ^Project/ShengBeiDjango/ ]] && [[ "${file}" =~ (urls|views|serializers|api|router) ]]; then
+  if [[ "${file}" =~ ${API_CODE_PATH_REGEX} ]]; then
     api_changed=1
   fi
-  if [[ "${file}" =~ ^Project/ShengBeiVue/src/ ]] && [[ "${file}" =~ /(api|services)/ ]]; then
-    api_changed=1
-  fi
-  if [[ "${file}" =~ ^(Project/docs/api/|docs/api/|\.openclaw/workspace-doc-writer/docs/api/) ]]; then
+  if [[ "${file}" =~ ${API_DOC_PATH_REGEX} ]]; then
     doc_changed=1
   fi
 done
